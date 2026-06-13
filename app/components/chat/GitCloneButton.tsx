@@ -171,12 +171,14 @@ ${escapeBoltTags(file.content)}
         variant="default"
         size="lg"
         className={classNames(
-          'gap-2 bg-bolt-elements-background-depth-1',
+          'gap-2 bg-bolt-elements-bg-depth-1/80',
           'text-bolt-elements-textPrimary',
-          'hover:bg-bolt-elements-background-depth-2',
+          'hover:bg-bolt-elements-button-primary-background hover:text-bolt-elements-button-primary-text',
           'border border-bolt-elements-borderColor',
           'h-10 px-4 py-2 min-w-[120px] justify-center',
-          'transition-all duration-200 ease-in-out',
+          'transition-all duration-200 ease-out',
+          'backdrop-blur-sm',
+          'hover:shadow-[0_0_16px_var(--bolt-glow-color)]',
           className,
         )}
         disabled={!ready || loading}

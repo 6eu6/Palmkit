@@ -5,8 +5,8 @@ import { Button } from '~/components/ui/Button';
 import { classNames } from '~/utils/classNames';
 
 type ChatData = {
-  messages?: Message[]; // Standard Bolt format
-  description?: string; // Optional description
+  messages?: Message[];
+  description?: string;
 };
 
 export function ImportButtons(importChat: ((description: string, messages: Message[]) => Promise<void>) | undefined) {
@@ -29,7 +29,6 @@ export function ImportButtons(importChat: ((description: string, messages: Messa
                   const content = e.target?.result as string;
                   const data = JSON.parse(content) as ChatData;
 
-                  // Standard format
                   if (Array.isArray(data.messages)) {
                     await importChat(data.description || 'Imported Chat', data.messages);
                     toast.success('Chat imported successfully');
@@ -51,7 +50,7 @@ export function ImportButtons(importChat: ((description: string, messages: Messa
             } catch (error) {
               toast.error(error instanceof Error ? error.message : 'Failed to import chat');
             }
-            e.target.value = ''; // Reset file input
+            e.target.value = '';
           } else {
             toast.error('Something went wrong');
           }
@@ -67,12 +66,14 @@ export function ImportButtons(importChat: ((description: string, messages: Messa
             variant="default"
             size="lg"
             className={classNames(
-              'gap-2 bg-bolt-elements-background-depth-1',
+              'gap-2 bg-bolt-elements-bg-depth-1/80',
               'text-bolt-elements-textPrimary',
-              'hover:bg-bolt-elements-background-depth-2',
+              'hover:bg-bolt-elements-button-primary-background hover:text-bolt-elements-button-primary-text',
               'border border-bolt-elements-borderColor',
               'h-10 px-4 py-2 min-w-[120px] justify-center',
-              'transition-all duration-200 ease-in-out',
+              'transition-all duration-200 ease-out',
+              'backdrop-blur-sm',
+              'hover:shadow-[0_0_16px_var(--bolt-glow-color)]',
             )}
           >
             <span className="i-ph:upload-simple w-4 h-4" />
@@ -81,12 +82,14 @@ export function ImportButtons(importChat: ((description: string, messages: Messa
           <ImportFolderButton
             importChat={importChat}
             className={classNames(
-              'gap-2 bg-bolt-elements-background-depth-1',
+              'gap-2 bg-bolt-elements-bg-depth-1/80',
               'text-bolt-elements-textPrimary',
-              'hover:bg-bolt-elements-background-depth-2',
-              'border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]',
+              'hover:bg-bolt-elements-button-primary-background hover:text-bolt-elements-button-primary-text',
+              'border border-bolt-elements-borderColor',
               'h-10 px-4 py-2 min-w-[120px] justify-center',
-              'transition-all duration-200 ease-in-out rounded-lg',
+              'transition-all duration-200 ease-out rounded-lg',
+              'backdrop-blur-sm',
+              'hover:shadow-[0_0_16px_var(--bolt-glow-color)]',
             )}
           />
         </div>

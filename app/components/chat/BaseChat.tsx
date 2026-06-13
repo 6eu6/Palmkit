@@ -363,11 +363,13 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         <div className="flex flex-col lg:flex-row overflow-y-auto w-full h-full">
           <div className={classNames(styles.Chat, 'flex flex-col flex-grow lg:min-w-[var(--chat-min-width)] h-full')}>
             {!chatStarted && (
-              <div id="intro" className="mt-[16vh] max-w-2xl mx-auto text-center px-4 lg:px-0">
-                <h1 className="text-3xl lg:text-6xl font-bold text-bolt-elements-textPrimary mb-4 animate-fade-in">
-                  Where ideas begin
-                </h1>
-                <p className="text-md lg:text-xl mb-8 text-bolt-elements-textSecondary animate-fade-in animation-delay-200">
+              <div id="intro" className="mt-[14vh] max-w-2xl mx-auto text-center px-4 lg:px-0">
+                <div className="animate-fade-in-up">
+                  <h1 className="text-4xl lg:text-7xl font-extrabold mb-4 tracking-tight">
+                    <span className="gradient-text animate-gradient-shift">Where ideas begin</span>
+                  </h1>
+                </div>
+                <p className="text-base lg:text-xl mb-10 text-bolt-elements-textSecondary animate-fade-in-up animation-delay-200 max-w-lg mx-auto leading-relaxed">
                   Bring ideas to life in seconds or get help on existing projects.
                 </p>
               </div>
@@ -485,7 +487,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
             </StickToBottom>
             <div className="flex flex-col justify-center">
               {!chatStarted && (
-                <div className="flex justify-center gap-2">
+                <div className="flex justify-center gap-2 animate-fade-in-up animation-delay-300">
                   {ImportButtons(importChat)}
                   <GitCloneButton importChat={importChat} />
                 </div>
@@ -528,13 +530,13 @@ function ScrollToBottom() {
   return (
     !isAtBottom && (
       <>
-        <div className="sticky bottom-0 left-0 right-0 bg-gradient-to-t from-bolt-elements-background-depth-1 to-transparent h-20 z-10" />
+        <div className="sticky bottom-0 left-0 right-0 bg-gradient-to-t from-bolt-elements-bg-depth-1 to-transparent h-20 z-10" />
         <button
-          className="sticky z-50 bottom-0 left-0 right-0 text-4xl rounded-lg px-1.5 py-0.5 flex items-center justify-center mx-auto gap-2 bg-bolt-elements-background-depth-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary text-sm"
+          className="sticky z-50 bottom-0 left-0 right-0 text-sm rounded-full px-4 py-2 flex items-center justify-center mx-auto gap-2 glass-surface hover:shadow-[0_0_16px_var(--bolt-glow-color)] transition-all duration-200"
           onClick={() => scrollToBottom()}
         >
-          Go to last message
-          <span className="i-ph:arrow-down animate-bounce" />
+          <span className="text-bolt-elements-textSecondary font-medium">Go to last message</span>
+          <span className="i-ph:arrow-down text-bolt-elements-button-primary-text animate-bounce" />
         </button>
       </>
     )

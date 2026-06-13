@@ -15,14 +15,6 @@ const tabs: { id: MobileTab; label: string; icon: string }[] = [
 
 /**
  * Bottom tab navigation for mobile viewport.
- *
- * This component is always rendered in the DOM but hidden on screens >= 640px
- * via the CSS class `sm:hidden`. This avoids any SSR/hydration mismatch
- * because no JavaScript viewport detection is used for the show/hide logic.
- *
- * Tab clicks update shared nanostores (chatStore, workbenchStore) which
- * also drive the desktop layout. On desktop the stores have no visible
- * effect from this component because the component itself is hidden.
  */
 export const MobileBottomTabs = memo(() => {
   const activeTab = useStore(mobileActiveTab);
@@ -52,37 +44,50 @@ export const MobileBottomTabs = memo(() => {
         workbenchStore.toggleTerminal(true);
         break;
       case 'settings':
-        /*
-         * Settings dialog is opened by MobileShell when this tab activates.
-         * We only set the active tab here; MobileShell's useEffect opens
-         * the ControlPanel instance it renders for mobile.
-         */
         break;
     }
   }, []);
 
   return (
     <div
-      className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around bg-bolt-elements-bg-depth-2 border-t border-bolt-elements-borderColor sm:hidden"
+      className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around sm:hidden
+        bg-bolt-elements-bg-depth-1/80 backdrop-blur-xl
+        border-t border-bolt-elements-borderColor"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
-      {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          onClick={() => handleTabChange(tab.id)}
-          className={classNames(
-            'flex flex-col items-center justify-center py-2 px-3 min-w-[48px] min-h-[48px] transition-colors outline-none',
-            activeTab === tab.id
-              ? 'text-accent-500'
-              : 'text-bolt-elements-textTertiary hover:text-bolt-elements-textSecondary',
-          )}
-          aria-label={tab.label}
-          aria-pressed={activeTab === tab.id}
-        >
-          <div className={classNames(tab.icon, 'text-xl')} />
-          <span className="text-[10px] mt-0.5 leading-tight">{tab.label}</span>
-        </button>
-      ))}
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.id;
+
+        return (
+          <button
+            key={tab.id}
+            onClick={() => handleTabChange(tab.id)}
+            className={classNames(
+              'flex flex-col items-center justify-center py-2 px-3 min-w-[48px] min-h-[48px] transition-all duration-200 outline-none relative',
+              isActive
+                ? 'text-bolt-elements-button-primary-text'
+                : 'text-bolt-elements-textTertiary hover:text-bolt-elements-textSecondary',
+            )}
+            aria-label={tab.label}
+            aria-pressed={isActive}
+          >
+            {isActive && (
+              <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-gradient-to-r from-[var(--bolt-gradient-start)] to-[var(--bolt-gradient-end)]" />
+            )}
+            <div
+              className={classNames(tab.icon, 'text-xl transition-transform duration-200', isActive && 'scale-110')}
+            />
+            <span
+              className={classNames(
+                'text-[10px] mt-0.5 leading-tight font-medium transition-colors duration-200',
+                isActive && 'text-bolt-elements-button-primary-text',
+              )}
+            >
+              {tab.label}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 });

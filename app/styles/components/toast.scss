@@ -5,19 +5,25 @@
 }
 
 .Toastify__toast {
-  --at-apply: shadow-md;
-
+  --at-apply: shadow-lg;
   background-color: var(--bolt-elements-bg-depth-2);
   color: var(--bolt-elements-textPrimary);
   border: 1px solid var(--bolt-elements-borderColor);
+  border-radius: 12px;
+  backdrop-filter: blur(12px);
+  font-size: 13px;
 }
 
 .Toastify__close-button {
   color: var(--bolt-elements-item-contentDefault);
   opacity: 1;
-  transition: none;
+  transition: color 0.2s ease;
 
   &:hover {
     color: var(--bolt-elements-item-contentActive);
   }
+}
+
+.Toastify__progress-bar {
+  background: linear-gradient(90deg, var(--bolt-gradient-start), var(--bolt-gradient-end));
 }

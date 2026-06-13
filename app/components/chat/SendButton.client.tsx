@@ -15,11 +15,16 @@ export const SendButton = ({ show, isStreaming, disabled, onClick }: SendButtonP
     <AnimatePresence>
       {show ? (
         <motion.button
-          className="absolute flex justify-center items-center top-[18px] right-[22px] p-1 bg-accent-500 hover:brightness-94 color-white rounded-md w-[34px] h-[34px] transition-theme disabled:opacity-50 disabled:cursor-not-allowed"
+          className="absolute flex justify-center items-center top-[18px] right-[22px] p-1 rounded-lg w-[34px] h-[34px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{
+            background: isStreaming
+              ? 'linear-gradient(135deg, #ef4444, #dc2626)'
+              : 'linear-gradient(135deg, var(--bolt-gradient-start), var(--bolt-gradient-end))',
+          }}
           transition={{ ease: customEasingFn, duration: 0.17 }}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 10, scale: 0.9 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 10, scale: 0.9 }}
           disabled={disabled}
           onClick={(event) => {
             event.preventDefault();
@@ -28,8 +33,10 @@ export const SendButton = ({ show, isStreaming, disabled, onClick }: SendButtonP
               onClick?.(event);
             }
           }}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
         >
-          <div className="text-lg">
+          <div className="text-lg text-white">
             {!isStreaming ? <div className="i-ph:arrow-right"></div> : <div className="i-ph:stop-circle-bold"></div>}
           </div>
         </motion.button>

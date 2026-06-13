@@ -69,13 +69,10 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
   return (
     <div
       className={classNames(
-        'relative bg-bolt-elements-background-depth-2 backdrop-blur p-3 rounded-lg border border-bolt-elements-borderColor relative w-full max-w-chat mx-auto z-prompt',
-
-        /*
-         * {
-         *   'sticky bottom-2': chatStarted,
-         * },
-         */
+        'relative bg-bolt-elements-prompt-background backdrop-blur-xl p-3 rounded-xl border border-bolt-elements-borderColor relative w-full max-w-chat mx-auto z-prompt',
+        'shadow-[0_2px_20px_rgba(0,0,0,0.04)] dark:shadow-[0_2px_20px_rgba(0,0,0,0.3)]',
+        'transition-shadow duration-300',
+        'hover:shadow-[0_4px_30px_var(--bolt-glow-color)]',
       )}
     >
       <svg className={classNames(styles.PromptEffectContainer)}>
@@ -89,10 +86,10 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             gradientUnits="userSpaceOnUse"
             gradientTransform="rotate(-45)"
           >
-            <stop offset="0%" stopColor="#b44aff" stopOpacity="0%"></stop>
-            <stop offset="40%" stopColor="#b44aff" stopOpacity="80%"></stop>
-            <stop offset="50%" stopColor="#b44aff" stopOpacity="80%"></stop>
-            <stop offset="100%" stopColor="#b44aff" stopOpacity="0%"></stop>
+            <stop offset="0%" stopColor="var(--bolt-gradient-start)" stopOpacity="0%"></stop>
+            <stop offset="40%" stopColor="var(--bolt-gradient-mid)" stopOpacity="80%"></stop>
+            <stop offset="50%" stopColor="var(--bolt-gradient-end)" stopOpacity="80%"></stop>
+            <stop offset="100%" stopColor="var(--bolt-gradient-start)" stopOpacity="0%"></stop>
           </linearGradient>
           <linearGradient id="shine-gradient">
             <stop offset="0%" stopColor="white" stopOpacity="0%"></stop>
@@ -169,7 +166,11 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
         </div>
       )}
       <div
-        className={classNames('relative shadow-xs border border-bolt-elements-borderColor backdrop-blur rounded-lg')}
+        className={classNames(
+          'relative border border-bolt-elements-borderColor backdrop-blur rounded-lg',
+          'transition-all duration-200',
+          'focus-within:border-bolt-elements-borderColorActive focus-within:shadow-[0_0_0_3px_var(--bolt-glow-color)]',
+        )}
       >
         <textarea
           ref={props.textareaRef}

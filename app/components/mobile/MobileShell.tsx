@@ -140,42 +140,42 @@ export const MobileShell = memo(() => {
       {/* Quick Actions overlay — shown when Actions tab is active on mobile */}
       {isActionsTab && (
         <div
-          className="fixed bottom-[56px] left-0 right-0 z-40 p-3 sm:hidden"
+          className="fixed bottom-[56px] left-0 right-0 z-40 p-3 sm:hidden animate-fade-in-up"
           style={{ marginBottom: 'env(safe-area-inset-bottom, 0px)' }}
         >
-          <div className="bg-bolt-elements-bg-depth-2 border border-bolt-elements-borderColor rounded-xl p-3 flex flex-col gap-2 shadow-lg">
-            <h3 className="text-sm font-medium text-bolt-elements-textPrimary px-1">Quick Actions</h3>
+          <div className="bg-bolt-elements-bg-depth-2/90 backdrop-blur-xl border border-bolt-elements-borderColor rounded-2xl p-3 flex flex-col gap-2 shadow-xl shadow-black/10 dark:shadow-black/30">
+            <h3 className="text-xs font-semibold text-bolt-elements-textTertiary uppercase tracking-wider px-1 mb-1">
+              Quick Actions
+            </h3>
             <button
               onClick={handleToggleTerminal}
-              className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg bg-bolt-elements-button-primary-background hover:bg-bolt-elements-button-primary-backgroundHover text-bolt-elements-button-primary-text text-sm transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-bolt-elements-button-primary-background hover:bg-bolt-elements-button-primary-backgroundHover text-bolt-elements-button-primary-text text-sm font-medium transition-all duration-200 active:scale-[0.98]"
             >
-              <div className="i-ph:terminal" />
+              <div className="i-ph:terminal text-lg" />
               Toggle Terminal
             </button>
             <button
               onClick={handleExportZip}
-              className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg bg-bolt-elements-button-secondary-background hover:bg-bolt-elements-button-secondary-backgroundHover text-bolt-elements-button-secondary-text text-sm transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-bolt-elements-button-secondary-background hover:bg-bolt-elements-button-secondary-backgroundHover text-bolt-elements-button-secondary-text text-sm font-medium transition-all duration-200 active:scale-[0.98]"
             >
-              <div className="i-ph:download-simple" />
+              <div className="i-ph:download-simple text-lg" />
               Export ZIP
             </button>
-            {/* TODO: Fix current error — needs safe access to error state from workbenchStore */}
             <button
               disabled
-              className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg bg-bolt-elements-bg-depth-3 text-bolt-elements-textTertiary text-sm cursor-not-allowed opacity-60"
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-bolt-elements-bg-depth-3 text-bolt-elements-textTertiary text-sm cursor-not-allowed opacity-60"
             >
-              <div className="i-ph:warning-circle" />
+              <div className="i-ph:warning-circle text-lg" />
               Fix Current Error
-              <span className="ml-auto text-[10px]">(coming soon)</span>
+              <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-bolt-elements-bg-depth-4">soon</span>
             </button>
-            {/* TODO: Revert last change — needs undo/history support in workbenchStore */}
             <button
               disabled
-              className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg bg-bolt-elements-bg-depth-3 text-bolt-elements-textTertiary text-sm cursor-not-allowed opacity-60"
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-bolt-elements-bg-depth-3 text-bolt-elements-textTertiary text-sm cursor-not-allowed opacity-60"
             >
-              <div className="i-ph:arrow-counter-clockwise" />
+              <div className="i-ph:arrow-counter-clockwise text-lg" />
               Revert Last Change
-              <span className="ml-auto text-[10px]">(coming soon)</span>
+              <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-bolt-elements-bg-depth-4">soon</span>
             </button>
           </div>
         </div>

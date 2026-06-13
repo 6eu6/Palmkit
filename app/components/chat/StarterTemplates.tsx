@@ -11,21 +11,42 @@ const FrameworkLink: React.FC<FrameworkLinkProps> = ({ template }) => (
     href={`/git?url=https://github.com/${template.githubRepo}.git`}
     data-state="closed"
     data-discover="true"
-    className="items-center justify-center"
+    className="group items-center justify-center"
   >
-    <div
-      className={`inline-block ${template.icon} w-8 h-8 text-4xl transition-theme hover:text-purple-500 dark:text-white dark:opacity-50 dark:hover:opacity-100 dark:hover:text-purple-400 transition-all grayscale hover:grayscale-0 transition`}
-      title={template.label}
-    />
+    <div className="relative flex flex-col items-center gap-1.5">
+      <div
+        className={`
+          ${template.icon} w-9 h-9 text-3xl
+          transition-all duration-300 ease-out
+          grayscale opacity-60
+          group-hover:grayscale-0 group-hover:opacity-100 group-hover:scale-110
+          group-hover:drop-shadow-[0_0_8px_var(--bolt-glow-color)]
+        `}
+        title={template.label}
+      />
+      <span
+        className="
+        text-[10px] font-medium
+        text-bolt-elements-textTertiary
+        opacity-0 group-hover:opacity-100
+        transition-all duration-200 ease-out
+        translate-y-1 group-hover:translate-y-0
+      "
+      >
+        {template.label}
+      </span>
+    </div>
   </a>
 );
 
 const StarterTemplates: React.FC = () => {
   return (
-    <div className="flex flex-col items-center gap-4">
-      <span className="text-sm text-gray-500">or start a blank app with your favorite stack</span>
+    <div className="flex flex-col items-center gap-4 animate-fade-in-up animation-delay-500">
+      <span className="text-xs font-medium text-bolt-elements-textTertiary uppercase tracking-wider">
+        or start a blank app with your favorite stack
+      </span>
       <div className="flex justify-center">
-        <div className="flex flex-wrap justify-center items-center gap-4 max-w-sm">
+        <div className="flex flex-wrap justify-center items-start gap-5 max-w-md">
           {STARTER_TEMPLATES.map((template) => (
             <FrameworkLink key={template.name} template={template} />
           ))}
