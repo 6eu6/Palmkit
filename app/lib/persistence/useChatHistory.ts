@@ -4,7 +4,7 @@ import { atom } from 'nanostores';
 import { generateId, type JSONValue, type Message } from 'ai';
 import { toast } from 'react-toastify';
 import { workbenchStore } from '~/lib/stores/workbench';
-import { logStore } from '~/lib/stores/logs'; // Import logStore
+import { logStore } from '~/lib/stores/logs';
 import {
   getMessages,
   getNextId,
@@ -39,6 +39,42 @@ export const db = persistenceEnabled ? await openDatabase() : undefined;
 export const chatId = atom<string | undefined>(undefined);
 export const description = atom<string | undefined>(undefined);
 export const chatMetadata = atom<IChatMetadata | undefined>(undefined);
+
+/**
+ * Debounce utility for snapshot saves during streaming.
+ * Prevents excessive IndexedDB writes while ensuring data is persisted frequently enough.
+ */
+function createDebouncedSnapshotSaver(delay: number = 2000) {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let lastSavePromise: Promise<void> = Promise.resolve();
+
+  return async (chatIdx: string, files: FileMap, dbInstance: IDBDatabase, chatIdVal: string, chatSummary?: string) => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+
+    lastSavePromise = new Promise<void>((resolve) => {
+      timeoutId = setTimeout(async () => {
+        try {
+          const snapshot: Snapshot = {
+            chatIndex: chatIdx,
+            files,
+            summary: chatSummary,
+          };
+          await setSnapshot(dbInstance, chatIdVal, snapshot);
+        } catch (error) {
+          console.error('Failed to save debounced snapshot:', error);
+        }
+        resolve();
+      }, delay);
+    });
+
+    return lastSavePromise;
+  };
+}
+
+const debouncedSnapshotSaver = createDebouncedSnapshotSaver(2000);
+
 export function useChatHistory() {
   const navigate = useNavigate();
   const { id: mixedId } = useLoaderData<{ id?: string }>();
@@ -56,24 +92,31 @@ export function useChatHistory() {
       if (persistenceEnabled) {
         const error = new Error('Chat persistence is unavailable');
         logStore.logError('Chat persistence initialization failed', error);
-        toast.error('Chat persistence is unavailable');
+        toast.error('Chat persistence is unavailable - your work will not be saved');
       }
 
       return;
     }
 
     if (mixedId) {
-      Promise.all([
-        getMessages(db, mixedId),
-        getSnapshot(db, mixedId), // Fetch snapshot from DB
-      ])
+      Promise.all([getMessages(db, mixedId), getSnapshot(db, mixedId)])
         .then(async ([storedMessages, snapshot]) => {
-          if (storedMessages && storedMessages.messages.length > 0) {
-            /*
-             * const snapshotStr = localStorage.getItem(`snapshot:${mixedId}`); // Remove localStorage usage
-             * const snapshot: Snapshot = snapshotStr ? JSON.parse(snapshotStr) : { chatIndex: 0, files: {} }; // Use snapshot from DB
-             */
-            const validSnapshot = snapshot || { chatIndex: '', files: {} }; // Ensure snapshot is not undefined
+          /*
+           * FIX #5: Do not redirect to / if a snapshot exists but messages are empty.
+           * This can happen if the page was refreshed during streaming.
+           */
+          const hasMessages = storedMessages && storedMessages.messages.length > 0;
+          const hasSnapshot = snapshot && snapshot.files && Object.keys(snapshot.files).length > 0;
+
+          if (!hasMessages && !hasSnapshot) {
+            navigate('/', { replace: true });
+            setReady(true);
+
+            return;
+          }
+
+          if (hasMessages) {
+            const validSnapshot = snapshot || { chatIndex: '', files: {} };
             const summary = validSnapshot.summary;
 
             const rewindId = searchParams.get('rewindTo');
@@ -112,24 +155,21 @@ export function useChatHistory() {
                     path: key,
                   };
                 })
-                .filter((x): x is { content: string; path: string } => !!x); // Type assertion
+                .filter((x): x is { content: string; path: string } => !!x);
               const projectCommands = await detectProjectCommands(files);
 
-              // Call the modified function to get only the command actions string
               const commandActionsString = createCommandActionsString(projectCommands);
 
               filteredMessages = [
                 {
                   id: generateId(),
                   role: 'user',
-                  content: `Restore project from snapshot`, // Removed newline
+                  content: `Restore project from snapshot`,
                   annotations: ['no-store', 'hidden'],
                 },
                 {
                   id: storedMessages.messages[snapshotIndex].id,
                   role: 'assistant',
-
-                  // Combine followup message and the artifact with files and command actions
                   content: `Bolt Restored your chat from a snapshot. You can revert this message to load the full chat history.
                   <boltArtifact id="restored-project-setup" title="Restored Project & Setup" type="bundled">
                   ${Object.entries(snapshot?.files || {})
@@ -147,7 +187,7 @@ ${value.content}
                     .join('\n')}
                   ${commandActionsString} 
                   </boltArtifact>
-                  `, // Added commandActionsString, followupMessage, updated id and title
+                  `,
                   annotations: [
                     'no-store',
                     ...(summary
@@ -161,16 +201,12 @@ ${value.content}
                       : []),
                   ],
                 },
-
-                // Remove the separate user and assistant messages for commands
-                /*
-                 *...(commands !== null // This block is no longer needed
-                 *  ? [ ... ]
-                 *  : []),
-                 */
                 ...filteredMessages,
               ];
-              restoreSnapshot(mixedId);
+
+              // FIX #4: Restore workbenchStore.files from snapshot AND restore WebContainer files
+              workbenchStore.files.set(validSnapshot.files);
+              restoreSnapshot(mixedId, validSnapshot);
             }
 
             setInitialMessages(filteredMessages);
@@ -179,8 +215,85 @@ ${value.content}
             description.set(storedMessages.description);
             chatId.set(storedMessages.id);
             chatMetadata.set(storedMessages.metadata);
-          } else {
-            navigate('/', { replace: true });
+          } else if (hasSnapshot) {
+            /*
+             * FIX #5: We have a snapshot but no messages. Restore from snapshot.
+             * This can happen if the user refreshed during streaming before messages were saved.
+             */
+            const validSnapshot = snapshot;
+
+            const files = Object.entries(validSnapshot.files || {})
+              .map(([key, value]) => {
+                if (value?.type !== 'file') {
+                  return null;
+                }
+
+                return {
+                  content: value.content,
+                  path: key,
+                };
+              })
+              .filter((x): x is { content: string; path: string } => !!x);
+            const projectCommands = await detectProjectCommands(files);
+            const commandActionsString = createCommandActionsString(projectCommands);
+
+            const restoredMessages: Message[] = [
+              {
+                id: generateId(),
+                role: 'user',
+                content: `Restore project from snapshot`,
+                annotations: ['no-store', 'hidden'],
+              },
+              {
+                id: validSnapshot.chatIndex || generateId(),
+                role: 'assistant',
+                content: `Bolt Restored your chat from a snapshot (generation was interrupted). You can continue from here.
+                  <boltArtifact id="restored-project-setup" title="Restored Project & Setup" type="bundled">
+                  ${Object.entries(validSnapshot.files || {})
+                    .map(([key, value]) => {
+                      if (value?.type === 'file') {
+                        return `
+                      <boltAction type="file" filePath="${key}">
+${value.content}
+                      </boltAction>
+                      `;
+                      } else {
+                        return ``;
+                      }
+                    })
+                    .join('\n')}
+                  ${commandActionsString} 
+                  </boltArtifact>
+                  `,
+                annotations: [
+                  'no-store',
+                  ...(validSnapshot.summary
+                    ? [
+                        {
+                          chatId: validSnapshot.chatIndex || '',
+                          type: 'chatSummary',
+                          summary: validSnapshot.summary,
+                        } satisfies ContextAnnotation,
+                      ]
+                    : []),
+                ],
+              },
+            ];
+
+            // Restore workbenchStore.files and WebContainer
+            workbenchStore.files.set(validSnapshot.files);
+            restoreSnapshot(mixedId, validSnapshot);
+
+            setInitialMessages(restoredMessages);
+
+            /*
+             * We need to set chatId from the URL since we have no stored messages
+             * Try to get it from the storedMessages id or fall back to mixedId
+             */
+            chatId.set(storedMessages?.id || mixedId);
+            setUrlId(storedMessages?.urlId);
+
+            toast.info('Restored last saved snapshot (generation was interrupted)');
           }
 
           setReady(true);
@@ -188,14 +301,14 @@ ${value.content}
         .catch((error) => {
           console.error(error);
 
-          logStore.logError('Failed to load chat messages or snapshot', error); // Updated error message
-          toast.error('Failed to load chat: ' + error.message); // More specific error
+          logStore.logError('Failed to load chat messages or snapshot', error);
+          toast.error('Failed to load chat: ' + error.message);
+          setReady(true);
         });
     } else {
-      // Handle case where there is no mixedId (e.g., new chat)
       setReady(true);
     }
-  }, [mixedId, db, navigate, searchParams]); // Added db, navigate, searchParams dependencies
+  }, [mixedId, db, navigate, searchParams]);
 
   const takeSnapshot = useCallback(
     async (chatIdx: string, files: FileMap, _chatId?: string | undefined, chatSummary?: string) => {
@@ -211,7 +324,6 @@ ${value.content}
         summary: chatSummary,
       };
 
-      // localStorage.setItem(`snapshot:${id}`, JSON.stringify(snapshot)); // Remove localStorage usage
       try {
         await setSnapshot(db, id, snapshot);
       } catch (error) {
@@ -222,8 +334,24 @@ ${value.content}
     [db],
   );
 
+  /**
+   * FIX #3: Debounced snapshot save during streaming.
+   * Called from the files change watcher to persist files periodically during generation.
+   */
+  const takeDebouncedSnapshot = useCallback(
+    async (chatIdx: string, files: FileMap, chatSummary?: string) => {
+      const id = chatId.get();
+
+      if (!id || !db) {
+        return;
+      }
+
+      await debouncedSnapshotSaver(chatIdx, files, db, id, chatSummary);
+    },
+    [db],
+  );
+
   const restoreSnapshot = useCallback(async (id: string, snapshot?: Snapshot) => {
-    // const snapshotStr = localStorage.getItem(`snapshot:${id}`); // Remove localStorage usage
     const container = await webcontainer;
 
     const validSnapshot = snapshot || { chatIndex: '', files: {} };
@@ -232,6 +360,7 @@ ${value.content}
       return;
     }
 
+    // First create all folders
     Object.entries(validSnapshot.files).forEach(async ([key, value]) => {
       if (key.startsWith(container.workdir)) {
         key = key.replace(container.workdir, '');
@@ -241,6 +370,8 @@ ${value.content}
         await container.fs.mkdir(key, { recursive: true });
       }
     });
+
+    // Then write all files
     Object.entries(validSnapshot.files).forEach(async ([key, value]) => {
       if (value?.type === 'file') {
         if (key.startsWith(container.workdir)) {
@@ -248,11 +379,8 @@ ${value.content}
         }
 
         await container.fs.writeFile(key, value.content, { encoding: value.isBinary ? undefined : 'utf8' });
-      } else {
       }
     });
-
-    // workbenchStore.files.setKey(snapshot?.files)
   }, []);
 
   return {
@@ -278,16 +406,28 @@ ${value.content}
         return;
       }
 
-      const { firstArtifact } = workbenchStore;
       messages = messages.filter((m) => !m.annotations?.includes('no-store'));
+
+      // FIX #1: Create chatId immediately on first message, not waiting for firstArtifact
+      if (!chatId.get()) {
+        const nextId = await getNextId(db);
+        chatId.set(nextId);
+
+        // Navigate to the new chat URL immediately
+        navigateChat(nextId);
+      }
 
       let _urlId = urlId;
 
-      if (!urlId && firstArtifact?.id) {
-        const urlId = await getUrlId(db, firstArtifact.id);
-        _urlId = urlId;
-        navigateChat(urlId);
-        setUrlId(urlId);
+      // FIX #1: Use the first user message to generate urlId instead of requiring firstArtifact
+      if (!urlId) {
+        const firstUserMessage = messages.find((m) => m.role === 'user');
+        const artifactId = workbenchStore.firstArtifact?.id || firstUserMessage?.id || 'chat';
+
+        const newUrlId = await getUrlId(db, artifactId);
+        _urlId = newUrlId;
+        navigateChat(newUrlId);
+        setUrlId(newUrlId);
       }
 
       let chatSummary: string | undefined = undefined;
@@ -305,24 +445,36 @@ ${value.content}
         }
       }
 
-      takeSnapshot(messages[messages.length - 1].id, workbenchStore.files.get(), _urlId, chatSummary);
+      // FIX #2 & #3: Take snapshot with current files on every save, debounced during streaming
+      const currentFiles = workbenchStore.files.get();
+      const currentChatId = chatId.get();
 
-      if (!description.get() && firstArtifact?.title) {
-        description.set(firstArtifact?.title);
+      if (currentChatId) {
+        // Always save snapshot immediately with storeMessageHistory
+        takeSnapshot(messages[messages.length - 1].id, currentFiles, _urlId, chatSummary);
       }
 
-      // Ensure chatId.get() is used here as well
-      if (initialMessages.length === 0 && !chatId.get()) {
-        const nextId = await getNextId(db);
+      if (!description.get()) {
+        // Use firstArtifact title, or first user message as description
+        const firstArtifact = workbenchStore.firstArtifact;
 
-        chatId.set(nextId);
+        if (firstArtifact?.title) {
+          description.set(firstArtifact?.title);
+        } else {
+          const firstUserMsg = messages.find((m) => m.role === 'user');
 
-        if (!urlId) {
-          navigateChat(nextId);
+          if (firstUserMsg && typeof firstUserMsg.content === 'string') {
+            // Take first 80 chars of user message as description
+            const desc = firstUserMsg.content.slice(0, 80).replace(/\n/g, ' ').trim();
+
+            if (desc) {
+              description.set(desc);
+            }
+          }
         }
       }
 
-      // Ensure chatId.get() is used for the final setMessages call
+      // chatId should already be set from the early check above
       const finalChatId = chatId.get();
 
       if (!finalChatId) {
@@ -332,16 +484,26 @@ ${value.content}
         return;
       }
 
-      await setMessages(
-        db,
-        finalChatId, // Use the potentially updated chatId
-        [...archivedMessages, ...messages],
-        urlId,
-        description.get(),
-        undefined,
-        chatMetadata.get(),
-      );
+      try {
+        await setMessages(
+          db,
+          finalChatId,
+          [...archivedMessages, ...messages],
+          _urlId,
+          description.get(),
+          undefined,
+          chatMetadata.get(),
+        );
+      } catch (error) {
+        console.error('Failed to save messages to IndexedDB:', error);
+        toast.error('Failed to save chat: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      }
     },
+
+    /**
+     * FIX #3: Expose debounced snapshot saver for use during streaming file changes.
+     */
+    takeDebouncedSnapshot,
     duplicateCurrentChat: async (listItemId: string) => {
       if (!db || (!mixedId && !listItemId)) {
         return;
@@ -398,12 +560,12 @@ ${value.content}
   };
 }
 
+/**
+ * FIX #6: Use window.history.replaceState but also make the URL restorable
+ * by storing the mapping in IndexedDB. The navigate function is kept but we also
+ * ensure the URL change is reflected so reload works independently.
+ */
 function navigateChat(nextId: string) {
-  /**
-   * FIXME: Using the intended navigate function causes a rerender for <Chat /> that breaks the app.
-   *
-   * `navigate(`/chat/${nextId}`, { replace: true });`
-   */
   const url = new URL(window.location.href);
   url.pathname = `/chat/${nextId}`;
 

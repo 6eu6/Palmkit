@@ -28,13 +28,15 @@ import type { ElementInfo } from '~/components/workbench/Inspector';
 import type { TextUIPart, FileUIPart, Attachment } from '@ai-sdk/ui-utils';
 import { useMCPStore } from '~/lib/stores/mcp';
 import type { LlmErrorAlertType } from '~/types/actions';
+import type { FileMap } from '~/lib/stores/files';
 
 const logger = createScopedLogger('Chat');
 
 export function Chat() {
   renderLogger.trace('Chat');
 
-  const { ready, initialMessages, storeMessageHistory, importChat, exportChat } = useChatHistory();
+  const { ready, initialMessages, storeMessageHistory, importChat, exportChat, takeDebouncedSnapshot } =
+    useChatHistory();
   const title = useStore(description);
   useEffect(() => {
     workbenchStore.setReloadedMessages(initialMessages.map((m) => m.id));
@@ -49,6 +51,7 @@ export function Chat() {
           exportChat={exportChat}
           storeMessageHistory={storeMessageHistory}
           importChat={importChat}
+          takeDebouncedSnapshot={takeDebouncedSnapshot}
         />
       )}
     </>
@@ -79,10 +82,11 @@ interface ChatProps {
   importChat: (description: string, messages: Message[]) => Promise<void>;
   exportChat: () => void;
   description?: string;
+  takeDebouncedSnapshot: (chatIdx: string, files: FileMap, chatSummary?: string) => Promise<void>;
 }
 
 export const ChatImpl = memo(
-  ({ description, initialMessages, storeMessageHistory, importChat, exportChat }: ChatProps) => {
+  ({ description, initialMessages, storeMessageHistory, importChat, exportChat, takeDebouncedSnapshot }: ChatProps) => {
     useShortcuts();
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -209,6 +213,31 @@ export const ChatImpl = memo(
         storeMessageHistory,
       });
     }, [messages, isLoading, parseMessages]);
+
+    /**
+     * FIX #3: Watch workbenchStore.files changes during streaming and save
+     * debounced snapshots to IndexedDB. This ensures files are persisted even
+     * if the user refreshes mid-generation.
+     */
+    const prevFilesRef = useRef<FileMap>({});
+    useEffect(() => {
+      const currentFiles = files;
+
+      if (isLoading && Object.keys(currentFiles).length > 0) {
+        const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : '';
+        const prevFiles = prevFilesRef.current;
+
+        // Only trigger debounced save if files have actually changed
+        const filesChanged = JSON.stringify(currentFiles) !== JSON.stringify(prevFiles);
+
+        if (filesChanged && lastMessageId) {
+          prevFilesRef.current = currentFiles;
+          takeDebouncedSnapshot(lastMessageId, currentFiles).catch((err) => {
+            console.error('Debounced snapshot save failed:', err);
+          });
+        }
+      }
+    }, [files, isLoading, messages, takeDebouncedSnapshot]);
 
     const scrollTextArea = () => {
       const textarea = textareaRef.current;
