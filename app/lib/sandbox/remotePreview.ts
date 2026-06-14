@@ -135,12 +135,18 @@ export async function ensureRemotePreview(): Promise<void> {
       await waitForServerReady(sandboxId, DEV_PORT);
 
       /*
-       * NOTE: we do NOT embed the E2B URL in the workbench iframe. Our page is
-       * cross-origin-isolated (COEP: require-corp, needed for WebContainer), and
-       * the E2B preview host does not send a Cross-Origin-Resource-Policy header,
-       * so the browser blocks it inside an iframe (blank preview). Instead we
-       * expose the URL and open it as a top-level tab (no COEP restriction).
+       * Serve the preview SAME-ORIGIN through /preview/* (see
+       * functions/preview/[[path]].ts). The dev server runs with --base=/preview/
+       * so all its asset URLs live under /preview/*. A same-origin iframe is
+       * allowed under our COEP page AND lets the element inspector reach the
+       * preview DOM. The cookie tells the proxy which sandbox to forward to.
        */
+      if (typeof document !== 'undefined') {
+        document.cookie = `pf_preview=${sandboxId}:${DEV_PORT}; path=/; samesite=lax`;
+      }
+
+      const sameOrigin = typeof window !== 'undefined' ? `${window.location.origin}/preview/` : '/preview/';
+      workbenchStore.previews.set([{ port: DEV_PORT, ready: true, baseUrl: sameOrigin }]);
       remotePreviewStatus.set({ state: 'ready', url });
     }
   } catch (error) {

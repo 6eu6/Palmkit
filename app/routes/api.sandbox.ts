@@ -18,7 +18,7 @@ const DEFAULT_PORT = 3000;
 const SANDBOX_TIMEOUT_MS = 1000 * 60 * 7; // auto-close after 7 min idle (cost control)
 
 function getApiKey(context: ActionFunctionArgs['context']): string | undefined {
-  const env = (context as { cloudflare?: { env?: Record<string, string> } }).cloudflare?.env;
+  const env = (context as unknown as { cloudflare?: { env?: Record<string, string> } }).cloudflare?.env;
 
   return env?.E2B_API_KEY || (typeof process !== 'undefined' ? process.env?.E2B_API_KEY : undefined);
 }
@@ -83,7 +83,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
         const sandbox = await Sandbox.connect(body.id, { apiKey });
         const port = body.port ?? DEFAULT_PORT;
         const install = body.install ?? 'npm install';
-        const dev = body.dev ?? `npm run dev -- --host 0.0.0.0 --port ${port}`;
+        const dev = body.dev ?? `npm run dev -- --host 0.0.0.0 --port ${port} --base=/preview/`;
 
         /*
          * Keep the sandbox alive while the dev server runs, then install + run
