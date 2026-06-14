@@ -1,0 +1,30 @@
+{
+  "name": "pocketforge-sandbox-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Server-side sandbox that runs AI-generated projects (install + dev server) and proxies a live preview. Reliable full preview for mobile Safari.",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node --import tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "dockerode": "^4.0.2",
+    "hono": "^4.6.14",
+    "http-proxy": "^1.18.1",
+    "tar-stream": "^3.1.7"
+  },
+  "devDependencies": {
+    "@types/dockerode": "^3.3.31",
+    "@types/http-proxy": "^1.17.15",
+    "@types/tar-stream": "^3.1.3",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "optionalDependencies": {
+    "e2b": "^1.0.5"
+  }
+}

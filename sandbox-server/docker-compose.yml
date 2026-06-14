@@ -1,0 +1,33 @@
+# Runs the sandbox server and builds the runtime image used for user projects.
+# Deploy on any VM with Docker (Oracle Cloud Always Free, Fly.io, a small VPS).
+# Put a TLS reverse proxy (Caddy / Cloudflare Tunnel) in front of port 8787.
+
+services:
+  sandbox-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - '8787:8787'
+    environment:
+      - SANDBOX_DRIVER=docker
+      - PORT=8787
+      - SANDBOX_API_TOKEN=${SANDBOX_API_TOKEN}
+      - SANDBOX_TTL_MS=900000
+      - SANDBOX_MAX=8
+      - SANDBOX_IMAGE=pocketforge-sandbox
+      - SANDBOX_MEMORY=1g
+      - SANDBOX_CPUS=1.0
+    volumes:
+      # lets the server manage sibling containers for each session
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  # One-shot service to build the runtime image the server launches per session.
+  sandbox-runtime-build:
+    build:
+      context: .
+      dockerfile: sandbox.Dockerfile
+    image: pocketforge-sandbox
+    command: ['true']
+    restart: 'no'
