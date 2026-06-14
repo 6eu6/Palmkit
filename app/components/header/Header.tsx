@@ -10,7 +10,8 @@ export function Header() {
   const chat = useStore(chatStore);
 
   const handleMobileMenu = () => {
-    mobileActiveTab.set('settings');
+    // Open the projects/history drawer so users can switch, delete or start projects.
+    mobileActiveTab.set('projects');
   };
 
   return (
@@ -34,9 +35,9 @@ export function Header() {
             'hover:bg-[var(--bolt-mobile-accent-faint)] hover:text-[var(--bolt-mobile-accent-text)]',
             'active:bg-[var(--bolt-mobile-accent-faint)] active:text-[var(--bolt-mobile-accent-text)]',
           )}
-          aria-label="Open menu"
+          aria-label="Projects and history"
         >
-          <div className="i-ph:sidebar-simple text-xl" />
+          <div className="i-ph:list text-xl" />
         </button>
         <div className="i-ph:sidebar-simple-duotone text-xl opacity-60 group-hover:opacity-100 transition-opacity duration-200 hidden sm:block" />
         <a href="/" className="flex items-center gap-2" aria-label="Pocketforge home">

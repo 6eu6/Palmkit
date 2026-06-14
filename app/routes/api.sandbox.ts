@@ -15,7 +15,7 @@ import { Sandbox } from 'e2b';
 
 const PROJECT_DIR = '/home/user/project';
 const DEFAULT_PORT = 3000;
-const SANDBOX_TIMEOUT_MS = 1000 * 60 * 15; // auto-close after 15 min idle
+const SANDBOX_TIMEOUT_MS = 1000 * 60 * 7; // auto-close after 7 min idle (cost control)
 
 function getApiKey(context: ActionFunctionArgs['context']): string | undefined {
   const env = (context as { cloudflare?: { env?: Record<string, string> } }).cloudflare?.env;

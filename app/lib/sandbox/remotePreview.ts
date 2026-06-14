@@ -143,3 +143,33 @@ export function resetRemotePreview(): void {
   inflight = false;
   remotePreviewStatus.set({ state: 'idle' });
 }
+
+/**
+ * Immediately destroy the active cloud sandbox — used when the page/tab is
+ * closed so we never pay for a forgotten session (server also reaps after 7
+ * min idle as a backstop). Uses keepalive so the request survives unload.
+ */
+export function killCurrentRemotePreview(): void {
+  if (!sandboxId) {
+    return;
+  }
+
+  const id = sandboxId;
+  resetRemotePreview();
+
+  try {
+    fetch('/api/sandbox', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ op: 'destroy', id }),
+      keepalive: true,
+    }).catch(() => undefined);
+  } catch {
+    // best-effort on unload
+  }
+}
+
+// Cut the sandbox as soon as the site/tab is closed or navigated away.
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', killCurrentRemotePreview);
+}
