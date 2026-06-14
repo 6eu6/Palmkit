@@ -20,6 +20,8 @@ import { cubicEasingFn } from '~/utils/easings';
 import { renderLogger } from '~/utils/logger';
 import { EditorPanel } from './EditorPanel';
 import { Preview } from './Preview';
+import { EmptyWorkspaceState } from '~/components/ui/workspace/EmptyWorkspaceState';
+import { mobileActiveTab } from '~/lib/stores/mobile';
 import useViewport from '~/lib/hooks';
 
 import { usePreviewStore } from '~/lib/stores/previews';
@@ -300,6 +302,7 @@ export const Workbench = memo(
     const currentDocument = useStore(workbenchStore.currentDocument);
     const unsavedFiles = useStore(workbenchStore.unsavedFiles);
     const files = useStore(workbenchStore.files);
+    const hasNoFiles = useMemo(() => !Object.values(files).some((dirent) => dirent?.type === 'file'), [files]);
     const selectedView = useStore(workbenchStore.currentView);
     const { showChat } = useStore(chatStore);
     const canHideChat = showWorkbench || !showChat;
@@ -485,19 +488,31 @@ export const Workbench = memo(
                 </div>
                 <div className="relative flex-1 overflow-hidden">
                   <View initial={{ x: '0%' }} animate={{ x: selectedView === 'code' ? '0%' : '-100%' }}>
-                    <EditorPanel
-                      editorDocument={currentDocument}
-                      isStreaming={isStreaming}
-                      selectedFile={selectedFile}
-                      files={files}
-                      unsavedFiles={unsavedFiles}
-                      fileHistory={fileHistory}
-                      onFileSelect={onFileSelect}
-                      onEditorScroll={onEditorScroll}
-                      onEditorChange={onEditorChange}
-                      onFileSave={onFileSave}
-                      onFileReset={onFileReset}
-                    />
+                    {hasNoFiles ? (
+                      <div className="h-full w-full overflow-y-auto bg-bolt-elements-bg-depth-1">
+                        <EmptyWorkspaceState
+                          onNewProject={() => {
+                            workbenchStore.showWorkbench.set(false);
+                            chatStore.setKey('showChat', true);
+                            mobileActiveTab.set('chat');
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <EditorPanel
+                        editorDocument={currentDocument}
+                        isStreaming={isStreaming}
+                        selectedFile={selectedFile}
+                        files={files}
+                        unsavedFiles={unsavedFiles}
+                        fileHistory={fileHistory}
+                        onFileSelect={onFileSelect}
+                        onEditorScroll={onEditorScroll}
+                        onEditorChange={onEditorChange}
+                        onFileSave={onFileSave}
+                        onFileReset={onFileReset}
+                      />
+                    )}
                   </View>
                   <View
                     initial={{ x: '100%' }}
