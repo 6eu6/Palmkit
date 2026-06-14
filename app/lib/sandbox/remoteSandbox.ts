@@ -1,94 +1,101 @@
 /**
  * Remote (server-side) sandbox client.
  *
- * Talks to the Pocketforge Sandbox Server (see /sandbox-server) which runs
- * AI-generated projects on a server and proxies a live preview. This is the
- * reliable execution tier for memory-constrained devices (mobile Safari), where
- * the in-browser WebContainer cannot run real dev servers.
+ * Talks to the same-origin `/api/sandbox` route (see app/routes/api.sandbox.ts),
+ * which runs AI-generated projects in a managed E2B cloud sandbox and returns a
+ * public preview URL. This is the reliable execution tier for memory-constrained
+ * devices (mobile Safari), where the in-browser WebContainer cannot run real
+ * dev servers.
  *
- * Activation: set `VITE_SANDBOX_SERVER_URL` (and optionally
- * `VITE_SANDBOX_API_TOKEN`) in the Pages environment. When unset, the app keeps
- * using the in-browser WebContainer unchanged — nothing here runs.
- *
- * This module is intentionally standalone (no imports from the workbench) so it
- * can be wired in incrementally without risking the existing runtime.
+ * Activation is server-side: set the `E2B_API_KEY` secret in Cloudflare. The
+ * client discovers availability via `GET /api/sandbox`. When E2B is not
+ * configured, the app keeps using the in-browser WebContainer unchanged.
  */
 
-const SERVER_URL = import.meta.env.VITE_SANDBOX_SERVER_URL as string | undefined;
-const API_TOKEN = import.meta.env.VITE_SANDBOX_API_TOKEN as string | undefined;
+const BASE = '/api/sandbox';
 
 export interface RemoteSandbox {
   id: string;
-
-  /** Absolute URL of the live preview served by the sandbox server */
-  previewUrl: string;
+  previewUrl?: string;
 }
 
-/** True when a sandbox server is configured. */
-export function isRemoteSandboxConfigured(): boolean {
-  return typeof SERVER_URL === 'string' && SERVER_URL.length > 0;
-}
-
-/**
- * Heuristic for when to prefer the server: a configured server + a
- * memory-constrained mobile browser (where WebContainer dev servers fail).
- */
-export function shouldUseRemoteSandbox(): boolean {
-  if (!isRemoteSandboxConfigured()) {
-    return false;
-  }
-
+/** Whether the device is the kind where WebContainer dev servers struggle. */
+export function isMemoryConstrainedDevice(): boolean {
   if (typeof navigator === 'undefined') {
     return false;
   }
 
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  const ua = navigator.userAgent;
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(ua);
+  const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
 
   return isMobile || isSafari;
 }
 
-function headers(): Record<string, string> {
-  const h: Record<string, string> = { 'content-type': 'application/json' };
+/** Server-side availability check (E2B key configured). Cached after first call. */
+let availabilityCache: boolean | undefined;
 
-  if (API_TOKEN) {
-    h['x-sandbox-token'] = API_TOKEN;
+export async function isRemoteSandboxAvailable(): Promise<boolean> {
+  if (availabilityCache !== undefined) {
+    return availabilityCache;
   }
 
-  return h;
+  try {
+    const res = await fetch(BASE, { method: 'GET' });
+
+    if (!res.ok) {
+      availabilityCache = false;
+      return false;
+    }
+
+    const data = (await res.json()) as { configured?: boolean };
+    availabilityCache = Boolean(data.configured);
+  } catch {
+    availabilityCache = false;
+  }
+
+  return availabilityCache;
 }
 
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${SERVER_URL}${path}`, { ...init, headers: { ...headers(), ...(init?.headers || {}) } });
+async function call<T>(payload: Record<string, unknown>): Promise<T> {
+  const res = await fetch(BASE, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
 
   if (!res.ok) {
-    throw new Error(`sandbox server ${path} -> ${res.status}`);
+    throw new Error(data.error || `sandbox ${String(payload.op)} -> ${res.status}`);
   }
 
-  return res.json() as Promise<T>;
+  return data as T;
 }
 
-/** Create a session and return its id + preview URL. */
+/** Create a sandbox session. */
 export async function createRemoteSandbox(): Promise<RemoteSandbox> {
-  const { id, previewPath } = await api<{ id: string; previewPath: string }>('/sandboxes', { method: 'POST' });
+  const { id } = await call<{ id: string }>({ op: 'create' });
 
-  return { id, previewUrl: `${SERVER_URL}${previewPath}` };
+  return { id };
 }
 
-/** Upload the current project files (path -> contents). */
+/** Upload project files (path -> contents). */
 export async function pushFiles(id: string, files: Record<string, string>): Promise<void> {
-  await api(`/sandboxes/${id}/files`, { method: 'POST', body: JSON.stringify({ files }) });
+  await call({ op: 'files', id, files });
 }
 
-/** Install dependencies and start the dev server. Optional command overrides. */
+/** Install dependencies + start the dev server; returns the public preview URL. */
 export async function startRemoteSandbox(
   id: string,
   opts?: { install?: string; dev?: string; port?: number },
-): Promise<void> {
-  await api(`/sandboxes/${id}/start`, { method: 'POST', body: JSON.stringify(opts || {}) });
+): Promise<string> {
+  const { url } = await call<{ url: string }>({ op: 'start', id, ...(opts || {}) });
+
+  return url;
 }
 
-/** Tear down the session (also auto-reaped server-side after inactivity). */
+/** Tear down the sandbox (also auto-reaped after inactivity). */
 export async function destroyRemoteSandbox(id: string): Promise<void> {
-  await fetch(`${SERVER_URL}/sandboxes/${id}`, { method: 'DELETE', headers: headers() }).catch(() => {});
+  await call({ op: 'destroy', id }).catch(() => undefined);
 }
