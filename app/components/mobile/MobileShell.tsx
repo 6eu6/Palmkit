@@ -1,11 +1,11 @@
 import { useStore } from '@nanostores/react';
 import { memo, useCallback, useEffect, useState } from 'react';
-import { MobileBottomTabs } from './MobileBottomTabs';
+import { MobileActionDock } from '~/components/ui/workspace/MobileActionDock';
+import { ProjectSwitcherDrawer } from '~/components/ui/workspace/ProjectSwitcherDrawer';
 import { mobileActiveTab } from '~/lib/stores/mobile';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { chatStore } from '~/lib/stores/chat';
 import { ControlPanel } from '~/components/@settings/core/ControlPanel';
-import { ProjectList } from '~/components/ui/ProjectList';
 
 export const MobileShell = memo(() => {
   const activeTab = useStore(mobileActiveTab);
@@ -79,7 +79,7 @@ export const MobileShell = memo(() => {
 
   return (
     <>
-      <MobileBottomTabs />
+      <MobileActionDock />
 
       <div className="h-[52px] sm:hidden" style={{ marginBottom: 'env(safe-area-inset-bottom, 0px)' }} />
 
@@ -88,7 +88,7 @@ export const MobileShell = memo(() => {
           className="fixed bottom-[52px] left-2 right-2 z-40 sm:hidden"
           style={{ marginBottom: 'env(safe-area-inset-bottom, 0px)' }}
         >
-          <div className="flex items-center gap-2 p-2 bg-bolt-elements-bg-depth-2/90 backdrop-blur-xl border border-bolt-elements-borderColor rounded-xl shadow-lg">
+          <div className="flex items-center gap-2 p-2 bg-bolt-elements-bg-depth-2/90 backdrop-blur-xl border border-bolt-elements-borderColor/40 rounded-xl shadow-lg">
             <button
               onClick={handleToggleTerminal}
               className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-bolt-elements-button-primary-background hover:bg-bolt-elements-button-primary-backgroundHover text-bolt-elements-button-primary-text text-xs font-medium transition-all duration-200 active:scale-[0.97]"
@@ -112,7 +112,7 @@ export const MobileShell = memo(() => {
       </div>
 
       <div className="sm:hidden">
-        <ProjectList open={mobileProjectsOpen} onClose={handleCloseProjects} />
+        <ProjectSwitcherDrawer open={mobileProjectsOpen} onClose={handleCloseProjects} />
       </div>
     </>
   );
