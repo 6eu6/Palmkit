@@ -108,6 +108,17 @@ export async function startRemoteSandbox(
   return url;
 }
 
+/** Whether the dev server inside the sandbox is responding on its port yet. */
+export async function checkRemoteStatus(id: string, port?: number): Promise<boolean> {
+  try {
+    const { ready } = await call<{ ready: boolean }>({ op: 'status', id, port });
+
+    return Boolean(ready);
+  } catch {
+    return false;
+  }
+}
+
 /** Tear down the sandbox (also auto-reaped after inactivity). */
 export async function destroyRemoteSandbox(id: string): Promise<void> {
   await call({ op: 'destroy', id }).catch(() => undefined);

@@ -29,7 +29,7 @@ export async function loader({ context }: LoaderFunctionArgs) {
 }
 
 interface SandboxRequest {
-  op: 'create' | 'files' | 'start' | 'destroy';
+  op: 'create' | 'files' | 'start' | 'status' | 'destroy';
   id?: string;
   files?: Record<string, string>;
   install?: string;
@@ -95,6 +95,25 @@ export async function action({ context, request }: ActionFunctionArgs) {
         const host = sandbox.getHost(port);
 
         return json({ url: `https://${host}`, port });
+      }
+
+      case 'status': {
+        if (!body.id) {
+          return json({ error: 'id is required' }, { status: 400 });
+        }
+
+        const sandbox = await Sandbox.connect(body.id, { apiKey });
+        const port = body.port ?? DEFAULT_PORT;
+
+        // Ask the sandbox whether the dev server is listening yet.
+        const probe = await sandbox.commands
+          .run(`curl -s -o /dev/null -w "%{http_code}" http://localhost:${port} || echo 000`, { timeoutMs: 8000 })
+          .catch(() => ({ stdout: '000' }) as { stdout: string });
+
+        const code = (probe.stdout || '').trim();
+        const ready = /^[2345]\d\d$/.test(code);
+
+        return json({ ready, code });
       }
 
       case 'destroy': {

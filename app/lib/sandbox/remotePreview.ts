@@ -14,6 +14,7 @@ import {
   createRemoteSandbox,
   pushFiles,
   startRemoteSandbox,
+  checkRemoteStatus,
   isRemoteSandboxAvailable,
   isMemoryConstrainedDevice,
 } from './remoteSandbox';
@@ -123,6 +124,12 @@ export async function ensureRemotePreview(): Promise<void> {
       const url = await startRemoteSandbox(sandboxId, { port: DEV_PORT });
       started = true;
 
+      /*
+       * Wait until the cloud dev server actually responds before showing it, so
+       * the preview iframe doesn't load a 502 while npm install is still running.
+       */
+      await waitForServerReady(sandboxId, DEV_PORT);
+
       // Inject into the normal previews store so the Preview UI renders it.
       workbenchStore.previews.set([{ port: DEV_PORT, ready: true, baseUrl: url }]);
       remotePreviewStatus.set({ state: 'ready', url });
@@ -133,6 +140,21 @@ export async function ensureRemotePreview(): Promise<void> {
   } finally {
     inflight = false;
   }
+}
+
+/** Poll the cloud dev server until it responds (or give up after ~160s). */
+async function waitForServerReady(id: string, port: number): Promise<void> {
+  const maxAttempts = 40;
+
+  for (let i = 0; i < maxAttempts; i++) {
+    if (await checkRemoteStatus(id, port)) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+  }
+
+  // Timed out — inject anyway so the user can refresh the preview manually.
 }
 
 /** Reset on new project / chat switch. */
