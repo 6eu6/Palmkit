@@ -8,21 +8,58 @@
  * - All mobile overrides use @media (max-width: 639px) to avoid
  *   affecting desktop.
  * - No desktop selectors are modified.
- * - The bottom tab bar height is 52px + safe-area-inset-bottom.
+ * - The bottom dock height is ~56px + safe-area-inset-bottom.
  */
 
 @media (max-width: 639px) {
+  /* ===== A) Lock horizontal movement ===== */
+
+  html,
+  body,
+  #root,
+  [id='root'] {
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+    overscroll-behavior-x: none !important;
+  }
+
+  /* Prevent rubber-band horizontal scroll on iOS */
+  body {
+    touch-action: pan-y;
+  }
+
+  /* Ensure all major containers clamp to viewport */
+  .Chat,
+  .z-workbench,
+  .z-workbench > div,
+  .z-workbench > div > div {
+    max-width: 100vw !important;
+    min-width: 0 !important;
+  }
+
+  /* Any flex child that might overflow must shrink */
+  .flex {
+    min-width: 0;
+  }
+
+  /* ===== Chat layout overrides ===== */
+
   /* Chat area: remove the min-width constraint that forces side-by-side layout */
   .Chat {
     --chat-min-width: 0px !important;
     min-width: 0 !important;
     --chat-max-width: 100% !important;
+    width: 100% !important;
   }
 
   /* Workbench: on mobile, override positioning to be full-screen
-     and account for the bottom tab bar height + action bar */
+     and account for the bottom dock height + action bar */
   .z-workbench > div > div {
-    bottom: calc(52px + env(safe-area-inset-bottom, 0px)) !important;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    left: 0 !important;
+    right: 0 !important;
   }
 
   /* Hide the sidebar menu on mobile — users navigate via bottom tabs instead */
@@ -55,27 +92,51 @@
     margin-top: 6vh !important;
   }
 
-  /* Better touch targets for prompt chips on mobile */
+  /* ===== D) Fix low-contrast buttons ===== */
+
+  /* Example prompt chips: ensure readable on dark bg */
   #examples button {
     padding: 6px 10px !important;
     font-size: 11px !important;
+    border-color: color-mix(in srgb, var(--bolt-elements-borderColor) 60%, var(--bolt-gradient-start) 40%) !important;
+    color: var(--bolt-elements-textSecondary) !important;
+    background: color-mix(in srgb, var(--bolt-elements-bg-depth-2) 80%, var(--bolt-glow-color) 20%) !important;
   }
 
-  /* Chat area padding on mobile */
-  .StickToBottom {
-    padding-left: 2px !important;
-    padding-right: 2px !important;
+  #examples button:hover {
+    color: var(--bolt-elements-button-primary-text) !important;
+    border-color: var(--bolt-elements-borderColorActive) !important;
+    background: var(--bolt-elements-button-primary-background) !important;
   }
 
-  /* Import buttons: stack vertically on very small screens */
+  /* Import buttons: improve contrast */
   .flex.justify-center.gap-2 {
     flex-wrap: wrap;
     gap: 6px !important;
   }
 
-  /* Starter templates: tighter spacing */
+  /* Make import/git buttons have better contrast on dark bg */
+  .flex.justify-center.gap-2 button,
+  .flex.justify-center.gap-2 a {
+    border-color: color-mix(in srgb, var(--bolt-elements-borderColor) 70%, var(--bolt-gradient-start) 30%) !important;
+  }
+
+  /* Starter templates: tighter spacing + better visibility */
   .flex.justify-center .flex.flex-wrap {
     gap: 10px !important;
+  }
+
+  /* Starter template icons: ensure visible on dark */
+  .flex.justify-center .flex.flex-wrap .group > div > div {
+    opacity: 0.9 !important;
+  }
+
+  /* ===== Chat input & messages ===== */
+
+  /* Chat area padding on mobile */
+  .StickToBottom {
+    padding-left: 2px !important;
+    padding-right: 2px !important;
   }
 
   /* Prevent iOS zoom on textarea focus */
@@ -109,15 +170,45 @@
     padding: 6px 12px !important;
   }
 
+  /* ===== E) Workbench toolbar mobile fixes ===== */
+
   /* Fix the workbench close button on mobile */
   [aria-label='Close Panel'] {
     min-width: 36px !important;
     min-height: 36px !important;
   }
 
+  /* Workbench toolbar: make it scrollable on mobile instead of overflowing */
+  [data-workbench-toolbar] {
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    max-width: 100% !important;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+
   /* Better spacing for the workbench toolbar on mobile */
-  .z-workbench [class*='flex items-center gap'] {
+  [data-workbench-toolbar] > * {
     gap: 2px !important;
+  }
+
+  /* Workbench toolbar buttons: smaller on mobile */
+  [data-workbench-toolbar] button {
+    padding: 4px 8px !important;
+    font-size: 11px !important;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Slider component in workbench: compact on mobile */
+  [data-workbench-toolbar] [role='tablist'],
+  [data-workbench-toolbar] [role='tab'] {
+    font-size: 11px !important;
+    padding: 4px 8px !important;
   }
 
   /* File tree: make items more tappable on mobile */
@@ -134,5 +225,22 @@
   /* Preview iframe: ensure it fills available space */
   .z-workbench iframe {
     width: 100% !important;
+  }
+
+  /* ===== C) Bottom spacing for dock ===== */
+
+  /* Add bottom padding to chat content so it clears the dock */
+  .Chat > .flex > .flex {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom, 12px)) !important;
+  }
+
+  /* Ensure StickToBottom content has bottom padding for dock */
+  .StickToBottom {
+    padding-bottom: 0 !important;
+  }
+
+  /* ChatBox wrapper: ensure it sits above the dock */
+  .z-prompt {
+    margin-bottom: 0 !important;
   }
 }

@@ -11,8 +11,7 @@ import { classNames } from '~/utils/classNames';
  *
  * Polished mobile dock replacing MobileBottomTabs.
  * 5 actions: Chat, Preview, Files, Actions, Settings
- * Compact icons and labels, safe-area aware, no white square blocks.
- * Active state is clear but elegant.
+ * Dark glass background, purple glow active state, safe-area aware.
  *
  * Usage:
  *   <MobileActionDock />
@@ -64,22 +63,27 @@ export const MobileActionDock = memo(() => {
     <div
       className={classNames(
         'fixed bottom-0 left-0 right-0 z-50 sm:hidden',
-        'bg-bolt-elements-bg-depth-1/80 dark:bg-[#0a0a0f]/85',
+
+        // Dark translucent glass — works for both themes
+        'bg-[#0f0f18]/85 dark:bg-[#0a0a0f]/90',
         'backdrop-blur-2xl',
-        'border-t border-bolt-elements-borderColor/40',
+
+        // Subtle purple-tinted border
+        'border-t border-[rgba(139,92,246,0.12)] dark:border-[rgba(139,92,246,0.15)]',
       )}
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
-      {/* Subtle top glow line */}
+      {/* Top gradient glow line — purple accent */}
       <div
         className="absolute top-0 left-0 right-0 h-px"
         style={{
-          background: 'linear-gradient(90deg, transparent, var(--bolt-gradient-mid) 50%, transparent)',
-          opacity: 0.3,
+          background:
+            'linear-gradient(90deg, transparent 5%, var(--bolt-gradient-start) 30%, var(--bolt-gradient-mid) 50%, var(--bolt-gradient-end) 70%, transparent 95%)',
+          opacity: 0.4,
         }}
       />
 
-      <div className="flex items-center justify-around px-1 pt-1 pb-1">
+      <div className="flex items-center justify-around px-1 pt-1.5 pb-1.5">
         {DOCK_ITEMS.map((item) => {
           const isActive = activeTab === item.id;
 
@@ -93,16 +97,20 @@ export const MobileActionDock = memo(() => {
                 'rounded-xl transition-all duration-200 outline-none',
                 'active:scale-90',
                 isActive
-                  ? 'text-accent-500 dark:text-purple-400'
-                  : 'text-bolt-elements-textTertiary active:text-bolt-elements-textSecondary',
+                  ? 'text-purple-400 dark:text-purple-300'
+                  : 'text-gray-500 dark:text-gray-500 active:text-gray-400 dark:active:text-gray-400',
               )}
               aria-label={item.label}
               aria-pressed={isActive}
             >
-              {/* Active background pill */}
+              {/* Active background pill — dark glass with purple tint */}
               {isActive && (
                 <motion.div
-                  className="absolute inset-1 rounded-lg bg-accent-500/8 dark:bg-purple-500/10"
+                  className="absolute inset-1 rounded-lg"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(139,92,246,0.12), rgba(168,85,247,0.08))',
+                    boxShadow: '0 0 12px rgba(139,92,246,0.08)',
+                  }}
                   layoutId="dockActivePill"
                   transition={{ type: 'spring', stiffness: 350, damping: 30 }}
                 />
@@ -114,7 +122,7 @@ export const MobileActionDock = memo(() => {
                   className={classNames(
                     isActive ? item.iconActive : item.icon,
                     'text-[18px] transition-all duration-200',
-                    isActive && 'drop-shadow-[0_0_6px_var(--bolt-glow-color)]',
+                    isActive && 'drop-shadow-[0_0_8px_rgba(139,92,246,0.4)]',
                   )}
                 />
               </div>
@@ -123,22 +131,23 @@ export const MobileActionDock = memo(() => {
               <span
                 className={classNames(
                   'relative z-1 text-[9px] mt-0.5 leading-tight font-medium transition-all duration-200',
-                  isActive ? 'text-accent-500 dark:text-purple-400' : 'text-bolt-elements-textTertiary',
+                  isActive ? 'text-purple-400 dark:text-purple-300' : 'text-gray-500 dark:text-gray-500',
                 )}
               >
                 {item.label}
               </span>
 
-              {/* Active indicator dot */}
+              {/* Active indicator dot with glow */}
               {isActive && (
                 <motion.div
-                  className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent-500 dark:bg-purple-400"
+                  className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full"
+                  style={{
+                    background: 'var(--bolt-gradient-mid)',
+                    boxShadow: '0 0 8px rgba(168,85,247,0.6)',
+                  }}
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
                   transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-                  style={{
-                    boxShadow: '0 0 6px var(--bolt-glow-color-strong)',
-                  }}
                 />
               )}
             </button>

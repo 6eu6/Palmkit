@@ -18,7 +18,7 @@ const FrameworkLink: React.FC<FrameworkLinkProps> = ({ template }) => (
         className={`
           ${template.icon} w-8 h-8 sm:w-9 sm:h-9 text-2xl sm:text-3xl
           transition-all duration-300 ease-out
-          opacity-70 sm:grayscale sm:opacity-60
+          opacity-90 sm:grayscale sm:opacity-60
           group-hover:opacity-100 sm:group-hover:grayscale-0 group-hover:scale-110
           group-hover:drop-shadow-[0_0_8px_var(--bolt-glow-color)]
         `}
@@ -27,8 +27,8 @@ const FrameworkLink: React.FC<FrameworkLinkProps> = ({ template }) => (
       <span
         className="
         text-[9px] sm:text-[10px] font-medium
-        text-bolt-elements-textTertiary
-        opacity-60 sm:opacity-0 group-hover:opacity-100
+        text-bolt-elements-textSecondary
+        opacity-80 sm:opacity-0 group-hover:opacity-100
         transition-all duration-200 ease-out
         translate-y-0.5 sm:translate-y-1 group-hover:translate-y-0
       "

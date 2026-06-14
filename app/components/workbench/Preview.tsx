@@ -1011,8 +1011,55 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
               />
             </>
           ) : (
-            <div className="flex w-full h-full justify-center items-center bg-bolt-elements-background-depth-1 text-bolt-elements-textPrimary">
-              No preview available
+            <div className="flex flex-col w-full h-full justify-center items-center bg-bolt-elements-background-depth-1 px-6">
+              <div
+                className="flex flex-col items-center gap-4 max-w-xs text-center"
+                style={{ animation: 'fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}
+              >
+                <div
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(139,92,246,0.1), rgba(168,85,247,0.06))',
+                    border: '1px solid rgba(139,92,246,0.15)',
+                  }}
+                >
+                  <div className="i-ph:eye-slash text-2xl text-purple-400/60" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-bolt-elements-textPrimary mb-1">
+                    No preview available yet
+                  </h3>
+                  <p className="text-xs text-bolt-elements-textTertiary leading-relaxed">
+                    The project may need a runtime or generated files before preview can start.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => workbenchStore.currentView.set('code')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 active:scale-95"
+                    style={{
+                      background: 'rgba(139,92,246,0.1)',
+                      color: '#c084fc',
+                      border: '1px solid rgba(139,92,246,0.2)',
+                    }}
+                  >
+                    <div className="i-ph:folder-open text-sm" />
+                    Files
+                  </button>
+                  <button
+                    onClick={() => workbenchStore.downloadZip()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 active:scale-95"
+                    style={{
+                      background: 'rgba(255,255,255,0.04)',
+                      color: '#a0a0b0',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                    }}
+                  >
+                    <div className="i-ph:download-simple text-sm" />
+                    Export ZIP
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

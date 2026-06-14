@@ -393,7 +393,10 @@ export const Workbench = memo(
           >
             <div className="absolute inset-0 px-2 lg:px-4">
               <div className="h-full flex flex-col bg-bolt-elements-background-depth-2 border border-bolt-elements-borderColor shadow-lg shadow-black/5 dark:shadow-black/20 rounded-xl overflow-hidden">
-                <div className="flex items-center px-3 py-2 border-b border-bolt-elements-borderColor gap-1.5 bg-bolt-elements-bg-depth-1/50">
+                <div
+                  data-workbench-toolbar
+                  className="flex items-center px-3 py-2 border-b border-bolt-elements-borderColor gap-1.5 bg-bolt-elements-bg-depth-1/50"
+                >
                   <button
                     className={`${showChat ? 'i-ph:sidebar-simple-fill' : 'i-ph:sidebar-simple'} text-lg text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary mr-1 transition-colors duration-200`}
                     disabled={!canHideChat || isSmallViewport}

@@ -163,14 +163,14 @@ ${escapeBoltTags(file.content)}
         variant="default"
         size="sm"
         className={classNames(
-          'gap-2 bg-bolt-elements-bg-depth-1/80',
-          'text-bolt-elements-textPrimary',
+          'gap-2 bg-bolt-elements-bg-depth-2',
+          'text-bolt-elements-textSecondary',
           'hover:bg-bolt-elements-button-primary-background hover:text-bolt-elements-button-primary-text',
           'border border-bolt-elements-borderColor',
           'h-9 px-3 py-1.5 sm:h-10 sm:px-4 sm:py-2 sm:min-w-[140px] justify-center',
           'transition-all duration-200 ease-out',
-          'backdrop-blur-sm',
           'hover:shadow-[0_0_16px_var(--bolt-glow-color)]',
+          'hover:border-bolt-elements-borderColorActive',
           'text-xs sm:text-sm',
           className,
         )}
