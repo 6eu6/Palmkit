@@ -364,12 +364,33 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
           <div className={classNames(styles.Chat, 'flex flex-col flex-grow lg:min-w-[var(--chat-min-width)] h-full')}>
             {!chatStarted && (
               <div id="intro" className="mt-[14vh] max-w-2xl mx-auto text-center px-4 lg:px-0">
-                <div className="animate-fade-in-up">
+                <div
+                  style={{
+                    animation: 'fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                  }}
+                >
                   <h1 className="text-4xl lg:text-7xl font-extrabold mb-4 tracking-tight">
-                    <span className="gradient-text animate-gradient-shift">Where ideas begin</span>
+                    <span
+                      style={{
+                        background: 'linear-gradient(135deg, #7c3aed, #a855f7, #ec4899)',
+                        backgroundSize: '200% 200%',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        backgroundClip: 'text',
+                        animation: 'gradient-shift 6s ease infinite',
+                      }}
+                    >
+                      Where ideas begin
+                    </span>
                   </h1>
                 </div>
-                <p className="text-base lg:text-xl mb-10 text-bolt-elements-textSecondary animate-fade-in-up animation-delay-200 max-w-lg mx-auto leading-relaxed">
+                <p
+                  className="text-base lg:text-xl mb-10 text-bolt-elements-textSecondary max-w-lg mx-auto leading-relaxed"
+                  style={{
+                    animation: 'fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards',
+                    opacity: 0,
+                  }}
+                >
                   Bring ideas to life in seconds or get help on existing projects.
                 </p>
               </div>
@@ -487,7 +508,10 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
             </StickToBottom>
             <div className="flex flex-col justify-center">
               {!chatStarted && (
-                <div className="flex justify-center gap-2 animate-fade-in-up animation-delay-300">
+                <div
+                  className="flex justify-center gap-2"
+                  style={{ animation: 'fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards', opacity: 0 }}
+                >
                   {ImportButtons(importChat)}
                   <GitCloneButton importChat={importChat} />
                 </div>

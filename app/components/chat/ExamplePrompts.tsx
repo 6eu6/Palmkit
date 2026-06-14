@@ -29,9 +29,11 @@ export function ExamplePrompts(sendMessage?: { (event: React.UIEvent, messageInp
                 transition-all duration-200 ease-out
                 hover:border-bolt-elements-borderColorActive
                 hover:shadow-[0_0_16px_var(--bolt-glow-color)]
-                animate-fade-in-up
               `}
-              style={{ animationDelay: `${index * 60}ms`, animationFillMode: 'both' }}
+              style={{
+                animation: `fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) ${index * 60}ms forwards`,
+                opacity: 0,
+              }}
             >
               <span className="flex items-center gap-1.5">
                 <span

@@ -140,7 +140,7 @@ export const MobileShell = memo(() => {
       {/* Quick Actions overlay — shown when Actions tab is active on mobile */}
       {isActionsTab && (
         <div
-          className="fixed bottom-[56px] left-0 right-0 z-40 p-3 sm:hidden animate-fade-in-up"
+          className="fixed bottom-[56px] left-0 right-0 z-40 p-3 sm:hidden"
           style={{ marginBottom: 'env(safe-area-inset-bottom, 0px)' }}
         >
           <div className="bg-bolt-elements-bg-depth-2/90 backdrop-blur-xl border border-bolt-elements-borderColor rounded-2xl p-3 flex flex-col gap-2 shadow-xl shadow-black/10 dark:shadow-black/30">

@@ -41,7 +41,10 @@ const FrameworkLink: React.FC<FrameworkLinkProps> = ({ template }) => (
 
 const StarterTemplates: React.FC = () => {
   return (
-    <div className="flex flex-col items-center gap-4 animate-fade-in-up animation-delay-500">
+    <div
+      className="flex flex-col items-center gap-4"
+      style={{ animation: 'fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards', opacity: 0 }}
+    >
       <span className="text-xs font-medium text-bolt-elements-textTertiary uppercase tracking-wider">
         or start a blank app with your favorite stack
       </span>
