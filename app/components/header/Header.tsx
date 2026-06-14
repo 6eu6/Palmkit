@@ -4,9 +4,14 @@ import { chatStore } from '~/lib/stores/chat';
 import { classNames } from '~/utils/classNames';
 import { HeaderActionButtons } from './HeaderActionButtons.client';
 import { ChatDescription } from '~/lib/persistence/ChatDescription.client';
+import { mobileActiveTab } from '~/lib/stores/mobile';
 
 export function Header() {
   const chat = useStore(chatStore);
+
+  const handleMobileMenu = () => {
+    mobileActiveTab.set('settings');
+  };
 
   return (
     <header
@@ -16,7 +21,14 @@ export function Header() {
       })}
     >
       <div className="flex items-center gap-2 z-logo text-bolt-elements-textPrimary cursor-pointer group">
-        <div className="i-ph:sidebar-simple-duotone text-xl opacity-60 group-hover:opacity-100 transition-opacity duration-200" />
+        <div className="i-ph:sidebar-simple-duotone text-xl opacity-60 group-hover:opacity-100 transition-opacity duration-200 hidden sm:block" />
+        <button
+          onClick={handleMobileMenu}
+          className="sm:hidden p-1.5 -ml-1.5 rounded-lg hover:bg-bolt-elements-item-backgroundActive transition-colors"
+          aria-label="Open menu"
+        >
+          <div className="i-ph:list text-xl text-bolt-elements-textPrimary" />
+        </button>
         <a href="/" className="text-2xl font-semibold text-accent flex items-center">
           <img
             src="/logo-light-styled.png"

@@ -64,32 +64,35 @@ export function ImportButtons(importChat: ((description: string, messages: Messa
               input?.click();
             }}
             variant="default"
-            size="lg"
+            size="sm"
             className={classNames(
-              'gap-2 bg-bolt-elements-bg-depth-1/80',
+              'gap-1.5 bg-bolt-elements-bg-depth-1/80',
               'text-bolt-elements-textPrimary',
               'hover:bg-bolt-elements-button-primary-background hover:text-bolt-elements-button-primary-text',
               'border border-bolt-elements-borderColor',
-              'h-10 px-4 py-2 min-w-[120px] justify-center',
+              'h-9 px-3 py-1.5 sm:h-10 sm:px-4 sm:py-2 sm:min-w-[120px] justify-center',
               'transition-all duration-200 ease-out',
               'backdrop-blur-sm',
               'hover:shadow-[0_0_16px_var(--bolt-glow-color)]',
+              'text-xs sm:text-sm',
             )}
           >
-            <span className="i-ph:upload-simple w-4 h-4" />
-            Import Chat
+            <span className="i-ph:upload-simple w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Import Chat</span>
+            <span className="sm:hidden">Import</span>
           </Button>
           <ImportFolderButton
             importChat={importChat}
             className={classNames(
-              'gap-2 bg-bolt-elements-bg-depth-1/80',
+              'gap-1.5 bg-bolt-elements-bg-depth-1/80',
               'text-bolt-elements-textPrimary',
               'hover:bg-bolt-elements-button-primary-background hover:text-bolt-elements-button-primary-text',
               'border border-bolt-elements-borderColor',
-              'h-10 px-4 py-2 min-w-[120px] justify-center',
+              'h-9 px-3 py-1.5 sm:h-10 sm:px-4 sm:py-2 sm:min-w-[120px] justify-center',
               'transition-all duration-200 ease-out rounded-lg',
               'backdrop-blur-sm',
               'hover:shadow-[0_0_16px_var(--bolt-glow-color)]',
+              'text-xs sm:text-sm',
             )}
           />
         </div>

@@ -10,6 +10,7 @@ const tabs: { id: MobileTab; label: string; icon: string }[] = [
   { id: 'preview', label: 'Preview', icon: 'i-ph:eye' },
   { id: 'files', label: 'Files', icon: 'i-ph:folder-open' },
   { id: 'actions', label: 'Actions', icon: 'i-ph:lightning' },
+  { id: 'projects', label: 'Projects', icon: 'i-ph:clock-counter-clockwise' },
   { id: 'settings', label: 'Settings', icon: 'i-ph:gear-six' },
 ];
 
@@ -43,6 +44,8 @@ export const MobileBottomTabs = memo(() => {
         workbenchStore.currentView.set('code');
         workbenchStore.toggleTerminal(true);
         break;
+      case 'projects':
+        break;
       case 'settings':
         break;
     }
@@ -63,7 +66,7 @@ export const MobileBottomTabs = memo(() => {
             key={tab.id}
             onClick={() => handleTabChange(tab.id)}
             className={classNames(
-              'flex flex-col items-center justify-center py-2 px-3 min-w-[48px] min-h-[48px] transition-all duration-200 outline-none relative',
+              'flex flex-col items-center justify-center py-1.5 px-1 min-w-[44px] min-h-[44px] transition-all duration-200 outline-none relative',
               isActive
                 ? 'text-bolt-elements-button-primary-text'
                 : 'text-bolt-elements-textTertiary hover:text-bolt-elements-textSecondary',
@@ -72,14 +75,14 @@ export const MobileBottomTabs = memo(() => {
             aria-pressed={isActive}
           >
             {isActive && (
-              <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-gradient-to-r from-[var(--bolt-gradient-start)] to-[var(--bolt-gradient-end)]" />
+              <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-gradient-to-r from-[var(--bolt-gradient-start)] to-[var(--bolt-gradient-end)]" />
             )}
             <div
-              className={classNames(tab.icon, 'text-xl transition-transform duration-200', isActive && 'scale-110')}
+              className={classNames(tab.icon, 'text-lg transition-transform duration-200', isActive && 'scale-110')}
             />
             <span
               className={classNames(
-                'text-[10px] mt-0.5 leading-tight font-medium transition-colors duration-200',
+                'text-[9px] mt-0.5 leading-tight font-medium transition-colors duration-200',
                 isActive && 'text-bolt-elements-button-primary-text',
               )}
             >

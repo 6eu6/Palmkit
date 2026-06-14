@@ -10,7 +10,7 @@ import { LoadingOverlay } from '~/components/ui/LoadingOverlay';
 import { classNames } from '~/utils/classNames';
 import { Button } from '~/components/ui/Button';
 import type { IChatMetadata } from '~/lib/persistence/db';
-import { X, Github, GitBranch } from 'lucide-react';
+import { X } from 'lucide-react';
 
 // Import the new repository selector components
 import { GitHubRepositorySelector } from '~/components/@settings/tabs/github/components/GitHubRepositorySelector';
@@ -169,25 +169,24 @@ ${escapeBoltTags(file.content)}
         }}
         title="Clone a repo"
         variant="default"
-        size="lg"
+        size="sm"
         className={classNames(
-          'gap-2 bg-bolt-elements-bg-depth-1/80',
+          'gap-1.5 bg-bolt-elements-bg-depth-1/80',
           'text-bolt-elements-textPrimary',
           'hover:bg-bolt-elements-button-primary-background hover:text-bolt-elements-button-primary-text',
           'border border-bolt-elements-borderColor',
-          'h-10 px-4 py-2 min-w-[120px] justify-center',
+          'h-9 px-3 py-1.5 sm:h-10 sm:px-4 sm:py-2 sm:min-w-[120px] justify-center',
           'transition-all duration-200 ease-out',
           'backdrop-blur-sm',
           'hover:shadow-[0_0_16px_var(--bolt-glow-color)]',
+          'text-xs sm:text-sm',
           className,
         )}
         disabled={!ready || loading}
       >
-        Clone a repo
-        <div className="flex items-center gap-1 ml-2">
-          <Github className="w-4 h-4" />
-          <GitBranch className="w-4 h-4" />
-        </div>
+        <div className="i-ph:github-logo text-base sm:text-lg sm:mr-1" />
+        <span className="hidden sm:inline">Clone a repo</span>
+        <span className="sm:hidden">Clone</span>
       </Button>
 
       {/* Provider Selection Dialog */}
@@ -214,7 +213,7 @@ ${escapeBoltTags(file.content)}
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center group-hover:bg-blue-500/20 dark:group-hover:bg-blue-500/30 transition-colors">
-                      <Github className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                      <div className="i-ph:github-logo w-6 h-6 text-[24px] text-blue-600 dark:text-blue-400" />
                     </div>
                     <div>
                       <div className="font-medium text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary">
@@ -233,7 +232,7 @@ ${escapeBoltTags(file.content)}
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-orange-500/10 dark:bg-orange-500/20 flex items-center justify-center group-hover:bg-orange-500/20 dark:group-hover:bg-orange-500/30 transition-colors">
-                      <GitBranch className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+                      <div className="i-ph:gitlab-logo w-6 h-6 text-[24px] text-orange-600 dark:text-orange-400" />
                     </div>
                     <div>
                       <div className="font-medium text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary">
@@ -258,7 +257,7 @@ ${escapeBoltTags(file.content)}
             <div className="p-6 border-b border-bolt-elements-borderColor dark:border-bolt-elements-borderColor flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center">
-                  <Github className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                  <div className="i-ph:github-logo w-6 h-6 text-[24px] text-blue-600 dark:text-blue-400" />
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary">
@@ -294,7 +293,7 @@ ${escapeBoltTags(file.content)}
             <div className="p-6 border-b border-bolt-elements-borderColor dark:border-bolt-elements-borderColor flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-orange-500/10 dark:bg-orange-500/20 flex items-center justify-center">
-                  <GitBranch className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+                  <div className="i-ph:gitlab-logo w-6 h-6 text-[24px] text-orange-600 dark:text-orange-400" />
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary">

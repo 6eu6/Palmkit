@@ -12,6 +12,6 @@ import { atom } from 'nanostores';
  * - This atom has no effect on desktop because the MobileBottomTabs
  *   component is hidden via CSS (sm:hidden).
  */
-export type MobileTab = 'chat' | 'preview' | 'files' | 'actions' | 'settings';
+export type MobileTab = 'chat' | 'preview' | 'files' | 'actions' | 'projects' | 'settings';
 
 export const mobileActiveTab = atom<MobileTab>('chat');

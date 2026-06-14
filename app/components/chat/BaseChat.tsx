@@ -134,7 +134,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         throw new Error('addToolResult not implemented');
       },
       onWebSearchResult,
-      onOpenProjectList,
+      onOpenProjectList: _onOpenProjectList,
     },
     ref,
   ) => {
@@ -351,25 +351,16 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         data-chat-visible={showChat}
       >
         <ClientOnly>{() => <Menu />}</ClientOnly>
-        {onOpenProjectList && (
-          <button
-            onClick={onOpenProjectList}
-            className="fixed top-4 left-4 z-40 lg:hidden p-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-            title="Projects"
-          >
-            <div className="i-ph:folder-open text-lg" />
-          </button>
-        )}
         <div className="flex flex-col lg:flex-row overflow-y-auto w-full h-full">
           <div className={classNames(styles.Chat, 'flex flex-col flex-grow lg:min-w-[var(--chat-min-width)] h-full')}>
             {!chatStarted && (
-              <div id="intro" className="mt-[14vh] max-w-2xl mx-auto text-center px-4 lg:px-0">
+              <div id="intro" className="mt-[10vh] sm:mt-[14vh] max-w-2xl mx-auto text-center px-4 lg:px-0">
                 <div
                   style={{
                     animation: 'fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
                   }}
                 >
-                  <h1 className="text-4xl lg:text-7xl font-extrabold mb-4 tracking-tight">
+                  <h1 className="text-3xl sm:text-4xl lg:text-7xl font-extrabold mb-3 sm:mb-4 tracking-tight">
                     <span
                       style={{
                         background: 'linear-gradient(135deg, #7c3aed, #a855f7, #ec4899)',
@@ -385,7 +376,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   </h1>
                 </div>
                 <p
-                  className="text-base lg:text-xl mb-10 text-bolt-elements-textSecondary max-w-lg mx-auto leading-relaxed"
+                  className="text-sm sm:text-base lg:text-xl mb-6 sm:mb-10 text-bolt-elements-textSecondary max-w-lg mx-auto leading-relaxed"
                   style={{
                     animation: 'fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards',
                     opacity: 0,
@@ -509,14 +500,14 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
             <div className="flex flex-col justify-center">
               {!chatStarted && (
                 <div
-                  className="flex justify-center gap-2"
+                  className="flex justify-center gap-2 flex-wrap px-2"
                   style={{ animation: 'fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards', opacity: 0 }}
                 >
                   {ImportButtons(importChat)}
                   <GitCloneButton importChat={importChat} />
                 </div>
               )}
-              <div className="flex flex-col gap-5">
+              <div className="flex flex-col gap-4 sm:gap-5">
                 {!chatStarted &&
                   ExamplePrompts((event, messageInput) => {
                     if (isStreaming) {

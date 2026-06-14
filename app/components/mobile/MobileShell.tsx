@@ -5,6 +5,7 @@ import { mobileActiveTab } from '~/lib/stores/mobile';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { chatStore } from '~/lib/stores/chat';
 import { ControlPanel } from '~/components/@settings/core/ControlPanel';
+import { ProjectList } from '~/components/ui/ProjectList';
 
 /**
  * MobileShell provides the mobile-specific UI layer.
@@ -97,6 +98,7 @@ export const MobileShell = memo(() => {
 
   const isActionsTab = activeTab === 'actions';
   const isSettingsTab = activeTab === 'settings';
+  const isProjectsTab = activeTab === 'projects';
 
   /**
    * BUG-3 FIX: Settings dialog state for mobile.
@@ -115,6 +117,7 @@ export const MobileShell = memo(() => {
    *   is not interactive on mobile.
    */
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
+  const [mobileProjectsOpen, setMobileProjectsOpen] = useState(false);
 
   // Open settings when the Settings tab is activated
   useEffect(() => {
@@ -123,8 +126,20 @@ export const MobileShell = memo(() => {
     }
   }, [isSettingsTab]);
 
+  // Open projects when the Projects tab is activated
+  useEffect(() => {
+    if (isProjectsTab) {
+      setMobileProjectsOpen(true);
+    }
+  }, [isProjectsTab]);
+
   const handleCloseSettings = useCallback(() => {
     setMobileSettingsOpen(false);
+    mobileActiveTab.set('chat');
+  }, []);
+
+  const handleCloseProjects = useCallback(() => {
+    setMobileProjectsOpen(false);
     mobileActiveTab.set('chat');
   }, []);
 
@@ -135,12 +150,12 @@ export const MobileShell = memo(() => {
 
       {/* Spacer: adds bottom padding on mobile so content isn't hidden behind the tab bar.
           Uses sm:hidden so the spacer only exists on mobile. */}
-      <div className="h-[56px] sm:hidden" style={{ marginBottom: 'env(safe-area-inset-bottom, 0px)' }} />
+      <div className="h-[52px] sm:hidden" style={{ marginBottom: 'env(safe-area-inset-bottom, 0px)' }} />
 
       {/* Quick Actions overlay — shown when Actions tab is active on mobile */}
       {isActionsTab && (
         <div
-          className="fixed bottom-[56px] left-0 right-0 z-40 p-3 sm:hidden"
+          className="fixed bottom-[52px] left-0 right-0 z-40 p-3 sm:hidden"
           style={{ marginBottom: 'env(safe-area-inset-bottom, 0px)' }}
         >
           <div className="bg-bolt-elements-bg-depth-2/90 backdrop-blur-xl border border-bolt-elements-borderColor rounded-2xl p-3 flex flex-col gap-2 shadow-xl shadow-black/10 dark:shadow-black/30">
@@ -188,6 +203,11 @@ export const MobileShell = memo(() => {
           Wrapped in sm:hidden to avoid duplicate dialogs on desktop. */}
       <div className="sm:hidden">
         <ControlPanel open={mobileSettingsOpen} onClose={handleCloseSettings} />
+      </div>
+
+      {/* Projects list dialog for mobile */}
+      <div className="sm:hidden">
+        <ProjectList open={mobileProjectsOpen} onClose={handleCloseProjects} />
       </div>
     </>
   );

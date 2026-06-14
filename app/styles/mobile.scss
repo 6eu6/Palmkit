@@ -8,7 +8,7 @@
  * - All mobile overrides use @media (max-width: 639px) to avoid
  *   affecting desktop.
  * - No desktop selectors are modified.
- * - The bottom tab bar height is 56px + safe-area-inset-bottom.
+ * - The bottom tab bar height is 52px + safe-area-inset-bottom.
  */
 
 /* On mobile, add bottom padding to the chat area so the ChatBox
@@ -24,7 +24,7 @@
   /* Workbench: on mobile, override positioning to be full-screen
      and account for the bottom tab bar height */
   .z-workbench > div > div {
-    bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
+    bottom: calc(52px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
   /* Hide the sidebar menu on mobile — users navigate via bottom tabs instead */
@@ -65,8 +65,8 @@
 
   /* Better touch targets for prompt chips on mobile */
   #examples button {
-    padding: 8px 14px !important;
-    font-size: 12px !important;
+    padding: 6px 12px !important;
+    font-size: 11px !important;
   }
 
   /* Better padding for the chat input area on mobile */
@@ -78,5 +78,25 @@
   /* Stack the import buttons vertically on very small screens */
   .flex.justify-center.gap-2 {
     flex-wrap: wrap;
+  }
+
+  /* Make starter templates smaller on mobile */
+  .flex.justify-center .flex.flex-wrap {
+    gap: 12px !important;
+  }
+
+  /* Make the ChatBox textarea smaller on mobile */
+  textarea {
+    font-size: 16px !important; /* Prevent iOS zoom on focus */
+  }
+
+  /* Better keyboard shortcut hint visibility on mobile */
+  .kdb {
+    font-size: 10px !important;
+  }
+
+  /* Fix the model selector dropdown on mobile */
+  [role='listbox'] {
+    max-height: 50vh !important;
   }
 }
