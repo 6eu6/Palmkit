@@ -13,24 +13,24 @@ const FrameworkLink: React.FC<FrameworkLinkProps> = ({ template }) => (
     data-discover="true"
     className="group items-center justify-center"
   >
-    <div className="relative flex flex-col items-center gap-1.5">
+    <div className="relative flex flex-col items-center gap-1">
       <div
         className={`
-          ${template.icon} w-9 h-9 text-3xl
+          ${template.icon} w-8 h-8 sm:w-9 sm:h-9 text-2xl sm:text-3xl
           transition-all duration-300 ease-out
-          grayscale opacity-60
-          group-hover:grayscale-0 group-hover:opacity-100 group-hover:scale-110
+          opacity-70 sm:grayscale sm:opacity-60
+          group-hover:opacity-100 sm:group-hover:grayscale-0 group-hover:scale-110
           group-hover:drop-shadow-[0_0_8px_var(--bolt-glow-color)]
         `}
         title={template.label}
       />
       <span
         className="
-        text-[10px] font-medium
+        text-[9px] sm:text-[10px] font-medium
         text-bolt-elements-textTertiary
-        opacity-0 group-hover:opacity-100
+        opacity-60 sm:opacity-0 group-hover:opacity-100
         transition-all duration-200 ease-out
-        translate-y-1 group-hover:translate-y-0
+        translate-y-0.5 sm:translate-y-1 group-hover:translate-y-0
       "
       >
         {template.label}
@@ -42,14 +42,14 @@ const FrameworkLink: React.FC<FrameworkLinkProps> = ({ template }) => (
 const StarterTemplates: React.FC = () => {
   return (
     <div
-      className="flex flex-col items-center gap-3 sm:gap-4"
+      className="flex flex-col items-center gap-2 sm:gap-3"
       style={{ animation: 'fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards', opacity: 0 }}
     >
       <span className="text-[10px] sm:text-xs font-medium text-bolt-elements-textTertiary uppercase tracking-wider">
         or start a blank app with your favorite stack
       </span>
       <div className="flex justify-center">
-        <div className="flex flex-wrap justify-center items-start gap-3 sm:gap-5 max-w-xs sm:max-w-md">
+        <div className="flex flex-wrap justify-center items-start gap-2 sm:gap-4 max-w-xs sm:max-w-md">
           {STARTER_TEMPLATES.map((template) => (
             <FrameworkLink key={template.name} template={template} />
           ))}

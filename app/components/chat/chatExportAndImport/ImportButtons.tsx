@@ -11,7 +11,7 @@ type ChatData = {
 
 export function ImportButtons(importChat: ((description: string, messages: Message[]) => Promise<void>) | undefined) {
   return (
-    <div className="flex flex-col items-center justify-center w-auto">
+    <>
       <input
         type="file"
         id="chat-import"
@@ -56,47 +56,43 @@ export function ImportButtons(importChat: ((description: string, messages: Messa
           }
         }}
       />
-      <div className="flex flex-col items-center gap-4 max-w-2xl text-center">
-        <div className="flex gap-2">
-          <Button
-            onClick={() => {
-              const input = document.getElementById('chat-import');
-              input?.click();
-            }}
-            variant="default"
-            size="sm"
-            className={classNames(
-              'gap-1.5 bg-bolt-elements-bg-depth-1/80',
-              'text-bolt-elements-textPrimary',
-              'hover:bg-bolt-elements-button-primary-background hover:text-bolt-elements-button-primary-text',
-              'border border-bolt-elements-borderColor',
-              'h-9 px-3 py-1.5 sm:h-10 sm:px-4 sm:py-2 sm:min-w-[120px] justify-center',
-              'transition-all duration-200 ease-out',
-              'backdrop-blur-sm',
-              'hover:shadow-[0_0_16px_var(--bolt-glow-color)]',
-              'text-xs sm:text-sm',
-            )}
-          >
-            <span className="i-ph:upload-simple w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline">Import Chat</span>
-            <span className="sm:hidden">Import</span>
-          </Button>
-          <ImportFolderButton
-            importChat={importChat}
-            className={classNames(
-              'gap-1.5 bg-bolt-elements-bg-depth-1/80',
-              'text-bolt-elements-textPrimary',
-              'hover:bg-bolt-elements-button-primary-background hover:text-bolt-elements-button-primary-text',
-              'border border-bolt-elements-borderColor',
-              'h-9 px-3 py-1.5 sm:h-10 sm:px-4 sm:py-2 sm:min-w-[120px] justify-center',
-              'transition-all duration-200 ease-out rounded-lg',
-              'backdrop-blur-sm',
-              'hover:shadow-[0_0_16px_var(--bolt-glow-color)]',
-              'text-xs sm:text-sm',
-            )}
-          />
-        </div>
-      </div>
-    </div>
+      <Button
+        onClick={() => {
+          const input = document.getElementById('chat-import');
+          input?.click();
+        }}
+        variant="default"
+        size="sm"
+        className={classNames(
+          'gap-2 bg-bolt-elements-bg-depth-1/80',
+          'text-bolt-elements-textPrimary',
+          'hover:bg-bolt-elements-button-primary-background hover:text-bolt-elements-button-primary-text',
+          'border border-bolt-elements-borderColor',
+          'h-9 px-3 py-1.5 sm:h-10 sm:px-4 sm:py-2 sm:min-w-[120px] justify-center',
+          'transition-all duration-200 ease-out',
+          'backdrop-blur-sm',
+          'hover:shadow-[0_0_16px_var(--bolt-glow-color)]',
+          'text-xs sm:text-sm',
+        )}
+      >
+        <span className="i-ph:upload-simple text-base sm:text-lg" />
+        <span className="hidden sm:inline">Import Chat</span>
+        <span className="sm:hidden">Chat</span>
+      </Button>
+      <ImportFolderButton
+        importChat={importChat}
+        className={classNames(
+          'gap-2 bg-bolt-elements-bg-depth-1/80',
+          'text-bolt-elements-textPrimary',
+          'hover:bg-bolt-elements-button-primary-background hover:text-bolt-elements-button-primary-text',
+          'border border-bolt-elements-borderColor',
+          'h-9 px-3 py-1.5 sm:h-10 sm:px-4 sm:py-2 sm:min-w-[120px] justify-center',
+          'transition-all duration-200 ease-out',
+          'backdrop-blur-sm',
+          'hover:shadow-[0_0_16px_var(--bolt-glow-color)]',
+          'text-xs sm:text-sm',
+        )}
+      />
+    </>
   );
 }

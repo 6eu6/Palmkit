@@ -11,10 +11,8 @@
  * - The bottom tab bar height is 52px + safe-area-inset-bottom.
  */
 
-/* On mobile, add bottom padding to the chat area so the ChatBox
-   input is not hidden behind the bottom tab bar. */
 @media (max-width: 639px) {
-  /* Chat area: reduce the min-width constraint that forces side-by-side layout */
+  /* Chat area: remove the min-width constraint that forces side-by-side layout */
   .Chat {
     --chat-min-width: 0px !important;
     min-width: 0 !important;
@@ -22,7 +20,7 @@
   }
 
   /* Workbench: on mobile, override positioning to be full-screen
-     and account for the bottom tab bar height */
+     and account for the bottom tab bar height + action bar */
   .z-workbench > div > div {
     bottom: calc(52px + env(safe-area-inset-bottom, 0px)) !important;
   }
@@ -38,18 +36,12 @@
     display: none !important;
   }
 
-  /* On mobile, the workbench close button (X) should switch back to chat tab
-     instead of just closing the workbench. We keep the button visible but
-     the behavior is handled by the MobileShell sync effect. */
-
   /* Make the header more compact on mobile */
   :root {
     --header-height: 48px;
   }
 
-  /* BUG-3 FIX: The ControlPanel settings dialog is hardcoded to w-[1200px] h-[90vh]
-     which overflows on mobile. Override the inner container of any Radix dialog
-     to be full-screen on small viewports so the settings dialog is usable on phones. */
+  /* Settings dialog: override hardcoded sizes to be full-screen on mobile */
   [role='dialog'] > div {
     width: 100vw !important;
     max-width: 100vw !important;
@@ -60,43 +52,87 @@
 
   /* Make the intro section more compact on mobile */
   #intro {
-    margin-top: 8vh !important;
+    margin-top: 6vh !important;
   }
 
   /* Better touch targets for prompt chips on mobile */
   #examples button {
-    padding: 6px 12px !important;
+    padding: 6px 10px !important;
     font-size: 11px !important;
   }
 
-  /* Better padding for the chat input area on mobile */
+  /* Chat area padding on mobile */
   .StickToBottom {
-    padding-left: 4px !important;
-    padding-right: 4px !important;
+    padding-left: 2px !important;
+    padding-right: 2px !important;
   }
 
-  /* Stack the import buttons vertically on very small screens */
+  /* Import buttons: stack vertically on very small screens */
   .flex.justify-center.gap-2 {
     flex-wrap: wrap;
+    gap: 6px !important;
   }
 
-  /* Make starter templates smaller on mobile */
+  /* Starter templates: tighter spacing */
   .flex.justify-center .flex.flex-wrap {
-    gap: 12px !important;
+    gap: 10px !important;
   }
 
-  /* Make the ChatBox textarea smaller on mobile */
+  /* Prevent iOS zoom on textarea focus */
   textarea {
-    font-size: 16px !important; /* Prevent iOS zoom on focus */
+    font-size: 16px !important;
   }
 
-  /* Better keyboard shortcut hint visibility on mobile */
+  /* Smaller keyboard shortcut hints */
   .kdb {
     font-size: 10px !important;
   }
 
-  /* Fix the model selector dropdown on mobile */
+  /* Model selector dropdown: limit height on mobile */
   [role='listbox'] {
     max-height: 50vh !important;
+  }
+
+  /* ChatBox: reduce inner padding on mobile */
+  .max-w-chat {
+    max-width: 100% !important;
+  }
+
+  /* Messages: better mobile spacing */
+  .max-w-chat.pb-4 {
+    padding-bottom: 8px !important;
+  }
+
+  /* ScrollToBottom button: make it more compact on mobile */
+  .glass-surface {
+    font-size: 12px !important;
+    padding: 6px 12px !important;
+  }
+
+  /* Fix the workbench close button on mobile */
+  [aria-label='Close Panel'] {
+    min-width: 36px !important;
+    min-height: 36px !important;
+  }
+
+  /* Better spacing for the workbench toolbar on mobile */
+  .z-workbench [class*='flex items-center gap'] {
+    gap: 2px !important;
+  }
+
+  /* File tree: make items more tappable on mobile */
+  .z-workbench [role='treeitem'] {
+    min-height: 36px !important;
+    padding: 4px 8px !important;
+  }
+
+  /* Ensure code editor doesn't overflow on mobile */
+  .cm-editor {
+    max-width: 100% !important;
+  }
+
+  /* Preview iframe: ensure it fills available space */
+  .z-workbench iframe {
+    width: 100% !important;
   }
 }

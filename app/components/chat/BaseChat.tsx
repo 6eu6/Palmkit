@@ -103,7 +103,6 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       enhancingPrompt,
       handleInputChange,
 
-      // promptEnhanced,
       enhancePrompt,
       sendMessage,
       handleStop,
@@ -249,7 +248,6 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         console.error('Error loading dynamic models for:', providerName, error);
       }
 
-      // Only update models for the specific provider
       setModelList((prevModels) => {
         const otherModels = prevModels.filter((model) => model.provider !== providerName);
         return [...otherModels, ...providerModels];
@@ -277,11 +275,10 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         setSelectedElement?.(null);
 
         if (recognition) {
-          recognition.abort(); // Stop current recognition
-          setTranscript(''); // Clear transcript
+          recognition.abort();
+          setTranscript('');
           setIsListening(false);
 
-          // Clear the input by triggering handleInputChange with empty value
           if (handleInputChange) {
             const syntheticEvent = {
               target: { value: '' },
@@ -354,16 +351,17 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         <div className="flex flex-col lg:flex-row overflow-y-auto w-full h-full">
           <div className={classNames(styles.Chat, 'flex flex-col flex-grow lg:min-w-[var(--chat-min-width)] h-full')}>
             {!chatStarted && (
-              <div id="intro" className="mt-[10vh] sm:mt-[14vh] max-w-2xl mx-auto text-center px-4 lg:px-0">
+              <div id="intro" className="mt-[8vh] sm:mt-[12vh] lg:mt-[14vh] max-w-2xl mx-auto text-center px-4 lg:px-0">
                 <div
                   style={{
                     animation: 'fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
                   }}
                 >
-                  <h1 className="text-3xl sm:text-4xl lg:text-7xl font-extrabold mb-3 sm:mb-4 tracking-tight">
+                  <h1 className="text-2xl sm:text-4xl lg:text-6xl font-bold mb-2 sm:mb-3 lg:mb-4 tracking-tight">
                     <span
                       style={{
-                        background: 'linear-gradient(135deg, #7c3aed, #a855f7, #ec4899)',
+                        background:
+                          'linear-gradient(135deg, var(--bolt-gradient-start), var(--bolt-gradient-mid), var(--bolt-gradient-end))',
                         backgroundSize: '200% 200%',
                         WebkitBackgroundClip: 'text',
                         WebkitTextFillColor: 'transparent',
@@ -376,7 +374,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   </h1>
                 </div>
                 <p
-                  className="text-sm sm:text-base lg:text-xl mb-6 sm:mb-10 text-bolt-elements-textSecondary max-w-lg mx-auto leading-relaxed"
+                  className="text-sm sm:text-base lg:text-lg mb-6 sm:mb-8 text-bolt-elements-textSecondary max-w-md mx-auto leading-relaxed"
                   style={{
                     animation: 'fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards',
                     opacity: 0,
@@ -387,7 +385,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
               </div>
             )}
             <StickToBottom
-              className={classNames('pt-6 px-2 sm:px-6 relative', {
+              className={classNames('pt-4 sm:pt-6 px-2 sm:px-6 relative', {
                 'h-full flex flex-col modern-scrollbar': chatStarted,
               })}
               resize="smooth"
@@ -414,7 +412,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                 <ScrollToBottom />
               </StickToBottom.Content>
               <div
-                className={classNames('my-auto flex flex-col gap-2 w-full max-w-chat mx-auto z-prompt mb-6', {
+                className={classNames('my-auto flex flex-col gap-2 w-full max-w-chat mx-auto z-prompt mb-4 sm:mb-6', {
                   'sticky bottom-2': chatStarted,
                 })}
               >
@@ -500,14 +498,14 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
             <div className="flex flex-col justify-center">
               {!chatStarted && (
                 <div
-                  className="flex justify-center gap-2 flex-wrap px-2"
+                  className="flex justify-center gap-2 flex-wrap px-3 sm:px-4"
                   style={{ animation: 'fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards', opacity: 0 }}
                 >
-                  {ImportButtons(importChat)}
                   <GitCloneButton importChat={importChat} />
+                  {ImportButtons(importChat)}
                 </div>
               )}
-              <div className="flex flex-col gap-4 sm:gap-5">
+              <div className="flex flex-col gap-3 sm:gap-4">
                 {!chatStarted &&
                   ExamplePrompts((event, messageInput) => {
                     if (isStreaming) {

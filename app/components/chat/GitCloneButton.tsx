@@ -6,13 +6,10 @@ import { generateId } from '~/utils/fileUtils';
 import { useState } from 'react';
 import { toast } from 'react-toastify';
 import { LoadingOverlay } from '~/components/ui/LoadingOverlay';
-
 import { classNames } from '~/utils/classNames';
 import { Button } from '~/components/ui/Button';
 import type { IChatMetadata } from '~/lib/persistence/db';
-import { X } from 'lucide-react';
 
-// Import the new repository selector components
 import { GitHubRepositorySelector } from '~/components/@settings/tabs/github/components/GitHubRepositorySelector';
 import { GitLabRepositorySelector } from '~/components/@settings/tabs/gitlab/components/GitLabRepositorySelector';
 
@@ -32,15 +29,13 @@ const IGNORE_PATTERNS = [
   '**/npm-debug.log*',
   '**/yarn-debug.log*',
   '**/yarn-error.log*',
-
-  // Include this so npm install runs much faster '**/*lock.json',
   '**/*lock.yaml',
 ];
 
 const ig = ignore().add(IGNORE_PATTERNS);
 
-const MAX_FILE_SIZE = 100 * 1024; // 100KB limit per file
-const MAX_TOTAL_SIZE = 500 * 1024; // 500KB total limit
+const MAX_FILE_SIZE = 100 * 1024;
+const MAX_TOTAL_SIZE = 500 * 1024;
 
 interface GitCloneButtonProps {
   className?: string;
@@ -76,7 +71,6 @@ export default function GitCloneButton({ importChat, className }: GitCloneButton
         for (const filePath of filePaths) {
           const { data: content, encoding } = data[filePath];
 
-          // Skip binary files
           if (
             content instanceof Uint8Array &&
             !filePath.match(/\.(txt|md|astro|mjs|js|jsx|ts|tsx|json|html|css|scss|less|yml|yaml|xml|svg|vue|svelte)$/i)
@@ -93,7 +87,6 @@ export default function GitCloneButton({ importChat, className }: GitCloneButton
               continue;
             }
 
-            // Check file size
             const fileSize = new TextEncoder().encode(textContent).length;
 
             if (fileSize > MAX_FILE_SIZE) {
@@ -101,7 +94,6 @@ export default function GitCloneButton({ importChat, className }: GitCloneButton
               continue;
             }
 
-            // Check total size
             if (totalSize + fileSize > MAX_TOTAL_SIZE) {
               skippedFiles.push(`${filePath} (would exceed total size limit)`);
               continue;
@@ -167,15 +159,15 @@ ${escapeBoltTags(file.content)}
           setSelectedProvider(null);
           setIsDialogOpen(true);
         }}
-        title="Clone a repo"
+        title="Import from GitHub or GitLab"
         variant="default"
         size="sm"
         className={classNames(
-          'gap-1.5 bg-bolt-elements-bg-depth-1/80',
+          'gap-2 bg-bolt-elements-bg-depth-1/80',
           'text-bolt-elements-textPrimary',
           'hover:bg-bolt-elements-button-primary-background hover:text-bolt-elements-button-primary-text',
           'border border-bolt-elements-borderColor',
-          'h-9 px-3 py-1.5 sm:h-10 sm:px-4 sm:py-2 sm:min-w-[120px] justify-center',
+          'h-9 px-3 py-1.5 sm:h-10 sm:px-4 sm:py-2 sm:min-w-[140px] justify-center',
           'transition-all duration-200 ease-out',
           'backdrop-blur-sm',
           'hover:shadow-[0_0_16px_var(--bolt-glow-color)]',
@@ -184,64 +176,63 @@ ${escapeBoltTags(file.content)}
         )}
         disabled={!ready || loading}
       >
-        <div className="i-ph:github-logo text-base sm:text-lg sm:mr-1" />
-        <span className="hidden sm:inline">Clone a repo</span>
-        <span className="sm:hidden">Clone</span>
+        <div className="i-bolt:github text-base sm:text-lg" />
+        <span className="hidden sm:inline">Import from Git</span>
+        <span className="sm:hidden">Git</span>
       </Button>
 
-      {/* Provider Selection Dialog */}
       {isDialogOpen && !selectedProvider && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-950 rounded-xl shadow-xl border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor max-w-md w-full">
+          <div className="bg-bolt-elements-bg-depth-1 rounded-xl shadow-xl border border-bolt-elements-borderColor max-w-md w-full">
             <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary">
-                  Choose Repository Provider
-                </h3>
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-lg font-semibold text-bolt-elements-textPrimary">Import Repository</h3>
                 <button
                   onClick={() => setIsDialogOpen(false)}
-                  className="p-2 rounded-lg bg-transparent hover:bg-bolt-elements-background-depth-1 dark:hover:bg-bolt-elements-background-depth-1 text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary dark:hover:text-bolt-elements-textPrimary transition-all duration-200 hover:scale-105 active:scale-95"
+                  className="p-2 rounded-lg hover:bg-bolt-elements-item-backgroundActive text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary transition-all duration-200"
                 >
-                  <X className="w-5 h-5 transition-transform duration-200 hover:rotate-90" />
+                  <div className="i-ph:x text-lg" />
                 </button>
               </div>
+
+              <p className="text-sm text-bolt-elements-textSecondary mb-4">
+                Choose a provider to clone a repository into your workspace.
+              </p>
 
               <div className="space-y-3">
                 <button
                   onClick={() => setSelectedProvider('github')}
-                  className="w-full p-4 rounded-lg bg-bolt-elements-background-depth-1 dark:bg-bolt-elements-background-depth-1 hover:bg-bolt-elements-background-depth-2 dark:hover:bg-bolt-elements-background-depth-2 border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor hover:border-bolt-elements-borderColorActive dark:hover:border-bolt-elements-borderColorActive transition-all duration-200 text-left group"
+                  className="w-full p-4 rounded-lg bg-bolt-elements-item-backgroundDefault hover:bg-bolt-elements-item-backgroundActive border border-bolt-elements-borderColor hover:border-bolt-elements-borderColorActive transition-all duration-200 text-left group"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center group-hover:bg-blue-500/20 dark:group-hover:bg-blue-500/30 transition-colors">
-                      <div className="i-ph:github-logo w-6 h-6 text-[24px] text-blue-600 dark:text-blue-400" />
+                    <div className="w-10 h-10 rounded-lg bg-bolt-elements-item-backgroundAccent flex items-center justify-center group-hover:bg-bolt-elements-item-backgroundActive transition-colors">
+                      <div className="i-bolt:github text-[22px] text-bolt-elements-item-contentAccent" />
                     </div>
                     <div>
-                      <div className="font-medium text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary">
-                        GitHub
-                      </div>
-                      <div className="text-sm text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary">
-                        Clone from GitHub repositories
+                      <div className="font-medium text-bolt-elements-textPrimary">GitHub</div>
+                      <div className="text-sm text-bolt-elements-textSecondary">
+                        Clone from your GitHub repositories
                       </div>
                     </div>
+                    <div className="i-ph:caret-right ml-auto text-bolt-elements-textTertiary group-hover:text-bolt-elements-textSecondary transition-colors" />
                   </div>
                 </button>
 
                 <button
                   onClick={() => setSelectedProvider('gitlab')}
-                  className="w-full p-4 rounded-lg bg-bolt-elements-background-depth-1 dark:bg-bolt-elements-background-depth-1 hover:bg-bolt-elements-background-depth-2 dark:hover:bg-bolt-elements-background-depth-2 border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor hover:border-bolt-elements-borderColorActive dark:hover:border-bolt-elements-borderColorActive transition-all duration-200 text-left group"
+                  className="w-full p-4 rounded-lg bg-bolt-elements-item-backgroundDefault hover:bg-bolt-elements-item-backgroundActive border border-bolt-elements-borderColor hover:border-bolt-elements-borderColorActive transition-all duration-200 text-left group"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-orange-500/10 dark:bg-orange-500/20 flex items-center justify-center group-hover:bg-orange-500/20 dark:group-hover:bg-orange-500/30 transition-colors">
-                      <div className="i-ph:gitlab-logo w-6 h-6 text-[24px] text-orange-600 dark:text-orange-400" />
+                    <div className="w-10 h-10 rounded-lg bg-bolt-elements-item-backgroundAccent flex items-center justify-center group-hover:bg-bolt-elements-item-backgroundActive transition-colors">
+                      <div className="i-bolt:gitlab text-[22px] text-bolt-elements-item-contentAccent" />
                     </div>
                     <div>
-                      <div className="font-medium text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary">
-                        GitLab
-                      </div>
-                      <div className="text-sm text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary">
-                        Clone from GitLab repositories
+                      <div className="font-medium text-bolt-elements-textPrimary">GitLab</div>
+                      <div className="text-sm text-bolt-elements-textSecondary">
+                        Clone from your GitLab repositories
                       </div>
                     </div>
+                    <div className="i-ph:caret-right ml-auto text-bolt-elements-textTertiary group-hover:text-bolt-elements-textSecondary transition-colors" />
                   </div>
                 </button>
               </div>
@@ -250,22 +241,17 @@ ${escapeBoltTags(file.content)}
         </div>
       )}
 
-      {/* GitHub Repository Selection */}
       {isDialogOpen && selectedProvider === 'github' && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-950 rounded-xl shadow-xl border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor w-full max-w-4xl max-h-[90vh] overflow-hidden">
-            <div className="p-6 border-b border-bolt-elements-borderColor dark:border-bolt-elements-borderColor flex items-center justify-between">
+          <div className="bg-bolt-elements-bg-depth-1 rounded-xl shadow-xl border border-bolt-elements-borderColor w-full max-w-4xl max-h-[90vh] overflow-hidden">
+            <div className="p-5 border-b border-bolt-elements-borderColor flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center">
-                  <div className="i-ph:github-logo w-6 h-6 text-[24px] text-blue-600 dark:text-blue-400" />
+                <div className="w-9 h-9 rounded-lg bg-bolt-elements-item-backgroundAccent flex items-center justify-center">
+                  <div className="i-bolt:github text-xl text-bolt-elements-item-contentAccent" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary">
-                    Import GitHub Repository
-                  </h3>
-                  <p className="text-sm text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary">
-                    Clone a repository from GitHub to your workspace
-                  </p>
+                  <h3 className="text-base font-semibold text-bolt-elements-textPrimary">Import from GitHub</h3>
+                  <p className="text-xs text-bolt-elements-textSecondary">Select a repository to clone</p>
                 </div>
               </div>
               <button
@@ -273,35 +259,30 @@ ${escapeBoltTags(file.content)}
                   setIsDialogOpen(false);
                   setSelectedProvider(null);
                 }}
-                className="p-2 rounded-lg bg-transparent hover:bg-bolt-elements-background-depth-1 dark:hover:bg-bolt-elements-background-depth-1 text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary dark:hover:text-bolt-elements-textPrimary transition-all duration-200 hover:scale-105 active:scale-95"
+                className="p-2 rounded-lg hover:bg-bolt-elements-item-backgroundActive text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary transition-all duration-200"
               >
-                <X className="w-5 h-5 transition-transform duration-200 hover:rotate-90" />
+                <div className="i-ph:x text-lg" />
               </button>
             </div>
 
-            <div className="p-6 max-h-[calc(90vh-140px)] overflow-y-auto">
+            <div className="p-5 max-h-[calc(90vh-100px)] overflow-y-auto">
               <GitHubRepositorySelector onClone={handleClone} />
             </div>
           </div>
         </div>
       )}
 
-      {/* GitLab Repository Selection */}
       {isDialogOpen && selectedProvider === 'gitlab' && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-950 rounded-xl shadow-xl border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor w-full max-w-4xl max-h-[90vh] overflow-hidden">
-            <div className="p-6 border-b border-bolt-elements-borderColor dark:border-bolt-elements-borderColor flex items-center justify-between">
+          <div className="bg-bolt-elements-bg-depth-1 rounded-xl shadow-xl border border-bolt-elements-borderColor w-full max-w-4xl max-h-[90vh] overflow-hidden">
+            <div className="p-5 border-b border-bolt-elements-borderColor flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-orange-500/10 dark:bg-orange-500/20 flex items-center justify-center">
-                  <div className="i-ph:gitlab-logo w-6 h-6 text-[24px] text-orange-600 dark:text-orange-400" />
+                <div className="w-9 h-9 rounded-lg bg-bolt-elements-item-backgroundAccent flex items-center justify-center">
+                  <div className="i-bolt:gitlab text-xl text-bolt-elements-item-contentAccent" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary">
-                    Import GitLab Repository
-                  </h3>
-                  <p className="text-sm text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary">
-                    Clone a repository from GitLab to your workspace
-                  </p>
+                  <h3 className="text-base font-semibold text-bolt-elements-textPrimary">Import from GitLab</h3>
+                  <p className="text-xs text-bolt-elements-textSecondary">Select a repository to clone</p>
                 </div>
               </div>
               <button
@@ -309,20 +290,20 @@ ${escapeBoltTags(file.content)}
                   setIsDialogOpen(false);
                   setSelectedProvider(null);
                 }}
-                className="p-2 rounded-lg bg-transparent hover:bg-bolt-elements-background-depth-1 dark:hover:bg-bolt-elements-background-depth-1 text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary dark:hover:text-bolt-elements-textPrimary transition-all duration-200 hover:scale-105 active:scale-95"
+                className="p-2 rounded-lg hover:bg-bolt-elements-item-backgroundActive text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary transition-all duration-200"
               >
-                <X className="w-5 h-5 transition-transform duration-200 hover:rotate-90" />
+                <div className="i-ph:x text-lg" />
               </button>
             </div>
 
-            <div className="p-6 max-h-[calc(90vh-140px)] overflow-y-auto">
+            <div className="p-5 max-h-[calc(90vh-100px)] overflow-y-auto">
               <GitLabRepositorySelector onClone={handleClone} />
             </div>
           </div>
         </div>
       )}
 
-      {loading && <LoadingOverlay message="Please wait while we clone the repository..." />}
+      {loading && <LoadingOverlay message="Cloning repository..." />}
     </>
   );
 }

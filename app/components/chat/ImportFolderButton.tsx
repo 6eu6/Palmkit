@@ -3,9 +3,8 @@ import type { Message } from 'ai';
 import { toast } from 'react-toastify';
 import { MAX_FILES, isBinaryFile, shouldIncludeFile } from '~/utils/fileUtils';
 import { createChatFromFolder } from '~/utils/folderImport';
-import { logStore } from '~/lib/stores/logs'; // Assuming logStore is imported from this location
+import { logStore } from '~/lib/stores/logs';
 import { Button } from '~/components/ui/Button';
-import { classNames } from '~/utils/classNames';
 
 interface ImportFolderButtonProps {
   className?: string;
@@ -99,7 +98,7 @@ export const ImportFolderButton: React.FC<ImportFolderButtonProps> = ({ classNam
     } finally {
       setIsLoading(false);
       toast.dismiss(loadingToast);
-      e.target.value = ''; // Reset file input
+      e.target.value = '';
     }
   };
 
@@ -121,20 +120,13 @@ export const ImportFolderButton: React.FC<ImportFolderButtonProps> = ({ classNam
         }}
         title="Import Folder"
         variant="default"
-        size="lg"
-        className={classNames(
-          'gap-2 bg-bolt-elements-background-depth-1',
-          'text-bolt-elements-textPrimary',
-          'hover:bg-bolt-elements-background-depth-2',
-          'border border-bolt-elements-borderColor',
-          'h-10 px-4 py-2 min-w-[120px] justify-center',
-          'transition-all duration-200 ease-in-out',
-          className,
-        )}
+        size="sm"
         disabled={isLoading}
+        className={className}
       >
-        <span className="i-ph:upload-simple w-4 h-4" />
-        {isLoading ? 'Importing...' : 'Import Folder'}
+        <span className="i-ph:folder-open text-base sm:text-lg" />
+        <span className="hidden sm:inline">{isLoading ? 'Importing...' : 'Import Folder'}</span>
+        <span className="sm:hidden">{isLoading ? '...' : 'Folder'}</span>
       </Button>
     </>
   );
