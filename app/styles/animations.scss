@@ -304,3 +304,40 @@
     transform: scaleX(1);
   }
 }
+
+/* Live "writing" indicator for the file currently being edited in the file tree.
+   A premium pulsing accent dot (ring + glowing core) replacing the flat dot. */
+@keyframes pf-file-ping {
+  75%,
+  100% {
+    transform: scale(2.3);
+    opacity: 0;
+  }
+}
+
+.pf-file-writing {
+  position: relative;
+  display: inline-flex;
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+}
+
+.pf-file-writing::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: var(--bolt-mobile-accent, #8b5cf6);
+  opacity: 0.65;
+  animation: pf-file-ping 1.3s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.pf-file-writing::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: var(--bolt-mobile-accent, #8b5cf6);
+  box-shadow: 0 0 6px var(--bolt-mobile-accent, #8b5cf6);
+}

@@ -702,6 +702,8 @@ function File({
             'group-hover:text-bolt-elements-item-contentActive': !selected,
           })}
         >
+          {/* Premium "live editing" indicator on the LEFT of the name. */}
+          {unsavedChanges && <span className="pf-file-writing mr-1.5" title="Editing in real time" />}
           <div className="flex-1 truncate pr-2">{name}</div>
           <div className="flex items-center gap-1">
             {showStats && (
@@ -716,7 +718,6 @@ function File({
                 title={'File is locked'}
               />
             )}
-            {unsavedChanges && <span className="i-ph:circle-fill scale-68 shrink-0 text-orange-500" />}
           </div>
         </div>
       </NodeButton>

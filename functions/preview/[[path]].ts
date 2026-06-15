@@ -73,8 +73,14 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     }
   });
 
-  // Same-origin response — safe to embed under our COEP page.
+  /*
+   * Make the proxied document embeddable inside our cross-origin-isolated page:
+   * a COEP:require-corp page only embeds an iframe whose document ALSO carries a
+   * COEP header (even when same-origin). Set it here, and mark every proxied
+   * resource CORP same-origin so subresources load under that policy.
+   */
   headers.set('Cross-Origin-Resource-Policy', 'same-origin');
+  headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
 
   const contentType = upstream.headers.get('content-type') || '';
 

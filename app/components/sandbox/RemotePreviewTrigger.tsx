@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react';
-import { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { streamingState } from '~/lib/stores/streaming';
 import { workbenchStore } from '~/lib/stores/workbench';
 import {
@@ -19,16 +19,20 @@ function currentChatId(): string | undefined {
   return m ? m[1] : undefined;
 }
 
+// Rough expected time (s) to install + boot the dev server; drives the bar fill.
+const EXPECTED_SECONDS = 75;
+
+function formatElapsed(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 /**
- * Drives the server-side (E2B) preview on memory-constrained devices.
- *
- * When a generation finishes and files exist, and the device is one where the
- * in-browser WebContainer cannot run a real dev server (mobile Safari), this
- * uploads the project to the cloud sandbox and injects the resulting live
- * preview into the workbench. On desktop / when E2B is not configured it does
- * nothing (the in-browser WebContainer is used as before).
- *
- * Renders a small status pill while the cloud preview is starting.
+ * Drives the server-side (E2B) preview on memory-constrained devices and shows a
+ * polished bottom status bar (with an elapsed counter + progress bar) while the
+ * cloud sandbox installs and launches the preview.
  */
 export const RemotePreviewTrigger = memo(() => {
   const isStreaming = useStore(streamingState);
@@ -37,9 +41,8 @@ export const RemotePreviewTrigger = memo(() => {
   const prevStreaming = useRef(isStreaming);
 
   /*
-   * Per-conversation isolation: when navigating to a DIFFERENT existing chat,
-   * tear down the old sandbox so each conversation gets its own. (Going from a
-   * fresh page to /chat/:id is the SAME session — don't reset then.)
+   * Per-conversation isolation: tear down the old sandbox when switching to a
+   * DIFFERENT existing chat (fresh-page -> /chat/:id is the same session).
    */
   const lastChatId = useRef<string | undefined>(currentChatId());
   useEffect(() => {
@@ -66,7 +69,6 @@ export const RemotePreviewTrigger = memo(() => {
       return;
     }
 
-    // Run when a generation just finished, or when files exist and we haven't started.
     const hasFiles = Object.values(files).some((d) => d && d.type === 'file');
 
     if (!hasFiles) {
@@ -84,16 +86,39 @@ export const RemotePreviewTrigger = memo(() => {
     })();
   }, [isStreaming, files, status.state]);
 
+  // Elapsed-time counter while the sandbox is preparing.
+  const isPreparing = status.state === 'creating' || status.state === 'installing';
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isPreparing) {
+      startRef.current = null;
+      setElapsed(0);
+
+      return undefined;
+    }
+
+    if (startRef.current === null) {
+      startRef.current = Date.now();
+    }
+
+    const tick = setInterval(() => {
+      if (startRef.current !== null) {
+        setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+      }
+    }, 1000);
+
+    return () => clearInterval(tick);
+  }, [isPreparing]);
+
   const bottom = 'calc(var(--bolt-mobile-dock-height) + env(safe-area-inset-bottom, 0px) + 10px)';
 
-  /*
-   * When ready, the preview renders inline in the Preview tab (same-origin
-   * proxy), so no extra button is needed here.
-   */
+  // Inline preview renders in the Preview tab when ready — surface only progress/errors here.
   if (status.state === 'error') {
     return (
       <div
-        className="fixed left-1/2 -translate-x-1/2 z-40 sm:hidden flex items-center gap-2 px-3 py-2 rounded-full text-xs font-medium"
+        className="fixed left-3 right-3 z-40 sm:hidden flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium"
         style={{
           bottom,
           background: 'var(--bolt-mobile-surface-bg-elevated)',
@@ -102,31 +127,53 @@ export const RemotePreviewTrigger = memo(() => {
           boxShadow: 'var(--bolt-shadow-md)',
         }}
       >
-        <span className="i-ph:warning-circle text-sm" />
-        Cloud preview failed
+        <span className="i-ph:warning-circle text-sm shrink-0" />
+        Cloud preview failed — try again
       </div>
     );
   }
 
-  if (status.state !== 'creating' && status.state !== 'installing') {
+  if (!isPreparing) {
     return null;
   }
 
-  const label = status.state === 'creating' ? 'Starting cloud sandbox…' : 'Installing & launching preview…';
+  const label = status.state === 'creating' ? 'Starting cloud sandbox' : 'Installing & launching preview';
+  const progress = Math.min(95, Math.round((elapsed / EXPECTED_SECONDS) * 100));
 
   return (
     <div
-      className="fixed left-1/2 -translate-x-1/2 z-40 sm:hidden flex items-center gap-2 px-3 py-2 rounded-full text-xs font-medium"
+      className="fixed left-3 right-3 z-40 sm:hidden rounded-xl overflow-hidden"
       style={{
         bottom,
         background: 'var(--bolt-mobile-surface-bg-elevated)',
         border: '1px solid var(--bolt-mobile-surface-border-strong)',
-        color: 'var(--bolt-mobile-text-accent)',
         boxShadow: 'var(--bolt-shadow-md)',
+        backdropFilter: 'blur(12px)',
       }}
     >
-      <span className="i-svg-spinners:90-ring-with-bg text-sm" />
-      {label}
+      <div className="flex items-center gap-2.5 px-3.5 py-2.5">
+        <span
+          className="i-svg-spinners:90-ring-with-bg text-base shrink-0"
+          style={{ color: 'var(--bolt-mobile-accent-text)' }}
+        />
+        <span className="text-xs font-medium flex-1 truncate" style={{ color: 'var(--bolt-mobile-text-primary)' }}>
+          {label}
+        </span>
+        <span className="text-xs font-semibold tabular-nums" style={{ color: 'var(--bolt-mobile-text-accent)' }}>
+          {formatElapsed(elapsed)}
+        </span>
+      </div>
+      {/* Progress bar */}
+      <div className="h-1 w-full" style={{ background: 'var(--bolt-mobile-accent-faint)' }}>
+        <div
+          className="h-full rounded-r-full"
+          style={{
+            width: `${progress}%`,
+            background: 'linear-gradient(90deg, var(--bolt-mobile-accent) 0%, #c084fc 100%)',
+            transition: 'width 1s linear',
+          }}
+        />
+      </div>
     </div>
   );
 });
