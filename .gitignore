@@ -46,3 +46,6 @@ docs/instructions/Roadmap.md
 .cursorrules
 *.md
 .qodo
+
+# Local MCP server config (project-scoped, per-developer)
+.mcp.json
