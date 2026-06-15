@@ -6,7 +6,7 @@ import { createScopedLogger } from '~/utils/logger';
 import { unreachable } from '~/utils/unreachable';
 import type { ActionCallbackData } from './message-parser';
 import type { BoltShell } from '~/utils/shell';
-import { isMemoryConstrainedDevice, getRemoteAvailabilitySync } from '~/lib/sandbox/remoteSandbox';
+import { isMemoryConstrainedDevice, isRemoteSandboxAvailable } from '~/lib/sandbox/remoteSandbox';
 
 const logger = createScopedLogger('ActionRunner');
 
@@ -15,9 +15,17 @@ const logger = createScopedLogger('ActionRunner');
  * (E2B), the in-browser WebContainer is used only to author files — command
  * execution (install / dev server / build) is offloaded to the server so it
  * doesn't fail locally ("vite not found") or show an empty in-browser preview.
+ *
+ * Awaits the availability check (don't rely on a maybe-unpopulated cache) to
+ * avoid a race where WebContainer starts its own dev server before we know E2B
+ * is available.
  */
-function shouldOffloadExecution(): boolean {
-  return isMemoryConstrainedDevice() && getRemoteAvailabilitySync();
+async function shouldOffloadExecution(): Promise<boolean> {
+  if (!isMemoryConstrainedDevice()) {
+    return false;
+  }
+
+  return isRemoteSandboxAvailable();
 }
 
 export type ActionStatus = 'pending' | 'running' | 'complete' | 'aborted' | 'failed';
@@ -166,7 +174,10 @@ export class ActionRunner {
     const action = this.actions.get()[actionId];
 
     // Offload command execution to the cloud sandbox on mobile (files still run locally).
-    if ((action.type === 'shell' || action.type === 'start' || action.type === 'build') && shouldOffloadExecution()) {
+    if (
+      (action.type === 'shell' || action.type === 'start' || action.type === 'build') &&
+      (await shouldOffloadExecution())
+    ) {
       logger.info(`[${action.type}] offloaded to cloud sandbox; skipping in-browser execution`);
       this.#updateAction(actionId, { status: 'complete' });
 
