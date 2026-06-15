@@ -1,0 +1,38 @@
+<!-- Supabase → Authentication → Email Templates → "Magic Link" -->
+<!-- Subject: Your Palmkit sign-in link -->
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0b0b12;padding:32px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <tr>
+    <td align="center">
+      <table width="440" cellpadding="0" cellspacing="0" style="background:#12121c;border:1px solid rgba(139,92,246,0.18);border-radius:16px;overflow:hidden">
+        <tr>
+          <td style="padding:28px 32px 8px">
+            <img src="https://palmkit.app/palmkit-icon.jpg" width="44" height="44" alt="Palmkit" style="border-radius:11px;display:block" />
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:8px 32px 0">
+            <h1 style="margin:0;color:#f4f4f8;font-size:22px;font-weight:700">Your sign-in link</h1>
+            <p style="margin:10px 0 0;color:#a9a9bd;font-size:14px;line-height:1.6">
+              Tap the button below to sign in to Palmkit. This link expires shortly and can only be used once.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:24px 32px 8px">
+            <a href="{{ .ConfirmationURL }}" style="display:block;text-align:center;background:linear-gradient(135deg,#8b5cf6,#6234bb);color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:13px 0;border-radius:12px">
+              Sign in to Palmkit
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:8px 32px 28px">
+            <p style="margin:0;color:#6f6f86;font-size:12px;line-height:1.6">
+              If you didn't request this link, you can safely ignore this email.
+            </p>
+          </td>
+        </tr>
+      </table>
+      <p style="margin:16px 0 0;color:#5a5a70;font-size:11px">© Palmkit · palmkit.app</p>
+    </td>
+  </tr>
+</table>

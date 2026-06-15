@@ -107,6 +107,14 @@ export default function Login() {
           placeholder="••••••••"
         />
 
+        <Link
+          to="/forgot-password"
+          className="self-end -mt-1 text-xs text-bolt-elements-textSecondary hover:underline"
+          style={{ color: 'var(--bolt-mobile-accent-text, #c4b5fd)' }}
+        >
+          Forgot password?
+        </Link>
+
         {actionData?.error ? <p className="text-xs text-red-400">{actionData.error}</p> : null}
 
         <AuthButton disabled={busy}>{busy ? 'Logging in…' : 'Log in'}</AuthButton>
