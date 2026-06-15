@@ -210,6 +210,52 @@ export default function SettingsTab() {
           </div>
         </div>
       </motion.div>
+
+      {/* About & Legal */}
+      <motion.div
+        className="bg-white dark:bg-[#0A0A0A] rounded-lg shadow-sm dark:shadow-none p-4"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <div className="i-ph:scroll-fill w-4 h-4 text-purple-500" />
+          <span className="text-sm font-medium text-bolt-elements-textPrimary">About &amp; Legal</span>
+        </div>
+
+        <div className="space-y-2">
+          <a
+            href="/terms"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center justify-between p-2.5 rounded-lg bg-[#FAFAFA] dark:bg-[#1A1A1A] hover:bg-[#F0F0F0] dark:hover:bg-[#222] transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <div className="i-ph:file-text w-4 h-4 text-bolt-elements-textSecondary" />
+              <span className="text-sm text-bolt-elements-textPrimary">Terms of Service</span>
+            </div>
+            <div className="i-ph:arrow-up-right w-3.5 h-3.5 text-bolt-elements-textSecondary" />
+          </a>
+
+          <a
+            href="/privacy"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center justify-between p-2.5 rounded-lg bg-[#FAFAFA] dark:bg-[#1A1A1A] hover:bg-[#F0F0F0] dark:hover:bg-[#222] transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <div className="i-ph:shield-check w-4 h-4 text-bolt-elements-textSecondary" />
+              <span className="text-sm text-bolt-elements-textPrimary">Privacy Policy</span>
+            </div>
+            <div className="i-ph:arrow-up-right w-3.5 h-3.5 text-bolt-elements-textSecondary" />
+          </a>
+
+          <div className="flex items-center justify-between px-2.5 pt-1">
+            <span className="text-xs text-bolt-elements-textSecondary">Pocketforge</span>
+            <span className="text-xs text-bolt-elements-textTertiary">v1.0</span>
+          </div>
+        </div>
+      </motion.div>
     </div>
   );
 }
