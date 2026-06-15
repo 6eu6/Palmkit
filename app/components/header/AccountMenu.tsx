@@ -15,12 +15,14 @@ export function AccountMenu() {
   const user = useStore(authUserStore);
   const authEnabled = useStore(authEnabledStore);
   const [open, setOpen] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
+        setConfirmingDelete(false);
       }
     };
     document.addEventListener('mousedown', onClick);
@@ -102,18 +104,63 @@ export function AccountMenu() {
             Profile &amp; settings
           </button>
 
+          <a
+            href="/api/account/export"
+            className={classNames(
+              'w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-bolt-elements-textPrimary',
+              'hover:bg-bolt-elements-bg-depth-3 transition-colors',
+            )}
+          >
+            <span className="i-ph:download-simple text-base text-bolt-elements-textSecondary" />
+            Export my data
+          </a>
+
           <Form method="post" action="/logout">
             <button
               type="submit"
               className={classNames(
-                'w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-red-400',
+                'w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-bolt-elements-textPrimary',
                 'hover:bg-bolt-elements-bg-depth-3 transition-colors',
               )}
             >
-              <span className="i-ph:sign-out text-base" />
+              <span className="i-ph:sign-out text-base text-bolt-elements-textSecondary" />
               Log out
             </button>
           </Form>
+
+          <div className="border-t border-[var(--bolt-mobile-surface-border)]">
+            {!confirmingDelete ? (
+              <button
+                onClick={() => setConfirmingDelete(true)}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+              >
+                <span className="i-ph:trash text-base" />
+                Delete account
+              </button>
+            ) : (
+              <div className="px-3.5 py-3">
+                <p className="text-xs text-bolt-elements-textSecondary mb-2.5 leading-relaxed">
+                  This permanently deletes your account, projects, and stored key. This cannot be undone.
+                </p>
+                <div className="flex gap-2">
+                  <Form method="post" action="/api/account/delete" className="flex-1">
+                    <button
+                      type="submit"
+                      className="w-full h-8 rounded-lg text-xs font-medium text-white bg-red-600 hover:bg-red-500 transition-colors"
+                    >
+                      Delete permanently
+                    </button>
+                  </Form>
+                  <button
+                    onClick={() => setConfirmingDelete(false)}
+                    className="flex-1 h-8 rounded-lg text-xs font-medium text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-3 hover:bg-bolt-elements-bg-depth-2 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
