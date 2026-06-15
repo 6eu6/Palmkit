@@ -25,6 +25,27 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   let apiKey: { provider: string; key: string | null; updated_at: string } | null = null;
 
+  // Snapshots are offloaded to Storage; pull each one so the export is complete.
+  const projectsWithSnapshots = await Promise.all(
+    (projects ?? []).map(async (proj) => {
+      if (proj.snapshot) {
+        return proj;
+      }
+
+      try {
+        const { data } = await supabase.storage.from('project-snapshots').download(`${user.id}/${proj.url_id}.json`);
+
+        if (data) {
+          return { ...proj, snapshot: JSON.parse(await data.text()) };
+        }
+      } catch {
+        // leave snapshot as-is
+      }
+
+      return proj;
+    }),
+  );
+
   if (keyRow) {
     const masterKey = getEnv(context).API_KEY_ENCRYPTION_KEY;
     let decrypted: string | null = null;
@@ -45,7 +66,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     account: { id: user.id, email: user.email },
     profile: profile ?? null,
     apiKey,
-    projects: projects ?? [],
+    projects: projectsWithSnapshots,
   };
 
   return new Response(JSON.stringify(payload, null, 2), {
