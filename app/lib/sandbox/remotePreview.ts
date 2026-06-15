@@ -247,3 +247,22 @@ export function killCurrentRemotePreview(): void {
 if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', killCurrentRemotePreview);
 }
+
+/**
+ * Reset everything when switching to a DIFFERENT conversation, so each chat has
+ * its own isolated sandbox and preview (kills the old sandbox, clears the
+ * cookie and the injected preview).
+ */
+export function resetForChat(): void {
+  killCurrentRemotePreview();
+
+  if (typeof document !== 'undefined') {
+    document.cookie = 'pf_preview=; path=/; max-age=0';
+  }
+
+  try {
+    workbenchStore.previews.set([]);
+  } catch {
+    // store may not be ready
+  }
+}

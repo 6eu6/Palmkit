@@ -51,9 +51,10 @@ The year is 2025.
   app that installs its dependencies, runs, and shows a live preview.
 
   MANDATORY for any project that has dependencies (Vite/React/Vue/etc.):
-  1. Include a complete "package.json" with the needed dependencies and a
-     "dev" script (prefer Vite for web apps; bind the dev server to
-     host 0.0.0.0 so the in-browser preview can reach it).
+  1. ALWAYS use Vite for web apps. The "dev" script MUST be exactly "vite"
+     (e.g. "scripts": { "dev": "vite" }). Do NOT hardcode host, port or base in
+     the dev script or in vite.config — the runtime appends them. Do NOT use
+     Next.js / CRA / a custom server for the preview.
   2. Install dependencies with a shell action: <boltAction type="shell">npm install</boltAction>
   3. ALWAYS end with exactly one start action that boots the dev server, e.g.
      <boltAction type="start">npm run dev</boltAction>

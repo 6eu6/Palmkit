@@ -133,13 +133,20 @@ export async function action({ context, request }: ActionFunctionArgs) {
         const sandbox = await Sandbox.connect(body.id, { apiKey });
         const port = body.port ?? DEFAULT_PORT;
 
-        // Ask the sandbox whether the dev server is listening yet.
+        /*
+         * Probe the ACTUAL preview path the iframe will load (/preview/, since
+         * the dev server runs with --base=/preview/). Require a 2xx/3xx so we
+         * only show the preview when that path really serves content — avoids a
+         * blank iframe when an app doesn't honour the base path.
+         */
         const probe = await sandbox.commands
-          .run(`curl -s -o /dev/null -w "%{http_code}" http://localhost:${port} || echo 000`, { timeoutMs: 8000 })
+          .run(`curl -s -o /dev/null -w "%{http_code}" http://localhost:${port}/preview/ || echo 000`, {
+            timeoutMs: 8000,
+          })
           .catch(() => ({ stdout: '000' }) as { stdout: string });
 
         const code = (probe.stdout || '').trim();
-        const ready = /^[2345]\d\d$/.test(code);
+        const ready = /^[23]\d\d$/.test(code);
 
         return json({ ready, code });
       }

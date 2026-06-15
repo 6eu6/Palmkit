@@ -2,7 +2,22 @@ import { useStore } from '@nanostores/react';
 import { memo, useEffect, useRef } from 'react';
 import { streamingState } from '~/lib/stores/streaming';
 import { workbenchStore } from '~/lib/stores/workbench';
-import { ensureRemotePreview, remotePreviewStatus, shouldUseRemotePreview } from '~/lib/sandbox/remotePreview';
+import {
+  ensureRemotePreview,
+  remotePreviewStatus,
+  shouldUseRemotePreview,
+  resetForChat,
+} from '~/lib/sandbox/remotePreview';
+
+function currentChatId(): string | undefined {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+
+  const m = window.location.pathname.match(/\/chat\/([^/]+)/);
+
+  return m ? m[1] : undefined;
+}
 
 /**
  * Drives the server-side (E2B) preview on memory-constrained devices.
@@ -20,6 +35,28 @@ export const RemotePreviewTrigger = memo(() => {
   const files = useStore(workbenchStore.files);
   const status = useStore(remotePreviewStatus);
   const prevStreaming = useRef(isStreaming);
+
+  /*
+   * Per-conversation isolation: when navigating to a DIFFERENT existing chat,
+   * tear down the old sandbox so each conversation gets its own. (Going from a
+   * fresh page to /chat/:id is the SAME session — don't reset then.)
+   */
+  const lastChatId = useRef<string | undefined>(currentChatId());
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const id = currentChatId();
+
+      if (id !== lastChatId.current) {
+        if (lastChatId.current && id !== lastChatId.current) {
+          resetForChat();
+        }
+
+        lastChatId.current = id;
+      }
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const justFinished = prevStreaming.current && !isStreaming;
