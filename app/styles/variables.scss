@@ -322,6 +322,13 @@
   --bolt-mobile-accent-faint: rgba(139, 92, 246, 0.04);
   --bolt-mobile-accent-text: #c4b5fd;
 
+  /* --- Secondary Accent (Teal, from the Palmkit logo) --- */
+  --bolt-teal: rgba(45, 212, 191, 1);
+  --bolt-teal-hover: rgba(94, 234, 212, 1);
+  --bolt-teal-text: #5eead4;
+  --bolt-teal-muted: rgba(45, 212, 191, 0.15);
+  --bolt-teal-subtle: rgba(45, 212, 191, 0.08);
+
   /* --- Mobile Text Hierarchy --- */
   --bolt-mobile-text-primary: #f0f0f5;
   --bolt-mobile-text-secondary: #8b8b9e;
