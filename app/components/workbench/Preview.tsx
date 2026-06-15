@@ -702,8 +702,10 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                   targetPath = '/' + targetPath;
                 }
 
-                // Avoid a double slash when baseUrl ends with "/" (e.g. the
-                // same-origin cloud proxy base "/preview/").
+                /*
+                 * Avoid a double slash when baseUrl ends with "/" (e.g. the
+                 * same-origin cloud proxy base "/preview/").
+                 */
                 const fullUrl = activePreview.baseUrl.replace(/\/$/, '') + targetPath;
                 setIframeUrl(fullUrl);
                 setDisplayPath(targetPath);
