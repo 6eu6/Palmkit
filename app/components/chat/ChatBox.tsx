@@ -1,5 +1,6 @@
 import React from 'react';
 import { ClientOnly } from 'remix-utils/client-only';
+import { ensureSignedIn } from '~/lib/stores/auth';
 import { classNames } from '~/utils/classNames';
 import { PROVIDER_LIST } from '~/utils/constants';
 import { ModelSelector } from '~/components/chat/ModelSelector';
@@ -178,6 +179,17 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             'w-full pl-3 sm:pl-4 pt-3 sm:pt-4 pr-14 outline-none resize-none text-bolt-elements-textPrimary placeholder-bolt-elements-textTertiary bg-transparent text-sm',
             'transition-all duration-200',
           )}
+          onMouseDown={(e) => {
+            if (!ensureSignedIn()) {
+              e.preventDefault();
+              e.currentTarget.blur();
+            }
+          }}
+          onFocus={(e) => {
+            if (!ensureSignedIn()) {
+              e.currentTarget.blur();
+            }
+          }}
           onDragEnter={(e) => {
             e.preventDefault();
             e.currentTarget.style.borderColor = 'var(--bolt-elements-borderColorActive)';
@@ -234,6 +246,10 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
           }}
           value={props.input}
           onChange={(event) => {
+            if (!ensureSignedIn()) {
+              return;
+            }
+
             props.handleInputChange?.(event);
           }}
           onPaste={props.handlePaste}

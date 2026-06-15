@@ -22,14 +22,14 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const origin = new URL(request.url).origin;
   const redirectTo = String(formData.get('redirectTo') || '/');
 
-  if (intent === 'github') {
+  if (intent === 'github' || intent === 'twitter') {
     const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'github',
+      provider: intent,
       options: { redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(redirectTo)}` },
     });
 
     if (error || !data.url) {
-      return Response.json({ error: error?.message ?? 'Could not start GitHub sign-in.' }, { status: 400, headers });
+      return Response.json({ error: error?.message ?? 'Could not start sign-in.' }, { status: 400, headers });
     }
 
     return redirect(data.url, { headers });
@@ -71,6 +71,17 @@ export default function Login() {
         >
           <span className="i-ph:github-logo-fill text-lg" />
           Continue with GitHub
+        </button>
+
+        <button
+          type="submit"
+          name="intent"
+          value="twitter"
+          disabled={busy}
+          className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors disabled:opacity-60"
+        >
+          <span className="i-ph:x-logo-fill text-lg" />
+          Continue with X
         </button>
 
         <div className="flex items-center gap-3 my-1">

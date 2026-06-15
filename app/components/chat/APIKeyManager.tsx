@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { IconButton } from '~/components/ui/IconButton';
 import type { ProviderInfo } from '~/types/model';
 import Cookies from 'js-cookie';
+import { authUserStore } from '~/lib/stores/auth';
 
 interface APIKeyManagerProps {
   provider: ProviderInfo;
@@ -81,6 +82,20 @@ export const APIKeyManager: React.FC<APIKeyManagerProps> = ({ provider, apiKey, 
     const currentKeys = getApiKeysFromCookies();
     const newKeys = { ...currentKeys, [provider.name]: tempKey };
     Cookies.set('apiKeys', JSON.stringify(newKeys));
+
+    /*
+     * If signed in, persist the key to the account (encrypted at rest) so it
+     * syncs across devices and isn't re-entered each visit.
+     */
+    if (authUserStore.get() && tempKey) {
+      fetch('/api/account/api-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: tempKey, provider: provider.name }),
+      }).catch(() => {
+        // best-effort; local cookie still holds the key
+      });
+    }
 
     setIsEditing(false);
   };

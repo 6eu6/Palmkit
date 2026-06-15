@@ -5,6 +5,7 @@ import { classNames } from '~/utils/classNames';
 import { HeaderActionButtons } from './HeaderActionButtons.client';
 import { ChatDescription } from '~/lib/persistence/ChatDescription.client';
 import { mobileActiveTab } from '~/lib/stores/mobile';
+import { AccountMenu } from './AccountMenu';
 
 export function Header() {
   const chat = useStore(chatStore);
@@ -41,16 +42,13 @@ export function Header() {
         </button>
         <div className="i-ph:sidebar-simple-duotone text-xl opacity-60 group-hover:opacity-100 transition-opacity duration-200 hidden sm:block" />
         <a href="/" className="flex items-center gap-2" aria-label="Palmkit home">
-          {/* Brand mark: lightning glyph in a violet gradient chip */}
-          <span
-            className="flex items-center justify-center w-7 h-7 rounded-[9px] text-white transition-transform duration-200 group-hover:scale-105"
-            style={{
-              background: 'linear-gradient(135deg, var(--bolt-mobile-accent) 0%, #6234bb 100%)',
-              boxShadow: '0 2px 10px rgba(139, 92, 246, 0.35)',
-            }}
-          >
-            <span className="i-ph:lightning-fill text-base" />
-          </span>
+          {/* Brand mark: Palmkit app icon */}
+          <img
+            src="/palmkit-icon.jpg"
+            alt="Palmkit"
+            className="w-7 h-7 rounded-[9px] object-cover transition-transform duration-200 group-hover:scale-105"
+            style={{ boxShadow: '0 2px 10px rgba(139, 92, 246, 0.35)' }}
+          />
           {/* Wordmark */}
           <span className="text-[17px] sm:text-lg font-semibold tracking-tight leading-none select-none">
             <span className="text-[var(--bolt-mobile-text-primary)]">Palm</span>
@@ -59,10 +57,12 @@ export function Header() {
         </a>
       </div>
       {chat.started && (
-        <>
-          <span className="flex-1 px-3 sm:px-4 truncate text-center text-xs sm:text-sm font-medium text-[var(--bolt-mobile-text-secondary)]">
-            <ClientOnly>{() => <ChatDescription />}</ClientOnly>
-          </span>
+        <span className="flex-1 px-3 sm:px-4 truncate text-center text-xs sm:text-sm font-medium text-[var(--bolt-mobile-text-secondary)]">
+          <ClientOnly>{() => <ChatDescription />}</ClientOnly>
+        </span>
+      )}
+      <div className={classNames('flex items-center gap-2', { 'ml-auto': !chat.started })}>
+        {chat.started && (
           <ClientOnly>
             {() => (
               <div className="flex-shrink-0">
@@ -70,8 +70,9 @@ export function Header() {
               </div>
             )}
           </ClientOnly>
-        </>
-      )}
+        )}
+        <ClientOnly>{() => <AccountMenu />}</ClientOnly>
+      </div>
     </header>
   );
 }

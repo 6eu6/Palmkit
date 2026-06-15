@@ -34,6 +34,7 @@ import type { DesignScheme } from '~/types/design-scheme';
 import type { ElementInfo } from '~/components/workbench/Inspector';
 import LlmErrorAlert from './LLMApiAlert';
 import { MobileShell } from '~/components/mobile/MobileShell';
+import { AuthModal } from '~/components/auth/AuthModal';
 
 const TEXTAREA_MIN_HEIGHT = 76;
 
@@ -532,6 +533,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       <Tooltip.Provider delayDuration={200}>
         {baseChat}
         <ClientOnly>{() => <MobileShell />}</ClientOnly>
+        <ClientOnly>{() => <AuthModal />}</ClientOnly>
       </Tooltip.Provider>
     );
   },
