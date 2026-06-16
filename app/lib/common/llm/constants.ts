@@ -15,12 +15,12 @@ export const PROVIDER_COMPLETION_LIMITS: Record<string, number> = {
   Anthropic: 16384, // Claude models handle 16k comfortably per segment
   Google: 16384, // Gemini Pro/Flash support 16k+ output
   Cohere: 8192,
-  DeepSeek: 8192,
+  DeepSeek: 16384, // DeepSeek V3/V4 support 16k output tokens
   Groq: 8192,
   HuggingFace: 8192,
   Mistral: 8192,
   Ollama: 8192,
-  OpenRouter: 8192,
+  OpenRouter: 16384, // OpenRouter proxies modern models (DeepSeek, Claude, GPT) that support 16k+
   Perplexity: 8192,
   Together: 8192,
   xAI: 8192,
@@ -44,7 +44,7 @@ export function isReasoningModel(modelName: string): boolean {
  * mid-file on large apps; with only 2 segments generation stopped and the user
  * had to type "continue". 8 segments lets it auto-continue to completion.
  */
-export const MAX_RESPONSE_SEGMENTS = 8;
+export const MAX_RESPONSE_SEGMENTS = 16;
 
 export interface File {
   type: 'file';

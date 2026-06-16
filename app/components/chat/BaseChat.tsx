@@ -36,7 +36,7 @@ import LlmErrorAlert from './LLMApiAlert';
 import { MobileShell } from '~/components/mobile/MobileShell';
 import { AuthModal } from '~/components/auth/AuthModal';
 
-const TEXTAREA_MIN_HEIGHT = 76;
+const TEXTAREA_MIN_HEIGHT = 96;
 
 interface BaseChatProps {
   textareaRef?: React.RefObject<HTMLTextAreaElement> | undefined;

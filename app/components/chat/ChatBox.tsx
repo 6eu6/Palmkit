@@ -331,8 +331,8 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             </IconButton>
           )}
 
-          {/* Secondary actions — collapsed on mobile */}
-          <div className="hidden sm:flex items-center gap-0.5">
+          {/* Secondary actions — visible on both mobile & desktop now */}
+          <div className="flex items-center gap-0.5">
             <ColorSchemeDialog designScheme={props.designScheme} setDesignScheme={props.setDesignScheme} />
             <McpTools />
           </div>
@@ -359,20 +359,21 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             )}
           </IconButton>
 
-          {/* Supabase — desktop inline, mobile below */}
-          <div className="hidden sm:flex items-center">
+          {/* Supabase — visible on both mobile & desktop */}
+          <div className="flex items-center">
             <SupabaseConnection />
           </div>
         </div>
 
-        {/*
-          Mobile secondary row removed: it surfaced advanced/desktop-only
-          integrations (design scheme, MCP tools, Supabase) that cluttered the
-          mobile composer — and Supabase rendered as an icon-less empty button.
-          These remain available inline on desktop (rows above). Keeping the
-          mobile composer a focused command center.
-        */}
-
+        {/* Mobile hint: Enter to send */}
+        {props.input.length > 1 && (
+          <div className="flex sm:hidden items-center justify-end px-3 pb-2">
+            <div className="text-[11px] text-bolt-elements-textTertiary">
+              <kbd className="px-1.5 py-0.5 rounded bg-bolt-elements-bg-depth-2">Enter</kbd> send &middot; <kbd className="px-1.5 py-0.5 rounded bg-bolt-elements-bg-depth-2">Shift+Enter</kbd> new line
+            </div>
+          </div>
+        )}
+        {/* Desktop hint: Shift + Return for new line */}
         {props.input.length > 3 && (
           <div className="hidden sm:flex items-center justify-end px-3 pb-2">
             <div className="text-xs text-bolt-elements-textTertiary">

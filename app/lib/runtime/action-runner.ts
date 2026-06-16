@@ -24,13 +24,21 @@ async function shouldOffloadExecution(): Promise<boolean> {
   const constrained = isMemoryConstrainedDevice();
 
   if (!constrained) {
+    logger.info(`[offload] not a memory-constrained device — running locally`);
     return false;
   }
 
   const available = await isRemoteSandboxAvailable();
-  logger.info(`[mobile] offload check: constrained=${constrained}, e2b=${available}`);
+  logger.info(`[offload] constrained=${constrained}, e2b=${available}`);
 
-  return available;
+  // If E2B is not available, we MUST run locally even on constrained devices.
+  // A working (possibly slow) preview is better than no preview at all.
+  if (!available) {
+    logger.warn(`[offload] E2B not available — forcing local execution on constrained device. Preview may be slow.`);
+    return false;
+  }
+
+  return true;
 }
 
 export type ActionStatus = 'pending' | 'running' | 'complete' | 'aborted' | 'failed';

@@ -105,16 +105,16 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
          * hanging forever.
          */
         streamRecovery = new StreamRecoveryManager({
-          timeout: 45000,
-          maxRetries: 1,
+          timeout: 120000, // 120s - reasoning models (DeepSeek R1, o1) can take 60-90s before first token
+          maxRetries: 2,
           onTimeout: () => {
-            logger.warn('Stream timeout — no data received for 45 s, notifying client');
+            logger.warn('Stream timeout — no data received for 120 s, notifying client');
             dataStream.writeData({
               type: 'progress',
               label: 'response',
               status: 'error',
               order: progressCounter++,
-              message: 'The AI service timed out. Please try again or select a different model.',
+              message: 'The AI service timed out after 2 minutes. The model may be processing a complex request. Try again or select a faster model.',
             } satisfies ProgressAnnotation);
             streamRecovery?.stop();
           },

@@ -451,6 +451,6 @@ The login should now work correctly. The dev server will hot-reload with the fix
 </examples>`;
 
 export const CONTINUE_PROMPT = stripIndents`
-  Continue your prior response. IMPORTANT: Immediately begin from where you left off without any interruptions.
-  Do not repeat any content, including artifact and action tags.
+  Continue EXACTLY from where you stopped. Resume the next <boltAction> tag immediately.
+  Do NOT repeat any completed actions or files. Only output remaining files/commands.
 `;
