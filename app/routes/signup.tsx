@@ -1,7 +1,11 @@
-import { type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction, redirect } from '@remix-run/cloudflare';
+import { type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction, json, redirect } from '@remix-run/cloudflare';
 import { Form, Link, useActionData, useNavigation } from '@remix-run/react';
 import { AuthButton, AuthInput, AuthLayout } from '~/components/auth/AuthLayout';
 import { getAuthedUser, getSupabaseServerClient } from '~/lib/auth/supabase.server';
+
+type SignupActionData =
+  | { error: string }
+  | { confirm: true; email: string };
 
 export const meta: MetaFunction = () => [{ title: 'Sign up — Palmkit' }];
 
@@ -28,7 +32,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     });
 
     if (error || !data.url) {
-      return Response.json({ error: error?.message ?? 'Could not start sign-in.' }, { status: 400, headers });
+      return json({ error: error?.message ?? 'Could not start sign-in.' } satisfies SignupActionData, { status: 400, headers });
     }
 
     return redirect(data.url, { headers });
@@ -38,8 +42,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const password = String(formData.get('password') ?? '');
 
   if (!email || password.length < 8) {
-    return Response.json(
-      { error: 'Enter an email and a password of at least 8 characters.' },
+    return json(
+      { error: 'Enter an email and a password of at least 8 characters.' } satisfies SignupActionData,
       { status: 400, headers },
     );
   }
@@ -51,12 +55,12 @@ export async function action({ request, context }: ActionFunctionArgs) {
   });
 
   if (error) {
-    return Response.json({ error: error.message }, { status: 400, headers });
+    return json({ error: error.message } satisfies SignupActionData, { status: 400, headers });
   }
 
   // If email confirmation is enabled there is no session yet.
   if (!data.session) {
-    return Response.json({ confirm: true, email }, { headers });
+    return json({ confirm: true, email } satisfies SignupActionData, { headers });
   }
 
   return redirect('/', { headers });
@@ -67,7 +71,7 @@ export default function Signup() {
   const navigation = useNavigation();
   const busy = navigation.state !== 'idle';
 
-  if (actionData && 'confirm' in actionData && actionData.confirm) {
+  if (actionData && 'confirm' in actionData) {
     return (
       <AuthLayout title="Check your inbox" subtitle="One more step to activate your account.">
         <div className="flex flex-col items-center text-center gap-3 py-2">
@@ -88,7 +92,6 @@ export default function Signup() {
     <AuthLayout title="Create your account" subtitle="Keep your projects and API key across devices.">
       {/* OAuth form — uses reloadDocument so external redirects work */}
       <Form method="post" reloadDocument className="flex flex-col gap-3">
-        <input type="hidden" name="intent" value="" />
         <button
           type="submit"
           name="intent"
@@ -143,7 +146,7 @@ export default function Signup() {
           </p>
         </div>
 
-        {actionData && 'error' in actionData && actionData.error ? (
+        {'error' in (actionData ?? {}) && actionData?.error ? (
           <div
             className="flex items-start gap-2 p-3 rounded-xl text-xs"
             style={{

@@ -1,7 +1,9 @@
-import { type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction, redirect } from '@remix-run/cloudflare';
+import { type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction, json, redirect } from '@remix-run/cloudflare';
 import { Form, Link, useActionData, useNavigation, useSearchParams } from '@remix-run/react';
 import { AuthButton, AuthInput, AuthLayout } from '~/components/auth/AuthLayout';
 import { getAuthedUser, getSupabaseServerClient } from '~/lib/auth/supabase.server';
+
+type LoginActionData = { error: string };
 
 export const meta: MetaFunction = () => [{ title: 'Log in — Palmkit' }];
 
@@ -29,7 +31,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     });
 
     if (error || !data.url) {
-      return Response.json({ error: error?.message ?? 'Could not start sign-in.' }, { status: 400, headers });
+      return json({ error: error?.message ?? 'Could not start sign-in.' } satisfies LoginActionData, { status: 400, headers });
     }
 
     return redirect(data.url, { headers });
@@ -39,13 +41,13 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const password = String(formData.get('password') ?? '');
 
   if (!email || !password) {
-    return Response.json({ error: 'Email and password are required.' }, { status: 400, headers });
+    return json({ error: 'Email and password are required.' } satisfies LoginActionData, { status: 400, headers });
   }
 
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
-    return Response.json({ error: error.message }, { status: 400, headers });
+    return json({ error: error.message } satisfies LoginActionData, { status: 400, headers });
   }
 
   return redirect(redirectTo, { headers });
@@ -66,7 +68,6 @@ export default function Login() {
       {/* OAuth form — uses reloadDocument so external redirects (GitHub/X) work */}
       <Form method="post" reloadDocument className="flex flex-col gap-3">
         <input type="hidden" name="redirectTo" value={redirectTo} />
-        <input type="hidden" name="intent" value="" />
         <button
           type="submit"
           name="intent"
@@ -135,7 +136,7 @@ export default function Login() {
             }}
           >
             <span className="i-ph:warning-circle-fill text-sm mt-0.5 flex-shrink-0" />
-            <span>{actionData?.error || urlError}</span>
+            <span>{actionData?.error ?? urlError}</span>
           </div>
         ) : null}
 

@@ -90,7 +90,7 @@ export default function Privacy() {
       <LegalSection heading="7. Contact">
         <p>
           Questions about privacy? Contact us at{' '}
-          <span style={{ color: 'var(--bolt-mobile-accent-text, #c4b5fd)' }}>support@palmkit.app</span>.
+          <span style={{ color: '#5eead4' }}>support@palmkit.app</span>.
         </p>
       </LegalSection>
     </LegalLayout>

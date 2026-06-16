@@ -1,7 +1,9 @@
-import { type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction, redirect } from '@remix-run/cloudflare';
+import { type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction, json, redirect } from '@remix-run/cloudflare';
 import { Form, Link, useActionData, useNavigation } from '@remix-run/react';
 import { AuthButton, AuthInput, AuthLayout } from '~/components/auth/AuthLayout';
 import { getAuthedUser, getSupabaseServerClient } from '~/lib/auth/supabase.server';
+
+type ResetPasswordActionData = { error: string };
 
 export const meta: MetaFunction = () => [{ title: 'Set a new password — Palmkit' }];
 
@@ -34,17 +36,17 @@ export async function action({ request, context }: ActionFunctionArgs) {
   }
 
   if (password.length < 8) {
-    return Response.json({ error: 'Password must be at least 8 characters.' }, { status: 400, headers });
+    return json({ error: 'Password must be at least 8 characters.' } satisfies ResetPasswordActionData, { status: 400, headers });
   }
 
   if (password !== confirm) {
-    return Response.json({ error: 'Passwords do not match.' }, { status: 400, headers });
+    return json({ error: 'Passwords do not match.' } satisfies ResetPasswordActionData, { status: 400, headers });
   }
 
   const { error } = await supabase.auth.updateUser({ password });
 
   if (error) {
-    return Response.json({ error: error.message }, { status: 400, headers });
+    return json({ error: error.message } satisfies ResetPasswordActionData, { status: 400, headers });
   }
 
   return redirect('/?passwordReset=1', { headers });
@@ -77,13 +79,13 @@ export default function ResetPassword() {
           placeholder="Re-enter password"
         />
 
-        {actionData?.error ? <p className="text-xs text-red-400">{actionData.error}</p> : null}
+        {'error' in (actionData ?? {}) && actionData?.error ? <p className="text-xs text-red-400">{actionData.error}</p> : null}
 
         <AuthButton disabled={busy}>{busy ? 'Saving…' : 'Update password'}</AuthButton>
       </Form>
 
       <p className="mt-4 text-center text-xs text-bolt-elements-textSecondary">
-        <Link to="/login" className="underline" style={{ color: 'var(--bolt-mobile-accent-text, #c4b5fd)' }}>
+        <Link to="/login" className="underline" style={{ color: '#5eead4' }}>
           Back to log in
         </Link>
       </p>

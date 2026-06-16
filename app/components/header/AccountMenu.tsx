@@ -39,7 +39,7 @@ export function AccountMenu() {
       <button
         onClick={openAuthModal}
         className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium text-white transition-opacity hover:opacity-90"
-        style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #6234bb 100%)' }}
+        style={{ background: 'linear-gradient(135deg, #00A8B5 0%, #008C97 100%)' }}
       >
         <span className="i-ph:sign-in text-sm" />
         Log in
@@ -72,7 +72,7 @@ export function AccountMenu() {
         ) : (
           <span
             className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white"
-            style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #6234bb 100%)' }}
+            style={{ background: 'linear-gradient(135deg, #00A8B5 0%, #008C97 100%)' }}
           >
             {initial}
           </span>
@@ -84,7 +84,7 @@ export function AccountMenu() {
           className="absolute right-0 mt-2 w-56 rounded-xl border shadow-xl overflow-hidden z-[60]"
           style={{
             background: 'var(--bolt-mobile-surface-bg, #0e0e16)',
-            borderColor: 'var(--bolt-mobile-surface-border, rgba(139,92,246,0.18))',
+            borderColor: 'var(--bolt-mobile-surface-border, rgba(0,168,181,0.18))',
             animation: 'fade-in-scale 0.16s ease forwards',
           }}
         >

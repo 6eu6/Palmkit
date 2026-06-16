@@ -2,7 +2,7 @@ import { Link } from '@remix-run/react';
 import type { ReactNode } from 'react';
 
 /**
- * Shared layout for legal pages (Terms, Privacy) — Palmkit dark/violet
+ * Shared layout for legal pages (Terms, Privacy) — Palmkit dark/teal
  * identity, mobile-first, clean readable typography.
  */
 export function LegalLayout({ title, updated, children }: { title: string; updated: string; children: ReactNode }) {
@@ -13,7 +13,7 @@ export function LegalLayout({ title, updated, children }: { title: string; updat
         className="sticky top-0 z-10 flex items-center gap-2 px-4 h-14 border-b backdrop-blur-xl"
         style={{
           background: 'var(--bolt-mobile-surface-bg, rgba(10,10,18,0.9))',
-          borderColor: 'var(--bolt-mobile-surface-border, rgba(139,92,246,0.14))',
+          borderColor: 'var(--bolt-mobile-surface-border, rgba(0,168,181,0.14))',
         }}
       >
         <Link to="/" className="flex items-center" aria-label="Palmkit home">
@@ -24,8 +24,8 @@ export function LegalLayout({ title, updated, children }: { title: string; updat
           to="/"
           className="ml-auto text-xs px-3 py-1.5 rounded-lg transition-colors"
           style={{
-            background: 'var(--bolt-mobile-accent-faint, rgba(139,92,246,0.06))',
-            color: 'var(--bolt-mobile-accent-text, #c4b5fd)',
+            background: 'var(--bolt-mobile-accent-faint, rgba(0,168,181,0.06))',
+            color: '#5eead4',
           }}
         >
           ← Back to app
@@ -38,8 +38,8 @@ export function LegalLayout({ title, updated, children }: { title: string; updat
           <div
             className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full mb-3"
             style={{
-              background: 'var(--bolt-mobile-accent-faint, rgba(139,92,246,0.08))',
-              color: 'var(--bolt-mobile-accent-text, #c4b5fd)',
+              background: 'var(--bolt-mobile-accent-faint, rgba(0,168,181,0.08))',
+              color: '#5eead4',
             }}
           >
             <span className="i-ph:scroll text-xs" />
@@ -55,14 +55,14 @@ export function LegalLayout({ title, updated, children }: { title: string; updat
 
         <footer
           className="mt-12 pt-6 border-t text-xs text-bolt-elements-textTertiary"
-          style={{ borderColor: 'var(--bolt-mobile-surface-border, rgba(139,92,246,0.12))' }}
+          style={{ borderColor: 'var(--bolt-mobile-surface-border, rgba(0,168,181,0.12))' }}
         >
           <p>
             Palmkit is an independent project built on top of the MIT-licensed{' '}
             <a
               href="https://github.com/stackblitz-labs/bolt.diy"
               className="underline"
-              style={{ color: 'var(--bolt-mobile-accent-text, #c4b5fd)' }}
+              style={{ color: '#5eead4' }}
               target="_blank"
               rel="noreferrer"
             >
