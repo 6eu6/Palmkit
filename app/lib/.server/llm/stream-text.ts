@@ -8,7 +8,6 @@ import { allowedHTMLElements } from '~/utils/markdown';
 import { LLMManager } from '~/lib/modules/llm/manager';
 import { createScopedLogger } from '~/utils/logger';
 import { createFilesContext, extractPropertiesFromMessage } from './utils';
-import { discussPrompt } from '~/lib/common/prompts/discuss-prompt';
 import type { DesignScheme } from '~/types/design-scheme';
 
 export type Messages = Message[];
@@ -253,6 +252,9 @@ export async function streamText(props: {
     `Options for "${modelDetails.name}": isReasoning=${isReasoning}, keys=[${Object.keys(filteredOptions).join(',')}]`,
   );
 
+  // Unified prompt: the same smart prompt handles both discussion and building.
+  // The AI intelligently decides when to discuss vs. when to produce artifacts
+  // based on the user's message — no mode switching needed.
   const streamParams = {
     model: provider.getModelInstance({
       model: modelDetails.name,
@@ -260,7 +262,7 @@ export async function streamText(props: {
       apiKeys,
       providerSettings,
     }),
-    system: chatMode === 'build' ? systemPrompt : discussPrompt(),
+    system: systemPrompt,
     ...tokenParams,
     messages: convertToCoreMessages(processedMessages as any),
     ...filteredOptions,
