@@ -126,7 +126,7 @@ const inlineThemeCode = stripIndents`
   setTutorialKitTheme();
 
   function setTutorialKitTheme() {
-    let theme = localStorage.getItem('bolt_theme');
+    let theme = localStorage.getItem('palmkit_theme');
 
     if (!theme) {
       theme = 'dark';
@@ -167,10 +167,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
         icon={({ type }) => {
           switch (type) {
             case 'success': {
-              return <div className="i-ph:check-bold text-bolt-elements-icon-success text-2xl" />;
+              return <div className="i-ph:check-bold text-palmkit-elements-icon-success text-2xl" />;
             }
             case 'error': {
-              return <div className="i-ph:warning-circle-bold text-bolt-elements-icon-error text-2xl" />;
+              return <div className="i-ph:warning-circle-bold text-palmkit-elements-icon-error text-2xl" />;
             }
           }
 
@@ -199,13 +199,13 @@ export function ErrorBoundary() {
       : 'Unknown error';
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-bolt-elements-bg-depth-1 text-bolt-elements-textPrimary p-6">
+    <div className="min-h-screen flex items-center justify-center bg-palmkit-elements-bg-depth-1 text-palmkit-elements-textPrimary p-6">
       <div className="max-w-md w-full text-center">
         <div className="text-4xl mb-4">⚠️</div>
         <h1 className="text-xl font-bold mb-3">Something went wrong</h1>
-        <p className="text-sm text-bolt-elements-textSecondary mb-4 break-words">{message}</p>
+        <p className="text-sm text-palmkit-elements-textSecondary mb-4 break-words">{message}</p>
         {message.includes('Supabase') && (
-          <p className="text-xs text-bolt-elements-textTertiary mb-4">
+          <p className="text-xs text-palmkit-elements-textTertiary mb-4">
             Make sure SUPABASE_URL and SUPABASE_ANON_KEY are set as environment variables.
           </p>
         )}

@@ -19,7 +19,7 @@ export const SendButton = ({ show, isStreaming, disabled, onClick }: SendButtonP
           style={{
             background: isStreaming
               ? 'linear-gradient(135deg, #ef4444, #dc2626)'
-              : 'linear-gradient(135deg, var(--bolt-gradient-start), var(--bolt-gradient-end))',
+              : 'linear-gradient(135deg, var(--palmkit-gradient-start), var(--palmkit-gradient-end))',
           }}
           transition={{ ease: customEasingFn, duration: 0.17 }}
           initial={{ opacity: 0, y: 10, scale: 0.9 }}

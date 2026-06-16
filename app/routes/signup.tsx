@@ -78,8 +78,8 @@ export default function Signup() {
       <AuthLayout title="Check your inbox" subtitle="One more step to activate your account.">
         <div className="flex flex-col items-center text-center gap-3 py-2">
           <span className="i-ph:envelope-simple-open text-3xl" style={{ color: '#5eead4' }} />
-          <p className="text-sm text-bolt-elements-textSecondary">
-            We sent a confirmation link to <span className="text-bolt-elements-textPrimary">{actionData.email}</span>.
+          <p className="text-sm text-palmkit-elements-textSecondary">
+            We sent a confirmation link to <span className="text-palmkit-elements-textPrimary">{actionData.email}</span>.
             Click it to finish creating your account.
           </p>
           <Link to="/login" className="text-xs underline" style={{ color: '#5eead4' }}>
@@ -99,7 +99,7 @@ export default function Signup() {
       <div className="flex flex-col gap-3">
         <a
           href="/api/auth/github"
-          className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors"
+          className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary bg-palmkit-elements-bg-depth-2 hover:bg-palmkit-elements-bg-depth-3 transition-colors"
         >
           <span className="i-ph:github-logo-fill text-lg" />
           Continue with GitHub
@@ -107,7 +107,7 @@ export default function Signup() {
 
         <a
           href="/api/auth/twitter"
-          className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors"
+          className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary bg-palmkit-elements-bg-depth-2 hover:bg-palmkit-elements-bg-depth-3 transition-colors"
         >
           <span className="i-ph:x-logo-fill text-lg" />
           Continue with X
@@ -115,9 +115,9 @@ export default function Signup() {
       </div>
 
       <div className="flex items-center gap-3 my-4">
-        <div className="h-px flex-1 bg-bolt-elements-borderColor" />
-        <span className="text-[11px] text-bolt-elements-textTertiary">or</span>
-        <div className="h-px flex-1 bg-bolt-elements-borderColor" />
+        <div className="h-px flex-1 bg-palmkit-elements-borderColor" />
+        <span className="text-[11px] text-palmkit-elements-textTertiary">or</span>
+        <div className="h-px flex-1 bg-palmkit-elements-borderColor" />
       </div>
 
       {/* Email/password form — server-side Remix form for inline errors */}
@@ -140,7 +140,7 @@ export default function Signup() {
             minLength={8}
             placeholder="At least 8 characters"
           />
-          <p className="mt-1.5 text-[11px] text-bolt-elements-textTertiary leading-relaxed">
+          <p className="mt-1.5 text-[11px] text-palmkit-elements-textTertiary leading-relaxed">
             Must include uppercase, lowercase, number, and special character.
           </p>
         </div>
@@ -162,7 +162,7 @@ export default function Signup() {
         <AuthButton disabled={busy}>{busy ? 'Creating account…' : 'Sign up'}</AuthButton>
       </Form>
 
-      <p className="mt-4 text-center text-xs text-bolt-elements-textSecondary">
+      <p className="mt-4 text-center text-xs text-palmkit-elements-textSecondary">
         Already have an account?{' '}
         <Link to="/login" className="underline" style={{ color: '#5eead4' }}>
           Log in

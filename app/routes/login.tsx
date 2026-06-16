@@ -74,7 +74,7 @@ export default function Login() {
       <div className="flex flex-col gap-3">
         <a
           href={`/api/auth/github?redirectTo=${encodeURIComponent(redirectTo)}`}
-          className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors"
+          className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary bg-palmkit-elements-bg-depth-2 hover:bg-palmkit-elements-bg-depth-3 transition-colors"
         >
           <span className="i-ph:github-logo-fill text-lg" />
           Continue with GitHub
@@ -82,7 +82,7 @@ export default function Login() {
 
         <a
           href={`/api/auth/twitter?redirectTo=${encodeURIComponent(redirectTo)}`}
-          className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors"
+          className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary bg-palmkit-elements-bg-depth-2 hover:bg-palmkit-elements-bg-depth-3 transition-colors"
         >
           <span className="i-ph:x-logo-fill text-lg" />
           Continue with X
@@ -90,9 +90,9 @@ export default function Login() {
       </div>
 
       <div className="flex items-center gap-3 my-4">
-        <div className="h-px flex-1 bg-bolt-elements-borderColor" />
-        <span className="text-[11px] text-bolt-elements-textTertiary">or</span>
-        <div className="h-px flex-1 bg-bolt-elements-borderColor" />
+        <div className="h-px flex-1 bg-palmkit-elements-borderColor" />
+        <span className="text-[11px] text-palmkit-elements-textTertiary">or</span>
+        <div className="h-px flex-1 bg-palmkit-elements-borderColor" />
       </div>
 
       {/* Email/password form — stays as server-side Remix form for inline error display */}
@@ -118,7 +118,7 @@ export default function Login() {
 
         <Link
           to="/forgot-password"
-          className="self-end -mt-1 text-xs text-bolt-elements-textSecondary hover:underline"
+          className="self-end -mt-1 text-xs text-palmkit-elements-textSecondary hover:underline"
           style={{ color: '#5eead4' }}
         >
           Forgot password?
@@ -141,7 +141,7 @@ export default function Login() {
         <AuthButton disabled={busy}>{busy ? 'Logging in…' : 'Log in'}</AuthButton>
       </Form>
 
-      <p className="mt-4 text-center text-xs text-bolt-elements-textSecondary">
+      <p className="mt-4 text-center text-xs text-palmkit-elements-textSecondary">
         Don&apos;t have an account?{' '}
         <Link to="/signup" className="underline" style={{ color: '#5eead4' }}>
           Sign up

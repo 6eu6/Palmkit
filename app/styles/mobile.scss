@@ -50,11 +50,11 @@
    * ============================================ */
 
   :root {
-    --header-height: var(--bolt-mobile-header-height);
+    --header-height: var(--palmkit-mobile-header-height);
   }
 
   header {
-    border-bottom-color: var(--bolt-mobile-surface-border);
+    border-bottom-color: var(--palmkit-mobile-surface-border);
   }
 
   /* ============================================
@@ -70,7 +70,7 @@
 
   /* Bottom padding clears the dock + safe area */
   .Chat > .flex > .flex {
-    padding-bottom: calc(var(--bolt-mobile-dock-height) + env(safe-area-inset-bottom, 0px) + 8px);
+    padding-bottom: calc(var(--palmkit-mobile-dock-height) + env(safe-area-inset-bottom, 0px) + 8px);
   }
 
   .StickToBottom {
@@ -106,7 +106,7 @@
    * ============================================ */
 
   .z-workbench > div > div {
-    bottom: calc(var(--bolt-mobile-dock-height) + env(safe-area-inset-bottom, 0px));
+    bottom: calc(var(--palmkit-mobile-dock-height) + env(safe-area-inset-bottom, 0px));
     width: 100vw;
     max-width: 100vw;
     left: 0;
@@ -130,8 +130,8 @@
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     max-width: 100%;
-    gap: var(--bolt-space-1);
-    padding: var(--bolt-space-1) var(--bolt-space-2);
+    gap: var(--palmkit-space-1);
+    padding: var(--palmkit-space-1) var(--palmkit-space-2);
 
     &::-webkit-scrollbar {
       display: none;
@@ -143,7 +143,7 @@
     font-size: 11px;
     white-space: nowrap;
     flex-shrink: 0;
-    border-radius: var(--bolt-radius-sm);
+    border-radius: var(--palmkit-radius-sm);
   }
 
   [data-workbench-toolbar] [role='tablist'],
@@ -154,7 +154,7 @@
 
   /* File tree: tappable items */
   .z-workbench [role='treeitem'] {
-    min-height: var(--bolt-mobile-compact-item);
+    min-height: var(--palmkit-mobile-compact-item);
     padding: 4px 8px;
   }
 
@@ -207,18 +207,18 @@
   #examples button {
     padding: 6px 10px;
     font-size: 11px;
-    border-color: var(--bolt-mobile-surface-border);
-    color: var(--bolt-mobile-text-secondary);
-    background: var(--bolt-mobile-accent-faint);
-    border-radius: var(--bolt-radius-md);
-    transition: all var(--bolt-duration-normal) var(--bolt-ease-default);
+    border-color: var(--palmkit-mobile-surface-border);
+    color: var(--palmkit-mobile-text-secondary);
+    background: var(--palmkit-mobile-accent-faint);
+    border-radius: var(--palmkit-radius-md);
+    transition: all var(--palmkit-duration-normal) var(--palmkit-ease-default);
   }
 
   #examples button:hover,
   #examples button:active {
-    color: var(--bolt-mobile-accent-text);
-    border-color: var(--bolt-mobile-surface-border-strong);
-    background: var(--bolt-mobile-accent-subtle);
+    color: var(--palmkit-mobile-accent-text);
+    border-color: var(--palmkit-mobile-surface-border-strong);
+    background: var(--palmkit-mobile-accent-subtle);
   }
 
   /* ============================================
@@ -244,13 +244,13 @@
 
   /* Spacer that pushes content above the dock */
   .mobile-dock-spacer {
-    height: var(--bolt-mobile-dock-height);
+    height: var(--palmkit-mobile-dock-height);
     margin-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   /* Floating workbench action bar — sits above the dock */
   .mobile-workbench-float-bar {
-    bottom: calc(var(--bolt-mobile-dock-height) + env(safe-area-inset-bottom, 0px) + 8px);
+    bottom: calc(var(--palmkit-mobile-dock-height) + env(safe-area-inset-bottom, 0px) + 8px);
   }
 
   /* ============================================
@@ -259,14 +259,14 @@
 
   /* Compact message bubbles on mobile */
   .Chat .max-w-chat {
-    padding-left: var(--bolt-space-3);
-    padding-right: var(--bolt-space-3);
+    padding-left: var(--palmkit-space-3);
+    padding-right: var(--palmkit-space-3);
   }
 
   /* AI response artifacts: full width on mobile */
   [data-artifact] {
-    border-radius: var(--bolt-radius-lg);
-    margin: var(--bolt-space-2) 0;
+    border-radius: var(--palmkit-radius-lg);
+    margin: var(--palmkit-space-2) 0;
   }
 
   /* ============================================

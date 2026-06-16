@@ -22,19 +22,19 @@ export function Header() {
         'transition-all duration-300 ease-out',
         {
           'border-transparent bg-transparent': !chat.started,
-          'bg-[var(--bolt-mobile-surface-bg)] backdrop-blur-xl border-b border-[var(--bolt-mobile-surface-border)]':
+          'bg-[var(--palmkit-mobile-surface-bg)] backdrop-blur-xl border-b border-[var(--palmkit-mobile-surface-border)]':
             chat.started,
         },
       )}
     >
-      <div className="flex items-center gap-2 z-logo text-bolt-elements-textPrimary cursor-pointer group">
+      <div className="flex items-center gap-2 z-logo text-palmkit-elements-textPrimary cursor-pointer group">
         <button
           onClick={handleMobileMenu}
           className={classNames(
             'sm:hidden p-1.5 -ml-1 rounded-lg transition-colors',
-            'text-[var(--bolt-mobile-text-secondary)]',
-            'hover:bg-[var(--bolt-mobile-accent-faint)] hover:text-[var(--bolt-mobile-accent-text)]',
-            'active:bg-[var(--bolt-mobile-accent-faint)] active:text-[var(--bolt-mobile-accent-text)]',
+            'text-[var(--palmkit-mobile-text-secondary)]',
+            'hover:bg-[var(--palmkit-mobile-accent-faint)] hover:text-[var(--palmkit-mobile-accent-text)]',
+            'active:bg-[var(--palmkit-mobile-accent-faint)] active:text-[var(--palmkit-mobile-accent-text)]',
           )}
           aria-label="Projects and history"
         >
@@ -52,7 +52,7 @@ export function Header() {
         </a>
       </div>
       {chat.started && (
-        <span className="flex-1 px-3 sm:px-4 truncate text-center text-xs sm:text-sm font-medium text-[var(--bolt-mobile-text-secondary)]">
+        <span className="flex-1 px-3 sm:px-4 truncate text-center text-xs sm:text-sm font-medium text-[var(--palmkit-mobile-text-secondary)]">
           <ClientOnly>{() => <ChatDescription />}</ClientOnly>
         </span>
       )}

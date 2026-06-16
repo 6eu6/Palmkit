@@ -51,19 +51,19 @@ export function GenerationStatusBar() {
       className={classNames(
         'relative overflow-hidden',
         'flex items-center gap-3 px-4 py-2.5 text-sm',
-        'border-b transition-all duration-[var(--bolt-duration-slower)] ease-out',
+        'border-b transition-all duration-[var(--palmkit-duration-slower)] ease-out',
         isError
-          ? 'bg-[var(--bolt-mobile-error-muted)] border-[rgba(248,113,113,0.2)] text-[var(--bolt-mobile-error)]'
+          ? 'bg-[var(--palmkit-mobile-error-muted)] border-[rgba(248,113,113,0.2)] text-[var(--palmkit-mobile-error)]'
           : isDone
-            ? 'bg-[var(--bolt-mobile-success-muted)] border-[rgba(74,222,128,0.2)] text-[var(--bolt-mobile-success)]'
-            : 'bg-[var(--bolt-mobile-accent-faint)] border-[var(--bolt-mobile-surface-border)] text-[var(--bolt-mobile-accent-text)]',
+            ? 'bg-[var(--palmkit-mobile-success-muted)] border-[rgba(74,222,128,0.2)] text-[var(--palmkit-mobile-success)]'
+            : 'bg-[var(--palmkit-mobile-accent-faint)] border-[var(--palmkit-mobile-surface-border)] text-[var(--palmkit-mobile-accent-text)]',
       )}
     >
       {/* Progress bar background */}
       {isActive && (
         <div className="absolute inset-0 opacity-15">
           <div
-            className="h-full bg-gradient-to-r from-[var(--bolt-gradient-start)] to-[var(--bolt-gradient-end)] transition-all duration-1000 ease-out"
+            className="h-full bg-gradient-to-r from-[var(--palmkit-gradient-start)] to-[var(--palmkit-gradient-end)] transition-all duration-1000 ease-out"
             style={{
               width: `${
                 isDone
@@ -103,12 +103,12 @@ export function GenerationStatusBar() {
               <div
                 key={step}
                 className={classNames(
-                  'w-1.5 h-1.5 rounded-full transition-all duration-[var(--bolt-duration-moderate)]',
+                  'w-1.5 h-1.5 rounded-full transition-all duration-[var(--palmkit-duration-moderate)]',
                   i < currentStepIndex
-                    ? 'bg-[var(--bolt-mobile-accent)]'
+                    ? 'bg-[var(--palmkit-mobile-accent)]'
                     : i === currentStepIndex
-                      ? 'bg-[var(--bolt-mobile-accent)] scale-125'
-                      : 'bg-[var(--bolt-mobile-surface-border)]',
+                      ? 'bg-[var(--palmkit-mobile-accent)] scale-125'
+                      : 'bg-[var(--palmkit-mobile-surface-border)]',
                 )}
               />
             );
@@ -126,12 +126,12 @@ export function GenerationStatusBar() {
       {/* Stuck indicator */}
       {status.isStuck && (
         <div className="relative flex items-center gap-2 ml-auto shrink-0">
-          <span className="text-xs text-[var(--bolt-mobile-warning)] font-medium animate-pulse">Seems stuck?</span>
+          <span className="text-xs text-[var(--palmkit-mobile-warning)] font-medium animate-pulse">Seems stuck?</span>
           <button
             onClick={() => {
               resetGenerationStatus();
             }}
-            className="text-xs px-2.5 py-1 rounded-[var(--bolt-radius-sm)] bg-[var(--bolt-mobile-error-muted)] text-[var(--bolt-mobile-error)] hover:bg-[rgba(248,113,113,0.2)] transition-all duration-[var(--bolt-duration-normal)] active:scale-95"
+            className="text-xs px-2.5 py-1 rounded-[var(--palmkit-radius-sm)] bg-[var(--palmkit-mobile-error-muted)] text-[var(--palmkit-mobile-error)] hover:bg-[rgba(248,113,113,0.2)] transition-all duration-[var(--palmkit-duration-normal)] active:scale-95"
           >
             Stop
           </button>
@@ -139,7 +139,7 @@ export function GenerationStatusBar() {
             onClick={() => {
               setGenerationStep('waiting-for-model');
             }}
-            className="text-xs px-2.5 py-1 rounded-[var(--bolt-radius-sm)] bg-[var(--bolt-mobile-accent-muted)] text-[var(--bolt-mobile-accent-text)] hover:bg-[rgba(139,92,246,0.25)] transition-all duration-[var(--bolt-duration-normal)] active:scale-95"
+            className="text-xs px-2.5 py-1 rounded-[var(--palmkit-radius-sm)] bg-[var(--palmkit-mobile-accent-muted)] text-[var(--palmkit-mobile-accent-text)] hover:bg-[rgba(139,92,246,0.25)] transition-all duration-[var(--palmkit-duration-normal)] active:scale-95"
           >
             Retry
           </button>

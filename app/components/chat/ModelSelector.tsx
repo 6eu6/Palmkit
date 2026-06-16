@@ -432,7 +432,7 @@ export const ModelSelector = ({
 
   if (providerList.length === 0) {
     return (
-      <div className="mb-2 p-4 rounded-lg border border-bolt-elements-borderColor bg-bolt-elements-prompt-background text-bolt-elements-textPrimary">
+      <div className="mb-2 p-4 rounded-lg border border-palmkit-elements-borderColor bg-palmkit-elements-prompt-background text-palmkit-elements-textPrimary">
         <p className="text-center">No providers are currently enabled.</p>
         <p className="text-center mt-2">
           <button
@@ -460,11 +460,11 @@ export const ModelSelector = ({
       <div className="relative flex w-full" onKeyDown={handleProviderKeyDown} ref={providerDropdownRef}>
         <div
           className={classNames(
-            'w-full p-2 rounded-lg border border-bolt-elements-borderColor',
-            'bg-bolt-elements-prompt-background text-bolt-elements-textPrimary',
-            'focus-within:outline-none focus-within:ring-2 focus-within:ring-bolt-elements-focus',
+            'w-full p-2 rounded-lg border border-palmkit-elements-borderColor',
+            'bg-palmkit-elements-prompt-background text-palmkit-elements-textPrimary',
+            'focus-within:outline-none focus-within:ring-2 focus-within:ring-palmkit-elements-focus',
             'transition-all cursor-pointer',
-            isProviderDropdownOpen ? 'ring-2 ring-bolt-elements-focus' : undefined,
+            isProviderDropdownOpen ? 'ring-2 ring-palmkit-elements-focus' : undefined,
           )}
           onClick={() => setIsProviderDropdownOpen(!isProviderDropdownOpen)}
           onKeyDown={(e) => {
@@ -489,7 +489,7 @@ export const ModelSelector = ({
                       ? 'bg-green-500'
                       : localProviderStatus[provider.name] === 'disconnected'
                         ? 'bg-red-400'
-                        : 'bg-bolt-elements-textTertiary',
+                        : 'bg-palmkit-elements-textTertiary',
                   )}
                   title={
                     localProviderStatus[provider.name] === 'connected'
@@ -504,7 +504,7 @@ export const ModelSelector = ({
             </div>
             <div
               className={classNames(
-                'i-ph:caret-down w-4 h-4 text-bolt-elements-textSecondary opacity-75',
+                'i-ph:caret-down w-4 h-4 text-palmkit-elements-textSecondary opacity-75',
                 isProviderDropdownOpen ? 'rotate-180' : undefined,
               )}
             />
@@ -513,7 +513,7 @@ export const ModelSelector = ({
 
         {isProviderDropdownOpen && (
           <div
-            className="absolute z-20 w-full mt-1 py-1 rounded-lg border border-bolt-elements-borderColor bg-bolt-elements-background-depth-2 shadow-lg"
+            className="absolute z-20 w-full mt-1 py-1 rounded-lg border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 shadow-lg"
             role="listbox"
             id="provider-listbox"
           >
@@ -527,9 +527,9 @@ export const ModelSelector = ({
                   placeholder="Search providers... (⌘K to clear)"
                   className={classNames(
                     'w-full pl-8 pr-8 py-1.5 rounded-md text-sm',
-                    'bg-bolt-elements-background-depth-2 border border-bolt-elements-borderColor',
-                    'text-bolt-elements-textPrimary placeholder:text-bolt-elements-textTertiary',
-                    'focus:outline-none focus:ring-2 focus:ring-bolt-elements-focus',
+                    'bg-palmkit-elements-background-depth-2 border border-palmkit-elements-borderColor',
+                    'text-palmkit-elements-textPrimary placeholder:text-palmkit-elements-textTertiary',
+                    'focus:outline-none focus:ring-2 focus:ring-palmkit-elements-focus',
                     'transition-all',
                   )}
                   onClick={(e) => e.stopPropagation()}
@@ -537,7 +537,7 @@ export const ModelSelector = ({
                   aria-label="Search providers"
                 />
                 <div className="absolute left-2.5 top-1/2 -translate-y-1/2">
-                  <span className="i-ph:magnifying-glass text-bolt-elements-textTertiary" />
+                  <span className="i-ph:magnifying-glass text-palmkit-elements-textTertiary" />
                 </div>
                 {providerSearchQuery && (
                   <button
@@ -546,10 +546,10 @@ export const ModelSelector = ({
                       e.stopPropagation();
                       clearProviderSearch();
                     }}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-bolt-elements-background-depth-3 transition-colors"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-palmkit-elements-background-depth-3 transition-colors"
                     aria-label="Clear search"
                   >
-                    <span className="i-ph:x text-bolt-elements-textTertiary text-xs" />
+                    <span className="i-ph:x text-palmkit-elements-textTertiary text-xs" />
                   </button>
                 )}
               </div>
@@ -560,26 +560,26 @@ export const ModelSelector = ({
                 'max-h-60 overflow-y-auto',
                 'sm:scrollbar-none',
                 '[&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar]:h-2',
-                '[&::-webkit-scrollbar-thumb]:bg-bolt-elements-borderColor',
-                '[&::-webkit-scrollbar-thumb]:hover:bg-bolt-elements-borderColorHover',
+                '[&::-webkit-scrollbar-thumb]:bg-palmkit-elements-borderColor',
+                '[&::-webkit-scrollbar-thumb]:hover:bg-palmkit-elements-borderColorHover',
                 '[&::-webkit-scrollbar-thumb]:rounded-full',
-                '[&::-webkit-scrollbar-track]:bg-bolt-elements-background-depth-2',
+                '[&::-webkit-scrollbar-track]:bg-palmkit-elements-background-depth-2',
                 '[&::-webkit-scrollbar-track]:rounded-full',
                 'sm:[&::-webkit-scrollbar]:w-1.5 sm:[&::-webkit-scrollbar]:h-1.5',
-                'sm:hover:[&::-webkit-scrollbar-thumb]:bg-bolt-elements-borderColor/50',
-                'sm:hover:[&::-webkit-scrollbar-thumb:hover]:bg-bolt-elements-borderColor',
+                'sm:hover:[&::-webkit-scrollbar-thumb]:bg-palmkit-elements-borderColor/50',
+                'sm:hover:[&::-webkit-scrollbar-thumb:hover]:bg-palmkit-elements-borderColor',
                 'sm:[&::-webkit-scrollbar-track]:bg-transparent',
               )}
             >
               {filteredProviders.length === 0 ? (
                 <div className="px-3 py-3 text-sm">
-                  <div className="text-bolt-elements-textTertiary mb-1">
+                  <div className="text-palmkit-elements-textTertiary mb-1">
                     {debouncedProviderSearchQuery
                       ? `No providers match "${debouncedProviderSearchQuery}"`
                       : 'No providers found'}
                   </div>
                   {debouncedProviderSearchQuery && (
-                    <div className="text-xs text-bolt-elements-textTertiary">
+                    <div className="text-xs text-palmkit-elements-textTertiary">
                       Try searching for provider names like "OpenAI", "Anthropic", or "Google"
                     </div>
                   )}
@@ -593,13 +593,13 @@ export const ModelSelector = ({
                     aria-selected={provider?.name === providerOption.name}
                     className={classNames(
                       'px-3 py-2 text-sm cursor-pointer',
-                      'hover:bg-bolt-elements-background-depth-3',
-                      'text-bolt-elements-textPrimary',
+                      'hover:bg-palmkit-elements-background-depth-3',
+                      'text-palmkit-elements-textPrimary',
                       'outline-none',
                       provider?.name === providerOption.name || focusedProviderIndex === index
-                        ? 'bg-bolt-elements-background-depth-2'
+                        ? 'bg-palmkit-elements-background-depth-2'
                         : undefined,
-                      focusedProviderIndex === index ? 'ring-1 ring-inset ring-bolt-elements-focus' : undefined,
+                      focusedProviderIndex === index ? 'ring-1 ring-inset ring-palmkit-elements-focus' : undefined,
                     )}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -629,7 +629,7 @@ export const ModelSelector = ({
                               ? 'bg-green-500'
                               : localProviderStatus[providerOption.name] === 'disconnected'
                                 ? 'bg-red-400'
-                                : 'bg-bolt-elements-textTertiary',
+                                : 'bg-palmkit-elements-textTertiary',
                           )}
                         />
                       )}
@@ -651,11 +651,11 @@ export const ModelSelector = ({
       <div className="relative flex w-full min-w-[70%]" onKeyDown={handleModelKeyDown} ref={modelDropdownRef}>
         <div
           className={classNames(
-            'w-full p-2 rounded-lg border border-bolt-elements-borderColor',
-            'bg-bolt-elements-prompt-background text-bolt-elements-textPrimary',
-            'focus-within:outline-none focus-within:ring-2 focus-within:ring-bolt-elements-focus',
+            'w-full p-2 rounded-lg border border-palmkit-elements-borderColor',
+            'bg-palmkit-elements-prompt-background text-palmkit-elements-textPrimary',
+            'focus-within:outline-none focus-within:ring-2 focus-within:ring-palmkit-elements-focus',
             'transition-all cursor-pointer',
-            isModelDropdownOpen ? 'ring-2 ring-bolt-elements-focus' : undefined,
+            isModelDropdownOpen ? 'ring-2 ring-palmkit-elements-focus' : undefined,
           )}
           onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
           onKeyDown={(e) => {
@@ -674,7 +674,7 @@ export const ModelSelector = ({
             <div className="truncate">{modelList.find((m) => m.name === model)?.label || 'Select model'}</div>
             <div
               className={classNames(
-                'i-ph:caret-down w-4 h-4 text-bolt-elements-textSecondary opacity-75',
+                'i-ph:caret-down w-4 h-4 text-palmkit-elements-textSecondary opacity-75',
                 isModelDropdownOpen ? 'rotate-180' : undefined,
               )}
             />
@@ -683,7 +683,7 @@ export const ModelSelector = ({
 
         {isModelDropdownOpen && (
           <div
-            className="absolute z-10 w-full mt-1 py-1 rounded-lg border border-bolt-elements-borderColor bg-bolt-elements-background-depth-2 shadow-lg"
+            className="absolute z-10 w-full mt-1 py-1 rounded-lg border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 shadow-lg"
             role="listbox"
             id="model-listbox"
           >
@@ -699,17 +699,17 @@ export const ModelSelector = ({
                     }}
                     className={classNames(
                       'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-all',
-                      'hover:bg-bolt-elements-background-depth-3',
+                      'hover:bg-palmkit-elements-background-depth-3',
                       showFreeModelsOnly
                         ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
-                        : 'bg-bolt-elements-background-depth-3 text-bolt-elements-textSecondary border border-bolt-elements-borderColor',
+                        : 'bg-palmkit-elements-background-depth-3 text-palmkit-elements-textSecondary border border-palmkit-elements-borderColor',
                     )}
                   >
                     <span className="i-ph:gift text-xs" />
                     Free models only
                   </button>
                   {showFreeModelsOnly && (
-                    <span className="text-xs text-bolt-elements-textTertiary">
+                    <span className="text-xs text-palmkit-elements-textTertiary">
                       {filteredModels.length} free model{filteredModels.length !== 1 ? 's' : ''}
                     </span>
                   )}
@@ -718,7 +718,7 @@ export const ModelSelector = ({
 
               {/* Search Result Count */}
               {debouncedModelSearchQuery && filteredModels.length > 0 && (
-                <div className="text-xs text-bolt-elements-textTertiary px-1">
+                <div className="text-xs text-palmkit-elements-textTertiary px-1">
                   {filteredModels.length} model{filteredModels.length !== 1 ? 's' : ''} found
                   {filteredModels.length > 5 && ' (showing best matches)'}
                 </div>
@@ -734,9 +734,9 @@ export const ModelSelector = ({
                   placeholder="Search models... (⌘K to clear)"
                   className={classNames(
                     'w-full pl-8 pr-8 py-1.5 rounded-md text-sm',
-                    'bg-bolt-elements-background-depth-2 border border-bolt-elements-borderColor',
-                    'text-bolt-elements-textPrimary placeholder:text-bolt-elements-textTertiary',
-                    'focus:outline-none focus:ring-2 focus:ring-bolt-elements-focus',
+                    'bg-palmkit-elements-background-depth-2 border border-palmkit-elements-borderColor',
+                    'text-palmkit-elements-textPrimary placeholder:text-palmkit-elements-textTertiary',
+                    'focus:outline-none focus:ring-2 focus:ring-palmkit-elements-focus',
                     'transition-all',
                   )}
                   onClick={(e) => e.stopPropagation()}
@@ -744,7 +744,7 @@ export const ModelSelector = ({
                   aria-label="Search models"
                 />
                 <div className="absolute left-2.5 top-1/2 -translate-y-1/2">
-                  <span className="i-ph:magnifying-glass text-bolt-elements-textTertiary" />
+                  <span className="i-ph:magnifying-glass text-palmkit-elements-textTertiary" />
                 </div>
                 {modelSearchQuery && (
                   <button
@@ -753,10 +753,10 @@ export const ModelSelector = ({
                       e.stopPropagation();
                       clearModelSearch();
                     }}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-bolt-elements-background-depth-3 transition-colors"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-palmkit-elements-background-depth-3 transition-colors"
                     aria-label="Clear search"
                   >
-                    <span className="i-ph:x text-bolt-elements-textTertiary text-xs" />
+                    <span className="i-ph:x text-palmkit-elements-textTertiary text-xs" />
                   </button>
                 )}
               </div>
@@ -767,27 +767,27 @@ export const ModelSelector = ({
                 'max-h-60 overflow-y-auto',
                 'sm:scrollbar-none',
                 '[&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar]:h-2',
-                '[&::-webkit-scrollbar-thumb]:bg-bolt-elements-borderColor',
-                '[&::-webkit-scrollbar-thumb]:hover:bg-bolt-elements-borderColorHover',
+                '[&::-webkit-scrollbar-thumb]:bg-palmkit-elements-borderColor',
+                '[&::-webkit-scrollbar-thumb]:hover:bg-palmkit-elements-borderColorHover',
                 '[&::-webkit-scrollbar-thumb]:rounded-full',
-                '[&::-webkit-scrollbar-track]:bg-bolt-elements-background-depth-2',
+                '[&::-webkit-scrollbar-track]:bg-palmkit-elements-background-depth-2',
                 '[&::-webkit-scrollbar-track]:rounded-full',
                 'sm:[&::-webkit-scrollbar]:w-1.5 sm:[&::-webkit-scrollbar]:h-1.5',
-                'sm:hover:[&::-webkit-scrollbar-thumb]:bg-bolt-elements-borderColor/50',
-                'sm:hover:[&::-webkit-scrollbar-thumb:hover]:bg-bolt-elements-borderColor',
+                'sm:hover:[&::-webkit-scrollbar-thumb]:bg-palmkit-elements-borderColor/50',
+                'sm:hover:[&::-webkit-scrollbar-thumb:hover]:bg-palmkit-elements-borderColor',
                 'sm:[&::-webkit-scrollbar-track]:bg-transparent',
               )}
             >
               {modelLoading === 'all' || modelLoading === provider?.name ? (
                 <div className="px-3 py-3 text-sm">
-                  <div className="flex items-center gap-2 text-bolt-elements-textTertiary">
+                  <div className="flex items-center gap-2 text-palmkit-elements-textTertiary">
                     <span className="i-ph:spinner animate-spin" />
                     Loading models...
                   </div>
                 </div>
               ) : filteredModels.length === 0 ? (
                 <div className="px-3 py-3 text-sm">
-                  <div className="text-bolt-elements-textTertiary mb-1">
+                  <div className="text-palmkit-elements-textTertiary mb-1">
                     {debouncedModelSearchQuery
                       ? `No models match "${debouncedModelSearchQuery}"${showFreeModelsOnly ? ' (free only)' : ''}`
                       : showFreeModelsOnly
@@ -797,19 +797,19 @@ export const ModelSelector = ({
                           : 'No models available'}
                   </div>
                   {!debouncedModelSearchQuery && provider?.name && LOCAL_PROVIDERS.includes(provider.name) && (
-                    <div className="text-xs text-bolt-elements-textTertiary mt-1">
+                    <div className="text-xs text-palmkit-elements-textTertiary mt-1">
                       Make sure {provider.name} is running and has at least one model loaded.
                       {provider.name === 'Ollama' && ' Try: ollama pull llama3.2'}
                       {provider.name === 'LMStudio' && ' Load a model in LM Studio first.'}
                     </div>
                   )}
                   {debouncedModelSearchQuery && (
-                    <div className="text-xs text-bolt-elements-textTertiary">
+                    <div className="text-xs text-palmkit-elements-textTertiary">
                       Try searching for model names, context sizes (e.g., "128k", "1M"), or capabilities
                     </div>
                   )}
                   {showFreeModelsOnly && !debouncedModelSearchQuery && (
-                    <div className="text-xs text-bolt-elements-textTertiary">
+                    <div className="text-xs text-palmkit-elements-textTertiary">
                       Try disabling the "Free models only" filter to see all available models
                     </div>
                   )}
@@ -823,13 +823,13 @@ export const ModelSelector = ({
                     aria-selected={model === modelOption.name}
                     className={classNames(
                       'px-3 py-2 text-sm cursor-pointer',
-                      'hover:bg-bolt-elements-background-depth-3',
-                      'text-bolt-elements-textPrimary',
+                      'hover:bg-palmkit-elements-background-depth-3',
+                      'text-palmkit-elements-textPrimary',
                       'outline-none',
                       model === modelOption.name || focusedModelIndex === index
-                        ? 'bg-bolt-elements-background-depth-2'
+                        ? 'bg-palmkit-elements-background-depth-2'
                         : undefined,
-                      focusedModelIndex === index ? 'ring-1 ring-inset ring-bolt-elements-focus' : undefined,
+                      focusedModelIndex === index ? 'ring-1 ring-inset ring-palmkit-elements-focus' : undefined,
                     )}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -850,7 +850,7 @@ export const ModelSelector = ({
                           />
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-xs text-bolt-elements-textTertiary">
+                          <span className="text-xs text-palmkit-elements-textTertiary">
                             {formatContextSize(modelOption.maxTokenAllowed)} tokens
                           </span>
                           {debouncedModelSearchQuery && (modelOption as any).searchScore > 70 && (

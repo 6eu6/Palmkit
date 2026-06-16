@@ -32,7 +32,7 @@ export const WorkspaceShell = memo(
       <div
         className={classNames(
           'relative flex flex-col min-h-dvh w-full overflow-x-hidden',
-          'bg-bolt-elements-bg-depth-1',
+          'bg-palmkit-elements-bg-depth-1',
           className,
         )}
       >
@@ -52,7 +52,7 @@ export const WorkspaceShell = memo(
             <div
               className="absolute inset-0"
               style={{
-                background: 'radial-gradient(ellipse 70% 50% at 50% 0%, var(--bolt-glow-color), transparent 70%)',
+                background: 'radial-gradient(ellipse 70% 50% at 50% 0%, var(--palmkit-glow-color), transparent 70%)',
               }}
             />
             {/* Secondary subtle vignette */}

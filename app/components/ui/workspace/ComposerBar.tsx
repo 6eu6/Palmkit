@@ -84,28 +84,28 @@ export const ComposerBar = memo(
       <div
         className={classNames(
           'relative w-full max-w-chat mx-auto',
-          'bg-[var(--bolt-mobile-surface-bg-elevated)] backdrop-blur-xl',
-          'rounded-[var(--bolt-radius-lg)]',
-          'border border-[var(--bolt-mobile-surface-border)]',
-          'shadow-[var(--bolt-shadow-md)]',
-          'transition-shadow duration-[var(--bolt-duration-normal)]',
-          'hover:shadow-[var(--bolt-shadow-accent)]',
+          'bg-[var(--palmkit-mobile-surface-bg-elevated)] backdrop-blur-xl',
+          'rounded-[var(--palmkit-radius-lg)]',
+          'border border-[var(--palmkit-mobile-surface-border)]',
+          'shadow-[var(--palmkit-shadow-md)]',
+          'transition-shadow duration-[var(--palmkit-duration-normal)]',
+          'hover:shadow-[var(--palmkit-shadow-accent)]',
           'overflow-hidden',
           className,
         )}
       >
         {/* Provider/model compact header */}
         {(providerName || modelName) && (
-          <div className="flex items-center gap-1.5 px-[var(--bolt-space-3)] pt-[var(--bolt-space-2)] pb-[var(--bolt-space-1)]">
+          <div className="flex items-center gap-1.5 px-[var(--palmkit-space-3)] pt-[var(--palmkit-space-2)] pb-[var(--palmkit-space-1)]">
             {providerName && (
               <span
                 className={classNames(
-                  'text-[var(--bolt-text-2xs)] font-medium',
-                  'text-[var(--bolt-mobile-accent-text)]',
-                  'bg-[var(--bolt-mobile-accent-faint)]',
-                  'px-[var(--bolt-space-2)] py-[2px]',
-                  'rounded-[var(--bolt-radius-pill)]',
-                  'border border-[var(--bolt-mobile-surface-border-subtle)]',
+                  'text-[var(--palmkit-text-2xs)] font-medium',
+                  'text-[var(--palmkit-mobile-accent-text)]',
+                  'bg-[var(--palmkit-mobile-accent-faint)]',
+                  'px-[var(--palmkit-space-2)] py-[2px]',
+                  'rounded-[var(--palmkit-radius-pill)]',
+                  'border border-[var(--palmkit-mobile-surface-border-subtle)]',
                 )}
               >
                 {providerName}
@@ -114,12 +114,12 @@ export const ComposerBar = memo(
             {modelName && (
               <span
                 className={classNames(
-                  'text-[var(--bolt-text-2xs)] font-mono',
-                  'text-[var(--bolt-mobile-text-secondary)]',
-                  'bg-[var(--bolt-mobile-accent-faint)]',
-                  'px-[var(--bolt-space-2)] py-[2px]',
-                  'rounded-[var(--bolt-radius-pill)]',
-                  'border border-[var(--bolt-mobile-surface-border-subtle)]',
+                  'text-[var(--palmkit-text-2xs)] font-mono',
+                  'text-[var(--palmkit-mobile-text-secondary)]',
+                  'bg-[var(--palmkit-mobile-accent-faint)]',
+                  'px-[var(--palmkit-space-2)] py-[2px]',
+                  'rounded-[var(--palmkit-radius-pill)]',
+                  'border border-[var(--palmkit-mobile-surface-border-subtle)]',
                   'truncate max-w-[180px]',
                 )}
               >
@@ -130,7 +130,7 @@ export const ComposerBar = memo(
               <div
                 className={classNames(
                   'w-[6px] h-[6px] rounded-full shrink-0 ml-auto',
-                  hasApiKey ? 'bg-[var(--bolt-mobile-success)]' : 'bg-[var(--bolt-mobile-error)]',
+                  hasApiKey ? 'bg-[var(--palmkit-mobile-success)]' : 'bg-[var(--palmkit-mobile-error)]',
                 )}
                 title={hasApiKey ? 'API key configured' : 'API key missing'}
               />
@@ -139,15 +139,15 @@ export const ComposerBar = memo(
         )}
 
         {/* Input area */}
-        <div className="px-[var(--bolt-space-3)] py-[var(--bolt-space-1)]">{children}</div>
+        <div className="px-[var(--palmkit-space-3)] py-[var(--palmkit-space-1)]">{children}</div>
 
         {/* Action bar */}
         {actionsSlot ? (
-          <div className="flex items-center gap-1 px-[var(--bolt-space-2)] pb-[var(--bolt-space-2)] pt-[var(--bolt-space-1)]">
+          <div className="flex items-center gap-1 px-[var(--palmkit-space-2)] pb-[var(--palmkit-space-2)] pt-[var(--palmkit-space-1)]">
             {actionsSlot}
           </div>
         ) : (
-          <div className="flex items-center gap-1 px-[var(--bolt-space-2)] pb-[var(--bolt-space-2)] pt-[var(--bolt-space-1)]">
+          <div className="flex items-center gap-1 px-[var(--palmkit-space-2)] pb-[var(--palmkit-space-2)] pt-[var(--palmkit-space-1)]">
             {/* Attach */}
             {onAttach && <ComposerIconButton icon="i-ph:paperclip" label="Attach" onClick={onAttach} />}
 
@@ -159,7 +159,7 @@ export const ComposerBar = memo(
             {/* Enhance */}
             {onEnhance && (
               <ComposerIconButton
-                icon={enhancing ? 'i-svg-spinners:90-ring-with-bg' : 'i-bolt:stars'}
+                icon={enhancing ? 'i-svg-spinners:90-ring-with-bg' : 'i-palmkit:stars'}
                 label="Enhance"
                 onClick={onEnhance}
                 disabled={isStreaming}
@@ -185,11 +185,11 @@ export const ComposerBar = memo(
                   onClick={onStop}
                   className={classNames(
                     'flex items-center justify-center w-9 h-9 rounded-lg',
-                    'bg-[var(--bolt-mobile-error-muted)] text-[var(--bolt-mobile-error)]',
-                    'border border-[var(--bolt-mobile-error)]/20',
-                    'hover:bg-[var(--bolt-mobile-error-muted)]/80',
+                    'bg-[var(--palmkit-mobile-error-muted)] text-[var(--palmkit-mobile-error)]',
+                    'border border-[var(--palmkit-mobile-error)]/20',
+                    'hover:bg-[var(--palmkit-mobile-error-muted)]/80',
                     'active:scale-[0.9]',
-                    'transition-transform duration-[var(--bolt-duration-fast)]',
+                    'transition-transform duration-[var(--palmkit-duration-fast)]',
                   )}
                   aria-label="Stop generation"
                 >
@@ -200,11 +200,11 @@ export const ComposerBar = memo(
                   onClick={onSend}
                   className={classNames(
                     'flex items-center justify-center w-9 h-9 rounded-lg',
-                    'bg-gradient-to-r from-[var(--bolt-gradient-start)] to-[var(--bolt-gradient-mid)]',
+                    'bg-gradient-to-r from-[var(--palmkit-gradient-start)] to-[var(--palmkit-gradient-mid)]',
                     'text-white',
-                    'hover:shadow-[var(--bolt-shadow-accent)]',
+                    'hover:shadow-[var(--palmkit-shadow-accent)]',
                     'active:scale-[0.9]',
-                    'transition-all duration-[var(--bolt-duration-fast)]',
+                    'transition-all duration-[var(--palmkit-duration-fast)]',
                   )}
                   aria-label="Send message"
                 >
@@ -237,14 +237,14 @@ const ComposerIconButton = memo(({ icon, label, onClick, disabled, active, spinn
     disabled={disabled}
     className={classNames(
       'flex items-center justify-center w-9 h-9 rounded-lg',
-      'text-[var(--bolt-mobile-text-secondary)]',
-      'hover:text-[var(--bolt-mobile-text-primary)]',
-      'hover:bg-[var(--bolt-mobile-accent-faint)]',
+      'text-[var(--palmkit-mobile-text-secondary)]',
+      'hover:text-[var(--palmkit-mobile-text-primary)]',
+      'hover:bg-[var(--palmkit-mobile-accent-faint)]',
       'active:scale-[0.9]',
-      'transition-all duration-[var(--bolt-duration-fast)]',
+      'transition-all duration-[var(--palmkit-duration-fast)]',
       'disabled:opacity-40 disabled:pointer-events-none',
       active &&
-        'text-[var(--bolt-mobile-accent-text)] bg-[var(--bolt-mobile-accent-muted)] ring-2 ring-[var(--bolt-mobile-accent)]',
+        'text-[var(--palmkit-mobile-accent-text)] bg-[var(--palmkit-mobile-accent-muted)] ring-2 ring-[var(--palmkit-mobile-accent)]',
       spinning && 'animate-spin',
     )}
     aria-label={label}

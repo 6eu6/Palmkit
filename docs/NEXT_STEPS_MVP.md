@@ -6,7 +6,7 @@ Each stage is independently testable and deployable. No stage breaks the previou
 
 ---
 
-## Stage 1: Run Unmodified bolt.diy
+## Stage 1: Run Unmodified palmkit.app
 
 **Goal:** Verify the upstream project runs locally without any modifications.
 
@@ -374,13 +374,13 @@ These are explicitly out of scope for the initial MVP but documented for plannin
 - Branch management
 
 ### Supabase Integration
-- Already partially implemented in bolt.diy
+- Already partially implemented in palmkit.app
 - Streamline the setup flow for mobile
 - One-tap Supabase project creation
 - Database schema management from chat
 
 ### Vercel Integration
-- Already partially implemented in bolt.diy
+- Already partially implemented in palmkit.app
 - One-tap deploy to Vercel
 - Deployment status in mobile UI
 - Custom domain configuration
@@ -396,7 +396,7 @@ These are explicitly out of scope for the initial MVP but documented for plannin
 - Requires server infrastructure and billing
 
 ### MCP Integrations
-- Already partially implemented in bolt.diy
+- Already partially implemented in palmkit.app
 - Add pre-configured MCP servers for common tools
 - Filesystem, database, API integrations
 
@@ -421,10 +421,10 @@ Stages 3, 4, and 5 can proceed in parallel after Stage 2 is complete.
 ## Success Criteria for MVP (Stages 1-5)
 
 1. **Mobile-first experience**: A user can open the app on their phone, add an API key, select a model, start a chat, see a live preview, tap an element to edit it, and iterate on their project.
-2. **Desktop preserved**: The existing desktop experience works exactly as it does in upstream bolt.diy.
+2. **Desktop preserved**: The existing desktop experience works exactly as it does in upstream palmkit.app.
 3. **BYOK model**: The app never pays for LLM usage. Users provide their own API keys.
 4. **No data loss**: Existing chat histories, projects, and settings are preserved.
-5. **No upstream breakage**: Any bolt.diy update can be merged without conflicts in core files.
+5. **No upstream breakage**: Any palmkit.app update can be merged without conflicts in core files.
 
 ---
 

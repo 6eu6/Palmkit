@@ -52,7 +52,7 @@ export function ExamplePrompts(sendMessage?: { (event: React.UIEvent, messageInp
               'px-3.5 py-1.5 text-xs font-medium',
               'transition-all duration-200 ease-out',
               'hover:bg-[rgba(139,92,246,0.1)] hover:border-[rgba(139,92,246,0.2)]',
-              'hover:shadow-[0_0_16px_var(--bolt-glow-color)]',
+              'hover:shadow-[0_0_16px_var(--palmkit-glow-color)]',
             )}
             style={{
               animation: `fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) ${index * 60}ms forwards`,

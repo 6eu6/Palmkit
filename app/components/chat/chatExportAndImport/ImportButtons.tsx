@@ -70,7 +70,7 @@ export function ImportButtons(importChat: ((description: string, messages: Messa
           'hover:bg-[rgba(139,92,246,0.12)] hover:border-[rgba(139,92,246,0.2)]',
           'h-9 px-3 py-1.5 sm:h-10 sm:px-4 sm:py-2 sm:min-w-[120px] justify-center',
           'transition-all duration-200 ease-out',
-          'hover:shadow-[0_0_16px_var(--bolt-glow-color)]',
+          'hover:shadow-[0_0_16px_var(--palmkit-glow-color)]',
           'text-xs sm:text-sm',
           'rounded-lg',
         )}
@@ -88,7 +88,7 @@ export function ImportButtons(importChat: ((description: string, messages: Messa
           'hover:bg-[rgba(139,92,246,0.12)] hover:border-[rgba(139,92,246,0.2)]',
           'h-9 px-3 py-1.5 sm:h-10 sm:px-4 sm:py-2 sm:min-w-[120px] justify-center',
           'transition-all duration-200 ease-out',
-          'hover:shadow-[0_0_16px_var(--bolt-glow-color)]',
+          'hover:shadow-[0_0_16px_var(--palmkit-glow-color)]',
           'text-xs sm:text-sm',
           'rounded-lg',
         )}

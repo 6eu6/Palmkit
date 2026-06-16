@@ -362,7 +362,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                     <span
                       style={{
                         background:
-                          'linear-gradient(135deg, var(--bolt-gradient-start), var(--bolt-gradient-mid), var(--bolt-gradient-end))',
+                          'linear-gradient(135deg, var(--palmkit-gradient-start), var(--palmkit-gradient-mid), var(--palmkit-gradient-end))',
                         backgroundSize: '200% 200%',
                         WebkitBackgroundClip: 'text',
                         WebkitTextFillColor: 'transparent',
@@ -375,7 +375,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   </h1>
                 </div>
                 <p
-                  className="text-[13px] sm:text-base lg:text-lg mb-6 sm:mb-8 text-bolt-elements-textSecondary max-w-md mx-auto leading-relaxed"
+                  className="text-[13px] sm:text-base lg:text-lg mb-6 sm:mb-8 text-palmkit-elements-textSecondary max-w-md mx-auto leading-relaxed"
                   style={{
                     animation: 'fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards',
                     opacity: 0,
@@ -545,13 +545,13 @@ function ScrollToBottom() {
   return (
     !isAtBottom && (
       <>
-        <div className="sticky bottom-0 left-0 right-0 bg-gradient-to-t from-bolt-elements-bg-depth-1 to-transparent h-20 z-10" />
+        <div className="sticky bottom-0 left-0 right-0 bg-gradient-to-t from-palmkit-elements-bg-depth-1 to-transparent h-20 z-10" />
         <button
-          className="sticky z-50 bottom-0 left-0 right-0 text-sm rounded-full px-4 py-2 flex items-center justify-center mx-auto gap-2 glass-surface hover:shadow-[0_0_16px_var(--bolt-glow-color)] transition-all duration-200"
+          className="sticky z-50 bottom-0 left-0 right-0 text-sm rounded-full px-4 py-2 flex items-center justify-center mx-auto gap-2 glass-surface hover:shadow-[0_0_16px_var(--palmkit-glow-color)] transition-all duration-200"
           onClick={() => scrollToBottom()}
         >
-          <span className="text-bolt-elements-textSecondary font-medium">Go to last message</span>
-          <span className="i-ph:arrow-down text-bolt-elements-button-primary-text animate-bounce" />
+          <span className="text-palmkit-elements-textSecondary font-medium">Go to last message</span>
+          <span className="i-ph:arrow-down text-palmkit-elements-button-primary-text animate-bounce" />
         </button>
       </>
     )

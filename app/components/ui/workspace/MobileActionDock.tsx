@@ -59,8 +59,8 @@ export const MobileActionDock = memo(() => {
     <div
       className="fixed bottom-0 left-0 right-0 z-50 sm:hidden backdrop-blur-2xl"
       style={{
-        background: 'var(--bolt-mobile-surface-bg-elevated)',
-        borderTop: '1px solid var(--bolt-mobile-surface-border)',
+        background: 'var(--palmkit-mobile-surface-bg-elevated)',
+        borderTop: '1px solid var(--palmkit-mobile-surface-border)',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}
     >
@@ -69,7 +69,7 @@ export const MobileActionDock = memo(() => {
         className="absolute top-0 left-0 right-0 h-px pointer-events-none"
         style={{
           background:
-            'linear-gradient(90deg, transparent 5%, var(--bolt-gradient-start) 30%, var(--bolt-gradient-mid) 50%, var(--bolt-gradient-end) 70%, transparent 95%)',
+            'linear-gradient(90deg, transparent 5%, var(--palmkit-gradient-start) 30%, var(--palmkit-gradient-mid) 50%, var(--palmkit-gradient-end) 70%, transparent 95%)',
           animation: 'accentLineShimmer 3s ease-in-out infinite',
         }}
       />
@@ -88,8 +88,8 @@ export const MobileActionDock = memo(() => {
                 WebkitAppearance: 'none',
                 appearance: 'none',
                 border: 'none',
-                transition: `transform var(--bolt-duration-fast) var(--bolt-ease-default)`,
-                color: isActive ? 'var(--bolt-mobile-text-accent)' : 'var(--bolt-mobile-text-tertiary)',
+                transition: `transform var(--palmkit-duration-fast) var(--palmkit-ease-default)`,
+                color: isActive ? 'var(--palmkit-mobile-text-accent)' : 'var(--palmkit-mobile-text-tertiary)',
               }}
               aria-label={item.label}
               aria-pressed={isActive}
@@ -99,8 +99,8 @@ export const MobileActionDock = memo(() => {
                 <motion.div
                   className="absolute inset-1 rounded-lg"
                   style={{
-                    background: 'var(--bolt-mobile-accent-muted)',
-                    boxShadow: 'var(--bolt-shadow-accent)',
+                    background: 'var(--palmkit-mobile-accent-muted)',
+                    boxShadow: 'var(--palmkit-shadow-accent)',
                   }}
                   layoutId="dockActivePill"
                   transition={{ type: 'spring', stiffness: 350, damping: 30 }}
@@ -112,7 +112,7 @@ export const MobileActionDock = memo(() => {
                 <div
                   className={`${isActive ? item.iconActive : item.icon} text-[20px]`}
                   style={{
-                    transition: `all var(--bolt-duration-fast) var(--bolt-ease-default)`,
+                    transition: `all var(--palmkit-duration-fast) var(--palmkit-ease-default)`,
                     ...(isActive && {
                       filter: 'drop-shadow(0 0 6px rgba(139, 92, 246, 0.4))',
                     }),
@@ -124,8 +124,8 @@ export const MobileActionDock = memo(() => {
               <span
                 className="relative z-1 text-[10px] mt-0.5 leading-tight font-medium tracking-tight"
                 style={{
-                  color: isActive ? 'var(--bolt-mobile-accent-text)' : 'var(--bolt-mobile-text-tertiary)',
-                  transition: `color var(--bolt-duration-fast) var(--bolt-ease-default)`,
+                  color: isActive ? 'var(--palmkit-mobile-accent-text)' : 'var(--palmkit-mobile-text-tertiary)',
+                  transition: `color var(--palmkit-duration-fast) var(--palmkit-ease-default)`,
                 }}
               >
                 {item.label}
@@ -136,7 +136,7 @@ export const MobileActionDock = memo(() => {
                 <motion.div
                   className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full"
                   style={{
-                    background: 'var(--bolt-gradient-mid)',
+                    background: 'var(--palmkit-gradient-mid)',
                     boxShadow: '0 0 6px rgba(168, 85, 247, 0.5)',
                     animation: 'dockIndicatorPulse 2s ease-in-out infinite',
                   }}

@@ -133,7 +133,7 @@ export const RemotePreviewTrigger = memo(() => {
     return () => clearInterval(t);
   }, [active]);
 
-  const bottom = 'calc(var(--bolt-mobile-dock-height) + env(safe-area-inset-bottom, 0px) + 10px)';
+  const bottom = 'calc(var(--palmkit-mobile-dock-height) + env(safe-area-inset-bottom, 0px) + 10px)';
 
   if (hasError && !active) {
     const isSandboxError = sandbox.state === 'error';
@@ -143,10 +143,10 @@ export const RemotePreviewTrigger = memo(() => {
         className="fixed left-3 right-3 z-40 sm:hidden flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium"
         style={{
           bottom,
-          background: 'var(--bolt-mobile-surface-bg-elevated)',
-          border: '1px solid var(--bolt-mobile-error)',
-          color: 'var(--bolt-mobile-error)',
-          boxShadow: 'var(--bolt-shadow-md)',
+          background: 'var(--palmkit-mobile-surface-bg-elevated)',
+          border: '1px solid var(--palmkit-mobile-error)',
+          color: 'var(--palmkit-mobile-error)',
+          boxShadow: 'var(--palmkit-shadow-md)',
         }}
       >
         <span className="i-ph:warning-circle text-sm shrink-0" />
@@ -162,7 +162,7 @@ export const RemotePreviewTrigger = memo(() => {
               setTimeout(() => void ensureRemotePreview(), 300);
             }}
             className="text-[11px] px-2.5 py-1 rounded-md shrink-0 font-medium"
-            style={{ background: 'var(--bolt-mobile-error-muted)', color: 'var(--bolt-mobile-error)' }}
+            style={{ background: 'var(--palmkit-mobile-error-muted)', color: 'var(--palmkit-mobile-error)' }}
           >
             Retry
           </button>
@@ -199,24 +199,24 @@ export const RemotePreviewTrigger = memo(() => {
       className="fixed left-3 right-3 z-40 sm:hidden rounded-xl overflow-hidden"
       style={{
         bottom,
-        background: 'var(--bolt-mobile-surface-bg-elevated)',
-        border: '1px solid var(--bolt-mobile-surface-border-strong)',
-        boxShadow: 'var(--bolt-shadow-md)',
+        background: 'var(--palmkit-mobile-surface-bg-elevated)',
+        border: '1px solid var(--palmkit-mobile-surface-border-strong)',
+        boxShadow: 'var(--palmkit-shadow-md)',
         backdropFilter: 'blur(12px)',
       }}
     >
       <div className="flex items-center gap-2.5 px-3.5 py-2.5">
         <span
           className="i-svg-spinners:90-ring-with-bg text-base shrink-0"
-          style={{ color: 'var(--bolt-mobile-accent-text)' }}
+          style={{ color: 'var(--palmkit-mobile-accent-text)' }}
         />
-        <span className="text-xs font-medium truncate" style={{ color: 'var(--bolt-mobile-text-primary)' }}>
+        <span className="text-xs font-medium truncate" style={{ color: 'var(--palmkit-mobile-text-primary)' }}>
           {label}
         </span>
         {currentFile && (
           <span
             className="text-[11px] font-mono truncate opacity-70"
-            style={{ color: 'var(--bolt-mobile-text-secondary)' }}
+            style={{ color: 'var(--palmkit-mobile-text-secondary)' }}
           >
             {currentFile}
           </span>
@@ -227,14 +227,14 @@ export const RemotePreviewTrigger = memo(() => {
             <button
               onClick={() => resetGenerationStatus()}
               className="text-[11px] px-2 py-1 rounded-md"
-              style={{ background: 'var(--bolt-mobile-error-muted)', color: 'var(--bolt-mobile-error)' }}
+              style={{ background: 'var(--palmkit-mobile-error-muted)', color: 'var(--palmkit-mobile-error)' }}
             >
               Stop
             </button>
             <button
               onClick={() => setGenerationStep('waiting-for-model')}
               className="text-[11px] px-2 py-1 rounded-md"
-              style={{ background: 'var(--bolt-mobile-accent-muted)', color: 'var(--bolt-mobile-accent-text)' }}
+              style={{ background: 'var(--palmkit-mobile-accent-muted)', color: 'var(--palmkit-mobile-accent-text)' }}
             >
               Retry
             </button>
@@ -242,21 +242,21 @@ export const RemotePreviewTrigger = memo(() => {
         ) : (
           <span
             className="text-xs font-semibold tabular-nums ml-auto shrink-0"
-            style={{ color: 'var(--bolt-mobile-text-accent)' }}
+            style={{ color: 'var(--palmkit-mobile-text-accent)' }}
           >
             {formatElapsed(elapsedSeconds)}
           </span>
         )}
       </div>
       {/* Progress bar */}
-      <div className="h-1 w-full" style={{ background: 'var(--bolt-mobile-accent-faint)' }}>
+      <div className="h-1 w-full" style={{ background: 'var(--palmkit-mobile-accent-faint)' }}>
         <div
           className="h-full rounded-r-full"
           style={{
             width: `${progress}%`,
             background: gen.isStuck
-              ? 'var(--bolt-mobile-warning)'
-              : 'linear-gradient(90deg, var(--bolt-mobile-accent) 0%, #c084fc 100%)',
+              ? 'var(--palmkit-mobile-warning)'
+              : 'linear-gradient(90deg, var(--palmkit-mobile-accent) 0%, #c084fc 100%)',
             transition: 'width 1s linear',
           }}
         />

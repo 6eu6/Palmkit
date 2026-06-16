@@ -1,7 +1,7 @@
 import ignore from 'ignore';
 import { useGit } from '~/lib/hooks/useGit';
 import type { Message } from 'ai';
-import { detectProjectCommands, createCommandsMessage, escapeBoltTags } from '~/utils/projectCommands';
+import { detectProjectCommands, createCommandsMessage, escapePalmkitTags } from '~/utils/projectCommands';
 import { generateId } from '~/utils/fileUtils';
 import { useState } from 'react';
 import { toast } from 'react-toastify';
@@ -122,16 +122,16 @@ ${skippedFiles.map((f) => `- ${f}`).join('\n')}`
     : ''
 }
 
-<boltArtifact id="imported-files" title="Git Cloned Files" type="bundled">
+<palmkitArtifact id="imported-files" title="Git Cloned Files" type="bundled">
 ${fileContents
   .map(
     (file) =>
-      `<boltAction type="file" filePath="${file.path}">
-${escapeBoltTags(file.content)}
-</boltAction>`,
+      `<palmkitAction type="file" filePath="${file.path}">
+${escapePalmkitTags(file.content)}
+</palmkitAction>`,
   )
   .join('\n')}
-</boltArtifact>`,
+</palmkitArtifact>`,
           id: generateId(),
           createdAt: new Date(),
         };
@@ -169,70 +169,70 @@ ${escapeBoltTags(file.content)}
           'hover:bg-[rgba(139,92,246,0.12)] hover:border-[rgba(139,92,246,0.2)]',
           'h-9 px-3 py-1.5 sm:h-10 sm:px-4 sm:py-2 sm:min-w-[140px] justify-center',
           'transition-all duration-200 ease-out',
-          'hover:shadow-[0_0_16px_var(--bolt-glow-color)]',
+          'hover:shadow-[0_0_16px_var(--palmkit-glow-color)]',
           'text-xs sm:text-sm',
           'rounded-lg',
           className,
         )}
         disabled={!ready || loading}
       >
-        <div className="i-bolt:github text-base sm:text-lg" />
+        <div className="i-palmkit:github text-base sm:text-lg" />
         <span className="hidden sm:inline">Import from Git</span>
         <span className="sm:hidden">Git</span>
       </Button>
 
       {isDialogOpen && !selectedProvider && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-bolt-elements-bg-depth-1 rounded-xl shadow-xl border border-bolt-elements-borderColor max-w-md w-full">
+          <div className="bg-palmkit-elements-bg-depth-1 rounded-xl shadow-xl border border-palmkit-elements-borderColor max-w-md w-full">
             <div className="p-6">
               <div className="flex items-center justify-between mb-5">
-                <h3 className="text-lg font-semibold text-bolt-elements-textPrimary">Import Repository</h3>
+                <h3 className="text-lg font-semibold text-palmkit-elements-textPrimary">Import Repository</h3>
                 <button
                   onClick={() => setIsDialogOpen(false)}
-                  className="p-2 rounded-lg hover:bg-bolt-elements-item-backgroundActive text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary transition-all duration-200"
+                  className="p-2 rounded-lg hover:bg-palmkit-elements-item-backgroundActive text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-all duration-200"
                 >
                   <div className="i-ph:x text-lg" />
                 </button>
               </div>
 
-              <p className="text-sm text-bolt-elements-textSecondary mb-4">
+              <p className="text-sm text-palmkit-elements-textSecondary mb-4">
                 Choose a provider to clone a repository into your workspace.
               </p>
 
               <div className="space-y-3">
                 <button
                   onClick={() => setSelectedProvider('github')}
-                  className="w-full p-4 rounded-lg bg-bolt-elements-item-backgroundDefault hover:bg-bolt-elements-item-backgroundActive border border-bolt-elements-borderColor hover:border-bolt-elements-borderColorActive transition-all duration-200 text-left group"
+                  className="w-full p-4 rounded-lg bg-palmkit-elements-item-backgroundDefault hover:bg-palmkit-elements-item-backgroundActive border border-palmkit-elements-borderColor hover:border-palmkit-elements-borderColorActive transition-all duration-200 text-left group"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-bolt-elements-item-backgroundAccent flex items-center justify-center group-hover:bg-bolt-elements-item-backgroundActive transition-colors">
-                      <div className="i-bolt:github text-[22px] text-bolt-elements-item-contentAccent" />
+                    <div className="w-10 h-10 rounded-lg bg-palmkit-elements-item-backgroundAccent flex items-center justify-center group-hover:bg-palmkit-elements-item-backgroundActive transition-colors">
+                      <div className="i-palmkit:github text-[22px] text-palmkit-elements-item-contentAccent" />
                     </div>
                     <div>
-                      <div className="font-medium text-bolt-elements-textPrimary">GitHub</div>
-                      <div className="text-sm text-bolt-elements-textSecondary">
+                      <div className="font-medium text-palmkit-elements-textPrimary">GitHub</div>
+                      <div className="text-sm text-palmkit-elements-textSecondary">
                         Clone from your GitHub repositories
                       </div>
                     </div>
-                    <div className="i-ph:caret-right ml-auto text-bolt-elements-textTertiary group-hover:text-bolt-elements-textSecondary transition-colors" />
+                    <div className="i-ph:caret-right ml-auto text-palmkit-elements-textTertiary group-hover:text-palmkit-elements-textSecondary transition-colors" />
                   </div>
                 </button>
 
                 <button
                   onClick={() => setSelectedProvider('gitlab')}
-                  className="w-full p-4 rounded-lg bg-bolt-elements-item-backgroundDefault hover:bg-bolt-elements-item-backgroundActive border border-bolt-elements-borderColor hover:border-bolt-elements-borderColorActive transition-all duration-200 text-left group"
+                  className="w-full p-4 rounded-lg bg-palmkit-elements-item-backgroundDefault hover:bg-palmkit-elements-item-backgroundActive border border-palmkit-elements-borderColor hover:border-palmkit-elements-borderColorActive transition-all duration-200 text-left group"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-bolt-elements-item-backgroundAccent flex items-center justify-center group-hover:bg-bolt-elements-item-backgroundActive transition-colors">
-                      <div className="i-bolt:gitlab text-[22px] text-bolt-elements-item-contentAccent" />
+                    <div className="w-10 h-10 rounded-lg bg-palmkit-elements-item-backgroundAccent flex items-center justify-center group-hover:bg-palmkit-elements-item-backgroundActive transition-colors">
+                      <div className="i-palmkit:gitlab text-[22px] text-palmkit-elements-item-contentAccent" />
                     </div>
                     <div>
-                      <div className="font-medium text-bolt-elements-textPrimary">GitLab</div>
-                      <div className="text-sm text-bolt-elements-textSecondary">
+                      <div className="font-medium text-palmkit-elements-textPrimary">GitLab</div>
+                      <div className="text-sm text-palmkit-elements-textSecondary">
                         Clone from your GitLab repositories
                       </div>
                     </div>
-                    <div className="i-ph:caret-right ml-auto text-bolt-elements-textTertiary group-hover:text-bolt-elements-textSecondary transition-colors" />
+                    <div className="i-ph:caret-right ml-auto text-palmkit-elements-textTertiary group-hover:text-palmkit-elements-textSecondary transition-colors" />
                   </div>
                 </button>
               </div>
@@ -243,15 +243,15 @@ ${escapeBoltTags(file.content)}
 
       {isDialogOpen && selectedProvider === 'github' && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-bolt-elements-bg-depth-1 rounded-xl shadow-xl border border-bolt-elements-borderColor w-full max-w-4xl max-h-[90vh] overflow-hidden">
-            <div className="p-5 border-b border-bolt-elements-borderColor flex items-center justify-between">
+          <div className="bg-palmkit-elements-bg-depth-1 rounded-xl shadow-xl border border-palmkit-elements-borderColor w-full max-w-4xl max-h-[90vh] overflow-hidden">
+            <div className="p-5 border-b border-palmkit-elements-borderColor flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-bolt-elements-item-backgroundAccent flex items-center justify-center">
-                  <div className="i-bolt:github text-xl text-bolt-elements-item-contentAccent" />
+                <div className="w-9 h-9 rounded-lg bg-palmkit-elements-item-backgroundAccent flex items-center justify-center">
+                  <div className="i-palmkit:github text-xl text-palmkit-elements-item-contentAccent" />
                 </div>
                 <div>
-                  <h3 className="text-base font-semibold text-bolt-elements-textPrimary">Import from GitHub</h3>
-                  <p className="text-xs text-bolt-elements-textSecondary">Select a repository to clone</p>
+                  <h3 className="text-base font-semibold text-palmkit-elements-textPrimary">Import from GitHub</h3>
+                  <p className="text-xs text-palmkit-elements-textSecondary">Select a repository to clone</p>
                 </div>
               </div>
               <button
@@ -259,7 +259,7 @@ ${escapeBoltTags(file.content)}
                   setIsDialogOpen(false);
                   setSelectedProvider(null);
                 }}
-                className="p-2 rounded-lg hover:bg-bolt-elements-item-backgroundActive text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary transition-all duration-200"
+                className="p-2 rounded-lg hover:bg-palmkit-elements-item-backgroundActive text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-all duration-200"
               >
                 <div className="i-ph:x text-lg" />
               </button>
@@ -274,15 +274,15 @@ ${escapeBoltTags(file.content)}
 
       {isDialogOpen && selectedProvider === 'gitlab' && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-bolt-elements-bg-depth-1 rounded-xl shadow-xl border border-bolt-elements-borderColor w-full max-w-4xl max-h-[90vh] overflow-hidden">
-            <div className="p-5 border-b border-bolt-elements-borderColor flex items-center justify-between">
+          <div className="bg-palmkit-elements-bg-depth-1 rounded-xl shadow-xl border border-palmkit-elements-borderColor w-full max-w-4xl max-h-[90vh] overflow-hidden">
+            <div className="p-5 border-b border-palmkit-elements-borderColor flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-bolt-elements-item-backgroundAccent flex items-center justify-center">
-                  <div className="i-bolt:gitlab text-xl text-bolt-elements-item-contentAccent" />
+                <div className="w-9 h-9 rounded-lg bg-palmkit-elements-item-backgroundAccent flex items-center justify-center">
+                  <div className="i-palmkit:gitlab text-xl text-palmkit-elements-item-contentAccent" />
                 </div>
                 <div>
-                  <h3 className="text-base font-semibold text-bolt-elements-textPrimary">Import from GitLab</h3>
-                  <p className="text-xs text-bolt-elements-textSecondary">Select a repository to clone</p>
+                  <h3 className="text-base font-semibold text-palmkit-elements-textPrimary">Import from GitLab</h3>
+                  <p className="text-xs text-palmkit-elements-textSecondary">Select a repository to clone</p>
                 </div>
               </div>
               <button
@@ -290,7 +290,7 @@ ${escapeBoltTags(file.content)}
                   setIsDialogOpen(false);
                   setSelectedProvider(null);
                 }}
-                className="p-2 rounded-lg hover:bg-bolt-elements-item-backgroundActive text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary transition-all duration-200"
+                className="p-2 rounded-lg hover:bg-palmkit-elements-item-backgroundActive text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-all duration-200"
               >
                 <div className="i-ph:x text-lg" />
               </button>

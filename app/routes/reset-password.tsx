@@ -84,7 +84,7 @@ export default function ResetPassword() {
         <AuthButton disabled={busy}>{busy ? 'Saving…' : 'Update password'}</AuthButton>
       </Form>
 
-      <p className="mt-4 text-center text-xs text-bolt-elements-textSecondary">
+      <p className="mt-4 text-center text-xs text-palmkit-elements-textSecondary">
         <Link to="/login" className="underline" style={{ color: '#5eead4' }}>
           Back to log in
         </Link>

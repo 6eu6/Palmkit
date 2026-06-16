@@ -98,7 +98,7 @@ export function LandingPromptBox() {
           rows={1}
           aria-label="Describe what you want to build"
           placeholder="What do you want to build?"
-          className="block w-full resize-none bg-transparent px-4 sm:px-5 py-4 pr-16 text-sm sm:text-base text-bolt-elements-textPrimary placeholder:text-bolt-elements-textTertiary focus:outline-none"
+          className="block w-full resize-none bg-transparent px-4 sm:px-5 py-4 pr-16 text-sm sm:text-base text-palmkit-elements-textPrimary placeholder:text-palmkit-elements-textTertiary focus:outline-none"
           style={{ minHeight: 56, maxHeight: 200 }}
         />
         {/* Send button */}
@@ -120,7 +120,7 @@ export function LandingPromptBox() {
       </div>
 
       {/* Helper line */}
-      <p className="mt-3 text-center text-xs text-bolt-elements-textTertiary">
+      <p className="mt-3 text-center text-xs text-palmkit-elements-textTertiary">
         Bring your own AI key · No credit card · Deploy in seconds
       </p>
 
@@ -131,7 +131,7 @@ export function LandingPromptBox() {
             key={s}
             type="button"
             onClick={() => pickSuggestion(s)}
-            className="text-[11px] sm:text-xs px-3 py-1.5 rounded-full border transition-colors hover:bg-bolt-elements-background-depth-2"
+            className="text-[11px] sm:text-xs px-3 py-1.5 rounded-full border transition-colors hover:bg-palmkit-elements-background-depth-2"
             style={{
               borderColor: 'rgba(0, 168, 181, 0.14)',
               color: TEAL_TEXT,

@@ -93,10 +93,10 @@
 @keyframes pulse-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 0 var(--bolt-glow-color);
+    box-shadow: 0 0 0 0 var(--palmkit-glow-color);
   }
   50% {
-    box-shadow: 0 0 20px 4px var(--bolt-glow-color);
+    box-shadow: 0 0 20px 4px var(--palmkit-glow-color);
   }
 }
 
@@ -222,7 +222,7 @@
 }
 
 .animate-shimmer {
-  background: linear-gradient(90deg, transparent 0%, var(--bolt-glow-color) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, var(--palmkit-glow-color) 50%, transparent 100%);
   background-size: 200% 100%;
   animation: shimmer 2s ease-in-out infinite;
 }
@@ -350,7 +350,7 @@
   position: absolute;
   inset: 0;
   border-radius: 9999px;
-  background: var(--bolt-mobile-accent, #8b5cf6);
+  background: var(--palmkit-mobile-accent, #8b5cf6);
   opacity: 0.65;
   animation: pf-file-ping 1.3s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
@@ -360,6 +360,6 @@
   position: absolute;
   inset: 0;
   border-radius: 9999px;
-  background: var(--bolt-mobile-accent, #8b5cf6);
-  box-shadow: 0 0 6px var(--bolt-mobile-accent, #8b5cf6);
+  background: var(--palmkit-mobile-accent, #8b5cf6);
+  box-shadow: 0 0 6px var(--palmkit-mobile-accent, #8b5cf6);
 }

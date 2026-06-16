@@ -20,14 +20,14 @@ const FrameworkLink: React.FC<FrameworkLinkProps> = ({ template }) => (
           transition-all duration-300 ease-out
           opacity-90 sm:grayscale sm:opacity-60
           group-hover:opacity-100 sm:group-hover:grayscale-0 group-hover:scale-110
-          group-hover:drop-shadow-[0_0_8px_var(--bolt-glow-color)]
+          group-hover:drop-shadow-[0_0_8px_var(--palmkit-glow-color)]
         `}
         title={template.label}
       />
       <span
         className="
         text-[10px] sm:text-[10px] font-medium
-        text-bolt-elements-textSecondary
+        text-palmkit-elements-textSecondary
         opacity-80 sm:opacity-0 group-hover:opacity-100
         transition-all duration-200 ease-out
         translate-y-0.5 sm:translate-y-1 group-hover:translate-y-0

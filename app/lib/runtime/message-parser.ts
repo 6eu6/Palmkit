@@ -1,18 +1,28 @@
-import type { ActionType, BoltAction, BoltActionData, FileAction, ShellAction, SupabaseAction } from '~/types/actions';
-import type { BoltArtifactData } from '~/types/artifact';
+import type { ActionType, PalmkitAction, PalmkitActionData, FileAction, ShellAction, SupabaseAction } from '~/types/actions';
+import type { PalmkitArtifactData } from '~/types/artifact';
 import { createScopedLogger } from '~/utils/logger';
 import { unreachable } from '~/utils/unreachable';
 
-const ARTIFACT_TAG_OPEN = '<boltArtifact';
-const ARTIFACT_TAG_CLOSE = '</boltArtifact>';
-const ARTIFACT_ACTION_TAG_OPEN = '<boltAction';
-const ARTIFACT_ACTION_TAG_CLOSE = '</boltAction>';
-const BOLT_QUICK_ACTIONS_OPEN = '<bolt-quick-actions>';
-const BOLT_QUICK_ACTIONS_CLOSE = '</bolt-quick-actions>';
+const ARTIFACT_TAG_OPEN = '<palmkitArtifact';
+const ARTIFACT_TAG_CLOSE = '</palmkitArtifact>';
+const ARTIFACT_ACTION_TAG_OPEN = '<palmkitAction';
+const ARTIFACT_ACTION_TAG_CLOSE = '</palmkitAction>';
+
+// Backward compatibility: normalize old boltArtifact/boltAction tags to palmkitArtifact/palmkitAction
+function normalizeLegacyTags(input: string): string {
+  return input
+    .replace(/<boltArtifact/g, '<palmkitArtifact')
+    .replace(/<\/boltArtifact>/g, '</palmkitArtifact>')
+    .replace(/<boltAction/g, '<palmkitAction')
+    .replace(/<\/boltAction>/g, '</palmkitAction>');
+}
+
+const PALMKIT_QUICK_ACTIONS_OPEN = '<palmkit-quick-actions>';
+const PALMKIT_QUICK_ACTIONS_CLOSE = '</palmkit-quick-actions>';
 
 const logger = createScopedLogger('MessageParser');
 
-export interface ArtifactCallbackData extends BoltArtifactData {
+export interface ArtifactCallbackData extends PalmkitArtifactData {
   messageId: string;
   artifactId?: string;
 }
@@ -21,7 +31,7 @@ export interface ActionCallbackData {
   artifactId: string;
   messageId: string;
   actionId: string;
-  action: BoltAction;
+  action: PalmkitAction;
 }
 
 export type ArtifactCallback = (data: ArtifactCallbackData) => void;
@@ -52,8 +62,8 @@ interface MessageState {
   insideArtifact: boolean;
   insideAction: boolean;
   artifactCounter: number;
-  currentArtifact?: BoltArtifactData;
-  currentAction: BoltActionData;
+  currentArtifact?: PalmkitArtifactData;
+  currentAction: PalmkitActionData;
   actionId: number;
 }
 
@@ -100,14 +110,14 @@ export class StreamingMessageParser {
     let earlyBreak = false;
 
     while (i < input.length) {
-      if (input.startsWith(BOLT_QUICK_ACTIONS_OPEN, i)) {
-        const actionsBlockEnd = input.indexOf(BOLT_QUICK_ACTIONS_CLOSE, i);
+      if (input.startsWith(PALMKIT_QUICK_ACTIONS_OPEN, i)) {
+        const actionsBlockEnd = input.indexOf(PALMKIT_QUICK_ACTIONS_CLOSE, i);
 
         if (actionsBlockEnd !== -1) {
-          const actionsBlockContent = input.slice(i + BOLT_QUICK_ACTIONS_OPEN.length, actionsBlockEnd);
+          const actionsBlockContent = input.slice(i + PALMKIT_QUICK_ACTIONS_OPEN.length, actionsBlockEnd);
 
-          // Find all <bolt-quick-action ...>label</bolt-quick-action> inside
-          const quickActionRegex = /<bolt-quick-action([^>]*)>([\s\S]*?)<\/bolt-quick-action>/g;
+          // Find all <palmkit-quick-action ...>label</palmkit-quick-action> inside
+          const quickActionRegex = /<palmkit-quick-action([^>]*)>([\s\S]*?)<\/palmkit-quick-action>/g;
           let match;
           const buttons = [];
 
@@ -126,7 +136,7 @@ export class StreamingMessageParser {
             );
           }
           output += createQuickActionGroup(buttons);
-          i = actionsBlockEnd + BOLT_QUICK_ACTIONS_CLOSE.length;
+          i = actionsBlockEnd + PALMKIT_QUICK_ACTIONS_CLOSE.length;
           continue;
         }
       }
@@ -171,7 +181,7 @@ export class StreamingMessageParser {
                */
               actionId: String(state.actionId - 1),
 
-              action: currentAction as BoltAction,
+              action: currentAction as PalmkitAction,
             });
 
             state.insideAction = false;
@@ -217,7 +227,7 @@ export class StreamingMessageParser {
                 artifactId: currentArtifact.id,
                 messageId,
                 actionId: String(state.actionId++),
-                action: state.currentAction as BoltAction,
+                action: state.currentAction as PalmkitAction,
               });
 
               i = actionEndIndex + 1;
@@ -280,7 +290,7 @@ export class StreamingMessageParser {
                 id: artifactId,
                 title: artifactTitle,
                 type,
-              } satisfies BoltArtifactData;
+              } satisfies PalmkitArtifactData;
 
               state.currentArtifact = currentArtifact;
 
@@ -339,7 +349,7 @@ export class StreamingMessageParser {
    * Force-finalize any open action or artifact across all tracked messages.
    *
    * When the stream ends (onFinish / onError) the parser may be in the middle
-   * of an unclosed `<boltAction>` — the LLM hit its token limit or the
+   * of an unclosed `<palmkitAction>` — the LLM hit its token limit or the
    * connection dropped.  Without this flush the file content is displayed in
    * the editor but **never actually written** to the WebContainer / workbench.
    *
@@ -369,7 +379,7 @@ export class StreamingMessageParser {
           artifactId: state.currentArtifact.id,
           messageId,
           actionId: String(state.actionId - 1),
-          action: currentAction as BoltAction,
+          action: currentAction as PalmkitAction,
         });
 
         state.insideAction = false;
@@ -451,7 +461,7 @@ export class StreamingMessageParser {
 
 const createArtifactElement: ElementFactory = (props) => {
   const elementProps = [
-    'class="__boltArtifact__"',
+    'class="__palmkitArtifact__"',
     ...Object.entries(props).map(([key, value]) => {
       return `data-${camelToDashCase(key)}=${JSON.stringify(value)}`;
     }),
@@ -466,8 +476,8 @@ function camelToDashCase(input: string) {
 
 function createQuickActionElement(props: Record<string, string>, label: string) {
   const elementProps = [
-    'class="__boltQuickAction__"',
-    'data-bolt-quick-action="true"',
+    'class="__palmkitQuickAction__"',
+    'data-palmkit-quick-action="true"',
     ...Object.entries(props).map(([key, value]) => `data-${camelToDashCase(key)}=${JSON.stringify(value)}`),
   ];
 
@@ -475,5 +485,5 @@ function createQuickActionElement(props: Record<string, string>, label: string) 
 }
 
 function createQuickActionGroup(buttons: string[]) {
-  return `<div class=\"__boltQuickAction__\" data-bolt-quick-action=\"true\">${buttons.join('')}</div>`;
+  return `<div class=\"__palmkitQuickAction__\" data-palmkit-quick-action=\"true\">${buttons.join('')}</div>`;
 }

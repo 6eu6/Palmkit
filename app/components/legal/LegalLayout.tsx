@@ -7,13 +7,13 @@ import type { ReactNode } from 'react';
  */
 export function LegalLayout({ title, updated, children }: { title: string; updated: string; children: ReactNode }) {
   return (
-    <div className="min-h-[100dvh] bg-bolt-elements-bg-depth-1 text-bolt-elements-textPrimary">
+    <div className="min-h-[100dvh] bg-palmkit-elements-bg-depth-1 text-palmkit-elements-textPrimary">
       {/* Header */}
       <header
         className="sticky top-0 z-10 flex items-center gap-2 px-4 h-14 border-b backdrop-blur-xl"
         style={{
-          background: 'var(--bolt-mobile-surface-bg, rgba(10,10,18,0.9))',
-          borderColor: 'var(--bolt-mobile-surface-border, rgba(0,168,181,0.14))',
+          background: 'var(--palmkit-mobile-surface-bg, rgba(10,10,18,0.9))',
+          borderColor: 'var(--palmkit-mobile-surface-border, rgba(0,168,181,0.14))',
         }}
       >
         <Link to="/" className="flex items-center" aria-label="Palmkit home">
@@ -24,7 +24,7 @@ export function LegalLayout({ title, updated, children }: { title: string; updat
           to="/"
           className="ml-auto text-xs px-3 py-1.5 rounded-lg transition-colors"
           style={{
-            background: 'var(--bolt-mobile-accent-faint, rgba(0,168,181,0.06))',
+            background: 'var(--palmkit-mobile-accent-faint, rgba(0,168,181,0.06))',
             color: '#5eead4',
           }}
         >
@@ -38,7 +38,7 @@ export function LegalLayout({ title, updated, children }: { title: string; updat
           <div
             className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full mb-3"
             style={{
-              background: 'var(--bolt-mobile-accent-faint, rgba(0,168,181,0.08))',
+              background: 'var(--palmkit-mobile-accent-faint, rgba(0,168,181,0.08))',
               color: '#5eead4',
             }}
           >
@@ -46,21 +46,21 @@ export function LegalLayout({ title, updated, children }: { title: string; updat
             Legal
           </div>
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-2">{title}</h1>
-          <p className="text-sm text-bolt-elements-textSecondary">Last updated: {updated}</p>
+          <p className="text-sm text-palmkit-elements-textSecondary">Last updated: {updated}</p>
         </div>
 
-        <article className="legal-prose flex flex-col gap-6 text-[15px] leading-relaxed text-bolt-elements-textSecondary">
+        <article className="legal-prose flex flex-col gap-6 text-[15px] leading-relaxed text-palmkit-elements-textSecondary">
           {children}
         </article>
 
         <footer
-          className="mt-12 pt-6 border-t text-xs text-bolt-elements-textTertiary"
-          style={{ borderColor: 'var(--bolt-mobile-surface-border, rgba(0,168,181,0.12))' }}
+          className="mt-12 pt-6 border-t text-xs text-palmkit-elements-textTertiary"
+          style={{ borderColor: 'var(--palmkit-mobile-surface-border, rgba(0,168,181,0.12))' }}
         >
           <p>
             Palmkit is an independent project built on top of the MIT-licensed{' '}
             <a
-              href="https://github.com/stackblitz-labs/bolt.diy"
+              href="https://github.com/6eu6/Palmkit"
               className="underline"
               style={{ color: '#5eead4' }}
               target="_blank"
@@ -88,7 +88,7 @@ export function LegalLayout({ title, updated, children }: { title: string; updat
 export function LegalSection({ heading, children }: { heading: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="text-lg font-semibold text-bolt-elements-textPrimary">{heading}</h2>
+      <h2 className="text-lg font-semibold text-palmkit-elements-textPrimary">{heading}</h2>
       <div className="flex flex-col gap-2">{children}</div>
     </section>
   );

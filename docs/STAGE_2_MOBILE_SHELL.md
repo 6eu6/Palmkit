@@ -2,7 +2,7 @@
 
 ## Summary
 
-Added a mobile-first bottom tab navigation shell that makes bolt.diy usable on phones (< 640px viewport) while preserving the existing desktop experience unchanged.
+Added a mobile-first bottom tab navigation shell that makes palmkit.app usable on phones (< 640px viewport) while preserving the existing desktop experience unchanged.
 
 ---
 
@@ -89,7 +89,7 @@ The mobile shell uses **CSS-only** for the show/hide mechanism. No JavaScript vi
 
 ## Rollback Instructions
 
-To completely remove the mobile shell and restore the original bolt.diy:
+To completely remove the mobile shell and restore the original palmkit.app:
 
 1. **Delete the mobile components directory**:
    ```bash

@@ -45,8 +45,8 @@ export function ProjectList({ open, onClose }: ProjectListProps) {
                 const lastMsg = item.messages[item.messages.length - 1];
 
                 if (lastMsg?.role === 'assistant' && lastMsg.content) {
-                  const hasArtifact = lastMsg.content.includes('<boltArtifact');
-                  const hasClose = lastMsg.content.includes('</boltArtifact>');
+                  const hasArtifact = lastMsg.content.includes('<palmkitArtifact');
+                  const hasClose = lastMsg.content.includes('</palmkitArtifact>');
 
                   if (hasArtifact && !hasClose) {
                     status = 'interrupted';

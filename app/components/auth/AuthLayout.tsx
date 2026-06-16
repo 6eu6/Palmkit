@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
  */
 export function AuthLayout({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return (
-    <div className="min-h-[100dvh] flex flex-col bg-bolt-elements-bg-depth-1 text-bolt-elements-textPrimary">
+    <div className="min-h-[100dvh] flex flex-col bg-palmkit-elements-bg-depth-1 text-palmkit-elements-textPrimary">
       <header className="flex items-center px-4 h-14">
         <Link to="/" className="flex items-center" aria-label="Palmkit home">
           <img src="/palmkit-logo-light.png" alt="Palmkit" className="h-7 w-auto select-none dark:hidden" />
@@ -19,20 +19,20 @@ export function AuthLayout({ title, subtitle, children }: { title: string; subti
         <div className="w-full max-w-sm">
           <div className="mb-7 text-center">
             <h1 className="text-2xl font-bold tracking-tight mb-1.5">{title}</h1>
-            <p className="text-sm text-bolt-elements-textSecondary">{subtitle}</p>
+            <p className="text-sm text-palmkit-elements-textSecondary">{subtitle}</p>
           </div>
 
           <div
             className="rounded-2xl border p-5 sm:p-6"
             style={{
-              background: 'var(--bolt-mobile-surface-bg, rgba(255,255,255,0.02))',
+              background: 'var(--palmkit-mobile-surface-bg, rgba(255,255,255,0.02))',
               borderColor: 'rgba(0, 168, 181, 0.14)',
             }}
           >
             {children}
           </div>
 
-          <p className="mt-6 text-center text-[11px] text-bolt-elements-textTertiary leading-relaxed">
+          <p className="mt-6 text-center text-[11px] text-palmkit-elements-textTertiary leading-relaxed">
             By continuing you agree to our{' '}
             <Link to="/terms" className="underline" style={{ color: '#5eead4' }}>
               Terms
@@ -83,10 +83,10 @@ export function AuthInput(props: React.InputHTMLAttributes<HTMLInputElement> & {
 
   return (
     <label className="block">
-      <span className="block text-xs font-medium text-bolt-elements-textSecondary mb-1.5">{label}</span>
+      <span className="block text-xs font-medium text-palmkit-elements-textSecondary mb-1.5">{label}</span>
       <input
         {...rest}
-        className="w-full h-11 px-3.5 rounded-xl text-sm bg-bolt-elements-bg-depth-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary focus:outline-none focus:ring-2 focus:ring-[#00A8B5]/30 transition-all"
+        className="w-full h-11 px-3.5 rounded-xl text-sm bg-palmkit-elements-bg-depth-2 border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary focus:outline-none focus:ring-2 focus:ring-[#00A8B5]/30 transition-all"
       />
     </label>
   );

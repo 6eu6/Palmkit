@@ -50,8 +50,8 @@ export const MobileBottomTabs = memo(() => {
   return (
     <div
       className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around sm:hidden
-        bg-bolt-elements-bg-depth-1/90 backdrop-blur-xl
-        border-t border-bolt-elements-borderColor"
+        bg-palmkit-elements-bg-depth-1/90 backdrop-blur-xl
+        border-t border-palmkit-elements-borderColor"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
       {tabs.map((tab) => {
@@ -64,14 +64,14 @@ export const MobileBottomTabs = memo(() => {
             className={classNames(
               'flex flex-col items-center justify-center py-2 px-3 min-w-[56px] min-h-[48px] transition-all duration-200 outline-none relative',
               isActive
-                ? 'text-bolt-elements-button-primary-text'
-                : 'text-bolt-elements-textTertiary active:text-bolt-elements-textSecondary',
+                ? 'text-palmkit-elements-button-primary-text'
+                : 'text-palmkit-elements-textTertiary active:text-palmkit-elements-textSecondary',
             )}
             aria-label={tab.label}
             aria-pressed={isActive}
           >
             {isActive && (
-              <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-[2px] rounded-full bg-gradient-to-r from-[var(--bolt-gradient-start)] to-[var(--bolt-gradient-end)]" />
+              <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-[2px] rounded-full bg-gradient-to-r from-[var(--palmkit-gradient-start)] to-[var(--palmkit-gradient-end)]" />
             )}
             <div
               className={classNames(tab.icon, 'text-[20px] transition-transform duration-200', isActive && 'scale-110')}
@@ -79,7 +79,7 @@ export const MobileBottomTabs = memo(() => {
             <span
               className={classNames(
                 'text-[10px] mt-0.5 leading-tight font-medium transition-colors duration-200',
-                isActive ? 'text-bolt-elements-button-primary-text' : 'text-bolt-elements-textTertiary',
+                isActive ? 'text-palmkit-elements-button-primary-text' : 'text-palmkit-elements-textTertiary',
               )}
             >
               {tab.label}

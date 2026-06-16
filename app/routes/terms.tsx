@@ -56,7 +56,7 @@ export default function Terms() {
 
       <LegalSection heading="6. Intellectual property">
         <p>
-          Palmkit is an independent project built on top of the MIT-licensed bolt.diy codebase; the original license and
+          Palmkit is an independent project built on top of the MIT-licensed palmkit.app codebase; the original license and
           attributions are preserved. The Palmkit name and branding belong to its maintainer. Your generated projects
           remain yours.
         </p>

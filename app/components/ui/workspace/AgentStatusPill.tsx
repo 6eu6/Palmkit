@@ -27,48 +27,48 @@ const STATUS_CONFIG: Record<AgentStatus, { icon: string; label: string; colorCla
     icon: 'i-ph:circle-dashed',
     label: 'Idle',
     colorClass:
-      'bg-[var(--bolt-mobile-surface-bg)] text-[var(--bolt-mobile-text-tertiary)] border-[var(--bolt-mobile-surface-border)]',
+      'bg-[var(--palmkit-mobile-surface-bg)] text-[var(--palmkit-mobile-text-tertiary)] border-[var(--palmkit-mobile-surface-border)]',
   },
   thinking: {
     icon: 'i-ph:brain',
     label: 'Thinking',
     colorClass:
-      'bg-[var(--bolt-mobile-accent-faint)] text-[var(--bolt-mobile-accent-text)] border-[var(--bolt-mobile-surface-border)]',
+      'bg-[var(--palmkit-mobile-accent-faint)] text-[var(--palmkit-mobile-accent-text)] border-[var(--palmkit-mobile-surface-border)]',
     animate: true,
   },
   generating: {
     icon: 'i-ph:lightning',
     label: 'Generating',
     colorClass:
-      'bg-[var(--bolt-mobile-accent-muted)] text-[var(--bolt-mobile-accent-text)] border-[var(--bolt-mobile-surface-border-strong)]',
+      'bg-[var(--palmkit-mobile-accent-muted)] text-[var(--palmkit-mobile-accent-text)] border-[var(--palmkit-mobile-surface-border-strong)]',
     animate: true,
   },
   saving: {
     icon: 'i-ph:floppy-disk',
     label: 'Saving',
-    colorClass: 'bg-[var(--bolt-mobile-info-muted)] text-[var(--bolt-mobile-info)] border-[rgba(96,165,250,0.2)]',
+    colorClass: 'bg-[var(--palmkit-mobile-info-muted)] text-[var(--palmkit-mobile-info)] border-[rgba(96,165,250,0.2)]',
     animate: true,
   },
   restored: {
     icon: 'i-ph:arrow-counter-clockwise',
     label: 'Restored',
-    colorClass: 'bg-[var(--bolt-mobile-success-muted)] text-[var(--bolt-mobile-success)] border-[rgba(74,222,128,0.2)]',
+    colorClass: 'bg-[var(--palmkit-mobile-success-muted)] text-[var(--palmkit-mobile-success)] border-[rgba(74,222,128,0.2)]',
   },
   stuck: {
     icon: 'i-ph:warning',
     label: 'Stuck',
-    colorClass: 'bg-[var(--bolt-mobile-warning-muted)] text-[var(--bolt-mobile-warning)] border-[rgba(251,191,36,0.2)]',
+    colorClass: 'bg-[var(--palmkit-mobile-warning-muted)] text-[var(--palmkit-mobile-warning)] border-[rgba(251,191,36,0.2)]',
     animate: true,
   },
   error: {
     icon: 'i-ph:x-circle',
     label: 'Error',
-    colorClass: 'bg-[var(--bolt-mobile-error-muted)] text-[var(--bolt-mobile-error)] border-[rgba(248,113,113,0.2)]',
+    colorClass: 'bg-[var(--palmkit-mobile-error-muted)] text-[var(--palmkit-mobile-error)] border-[rgba(248,113,113,0.2)]',
   },
   done: {
     icon: 'i-ph:check-circle',
     label: 'Done',
-    colorClass: 'bg-[var(--bolt-mobile-success-muted)] text-[var(--bolt-mobile-success)] border-[rgba(74,222,128,0.2)]',
+    colorClass: 'bg-[var(--palmkit-mobile-success-muted)] text-[var(--palmkit-mobile-success)] border-[rgba(74,222,128,0.2)]',
   },
 };
 

@@ -28,7 +28,7 @@ const BORDER_SUBTLE = 'rgba(255, 255, 255, 0.06)';
 
 export function Landing() {
   return (
-    <div className="min-h-[100dvh] flex flex-col bg-bolt-elements-background-depth-1 text-bolt-elements-textPrimary overflow-x-hidden">
+    <div className="min-h-[100dvh] flex flex-col bg-palmkit-elements-background-depth-1 text-palmkit-elements-textPrimary overflow-x-hidden">
       <LandingHeader />
       <main className="flex-1">
         <Hero />
@@ -54,15 +54,15 @@ function LandingHeader() {
       <Link to="/" className="flex items-center" aria-label="Palmkit home">
         <img src="/palmkit-logo-dark.png" alt="Palmkit" className="h-7 w-auto select-none" />
       </Link>
-      <nav className="hidden md:flex items-center gap-7 ml-10 text-sm text-bolt-elements-textSecondary">
-        <a href="#process" className="hover:text-bolt-elements-textPrimary transition-colors">How it works</a>
-        <a href="#templates" className="hover:text-bolt-elements-textPrimary transition-colors">Templates</a>
-        <a href="#stats" className="hover:text-bolt-elements-textPrimary transition-colors">Why Palmkit</a>
+      <nav className="hidden md:flex items-center gap-7 ml-10 text-sm text-palmkit-elements-textSecondary">
+        <a href="#process" className="hover:text-palmkit-elements-textPrimary transition-colors">How it works</a>
+        <a href="#templates" className="hover:text-palmkit-elements-textPrimary transition-colors">Templates</a>
+        <a href="#stats" className="hover:text-palmkit-elements-textPrimary transition-colors">Why Palmkit</a>
       </nav>
       <div className="ml-auto flex items-center gap-2">
         <Link
           to="/login"
-          className="h-9 px-3.5 flex items-center text-sm font-medium text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary transition-colors"
+          className="h-9 px-3.5 flex items-center text-sm font-medium text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
         >
           Log in
         </Link>
@@ -120,7 +120,7 @@ function Hero() {
         </span>
       </h1>
 
-      <p className="mx-auto mt-5 max-w-xl text-base sm:text-lg text-bolt-elements-textSecondary leading-relaxed">
+      <p className="mx-auto mt-5 max-w-xl text-base sm:text-lg text-palmkit-elements-textSecondary leading-relaxed">
         Create apps and websites by chatting with AI. Palmkit generates the code, installs
         dependencies, and shows a live preview — right in your browser, on any device.
       </p>
@@ -139,12 +139,12 @@ function LogoStrip() {
   const logos = ['Vercel', 'GitHub', 'Netlify', 'Cloudflare', 'Supabase'];
   return (
     <section className="px-4 sm:px-6 py-10 border-y" style={{ borderColor: BORDER_SUBTLE }}>
-      <p className="text-center text-xs text-bolt-elements-textTertiary mb-6">
+      <p className="text-center text-xs text-palmkit-elements-textTertiary mb-6">
         Deploy to the platforms you already use
       </p>
       <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
         {logos.map((name) => (
-          <span key={name} className="text-lg sm:text-xl font-semibold text-bolt-elements-textTertiary tracking-tight">
+          <span key={name} className="text-lg sm:text-xl font-semibold text-palmkit-elements-textTertiary tracking-tight">
             {name}
           </span>
         ))}
@@ -195,10 +195,10 @@ function Process() {
               >
                 <span className={`${s.icon} text-lg`} style={{ color: TEAL_TEXT }} />
               </div>
-              <span className="text-xs font-mono text-bolt-elements-textTertiary">0{i + 1}</span>
+              <span className="text-xs font-mono text-palmkit-elements-textTertiary">0{i + 1}</span>
             </div>
             <h3 className="text-base font-semibold mb-2">{s.title}</h3>
-            <p className="text-sm text-bolt-elements-textSecondary leading-relaxed">{s.body}</p>
+            <p className="text-sm text-palmkit-elements-textSecondary leading-relaxed">{s.body}</p>
           </div>
         ))}
       </div>
@@ -241,7 +241,7 @@ function Templates() {
               <span className={`${t.icon} text-base`} style={{ color: TEAL_TEXT }} />
             </div>
             <h3 className="text-sm font-semibold mb-1">{t.name}</h3>
-            <p className="text-xs text-bolt-elements-textTertiary leading-relaxed">{t.desc}</p>
+            <p className="text-xs text-palmkit-elements-textTertiary leading-relaxed">{t.desc}</p>
           </div>
         ))}
       </div>
@@ -280,7 +280,7 @@ function Stats() {
               {s.value}
             </div>
             <div className="mt-3 text-sm font-semibold">{s.label}</div>
-            <p className="mt-1.5 text-xs text-bolt-elements-textTertiary leading-relaxed">{s.sub}</p>
+            <p className="mt-1.5 text-xs text-palmkit-elements-textTertiary leading-relaxed">{s.sub}</p>
           </div>
         ))}
       </div>
@@ -314,7 +314,7 @@ function SecondaryCta() {
             build?
           </span>
         </h2>
-        <p className="mt-4 text-base text-bolt-elements-textSecondary">
+        <p className="mt-4 text-base text-palmkit-elements-textSecondary">
           Start now — describe your idea and Palmkit takes care of the rest.
         </p>
         <div className="mt-9">
@@ -337,7 +337,7 @@ function SectionHeading({ eyebrow, title, sub }: { eyebrow: string; title: strin
         {eyebrow}
       </div>
       <h2 className="text-2xl sm:text-4xl font-bold tracking-tight leading-tight">{title}</h2>
-      {sub ? <p className="mt-3 text-sm sm:text-base text-bolt-elements-textSecondary leading-relaxed">{sub}</p> : null}
+      {sub ? <p className="mt-3 text-sm sm:text-base text-palmkit-elements-textSecondary leading-relaxed">{sub}</p> : null}
     </div>
   );
 }
@@ -393,14 +393,14 @@ function LandingFooter() {
             <Link to="/" className="flex items-center mb-3">
               <img src="/palmkit-logo-dark.png" alt="Palmkit" className="h-7 w-auto select-none" />
             </Link>
-            <p className="text-xs text-bolt-elements-textTertiary leading-relaxed max-w-[180px]">
+            <p className="text-xs text-palmkit-elements-textTertiary leading-relaxed max-w-[180px]">
               Build, preview and export AI-generated web apps from any device.
             </p>
           </div>
           {/* Link columns */}
           {cols.map((c) => (
             <div key={c.heading}>
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-bolt-elements-textSecondary mb-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-palmkit-elements-textSecondary mb-3">
                 {c.heading}
               </h4>
               <ul className="space-y-2">
@@ -408,7 +408,7 @@ function LandingFooter() {
                   <li key={l.label}>
                     <Link
                       to={l.to}
-                      className="text-xs text-bolt-elements-textTertiary hover:text-bolt-elements-textPrimary transition-colors"
+                      className="text-xs text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary transition-colors"
                     >
                       {l.label}
                     </Link>
@@ -419,12 +419,12 @@ function LandingFooter() {
           ))}
         </div>
         <div className="mt-10 pt-6 border-t flex flex-col sm:flex-row items-center justify-between gap-3" style={{ borderColor: BORDER_SUBTLE }}>
-          <p className="text-xs text-bolt-elements-textTertiary">© {new Date().getFullYear()} Palmkit. All rights reserved.</p>
-          <div className="flex items-center gap-4 text-xs text-bolt-elements-textTertiary">
-            <a href="https://github.com" target="_blank" rel="noreferrer" className="hover:text-bolt-elements-textPrimary transition-colors">
+          <p className="text-xs text-palmkit-elements-textTertiary">© {new Date().getFullYear()} Palmkit. All rights reserved.</p>
+          <div className="flex items-center gap-4 text-xs text-palmkit-elements-textTertiary">
+            <a href="https://github.com" target="_blank" rel="noreferrer" className="hover:text-palmkit-elements-textPrimary transition-colors">
               <span className="i-ph:github-logo-fill text-base" />
             </a>
-            <a href="https://x.com" target="_blank" rel="noreferrer" className="hover:text-bolt-elements-textPrimary transition-colors">
+            <a href="https://x.com" target="_blank" rel="noreferrer" className="hover:text-palmkit-elements-textPrimary transition-colors">
               <span className="i-ph:x-logo-fill text-base" />
             </a>
           </div>

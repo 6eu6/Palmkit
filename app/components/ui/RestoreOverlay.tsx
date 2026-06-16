@@ -41,7 +41,7 @@ export function RestoreOverlay() {
     <AnimatePresence>
       {restoring && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--bolt-mobile-surface-bg-overlay)] backdrop-blur-xl"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--palmkit-mobile-surface-bg-overlay)] backdrop-blur-xl"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -56,11 +56,11 @@ export function RestoreOverlay() {
           >
             {/* Main spinner */}
             <div className="relative">
-              <div className="h-16 w-16 animate-spin rounded-full border-4 border-[var(--bolt-mobile-accent-faint)] border-t-[var(--bolt-mobile-accent-text)]" />
+              <div className="h-16 w-16 animate-spin rounded-full border-4 border-[var(--palmkit-mobile-accent-faint)] border-t-[var(--palmkit-mobile-accent-text)]" />
               <div
                 className={classNames(
                   'absolute inset-0 flex items-center justify-center',
-                  'text-[var(--bolt-mobile-accent-text)]',
+                  'text-[var(--palmkit-mobile-accent-text)]',
                 )}
               >
                 <div className={classNames(RESTORE_ICONS[status.step], 'text-2xl')} />
@@ -69,8 +69,8 @@ export function RestoreOverlay() {
 
             {/* Status text */}
             <div className="text-center">
-              <h2 className="text-lg font-semibold text-[var(--bolt-mobile-text-primary)]">Restoring Workspace</h2>
-              <p className="mt-2 text-sm text-[var(--bolt-mobile-text-secondary)]">
+              <h2 className="text-lg font-semibold text-[var(--palmkit-mobile-text-primary)]">Restoring Workspace</h2>
+              <p className="mt-2 text-sm text-[var(--palmkit-mobile-text-secondary)]">
                 {RESTORE_STEP_LABELS[status.step]}
               </p>
             </div>
@@ -87,17 +87,17 @@ export function RestoreOverlay() {
                     <div
                       className={classNames(
                         'h-2.5 w-2.5 rounded-full transition-all duration-300',
-                        isCompleted && 'bg-[var(--bolt-mobile-success)]',
+                        isCompleted && 'bg-[var(--palmkit-mobile-success)]',
                         isCurrent &&
-                          'scale-125 bg-[var(--bolt-mobile-accent-text)] ring-2 ring-[var(--bolt-mobile-accent)]/30',
-                        isPending && 'bg-[var(--bolt-mobile-accent-faint)]',
+                          'scale-125 bg-[var(--palmkit-mobile-accent-text)] ring-2 ring-[var(--palmkit-mobile-accent)]/30',
+                        isPending && 'bg-[var(--palmkit-mobile-accent-faint)]',
                       )}
                     />
                     {idx < STEP_ORDER.length - 1 && (
                       <div
                         className={classNames(
                           'h-0.5 w-6 transition-colors duration-300',
-                          isCompleted ? 'bg-[var(--bolt-mobile-success)]/60' : 'bg-[var(--bolt-mobile-surface-border)]',
+                          isCompleted ? 'bg-[var(--palmkit-mobile-success)]/60' : 'bg-[var(--palmkit-mobile-surface-border)]',
                         )}
                       />
                     )}

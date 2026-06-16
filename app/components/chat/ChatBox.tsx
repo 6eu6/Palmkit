@@ -70,10 +70,10 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
   return (
     <div
       className={classNames(
-        'relative bg-bolt-elements-prompt-background backdrop-blur-xl p-2 sm:p-3 rounded-xl border border-bolt-elements-borderColor relative w-full max-w-chat mx-auto z-prompt',
+        'relative bg-palmkit-elements-prompt-background backdrop-blur-xl p-2 sm:p-3 rounded-xl border border-palmkit-elements-borderColor relative w-full max-w-chat mx-auto z-prompt',
         'shadow-[0_2px_20px_rgba(0,0,0,0.04)] dark:shadow-[0_2px_20px_rgba(0,0,0,0.3)]',
         'transition-shadow duration-300',
-        'hover:shadow-[0_4px_30px_var(--bolt-glow-color)]',
+        'hover:shadow-[0_4px_30px_var(--palmkit-glow-color)]',
       )}
     >
       <svg className={classNames(styles.PromptEffectContainer)}>
@@ -87,10 +87,10 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             gradientUnits="userSpaceOnUse"
             gradientTransform="rotate(-45)"
           >
-            <stop offset="0%" stopColor="var(--bolt-gradient-start)" stopOpacity="0%"></stop>
-            <stop offset="40%" stopColor="var(--bolt-gradient-mid)" stopOpacity="80%"></stop>
-            <stop offset="50%" stopColor="var(--bolt-gradient-end)" stopOpacity="80%"></stop>
-            <stop offset="100%" stopColor="var(--bolt-gradient-start)" stopOpacity="0%"></stop>
+            <stop offset="0%" stopColor="var(--palmkit-gradient-start)" stopOpacity="0%"></stop>
+            <stop offset="40%" stopColor="var(--palmkit-gradient-mid)" stopOpacity="80%"></stop>
+            <stop offset="50%" stopColor="var(--palmkit-gradient-end)" stopOpacity="80%"></stop>
+            <stop offset="100%" stopColor="var(--palmkit-gradient-start)" stopOpacity="0%"></stop>
           </linearGradient>
           <linearGradient id="shine-gradient">
             <stop offset="0%" stopColor="white" stopOpacity="0%"></stop>
@@ -151,15 +151,15 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
         )}
       </ClientOnly>
       {props.selectedElement && (
-        <div className="flex mx-1.5 gap-2 items-center justify-between rounded-lg rounded-b-none border border-b-none border-bolt-elements-borderColor text-bolt-elements-textPrimary py-1 px-2.5 font-medium text-xs">
+        <div className="flex mx-1.5 gap-2 items-center justify-between rounded-lg rounded-b-none border border-b-none border-palmkit-elements-borderColor text-palmkit-elements-textPrimary py-1 px-2.5 font-medium text-xs">
           <div className="flex gap-2 items-center lowercase">
-            <code className="bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text rounded px-1.5 py-0.5 mr-0.5 text-[10px] font-bold">
+            <code className="bg-palmkit-elements-button-primary-background text-palmkit-elements-button-primary-text rounded px-1.5 py-0.5 mr-0.5 text-[10px] font-bold">
               {props?.selectedElement?.tagName}
             </code>
-            <span className="text-bolt-elements-textSecondary">selected for inspection</span>
+            <span className="text-palmkit-elements-textSecondary">selected for inspection</span>
           </div>
           <button
-            className="text-bolt-elements-button-primary-text text-xs font-medium hover:underline"
+            className="text-palmkit-elements-button-primary-text text-xs font-medium hover:underline"
             onClick={() => props.setSelectedElement?.(null)}
           >
             Clear
@@ -168,15 +168,15 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
       )}
       <div
         className={classNames(
-          'relative border border-bolt-elements-borderColor backdrop-blur rounded-lg',
+          'relative border border-palmkit-elements-borderColor backdrop-blur rounded-lg',
           'transition-all duration-200',
-          'focus-within:border-bolt-elements-borderColorActive focus-within:shadow-[0_0_0_3px_var(--bolt-glow-color)]',
+          'focus-within:border-palmkit-elements-borderColorActive focus-within:shadow-[0_0_0_3px_var(--palmkit-glow-color)]',
         )}
       >
         <textarea
           ref={props.textareaRef}
           className={classNames(
-            'w-full pl-3 sm:pl-4 pt-3 sm:pt-4 pr-14 outline-none resize-none text-bolt-elements-textPrimary placeholder-bolt-elements-textTertiary bg-transparent text-sm',
+            'w-full pl-3 sm:pl-4 pt-3 sm:pt-4 pr-14 outline-none resize-none text-palmkit-elements-textPrimary placeholder-palmkit-elements-textTertiary bg-transparent text-sm',
             'transition-all duration-200',
           )}
           onMouseDown={(e) => {
@@ -192,22 +192,22 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
           }}
           onDragEnter={(e) => {
             e.preventDefault();
-            e.currentTarget.style.borderColor = 'var(--bolt-elements-borderColorActive)';
-            e.currentTarget.style.boxShadow = '0 0 0 3px var(--bolt-glow-color)';
+            e.currentTarget.style.borderColor = 'var(--palmkit-elements-borderColorActive)';
+            e.currentTarget.style.boxShadow = '0 0 0 3px var(--palmkit-glow-color)';
           }}
           onDragOver={(e) => {
             e.preventDefault();
-            e.currentTarget.style.borderColor = 'var(--bolt-elements-borderColorActive)';
-            e.currentTarget.style.boxShadow = '0 0 0 3px var(--bolt-glow-color)';
+            e.currentTarget.style.borderColor = 'var(--palmkit-elements-borderColorActive)';
+            e.currentTarget.style.boxShadow = '0 0 0 3px var(--palmkit-glow-color)';
           }}
           onDragLeave={(e) => {
             e.preventDefault();
-            e.currentTarget.style.borderColor = 'var(--bolt-elements-borderColor)';
+            e.currentTarget.style.borderColor = 'var(--palmkit-elements-borderColor)';
             e.currentTarget.style.boxShadow = 'none';
           }}
           onDrop={(e) => {
             e.preventDefault();
-            e.currentTarget.style.borderColor = 'var(--bolt-elements-borderColor)';
+            e.currentTarget.style.borderColor = 'var(--palmkit-elements-borderColor)';
             e.currentTarget.style.boxShadow = 'none';
 
             const files = Array.from(e.dataTransfer.files);
@@ -295,9 +295,9 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             }}
           >
             {props.enhancingPrompt ? (
-              <div className="i-svg-spinners:90-ring-with-bg text-bolt-elements-loader-progress text-lg sm:text-xl animate-spin"></div>
+              <div className="i-svg-spinners:90-ring-with-bg text-palmkit-elements-loader-progress text-lg sm:text-xl animate-spin"></div>
             ) : (
-              <div className="i-bolt:stars text-lg sm:text-xl"></div>
+              <div className="i-palmkit:stars text-lg sm:text-xl"></div>
             )}
           </IconButton>
 
@@ -315,8 +315,8 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
               className={classNames(
                 'transition-all flex items-center gap-1 px-1.5',
                 props.chatMode === 'discuss'
-                  ? '!bg-bolt-elements-item-backgroundAccent !text-bolt-elements-item-contentAccent'
-                  : 'bg-bolt-elements-item-backgroundDefault text-bolt-elements-item-contentDefault',
+                  ? '!bg-palmkit-elements-item-backgroundAccent !text-palmkit-elements-item-contentAccent'
+                  : 'bg-palmkit-elements-item-backgroundDefault text-palmkit-elements-item-contentDefault',
               )}
               onClick={() => {
                 props.setChatMode?.(props.chatMode === 'discuss' ? 'build' : 'discuss');
@@ -341,9 +341,9 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
           <IconButton
             title="Model Settings"
             className={classNames('transition-all flex items-center gap-1 ml-auto', {
-              'bg-bolt-elements-item-backgroundAccent text-bolt-elements-item-contentAccent':
+              'bg-palmkit-elements-item-backgroundAccent text-palmkit-elements-item-contentAccent':
                 props.isModelSettingsCollapsed,
-              'bg-bolt-elements-item-backgroundDefault text-bolt-elements-item-contentDefault':
+              'bg-palmkit-elements-item-backgroundDefault text-palmkit-elements-item-contentDefault':
                 !props.isModelSettingsCollapsed,
             })}
             onClick={() => props.setIsModelSettingsCollapsed(!props.isModelSettingsCollapsed)}
@@ -368,17 +368,17 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
         {/* Mobile hint: Enter to send */}
         {props.input.length > 1 && (
           <div className="flex sm:hidden items-center justify-end px-3 pb-2">
-            <div className="text-[11px] text-bolt-elements-textTertiary">
-              <kbd className="px-1.5 py-0.5 rounded bg-bolt-elements-bg-depth-2">Enter</kbd> send &middot; <kbd className="px-1.5 py-0.5 rounded bg-bolt-elements-bg-depth-2">Shift+Enter</kbd> new line
+            <div className="text-[11px] text-palmkit-elements-textTertiary">
+              <kbd className="px-1.5 py-0.5 rounded bg-palmkit-elements-bg-depth-2">Enter</kbd> send &middot; <kbd className="px-1.5 py-0.5 rounded bg-palmkit-elements-bg-depth-2">Shift+Enter</kbd> new line
             </div>
           </div>
         )}
         {/* Desktop hint: Shift + Return for new line */}
         {props.input.length > 3 && (
           <div className="hidden sm:flex items-center justify-end px-3 pb-2">
-            <div className="text-xs text-bolt-elements-textTertiary">
-              <kbd className="kdb px-1.5 py-0.5 rounded bg-bolt-elements-bg-depth-2">Shift</kbd> +{' '}
-              <kbd className="kdb px-1.5 py-0.5 rounded bg-bolt-elements-bg-depth-2">Return</kbd> for new line
+            <div className="text-xs text-palmkit-elements-textTertiary">
+              <kbd className="kdb px-1.5 py-0.5 rounded bg-palmkit-elements-bg-depth-2">Shift</kbd> +{' '}
+              <kbd className="kdb px-1.5 py-0.5 rounded bg-palmkit-elements-bg-depth-2">Return</kbd> for new line
             </div>
           </div>
         )}

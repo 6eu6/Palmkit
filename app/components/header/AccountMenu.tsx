@@ -67,7 +67,7 @@ export function AccountMenu() {
           <img
             src={user.avatarUrl}
             alt={label}
-            className="w-8 h-8 rounded-full object-cover border border-[var(--bolt-mobile-surface-border)]"
+            className="w-8 h-8 rounded-full object-cover border border-[var(--palmkit-mobile-surface-border)]"
           />
         ) : (
           <span
@@ -83,35 +83,35 @@ export function AccountMenu() {
         <div
           className="absolute right-0 mt-2 w-56 rounded-xl border shadow-xl overflow-hidden z-[60]"
           style={{
-            background: 'var(--bolt-mobile-surface-bg, #0e0e16)',
-            borderColor: 'var(--bolt-mobile-surface-border, rgba(0,168,181,0.18))',
+            background: 'var(--palmkit-mobile-surface-bg, #0e0e16)',
+            borderColor: 'var(--palmkit-mobile-surface-border, rgba(0,168,181,0.18))',
             animation: 'fade-in-scale 0.16s ease forwards',
           }}
         >
-          <div className="px-3.5 py-3 border-b border-[var(--bolt-mobile-surface-border)]">
-            <p className="text-sm font-medium text-bolt-elements-textPrimary truncate">{label}</p>
-            {user.email && <p className="text-xs text-bolt-elements-textSecondary truncate">{user.email}</p>}
+          <div className="px-3.5 py-3 border-b border-[var(--palmkit-mobile-surface-border)]">
+            <p className="text-sm font-medium text-palmkit-elements-textPrimary truncate">{label}</p>
+            {user.email && <p className="text-xs text-palmkit-elements-textSecondary truncate">{user.email}</p>}
           </div>
 
           <button
             onClick={openProfile}
             className={classNames(
-              'w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-bolt-elements-textPrimary',
-              'hover:bg-bolt-elements-bg-depth-3 transition-colors',
+              'w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-palmkit-elements-textPrimary',
+              'hover:bg-palmkit-elements-bg-depth-3 transition-colors',
             )}
           >
-            <span className="i-ph:user-circle text-base text-bolt-elements-textSecondary" />
+            <span className="i-ph:user-circle text-base text-palmkit-elements-textSecondary" />
             Profile &amp; settings
           </button>
 
           <a
             href="/api/account/export"
             className={classNames(
-              'w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-bolt-elements-textPrimary',
-              'hover:bg-bolt-elements-bg-depth-3 transition-colors',
+              'w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-palmkit-elements-textPrimary',
+              'hover:bg-palmkit-elements-bg-depth-3 transition-colors',
             )}
           >
-            <span className="i-ph:download-simple text-base text-bolt-elements-textSecondary" />
+            <span className="i-ph:download-simple text-base text-palmkit-elements-textSecondary" />
             Export my data
           </a>
 
@@ -119,16 +119,16 @@ export function AccountMenu() {
             <button
               type="submit"
               className={classNames(
-                'w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-bolt-elements-textPrimary',
-                'hover:bg-bolt-elements-bg-depth-3 transition-colors',
+                'w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-palmkit-elements-textPrimary',
+                'hover:bg-palmkit-elements-bg-depth-3 transition-colors',
               )}
             >
-              <span className="i-ph:sign-out text-base text-bolt-elements-textSecondary" />
+              <span className="i-ph:sign-out text-base text-palmkit-elements-textSecondary" />
               Log out
             </button>
           </Form>
 
-          <div className="border-t border-[var(--bolt-mobile-surface-border)]">
+          <div className="border-t border-[var(--palmkit-mobile-surface-border)]">
             {!confirmingDelete ? (
               <button
                 onClick={() => setConfirmingDelete(true)}
@@ -139,7 +139,7 @@ export function AccountMenu() {
               </button>
             ) : (
               <div className="px-3.5 py-3">
-                <p className="text-xs text-bolt-elements-textSecondary mb-2.5 leading-relaxed">
+                <p className="text-xs text-palmkit-elements-textSecondary mb-2.5 leading-relaxed">
                   This permanently deletes your account, projects, and stored key. This cannot be undone.
                 </p>
                 <div className="flex gap-2">
@@ -153,7 +153,7 @@ export function AccountMenu() {
                   </Form>
                   <button
                     onClick={() => setConfirmingDelete(false)}
-                    className="flex-1 h-8 rounded-lg text-xs font-medium text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-3 hover:bg-bolt-elements-bg-depth-2 transition-colors"
+                    className="flex-1 h-8 rounded-lg text-xs font-medium text-palmkit-elements-textPrimary bg-palmkit-elements-bg-depth-3 hover:bg-palmkit-elements-bg-depth-2 transition-colors"
                   >
                     Cancel
                   </button>

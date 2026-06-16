@@ -42,22 +42,22 @@ interface FileCreatedCardProps {
 const STATUS_CONFIG: Record<FileCreatedStatus, { icon: string; colorClass: string; label: string }> = {
   created: {
     icon: 'i-ph:plus-circle',
-    colorClass: 'text-[var(--bolt-mobile-success)]',
+    colorClass: 'text-[var(--palmkit-mobile-success)]',
     label: 'Created',
   },
   updated: {
     icon: 'i-ph:pencil-simple',
-    colorClass: 'text-[var(--bolt-mobile-accent-text)]',
+    colorClass: 'text-[var(--palmkit-mobile-accent-text)]',
     label: 'Updated',
   },
   error: {
     icon: 'i-ph:warning-circle',
-    colorClass: 'text-[var(--bolt-mobile-error)]',
+    colorClass: 'text-[var(--palmkit-mobile-error)]',
     label: 'Error',
   },
   pending: {
     icon: 'i-ph:clock',
-    colorClass: 'text-[var(--bolt-mobile-text-tertiary)]',
+    colorClass: 'text-[var(--palmkit-mobile-text-tertiary)]',
     label: 'Pending',
   },
 };
@@ -112,10 +112,10 @@ export const FileCreatedCard = memo(
       return (
         <div
           className={classNames(
-            'inline-flex items-center gap-1.5 px-2 py-1 rounded-[var(--bolt-radius-sm)]',
-            'bg-[var(--bolt-mobile-surface-bg)] border border-[var(--bolt-mobile-surface-border-subtle)]',
+            'inline-flex items-center gap-1.5 px-2 py-1 rounded-[var(--palmkit-radius-sm)]',
+            'bg-[var(--palmkit-mobile-surface-bg)] border border-[var(--palmkit-mobile-surface-border-subtle)]',
             'text-xs',
-            onClick && 'cursor-pointer hover:bg-[var(--bolt-mobile-accent-faint)] transition-colors',
+            onClick && 'cursor-pointer hover:bg-[var(--palmkit-mobile-accent-faint)] transition-colors',
             pulse && 'animate-pulse-glow',
             className,
           )}
@@ -123,8 +123,8 @@ export const FileCreatedCard = memo(
           role={onClick ? 'button' : undefined}
           tabIndex={onClick ? 0 : undefined}
         >
-          <div className={classNames(fileIcon, 'text-sm text-[var(--bolt-mobile-text-secondary)] shrink-0')} />
-          <span className="text-[var(--bolt-mobile-text-primary)] font-mono truncate max-w-[120px]">{filename}</span>
+          <div className={classNames(fileIcon, 'text-sm text-[var(--palmkit-mobile-text-secondary)] shrink-0')} />
+          <span className="text-[var(--palmkit-mobile-text-primary)] font-mono truncate max-w-[120px]">{filename}</span>
           <div className={classNames(statusConfig.icon, 'text-xs shrink-0', statusConfig.colorClass)} />
         </div>
       );
@@ -133,10 +133,10 @@ export const FileCreatedCard = memo(
     return (
       <div
         className={classNames(
-          'flex items-center gap-3 px-3 py-2.5 rounded-[var(--bolt-radius-md)]',
-          'bg-[var(--bolt-mobile-surface-bg)] border border-[var(--bolt-mobile-surface-border-subtle)]',
-          'transition-all duration-[var(--bolt-duration-normal)]',
-          onClick && 'cursor-pointer hover:bg-[var(--bolt-mobile-accent-faint)] active:scale-[0.98]',
+          'flex items-center gap-3 px-3 py-2.5 rounded-[var(--palmkit-radius-md)]',
+          'bg-[var(--palmkit-mobile-surface-bg)] border border-[var(--palmkit-mobile-surface-border-subtle)]',
+          'transition-all duration-[var(--palmkit-duration-normal)]',
+          onClick && 'cursor-pointer hover:bg-[var(--palmkit-mobile-accent-faint)] active:scale-[0.98]',
           pulse && 'animate-pulse-glow',
           status === 'error' && 'border-[rgba(248,113,113,0.2)]',
           className,
@@ -148,12 +148,12 @@ export const FileCreatedCard = memo(
         {/* File icon */}
         <div
           className={classNames(
-            'w-8 h-8 rounded-[var(--bolt-radius-sm)] flex items-center justify-center shrink-0',
-            'bg-[var(--bolt-mobile-accent-faint)] border border-[var(--bolt-mobile-surface-border-subtle)]',
-            status === 'created' && 'text-[var(--bolt-mobile-success)]',
-            status === 'updated' && 'text-[var(--bolt-mobile-accent-text)]',
-            status === 'error' && 'text-[var(--bolt-mobile-error)]',
-            status === 'pending' && 'text-[var(--bolt-mobile-text-tertiary)]',
+            'w-8 h-8 rounded-[var(--palmkit-radius-sm)] flex items-center justify-center shrink-0',
+            'bg-[var(--palmkit-mobile-accent-faint)] border border-[var(--palmkit-mobile-surface-border-subtle)]',
+            status === 'created' && 'text-[var(--palmkit-mobile-success)]',
+            status === 'updated' && 'text-[var(--palmkit-mobile-accent-text)]',
+            status === 'error' && 'text-[var(--palmkit-mobile-error)]',
+            status === 'pending' && 'text-[var(--palmkit-mobile-text-tertiary)]',
           )}
         >
           <div className={classNames(fileIcon, 'text-base')} />
@@ -162,21 +162,21 @@ export const FileCreatedCard = memo(
         {/* File info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-[var(--bolt-mobile-text-primary)] truncate font-mono">
+            <span className="text-sm font-medium text-[var(--palmkit-mobile-text-primary)] truncate font-mono">
               {filename}
             </span>
             <div className={classNames(statusConfig.icon, 'text-xs shrink-0', statusConfig.colorClass)} />
           </div>
           {path && (
-            <div className="text-[10px] text-[var(--bolt-mobile-text-tertiary)] font-mono truncate mt-0.5">{path}</div>
+            <div className="text-[10px] text-[var(--palmkit-mobile-text-tertiary)] font-mono truncate mt-0.5">{path}</div>
           )}
         </div>
 
         {/* Status label */}
         <span
           className={classNames(
-            'text-[10px] font-medium px-1.5 py-0.5 rounded-[var(--bolt-radius-xs)]',
-            'bg-[var(--bolt-mobile-accent-faint)]',
+            'text-[10px] font-medium px-1.5 py-0.5 rounded-[var(--palmkit-radius-xs)]',
+            'bg-[var(--palmkit-mobile-accent-faint)]',
             statusConfig.colorClass,
           )}
         >

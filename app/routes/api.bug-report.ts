@@ -21,7 +21,7 @@ const bugReportSchema = z.object({
       browser: z.string().optional(),
       os: z.string().optional(),
       screenResolution: z.string().optional(),
-      boltVersion: z.string().optional(),
+      palmkitVersion: z.string().optional(),
       aiProviders: z.string().optional(),
       projectType: z.string().optional(),
       currentModel: z.string().optional(),
@@ -113,8 +113,8 @@ function formatIssueBody(data: z.infer<typeof bugReportSchema>): string {
       body += `- Screen: ${data.environmentInfo.screenResolution}\n`;
     }
 
-    if (data.environmentInfo.boltVersion) {
-      body += `- Palmkit: ${data.environmentInfo.boltVersion}\n`;
+    if (data.environmentInfo.palmkitVersion) {
+      body += `- Palmkit: ${data.environmentInfo.palmkitVersion}\n`;
     }
 
     if (data.environmentInfo.aiProviders) {
@@ -194,7 +194,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const githubToken =
       (context?.cloudflare?.env as any)?.GITHUB_BUG_REPORT_TOKEN || process.env.GITHUB_BUG_REPORT_TOKEN;
     const targetRepo =
-      (context?.cloudflare?.env as any)?.BUG_REPORT_REPO || process.env.BUG_REPORT_REPO || 'stackblitz-labs/bolt.diy';
+      (context?.cloudflare?.env as any)?.BUG_REPORT_REPO || process.env.BUG_REPORT_REPO || '6eu6/Palmkit';
 
     if (!githubToken) {
       console.error('GitHub bug report token not configured');

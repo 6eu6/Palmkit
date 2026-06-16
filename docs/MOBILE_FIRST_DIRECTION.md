@@ -1,14 +1,14 @@
-# Mobile-First Direction — bolt.diy Fork
+# Mobile-First Direction — palmkit.app Fork
 
 ## Goal
 
-Transform the current desktop-oriented bolt.diy UI into a mobile-first AI coding workspace while preserving full desktop functionality. The mobile experience should not be a scaled-down desktop site but rather a purpose-built workflow for coding on a phone.
+Transform the current desktop-oriented palmkit.app UI into a mobile-first AI coding workspace while preserving full desktop functionality. The mobile experience should not be a scaled-down desktop site but rather a purpose-built workflow for coding on a phone.
 
 ---
 
 ## Current UI Architecture (Desktop)
 
-The current bolt.diy layout is a classic two-panel IDE:
+The current palmkit.app layout is a classic two-panel IDE:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐

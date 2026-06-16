@@ -45,10 +45,10 @@ When the user shares code or describes a problem:
 
 At the end of your responses, include relevant quick actions:
 
-<bolt-quick-actions>
-  <bolt-quick-action type="implement" message="[what to implement based on the plan]">Build this</bolt-quick-action>
-  <bolt-quick-action type="message" message="[follow-up question]">Ask more</bolt-quick-action>
-</bolt-quick-actions>
+<palmkit-quick-actions>
+  <palmkit-quick-action type="implement" message="[what to implement based on the plan]">Build this</palmkit-quick-action>
+  <palmkit-quick-action type="message" message="[follow-up question]">Ask more</palmkit-quick-action>
+</palmkit-quick-actions>
 
 Action types:
 - "implement" — When you've outlined a plan the user might want built

@@ -5,7 +5,7 @@ import { defineConfig, presetIcons, presetUno, transformerDirectives } from 'uno
 
 const iconPaths = globSync('./icons/*.svg');
 
-const collectionName = 'bolt';
+const collectionName = 'palmkit';
 
 const customIconCollection = iconPaths.reduce(
   (acc, iconPath) => {
@@ -98,11 +98,11 @@ const COLOR_PRIMITIVES = {
 };
 
 export default defineConfig({
-  safelist: [...Object.keys(customIconCollection[collectionName] || {}).map((x) => `i-bolt:${x}`)],
+  safelist: [...Object.keys(customIconCollection[collectionName] || {}).map((x) => `i-palmkit:${x}`)],
   shortcuts: {
-    'bolt-ease-cubic-bezier': 'ease-[cubic-bezier(0.4,0,0.2,1)]',
-    'transition-theme': 'transition-[background-color,border-color,color] duration-150 bolt-ease-cubic-bezier',
-    kdb: 'bg-bolt-elements-code-background text-bolt-elements-code-text py-1 px-1.5 rounded-md',
+    'palmkit-ease-cubic-bezier': 'ease-[cubic-bezier(0.4,0,0.2,1)]',
+    'transition-theme': 'transition-[background-color,border-color,color] duration-150 palmkit-ease-cubic-bezier',
+    kdb: 'bg-palmkit-elements-code-background text-palmkit-elements-code-text py-1 px-1.5 rounded-md',
     'max-w-chat': 'max-w-[var(--chat-max-width)]',
   },
   rules: [
@@ -115,115 +115,115 @@ export default defineConfig({
   theme: {
     colors: {
       ...COLOR_PRIMITIVES,
-      bolt: {
+      palmkit: {
         elements: {
-          borderColor: 'var(--bolt-elements-borderColor)',
-          borderColorActive: 'var(--bolt-elements-borderColorActive)',
+          borderColor: 'var(--palmkit-elements-borderColor)',
+          borderColorActive: 'var(--palmkit-elements-borderColorActive)',
           background: {
             depth: {
-              1: 'var(--bolt-elements-bg-depth-1)',
-              2: 'var(--bolt-elements-bg-depth-2)',
-              3: 'var(--bolt-elements-bg-depth-3)',
-              4: 'var(--bolt-elements-bg-depth-4)',
+              1: 'var(--palmkit-elements-bg-depth-1)',
+              2: 'var(--palmkit-elements-bg-depth-2)',
+              3: 'var(--palmkit-elements-bg-depth-3)',
+              4: 'var(--palmkit-elements-bg-depth-4)',
             },
           },
-          textPrimary: 'var(--bolt-elements-textPrimary)',
-          textSecondary: 'var(--bolt-elements-textSecondary)',
-          textTertiary: 'var(--bolt-elements-textTertiary)',
+          textPrimary: 'var(--palmkit-elements-textPrimary)',
+          textSecondary: 'var(--palmkit-elements-textSecondary)',
+          textTertiary: 'var(--palmkit-elements-textTertiary)',
           code: {
-            background: 'var(--bolt-elements-code-background)',
-            text: 'var(--bolt-elements-code-text)',
+            background: 'var(--palmkit-elements-code-background)',
+            text: 'var(--palmkit-elements-code-text)',
           },
           button: {
             primary: {
-              background: 'var(--bolt-elements-button-primary-background)',
-              backgroundHover: 'var(--bolt-elements-button-primary-backgroundHover)',
-              text: 'var(--bolt-elements-button-primary-text)',
+              background: 'var(--palmkit-elements-button-primary-background)',
+              backgroundHover: 'var(--palmkit-elements-button-primary-backgroundHover)',
+              text: 'var(--palmkit-elements-button-primary-text)',
             },
             secondary: {
-              background: 'var(--bolt-elements-button-secondary-background)',
-              backgroundHover: 'var(--bolt-elements-button-secondary-backgroundHover)',
-              text: 'var(--bolt-elements-button-secondary-text)',
+              background: 'var(--palmkit-elements-button-secondary-background)',
+              backgroundHover: 'var(--palmkit-elements-button-secondary-backgroundHover)',
+              text: 'var(--palmkit-elements-button-secondary-text)',
             },
             danger: {
-              background: 'var(--bolt-elements-button-danger-background)',
-              backgroundHover: 'var(--bolt-elements-button-danger-backgroundHover)',
-              text: 'var(--bolt-elements-button-danger-text)',
+              background: 'var(--palmkit-elements-button-danger-background)',
+              backgroundHover: 'var(--palmkit-elements-button-danger-backgroundHover)',
+              text: 'var(--palmkit-elements-button-danger-text)',
             },
           },
           item: {
-            contentDefault: 'var(--bolt-elements-item-contentDefault)',
-            contentActive: 'var(--bolt-elements-item-contentActive)',
-            contentAccent: 'var(--bolt-elements-item-contentAccent)',
-            contentDanger: 'var(--bolt-elements-item-contentDanger)',
-            backgroundDefault: 'var(--bolt-elements-item-backgroundDefault)',
-            backgroundActive: 'var(--bolt-elements-item-backgroundActive)',
-            backgroundAccent: 'var(--bolt-elements-item-backgroundAccent)',
-            backgroundDanger: 'var(--bolt-elements-item-backgroundDanger)',
+            contentDefault: 'var(--palmkit-elements-item-contentDefault)',
+            contentActive: 'var(--palmkit-elements-item-contentActive)',
+            contentAccent: 'var(--palmkit-elements-item-contentAccent)',
+            contentDanger: 'var(--palmkit-elements-item-contentDanger)',
+            backgroundDefault: 'var(--palmkit-elements-item-backgroundDefault)',
+            backgroundActive: 'var(--palmkit-elements-item-backgroundActive)',
+            backgroundAccent: 'var(--palmkit-elements-item-backgroundAccent)',
+            backgroundDanger: 'var(--palmkit-elements-item-backgroundDanger)',
           },
           actions: {
-            background: 'var(--bolt-elements-actions-background)',
+            background: 'var(--palmkit-elements-actions-background)',
             code: {
-              background: 'var(--bolt-elements-actions-code-background)',
+              background: 'var(--palmkit-elements-actions-code-background)',
             },
           },
           artifacts: {
-            background: 'var(--bolt-elements-artifacts-background)',
-            backgroundHover: 'var(--bolt-elements-artifacts-backgroundHover)',
-            borderColor: 'var(--bolt-elements-artifacts-borderColor)',
+            background: 'var(--palmkit-elements-artifacts-background)',
+            backgroundHover: 'var(--palmkit-elements-artifacts-backgroundHover)',
+            borderColor: 'var(--palmkit-elements-artifacts-borderColor)',
             inlineCode: {
-              background: 'var(--bolt-elements-artifacts-inlineCode-background)',
-              text: 'var(--bolt-elements-artifacts-inlineCode-text)',
+              background: 'var(--palmkit-elements-artifacts-inlineCode-background)',
+              text: 'var(--palmkit-elements-artifacts-inlineCode-text)',
             },
           },
           messages: {
-            background: 'var(--bolt-elements-messages-background)',
-            linkColor: 'var(--bolt-elements-messages-linkColor)',
+            background: 'var(--palmkit-elements-messages-background)',
+            linkColor: 'var(--palmkit-elements-messages-linkColor)',
             code: {
-              background: 'var(--bolt-elements-messages-code-background)',
+              background: 'var(--palmkit-elements-messages-code-background)',
             },
             inlineCode: {
-              background: 'var(--bolt-elements-messages-inlineCode-background)',
-              text: 'var(--bolt-elements-messages-inlineCode-text)',
+              background: 'var(--palmkit-elements-messages-inlineCode-background)',
+              text: 'var(--palmkit-elements-messages-inlineCode-text)',
             },
           },
           icon: {
-            success: 'var(--bolt-elements-icon-success)',
-            error: 'var(--bolt-elements-icon-error)',
-            primary: 'var(--bolt-elements-icon-primary)',
-            secondary: 'var(--bolt-elements-icon-secondary)',
-            tertiary: 'var(--bolt-elements-icon-tertiary)',
+            success: 'var(--palmkit-elements-icon-success)',
+            error: 'var(--palmkit-elements-icon-error)',
+            primary: 'var(--palmkit-elements-icon-primary)',
+            secondary: 'var(--palmkit-elements-icon-secondary)',
+            tertiary: 'var(--palmkit-elements-icon-tertiary)',
           },
           preview: {
             addressBar: {
-              background: 'var(--bolt-elements-preview-addressBar-background)',
-              backgroundHover: 'var(--bolt-elements-preview-addressBar-backgroundHover)',
-              backgroundActive: 'var(--bolt-elements-preview-addressBar-backgroundActive)',
-              text: 'var(--bolt-elements-preview-addressBar-text)',
-              textActive: 'var(--bolt-elements-preview-addressBar-textActive)',
+              background: 'var(--palmkit-elements-preview-addressBar-background)',
+              backgroundHover: 'var(--palmkit-elements-preview-addressBar-backgroundHover)',
+              backgroundActive: 'var(--palmkit-elements-preview-addressBar-backgroundActive)',
+              text: 'var(--palmkit-elements-preview-addressBar-text)',
+              textActive: 'var(--palmkit-elements-preview-addressBar-textActive)',
             },
           },
           terminals: {
-            background: 'var(--bolt-elements-terminals-background)',
-            buttonBackground: 'var(--bolt-elements-terminals-buttonBackground)',
+            background: 'var(--palmkit-elements-terminals-background)',
+            buttonBackground: 'var(--palmkit-elements-terminals-buttonBackground)',
           },
-          dividerColor: 'var(--bolt-elements-dividerColor)',
+          dividerColor: 'var(--palmkit-elements-dividerColor)',
           loader: {
-            background: 'var(--bolt-elements-loader-background)',
-            progress: 'var(--bolt-elements-loader-progress)',
+            background: 'var(--palmkit-elements-loader-background)',
+            progress: 'var(--palmkit-elements-loader-progress)',
           },
           prompt: {
-            background: 'var(--bolt-elements-prompt-background)',
+            background: 'var(--palmkit-elements-prompt-background)',
           },
           sidebar: {
-            dropdownShadow: 'var(--bolt-elements-sidebar-dropdownShadow)',
-            buttonBackgroundDefault: 'var(--bolt-elements-sidebar-buttonBackgroundDefault)',
-            buttonBackgroundHover: 'var(--bolt-elements-sidebar-buttonBackgroundHover)',
-            buttonText: 'var(--bolt-elements-sidebar-buttonText)',
+            dropdownShadow: 'var(--palmkit-elements-sidebar-dropdownShadow)',
+            buttonBackgroundDefault: 'var(--palmkit-elements-sidebar-buttonBackgroundDefault)',
+            buttonBackgroundHover: 'var(--palmkit-elements-sidebar-buttonBackgroundHover)',
+            buttonText: 'var(--palmkit-elements-sidebar-buttonText)',
           },
           cta: {
-            background: 'var(--bolt-elements-cta-background)',
-            text: 'var(--bolt-elements-cta-text)',
+            background: 'var(--palmkit-elements-cta-background)',
+            text: 'var(--palmkit-elements-cta-text)',
           },
         },
       },

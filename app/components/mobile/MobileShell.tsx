@@ -75,7 +75,7 @@ export const MobileShell = memo(() => {
       <MobileActionDock />
 
       {/* Bottom spacer: pushes content above the dock */}
-      <div className="sm:hidden shrink-0" style={{ height: 'var(--bolt-mobile-dock-height)' }} />
+      <div className="sm:hidden shrink-0" style={{ height: 'var(--palmkit-mobile-dock-height)' }} />
 
       {/* Note: the previous floating Terminal/Export action bar was removed —
           it duplicated the dock's Terminal tab and the workbench toolbar's

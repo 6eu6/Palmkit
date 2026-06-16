@@ -1,4 +1,4 @@
-# Implementation Risks — bolt.diy Fork
+# Implementation Risks — palmkit.app Fork
 
 ## Technical Risks
 
@@ -362,15 +362,15 @@ WebContainer boot is fragile and depends on:
 ## Licensing / Attribution Notes
 
 ### License: MIT
-The bolt.diy project is licensed under the MIT License (see `LICENSE` file):
-- Copyright (c) 2024 StackBlitz, Inc. and bolt.diy contributors
+The palmkit.app project is licensed under the MIT License (see `LICENSE` file):
+- Copyright (c) 2024 StackBlitz, Inc. and palmkit.app contributors
 - Permission is granted to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
 - The license notice must be included in all copies or substantial portions
 
 ### Attribution Requirements
 1. **Must include**: The original MIT license and copyright notice in our project
 2. **Must not**: Claim the original work as our own or remove attribution
-3. **Should**: Credit bolt.diy and StackBlitz in our README and about page
+3. **Should**: Credit palmkit.app and StackBlitz in our README and about page
 4. **Should**: Contribute non-proprietary improvements back to the upstream project if appropriate
 
 ### WebContainer License
@@ -389,7 +389,7 @@ Most dependencies are MIT or Apache-2.0 licensed. Key exceptions to verify:
 
 ---
 
-## Anything That Could Break Existing bolt.diy Functionality
+## Anything That Could Break Existing palmkit.app Functionality
 
 ### 1. Adding Mobile Components
 **Risk Level: LOW** (if done correctly)

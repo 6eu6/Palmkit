@@ -1,8 +1,8 @@
-# Architecture Notes — bolt.diy
+# Architecture Notes — palmkit.app
 
 ## Overview
 
-bolt.diy is an AI-powered web development workspace that runs entirely in the browser. A user types a prompt, the app sends it to a user-configured LLM provider, the LLM streams back structured XML-like artifacts containing file actions (create/edit files, run shell commands), the client parses those actions, applies file changes into an in-browser WebContainer (a Node.js runtime emulating Linux), and finally renders the result in a live preview iframe.
+palmkit.app is an AI-powered web development workspace that runs entirely in the browser. A user types a prompt, the app sends it to a user-configured LLM provider, the LLM streams back structured XML-like artifacts containing file actions (create/edit files, run shell commands), the client parses those actions, applies file changes into an in-browser WebContainer (a Node.js runtime emulating Linux), and finally renders the result in a live preview iframe.
 
 The entire system is client-heavy: chat history lives in IndexedDB, API keys are stored in cookies/localStorage, the WebContainer boots in the browser, and the server is essentially a thin proxy that forwards requests to LLM providers using the AI SDK.
 
@@ -36,7 +36,7 @@ The entire system is client-heavy: chat history lives in IndexedDB, API keys are
 ## File Tree Summary
 
 ```
-bolt.diy/
+palmkit.app/
 ├── app/
 │   ├── root.tsx                         # Remix root — Layout, theme, DndProvider, ToastContainer
 │   ├── entry.client.tsx                 # Client-side Remix entry

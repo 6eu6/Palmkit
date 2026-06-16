@@ -31,7 +31,7 @@ export const ThinkingBubble = memo(({ size = 'md', className }: ThinkingBubblePr
     <div
       className={classNames(
         'inline-flex items-center rounded-2xl',
-        'bg-[var(--bolt-mobile-accent-faint)] border border-[var(--bolt-mobile-surface-border)]',
+        'bg-[var(--palmkit-mobile-accent-faint)] border border-[var(--palmkit-mobile-surface-border)]',
         'backdrop-blur-sm',
         sizeConfig.wrapper,
         className,
@@ -40,15 +40,15 @@ export const ThinkingBubble = memo(({ size = 'md', className }: ThinkingBubblePr
       aria-label="Assistant is thinking"
     >
       <span
-        className={classNames(sizeConfig.dot, 'rounded-full bg-[var(--bolt-mobile-accent-text)] opacity-80')}
+        className={classNames(sizeConfig.dot, 'rounded-full bg-[var(--palmkit-mobile-accent-text)] opacity-80')}
         style={{ animation: 'thinkingBubbleDot 1.4s ease-in-out infinite', animationDelay: '0ms' }}
       />
       <span
-        className={classNames(sizeConfig.dot, 'rounded-full bg-[var(--bolt-mobile-accent-text)] opacity-80')}
+        className={classNames(sizeConfig.dot, 'rounded-full bg-[var(--palmkit-mobile-accent-text)] opacity-80')}
         style={{ animation: 'thinkingBubbleDot 1.4s ease-in-out infinite', animationDelay: '160ms' }}
       />
       <span
-        className={classNames(sizeConfig.dot, 'rounded-full bg-[var(--bolt-mobile-accent-text)] opacity-80')}
+        className={classNames(sizeConfig.dot, 'rounded-full bg-[var(--palmkit-mobile-accent-text)] opacity-80')}
         style={{ animation: 'thinkingBubbleDot 1.4s ease-in-out infinite', animationDelay: '320ms' }}
       />
     </div>

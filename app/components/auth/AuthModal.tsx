@@ -37,7 +37,7 @@ export function AuthModal() {
   }
 
   const oauthBtn =
-    'w-full h-12 rounded-xl font-medium text-sm flex items-center justify-center gap-2.5 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors';
+    'w-full h-12 rounded-xl font-medium text-sm flex items-center justify-center gap-2.5 border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary bg-palmkit-elements-bg-depth-2 hover:bg-palmkit-elements-bg-depth-3 transition-colors';
 
   return (
     <div
@@ -57,7 +57,7 @@ export function AuthModal() {
       <div
         className="relative w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl border p-6 pb-8 sm:pb-6"
         style={{
-          background: 'var(--bolt-mobile-surface-bg, #0e0e16)',
+          background: 'var(--palmkit-mobile-surface-bg, #0e0e16)',
           borderColor: 'rgba(0, 168, 181, 0.18)',
           animation: 'slide-up 0.28s cubic-bezier(0.16,1,0.3,1) forwards',
         }}
@@ -65,15 +65,15 @@ export function AuthModal() {
         <button
           onClick={closeAuthModal}
           aria-label="Close"
-          className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-bolt-elements-textSecondary hover:bg-bolt-elements-bg-depth-3 transition-colors"
+          className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-palmkit-elements-textSecondary hover:bg-palmkit-elements-bg-depth-3 transition-colors"
         >
           <span className="i-ph:x text-lg" />
         </button>
 
         <div className="flex flex-col items-center text-center mb-5">
           <img src="/palmkit-icon.jpg" alt="Palmkit" className="w-14 h-14 rounded-2xl mb-3 shadow-lg" />
-          <h2 className="text-xl font-bold tracking-tight text-bolt-elements-textPrimary">Sign in to start building</h2>
-          <p className="text-sm text-bolt-elements-textSecondary mt-1">
+          <h2 className="text-xl font-bold tracking-tight text-palmkit-elements-textPrimary">Sign in to start building</h2>
+          <p className="text-sm text-palmkit-elements-textSecondary mt-1">
             Create a free account to generate, preview, and keep your projects.
           </p>
         </div>
@@ -99,9 +99,9 @@ export function AuthModal() {
         </div>
 
         <div className="flex items-center gap-3 my-4">
-          <div className="h-px flex-1 bg-bolt-elements-borderColor" />
-          <span className="text-[11px] text-bolt-elements-textTertiary">or</span>
-          <div className="h-px flex-1 bg-bolt-elements-borderColor" />
+          <div className="h-px flex-1 bg-palmkit-elements-borderColor" />
+          <span className="text-[11px] text-palmkit-elements-textTertiary">or</span>
+          <div className="h-px flex-1 bg-palmkit-elements-borderColor" />
         </div>
 
         <div className="flex flex-col gap-2 text-center">
@@ -114,7 +114,7 @@ export function AuthModal() {
           </a>
           <a
             href={`/login?redirectTo=${encodeURIComponent(redirectTo)}`}
-            className="text-xs text-bolt-elements-textSecondary hover:underline mt-1"
+            className="text-xs text-palmkit-elements-textSecondary hover:underline mt-1"
           >
             Already have an account? <span style={{ color: '#5eead4' }}>Log in</span>
           </a>
