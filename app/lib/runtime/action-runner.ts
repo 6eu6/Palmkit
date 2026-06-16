@@ -21,11 +21,16 @@ const logger = createScopedLogger('ActionRunner');
  * is available.
  */
 async function shouldOffloadExecution(): Promise<boolean> {
-  if (!isMemoryConstrainedDevice()) {
+  const constrained = isMemoryConstrainedDevice();
+
+  if (!constrained) {
     return false;
   }
 
-  return isRemoteSandboxAvailable();
+  const available = await isRemoteSandboxAvailable();
+  logger.info(`[mobile] offload check: constrained=${constrained}, e2b=${available}`);
+
+  return available;
 }
 
 export type ActionStatus = 'pending' | 'running' | 'complete' | 'aborted' | 'failed';
@@ -366,16 +371,25 @@ export class ActionRunner {
     try {
       await webcontainer.fs.writeFile(relativePath, action.content);
       logger.debug(`File written ${relativePath}`);
-
-      /*
-       * Proactively register the file with the workbench so it appears in the
-       * file tree/preview immediately, without depending on the FS watcher
-       * (which is unreliable on some platforms, notably mobile browsers).
-       */
-      this.onFileWritten?.(action.filePath, action.content);
     } catch (error) {
-      logger.error('Failed to write file\n\n', error);
+      /*
+       * On memory-constrained devices the WebContainer often can't write files
+       * (insufficient memory / boot failure).  We still need to register the
+       * file in the workbench so the remote-preview trigger can see it and
+       * push it to the E2B cloud sandbox.
+       */
+      logger.warn(`WebContainer writeFile failed (${relativePath}), registering anyway for remote sandbox`);
     }
+
+    /*
+     * Proactively register the file with the workbench so it appears in the
+     * file tree/preview immediately, without depending on the FS watcher
+     * (which is unreliable on some platforms, notably mobile browsers).
+     *
+     * IMPORTANT: always call this — even when WebContainer fails — so that
+     * the E2B remote preview path has files to push.
+     */
+    this.onFileWritten?.(action.filePath, action.content);
   }
 
   #updateAction(id: string, newState: ActionStateUpdate) {

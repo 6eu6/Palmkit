@@ -14,6 +14,7 @@ import {
   shouldUseRemotePreview,
   resetForChat,
 } from '~/lib/sandbox/remotePreview';
+import { isMemoryConstrainedDevice } from '~/lib/sandbox/remoteSandbox';
 
 function currentChatId(): string | undefined {
   if (typeof window === 'undefined') {
@@ -80,6 +81,10 @@ export const RemotePreviewTrigger = memo(() => {
     const hasFiles = Object.values(files).some((d) => d && d.type === 'file');
 
     if (!hasFiles) {
+      if (isMemoryConstrainedDevice()) {
+        console.warn('[RPT] no files to preview — WebContainer file writes may have all failed');
+      }
+
       return;
     }
 
@@ -88,7 +93,10 @@ export const RemotePreviewTrigger = memo(() => {
     }
 
     void (async () => {
-      if (await shouldUseRemotePreview()) {
+      const useRemote = await shouldUseRemotePreview();
+      console.info(`[RPT] trigger: justFinished=${justFinished}, sandboxState=${sandbox.state}, hasFiles=${hasFiles}, useRemote=${useRemote}`);
+
+      if (useRemote) {
         await ensureRemotePreview();
       }
     })();

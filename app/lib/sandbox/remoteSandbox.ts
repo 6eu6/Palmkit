@@ -87,7 +87,9 @@ export function getRemoteAvailabilitySync(): boolean {
  * need a synchronous answer (e.g. the action runner) have it ready quickly.
  */
 if (typeof window !== 'undefined') {
-  void isRemoteSandboxAvailable();
+  const constrained = isMemoryConstrainedDevice();
+  console.info(`[E2B] device init: constrained=${constrained}, UA=${navigator.userAgent.substring(0, 80)}`);
+  void isRemoteSandboxAvailable().then((ok) => console.info(`[E2B] availability resolved: ${ok}`));
 }
 
 async function call<T>(payload: Record<string, unknown>): Promise<T> {
