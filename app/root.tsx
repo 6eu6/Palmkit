@@ -102,7 +102,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     }
   }
 
-  return json({ user, authEnabled }, { headers });
+  return json({ user, authEnabled, supabaseUrl: env?.SUPABASE_URL ?? null, supabaseAnonKey: env?.SUPABASE_ANON_KEY ?? null }, { headers });
 }
 
 const inlineThemeCode = stripIndents`
