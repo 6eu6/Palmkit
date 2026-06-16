@@ -1,0 +1,402 @@
+[B307DD330C30174712FE7C2569042EAA] GET http://localhost:3000/ (Document) 200
+[3541.2] GET http://localhost:3000/_next/static/media/797e433ab948586e-s.p.29207c2f.woff2 (Font) 200
+[3541.3] GET http://localhost:3000/_next/static/media/caa3a2e1cccd8315-s.p.3b6cae6d.woff2 (Font) 200
+[3541.4] GET http://localhost:3000/icon-light-512.png (Image) 200
+[3541.5] GET http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__0f0ba101._.css (Stylesheet) 200
+[3541.6] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_956a0d3a._.js (Script) 200
+[3541.7] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js (Script) 200
+[3541.8] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_9212ccad._.js (Script) 200
+[3541.9] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_next-devtools_index_1dd7fb59.js (Script) 200
+[3541.10] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_a0e4c7b4._.js (Script) 200
+[3541.11] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js (Script) 200
+[3541.12] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js (Script) 200
+[3541.13] GET http://localhost:3000/_next/static/chunks/node_modules_%40swc_helpers_cjs_d80fb378._.js (Script) 200
+[3541.14] GET http://localhost:3000/_next/static/chunks/_a0ff3932._.js (Script) 200
+[3541.15] GET http://localhost:3000/_next/static/chunks/turbopack-_23a915ee._.js (Script) 200
+[3541.16] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_be32b49c._.js (Script) 200
+[3541.17] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_components_builtin_global-error_1cf6b850.js (Script) 200
+[3541.18] GET http://localhost:3000/_next/static/chunks/node_modules_d94de143._.js (Script) 200
+[3541.19] GET http://localhost:3000/_next/static/chunks/src_2bc135c0._.js (Script) 200
+[3541.20] GET http://localhost:3000/_next/static/chunks/src_app_layout_tsx_1cf6b850._.js (Script) 200
+[3541.21] GET http://localhost:3000/_next/static/chunks/src_abbce589._.js (Script) 200
+[3541.22] GET http://localhost:3000/_next/static/chunks/node_modules_03b739c3._.js (Script) 200
+[3541.23] GET http://localhost:3000/_next/static/chunks/src_app_page_tsx_8533e121._.js (Script) 200
+[3541.58] GET http://localhost:3000/_next/static/media/instrument-sans-latin-wght-normal.2f09bc35.woff2 (Font) 200
+[3541.63] GET http://localhost:3000/_next/static/media/space-mono-latin-400-normal.3eb66031.woff2 (Font) 200
+[3541.68] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c8c997ce._.js (Script) 200
+[3541.69] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c7192189._.js (Script) 200
+[3541.78] GET http://localhost:3000/favicon.png (Other) 200
+[3541.79] GET http://localhost:3000/icon-dark-512.png (Image) 200
+[0BBD9BAD18952D169A5B6C5732C7253A] GET http://localhost:3000/ (Document) 200
+[3541.83] GET http://localhost:3000/_next/static/media/797e433ab948586e-s.p.29207c2f.woff2 (Font) 200
+[3541.84] GET http://localhost:3000/_next/static/media/caa3a2e1cccd8315-s.p.3b6cae6d.woff2 (Font) 200
+[3541.85] GET http://localhost:3000/icon-light-512.png (Image) 200
+[3541.86] GET http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__0f0ba101._.css (Stylesheet) 200
+[3541.87] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_956a0d3a._.js (Script) 200
+[3541.88] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js (Script) 200
+[3541.89] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_9212ccad._.js (Script) 200
+[3541.90] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_next-devtools_index_1dd7fb59.js (Script) 200
+[3541.91] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_a0e4c7b4._.js (Script) 200
+[3541.92] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js (Script) 200
+[3541.93] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js (Script) 200
+[3541.94] GET http://localhost:3000/_next/static/chunks/node_modules_%40swc_helpers_cjs_d80fb378._.js (Script) 200
+[3541.95] GET http://localhost:3000/_next/static/chunks/_a0ff3932._.js (Script) 200
+[3541.96] GET http://localhost:3000/_next/static/chunks/turbopack-_23a915ee._.js (Script) 200
+[3541.97] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_be32b49c._.js (Script) 200
+[3541.98] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_components_builtin_global-error_1cf6b850.js (Script) 200
+[3541.99] GET http://localhost:3000/_next/static/chunks/node_modules_d94de143._.js (Script) 200
+[3541.100] GET http://localhost:3000/_next/static/chunks/src_2bc135c0._.js (Script) 200
+[3541.101] GET http://localhost:3000/_next/static/chunks/src_app_layout_tsx_1cf6b850._.js (Script) 200
+[3541.102] GET http://localhost:3000/_next/static/chunks/src_abbce589._.js (Script) 200
+[3541.103] GET http://localhost:3000/_next/static/chunks/node_modules_03b739c3._.js (Script) 200
+[3541.104] GET http://localhost:3000/_next/static/chunks/src_app_page_tsx_8533e121._.js (Script) 200
+[3541.139] GET http://localhost:3000/_next/static/media/instrument-sans-latin-wght-normal.2f09bc35.woff2 (Font) 200
+[3541.144] GET http://localhost:3000/_next/static/media/space-mono-latin-400-normal.3eb66031.woff2 (Font) 200
+[3541.149] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c8c997ce._.js (Script) 200
+[3541.150] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c7192189._.js (Script) 200
+[3541.159] GET http://localhost:3000/favicon.png (Other) 200
+[3541.160] GET http://localhost:3000/icon-dark-512.png (Image) 200
+[3541.156] GET http://localhost:3000/__nextjs_font/geist-latin.woff2 (Font) 200
+[3F184DAA40D7EB55EDDDE3D53ACA1F07] GET http://localhost:3000/ (Document) 200
+[3541.164] GET http://localhost:3000/_next/static/media/797e433ab948586e-s.p.29207c2f.woff2 (Font) 200
+[3541.165] GET http://localhost:3000/_next/static/media/caa3a2e1cccd8315-s.p.3b6cae6d.woff2 (Font) 200
+[3541.166] GET http://localhost:3000/icon-light-512.png (Image) 200
+[3541.167] GET http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__0f0ba101._.css (Stylesheet) 200
+[3541.168] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_956a0d3a._.js (Script) 200
+[3541.169] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js (Script) 200
+[3541.170] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_9212ccad._.js (Script) 200
+[3541.171] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_next-devtools_index_1dd7fb59.js (Script) 200
+[3541.172] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_a0e4c7b4._.js (Script) 200
+[3541.173] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js (Script) 200
+[3541.174] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js (Script) 200
+[3541.175] GET http://localhost:3000/_next/static/chunks/node_modules_%40swc_helpers_cjs_d80fb378._.js (Script) 200
+[3541.176] GET http://localhost:3000/_next/static/chunks/_a0ff3932._.js (Script) 200
+[3541.177] GET http://localhost:3000/_next/static/chunks/turbopack-_23a915ee._.js (Script) 200
+[3541.178] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_be32b49c._.js (Script) 200
+[3541.179] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_components_builtin_global-error_1cf6b850.js (Script) 200
+[3541.180] GET http://localhost:3000/_next/static/chunks/node_modules_d94de143._.js (Script) 200
+[3541.181] GET http://localhost:3000/_next/static/chunks/src_2bc135c0._.js (Script) 200
+[3541.182] GET http://localhost:3000/_next/static/chunks/src_app_layout_tsx_1cf6b850._.js (Script) 200
+[3541.183] GET http://localhost:3000/_next/static/chunks/src_abbce589._.js (Script) 200
+[3541.184] GET http://localhost:3000/_next/static/chunks/node_modules_03b739c3._.js (Script) 200
+[3541.185] GET http://localhost:3000/_next/static/chunks/src_app_page_tsx_8533e121._.js (Script) 200
+[3541.223] GET http://localhost:3000/_next/static/media/instrument-sans-latin-wght-normal.2f09bc35.woff2 (Font) 200
+[3541.228] GET http://localhost:3000/_next/static/media/space-mono-latin-400-normal.3eb66031.woff2 (Font) 200
+[3541.230] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c8c997ce._.js (Script) 200
+[3541.231] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c7192189._.js (Script) 200
+[3541.237] GET http://localhost:3000/__nextjs_font/geist-latin.woff2 (Font) 200
+[3541.240] GET http://localhost:3000/favicon.png (Other) 200
+[3541.241] GET http://localhost:3000/icon-dark-512.png (Image) 304
+[85FAE717164586E6CF35EB27D941F568] GET http://localhost:3000/ (Document) 200
+[3541.245] GET http://localhost:3000/_next/static/media/797e433ab948586e-s.p.29207c2f.woff2 (Font) 200
+[3541.246] GET http://localhost:3000/_next/static/media/caa3a2e1cccd8315-s.p.3b6cae6d.woff2 (Font) 200
+[3541.247] GET http://localhost:3000/icon-light-512.png (Image) 200
+[3541.248] GET http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__0f0ba101._.css (Stylesheet) 200
+[3541.249] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_956a0d3a._.js (Script) 200
+[3541.250] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js (Script) 200
+[3541.251] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_9212ccad._.js (Script) 200
+[3541.252] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_next-devtools_index_1dd7fb59.js (Script) 200
+[3541.253] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_a0e4c7b4._.js (Script) 200
+[3541.254] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js (Script) 200
+[3541.255] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js (Script) 200
+[3541.256] GET http://localhost:3000/_next/static/chunks/node_modules_%40swc_helpers_cjs_d80fb378._.js (Script) 200
+[3541.257] GET http://localhost:3000/_next/static/chunks/_a0ff3932._.js (Script) 200
+[3541.258] GET http://localhost:3000/_next/static/chunks/turbopack-_23a915ee._.js (Script) 200
+[3541.259] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_be32b49c._.js (Script) 200
+[3541.260] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_components_builtin_global-error_1cf6b850.js (Script) 200
+[3541.261] GET http://localhost:3000/_next/static/chunks/node_modules_d94de143._.js (Script) 200
+[3541.262] GET http://localhost:3000/_next/static/chunks/src_2bc135c0._.js (Script) 200
+[3541.263] GET http://localhost:3000/_next/static/chunks/src_app_layout_tsx_1cf6b850._.js (Script) 200
+[3541.264] GET http://localhost:3000/_next/static/chunks/src_abbce589._.js (Script) 200
+[3541.265] GET http://localhost:3000/_next/static/chunks/node_modules_03b739c3._.js (Script) 200
+[3541.266] GET http://localhost:3000/_next/static/chunks/src_app_page_tsx_8533e121._.js (Script) 200
+[3541.301] GET http://localhost:3000/_next/static/media/instrument-sans-latin-wght-normal.2f09bc35.woff2 (Font) 200
+[3541.306] GET http://localhost:3000/_next/static/media/space-mono-latin-400-normal.3eb66031.woff2 (Font) 200
+[3541.311] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c8c997ce._.js (Script) 200
+[3541.312] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c7192189._.js (Script) 200
+[3541.318] GET http://localhost:3000/__nextjs_font/geist-latin.woff2 (Font) 200
+[3541.321] GET http://localhost:3000/favicon.png (Other) 200
+[3541.322] GET http://localhost:3000/icon-dark-512.png (Image) 200
+[3541.325] GET http://localhost:3000/icon-light-512.png (Image) 200
+[284C1F5176B82B44AF915E504DDD076C] GET http://localhost:3000/ (Document) 200
+[3541.328] GET http://localhost:3000/_next/static/media/797e433ab948586e-s.p.29207c2f.woff2 (Font) 200
+[3541.329] GET http://localhost:3000/_next/static/media/caa3a2e1cccd8315-s.p.3b6cae6d.woff2 (Font) 200
+[3541.330] GET http://localhost:3000/icon-light-512.png (Image) 200
+[3541.331] GET http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__0f0ba101._.css (Stylesheet) 200
+[3541.332] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_956a0d3a._.js (Script) 200
+[3541.333] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js (Script) 200
+[3541.334] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_9212ccad._.js (Script) 200
+[3541.335] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_next-devtools_index_1dd7fb59.js (Script) 200
+[3541.336] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_a0e4c7b4._.js (Script) 200
+[3541.337] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js (Script) 200
+[3541.338] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js (Script) 200
+[3541.339] GET http://localhost:3000/_next/static/chunks/node_modules_%40swc_helpers_cjs_d80fb378._.js (Script) 200
+[3541.340] GET http://localhost:3000/_next/static/chunks/_a0ff3932._.js (Script) 200
+[3541.341] GET http://localhost:3000/_next/static/chunks/turbopack-_23a915ee._.js (Script) 200
+[3541.342] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_be32b49c._.js (Script) 200
+[3541.343] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_components_builtin_global-error_1cf6b850.js (Script) 200
+[3541.344] GET http://localhost:3000/_next/static/chunks/node_modules_d94de143._.js (Script) 200
+[3541.345] GET http://localhost:3000/_next/static/chunks/src_2bc135c0._.js (Script) 200
+[3541.346] GET http://localhost:3000/_next/static/chunks/src_app_layout_tsx_1cf6b850._.js (Script) 200
+[3541.347] GET http://localhost:3000/_next/static/chunks/src_abbce589._.js (Script) 200
+[3541.348] GET http://localhost:3000/_next/static/chunks/node_modules_03b739c3._.js (Script) 200
+[3541.349] GET http://localhost:3000/_next/static/chunks/src_app_page_tsx_8533e121._.js (Script) 200
+[3541.387] GET http://localhost:3000/_next/static/media/instrument-sans-latin-wght-normal.2f09bc35.woff2 (Font) 200
+[3541.392] GET http://localhost:3000/_next/static/media/space-mono-latin-400-normal.3eb66031.woff2 (Font) 200
+[3541.394] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c8c997ce._.js (Script) 200
+[3541.395] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c7192189._.js (Script) 200
+[3541.401] GET http://localhost:3000/__nextjs_font/geist-latin.woff2 (Font) 200
+[3541.404] GET http://localhost:3000/favicon.png (Other) 200
+[3541.405] GET http://localhost:3000/icon-dark-512.png (Image) 200
+[4BF9131737B1C08353EADE6775E44034] GET http://localhost:3000/ (Document) 200
+[3541.409] GET http://localhost:3000/_next/static/media/797e433ab948586e-s.p.29207c2f.woff2 (Font) 200
+[3541.410] GET http://localhost:3000/_next/static/media/caa3a2e1cccd8315-s.p.3b6cae6d.woff2 (Font) 200
+[3541.411] GET http://localhost:3000/icon-light-512.png (Image) 200
+[3541.412] GET http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__0f0ba101._.css (Stylesheet) 200
+[3541.413] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_956a0d3a._.js (Script) 200
+[3541.414] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js (Script) 200
+[3541.415] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_9212ccad._.js (Script) 200
+[3541.416] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_next-devtools_index_1dd7fb59.js (Script) 200
+[3541.417] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_a0e4c7b4._.js (Script) 200
+[3541.418] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js (Script) 200
+[3541.419] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js (Script) 200
+[3541.420] GET http://localhost:3000/_next/static/chunks/node_modules_%40swc_helpers_cjs_d80fb378._.js (Script) 200
+[3541.421] GET http://localhost:3000/_next/static/chunks/_a0ff3932._.js (Script) 200
+[3541.422] GET http://localhost:3000/_next/static/chunks/turbopack-_23a915ee._.js (Script) 200
+[3541.423] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_be32b49c._.js (Script) 200
+[3541.424] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_components_builtin_global-error_1cf6b850.js (Script) 200
+[3541.425] GET http://localhost:3000/_next/static/chunks/node_modules_d94de143._.js (Script) 200
+[3541.426] GET http://localhost:3000/_next/static/chunks/src_2bc135c0._.js (Script) 200
+[3541.427] GET http://localhost:3000/_next/static/chunks/src_app_layout_tsx_1cf6b850._.js (Script) 200
+[3541.428] GET http://localhost:3000/_next/static/chunks/src_abbce589._.js (Script) 200
+[3541.429] GET http://localhost:3000/_next/static/chunks/node_modules_03b739c3._.js (Script) 200
+[3541.430] GET http://localhost:3000/_next/static/chunks/src_app_page_tsx_8533e121._.js (Script) 200
+[3541.468] GET http://localhost:3000/_next/static/media/instrument-sans-latin-wght-normal.2f09bc35.woff2 (Font) 200
+[3541.473] GET http://localhost:3000/_next/static/media/space-mono-latin-400-normal.3eb66031.woff2 (Font) 200
+[3541.475] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c8c997ce._.js (Script) 200
+[3541.476] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c7192189._.js (Script) 200
+[3541.482] GET http://localhost:3000/__nextjs_font/geist-latin.woff2 (Font) 200
+[3541.485] GET http://localhost:3000/favicon.png (Other) 200
+[3541.486] GET http://localhost:3000/icon-dark-512.png (Image) 304
+[3541.489] GET http://localhost:3000/icon-dark-512.webp (Image) 200
+[3541.492] GET http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__0f0ba101._.css (Stylesheet) 200
+[595B2188B45DD30F2DEB4A4510DFD3F8] GET http://localhost:3000/ (Document)
+[632BDC7E7C95FDA229FF2E3B7000EB4F] GET http://localhost:3000/ (Document) 500
+[3541.513] GET http://localhost:3000/_next/static/media/797e433ab948586e-s.p.29207c2f.woff2 (Font) 200
+[3541.514] GET http://localhost:3000/_next/static/media/caa3a2e1cccd8315-s.p.3b6cae6d.woff2 (Font) 200
+[3541.515] GET http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__0f0ba101._.css (Stylesheet) 200
+[3541.516] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_956a0d3a._.js (Script) 200
+[3541.517] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js (Script) 200
+[3541.518] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_9212ccad._.js (Script) 200
+[3541.519] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_next-devtools_index_1dd7fb59.js (Script) 200
+[3541.520] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_a0e4c7b4._.js (Script) 200
+[3541.521] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js (Script) 200
+[3541.522] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js (Script) 200
+[3541.523] GET http://localhost:3000/_next/static/chunks/node_modules_%40swc_helpers_cjs_d80fb378._.js (Script) 200
+[3541.524] GET http://localhost:3000/_next/static/chunks/_a0ff3932._.js (Script) 200
+[3541.525] GET http://localhost:3000/_next/static/chunks/turbopack-_23a915ee._.js (Script) 200
+[3541.526] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_be32b49c._.js (Script) 200
+[3541.527] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_components_builtin_global-error_1cf6b850.js (Script) 200
+[3541.542] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c8c997ce._.js (Script) 200
+[3541.543] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c7192189._.js (Script) 200
+[3541.545] GET http://localhost:3000/_next/static/chunks/node_modules_d94de143._.js (Script) 200
+[3541.546] GET http://localhost:3000/_next/static/chunks/src_2bc135c0._.js (Script) 200
+[3541.547] GET http://localhost:3000/_next/static/chunks/src_app_layout_tsx_1cf6b850._.js (Script) 200
+[3541.548] GET http://localhost:3000/_next/static/chunks/src_eddd9444._.js (Script) 200
+[3541.549] GET http://localhost:3000/_next/static/chunks/node_modules_motion-dom_dist_es_b195f008._.js (Script) 200
+[3541.550] GET http://localhost:3000/_next/static/chunks/node_modules_framer-motion_dist_es_6b85141c._.js (Script) 200
+[3541.551] GET http://localhost:3000/_next/static/chunks/node_modules_next_b4b7ca29._.js (Script) 200
+[3541.552] GET http://localhost:3000/_next/static/chunks/node_modules_%40supabase_postgrest-js_dist_index_mjs_55decf9c._.js (Script) 200
+[3541.553] GET http://localhost:3000/_next/static/chunks/node_modules_%40supabase_auth-js_dist_module_e6c70351._.js (Script) 200
+[3541.554] GET http://localhost:3000/_next/static/chunks/node_modules_a5e564c1._.js (Script) 200
+[3541.555] GET http://localhost:3000/_next/static/chunks/src_app_page_tsx_8533e121._.js (Script) 200
+[3541.561] GET http://localhost:3000/__nextjs_font/geist-latin.woff2 (Font) 200
+[3541.563] POST http://localhost:3000/__nextjs_original-stack-frames (Fetch) 200
+[3541.564] GET http://localhost:3000/favicon.ico (Other) 404
+[3541.562] GET http://localhost:3000/__nextjs_font/geist-mono-latin.woff2 (Font) 200
+[6A77A6843730E218729D9ADE1A54FDF6] GET http://localhost:3000/ (Document)
+[4810688478C44CDBCD15755BEEF29182] GET http://localhost:3000/ (Document) 200
+[3541.566] GET http://localhost:3000/_next/static/media/797e433ab948586e-s.p.29207c2f.woff2 (Font) 200
+[3541.567] GET http://localhost:3000/_next/static/media/caa3a2e1cccd8315-s.p.3b6cae6d.woff2 (Font) 200
+[3541.568] GET http://localhost:3000/icon-light-512.webp (Image) 200
+[3541.569] GET http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__0f0ba101._.css (Stylesheet) 200
+[3541.570] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_956a0d3a._.js (Script) 200
+[3541.571] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js (Script) 200
+[3541.572] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_9212ccad._.js (Script) 200
+[3541.573] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_next-devtools_index_1dd7fb59.js (Script) 200
+[3541.574] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_a0e4c7b4._.js (Script) 200
+[3541.575] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js (Script) 200
+[3541.576] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js (Script) 200
+[3541.577] GET http://localhost:3000/_next/static/chunks/node_modules_%40swc_helpers_cjs_d80fb378._.js (Script) 200
+[3541.578] GET http://localhost:3000/_next/static/chunks/_a0ff3932._.js (Script) 200
+[3541.579] GET http://localhost:3000/_next/static/chunks/turbopack-_23a915ee._.js (Script) 200
+[3541.580] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_be32b49c._.js (Script) 200
+[3541.581] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_components_builtin_global-error_1cf6b850.js (Script) 200
+[3541.582] GET http://localhost:3000/_next/static/chunks/node_modules_d94de143._.js (Script) 200
+[3541.583] GET http://localhost:3000/_next/static/chunks/src_2bc135c0._.js (Script) 200
+[3541.584] GET http://localhost:3000/_next/static/chunks/src_app_layout_tsx_1cf6b850._.js (Script) 200
+[3541.585] GET http://localhost:3000/_next/static/chunks/src_eddd9444._.js (Script) 200
+[3541.586] GET http://localhost:3000/_next/static/chunks/node_modules_motion-dom_dist_es_b195f008._.js (Script) 200
+[3541.587] GET http://localhost:3000/_next/static/chunks/node_modules_framer-motion_dist_es_6b85141c._.js (Script) 200
+[3541.588] GET http://localhost:3000/_next/static/chunks/node_modules_next_b4b7ca29._.js (Script) 200
+[3541.589] GET http://localhost:3000/_next/static/chunks/node_modules_%40supabase_postgrest-js_dist_index_mjs_55decf9c._.js (Script) 200
+[3541.590] GET http://localhost:3000/_next/static/chunks/node_modules_%40supabase_auth-js_dist_module_e6c70351._.js (Script) 200
+[3541.591] GET http://localhost:3000/_next/static/chunks/node_modules_a5e564c1._.js (Script) 200
+[3541.592] GET http://localhost:3000/_next/static/chunks/src_app_page_tsx_8533e121._.js (Script) 200
+[3541.635] GET http://localhost:3000/_next/static/media/instrument-sans-latin-wght-normal.2f09bc35.woff2 (Font) 200
+[3541.640] GET http://localhost:3000/_next/static/media/space-mono-latin-400-normal.3eb66031.woff2 (Font) 200
+[3541.642] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c8c997ce._.js (Script) 200
+[3541.643] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c7192189._.js (Script) 200
+[3541.649] GET http://localhost:3000/__nextjs_font/geist-latin.woff2 (Font) 200
+[3541.650] GET http://localhost:3000/__nextjs_font/geist-mono-latin.woff2 (Font) 200
+[3541.652] GET http://localhost:3000/favicon.png (Other) 200
+[3541.653] GET http://localhost:3000/icon-dark-512.webp (Image) 200
+[3541.656] GET http://localhost:3000/icon-light-512.webp (Image) 200
+[927B2C6AC9AD36517757E89EA02021E4] GET http://localhost:3000/ (Document) 200
+[3541.661] GET http://localhost:3000/_next/static/media/797e433ab948586e-s.p.29207c2f.woff2 (Font) 200
+[3541.662] GET http://localhost:3000/_next/static/media/caa3a2e1cccd8315-s.p.3b6cae6d.woff2 (Font) 200
+[3541.663] GET http://localhost:3000/icon-light-512.webp (Image) 200
+[3541.664] GET http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__0f0ba101._.css (Stylesheet) 200
+[3541.665] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_956a0d3a._.js (Script) 200
+[3541.666] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js (Script) 200
+[3541.667] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_9212ccad._.js (Script) 200
+[3541.668] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_next-devtools_index_1dd7fb59.js (Script) 200
+[3541.669] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_a0e4c7b4._.js (Script) 200
+[3541.670] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js (Script) 200
+[3541.671] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js (Script) 200
+[3541.672] GET http://localhost:3000/_next/static/chunks/node_modules_%40swc_helpers_cjs_d80fb378._.js (Script) 200
+[3541.673] GET http://localhost:3000/_next/static/chunks/_a0ff3932._.js (Script) 200
+[3541.674] GET http://localhost:3000/_next/static/chunks/turbopack-_23a915ee._.js (Script) 200
+[3541.675] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_be32b49c._.js (Script) 200
+[3541.676] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_components_builtin_global-error_1cf6b850.js (Script) 200
+[3541.677] GET http://localhost:3000/_next/static/chunks/node_modules_d94de143._.js (Script) 200
+[3541.678] GET http://localhost:3000/_next/static/chunks/src_2bc135c0._.js (Script) 200
+[3541.679] GET http://localhost:3000/_next/static/chunks/src_app_layout_tsx_1cf6b850._.js (Script) 200
+[3541.680] GET http://localhost:3000/_next/static/chunks/src_eddd9444._.js (Script) 200
+[3541.681] GET http://localhost:3000/_next/static/chunks/node_modules_motion-dom_dist_es_b195f008._.js (Script) 200
+[3541.682] GET http://localhost:3000/_next/static/chunks/node_modules_framer-motion_dist_es_6b85141c._.js (Script) 200
+[3541.683] GET http://localhost:3000/_next/static/chunks/node_modules_next_b4b7ca29._.js (Script) 200
+[3541.684] GET http://localhost:3000/_next/static/chunks/node_modules_%40supabase_postgrest-js_dist_index_mjs_55decf9c._.js (Script) 200
+[3541.685] GET http://localhost:3000/_next/static/chunks/node_modules_%40supabase_auth-js_dist_module_e6c70351._.js (Script) 200
+[3541.686] GET http://localhost:3000/_next/static/chunks/node_modules_a5e564c1._.js (Script) 200
+[3541.687] GET http://localhost:3000/_next/static/chunks/src_app_page_tsx_8533e121._.js (Script) 200
+[3541.727] GET http://localhost:3000/_next/static/media/instrument-sans-latin-wght-normal.2f09bc35.woff2 (Font) 200
+[3541.732] GET http://localhost:3000/_next/static/media/space-mono-latin-400-normal.3eb66031.woff2 (Font) 200
+[3541.737] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c8c997ce._.js (Script) 200
+[3541.738] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c7192189._.js (Script) 200
+[3541.744] GET http://localhost:3000/__nextjs_font/geist-latin.woff2 (Font) 200
+[3541.745] GET http://localhost:3000/__nextjs_font/geist-mono-latin.woff2 (Font) 200
+[3541.747] GET http://localhost:3000/favicon.png (Other) 200
+[3541.748] GET http://localhost:3000/icon-dark-512.webp (Image) 304
+[3541.751] GET http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__0f0ba101._.css (Stylesheet) 200
+[3541.771] GET http://localhost:3000/?_rsc=1ch6o (Fetch) 200
+[3541.772] GET http://localhost:3000/?_rsc=1ch6o (Fetch)
+[CE16FB417D1667F2F2DAE3AB85B4A7EE] GET http://localhost:3000/ (Document)
+[9C0F986FE24DDB082702622A1BF819D1] GET http://localhost:3000/ (Document)
+[BE166D90EB4CA523BD176134966836D5] GET http://localhost:3000/ (Document)
+[3ED1A1AAA4068DF621C14CC2267ACFA0] GET http://localhost:3000/ (Document) 200
+[3541.773] GET http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__c56f73c5._.css (Stylesheet)
+[3541.776] GET http://localhost:3000/_next/static/media/8d05cfa5faa8406c-s.p.4adea45d.woff2 (Font) 200
+[3541.777] GET http://localhost:3000/_next/static/media/dc0d9adbac686440-s.p.3b382e45.woff2 (Font) 200
+[3541.778] GET http://localhost:3000/_next/static/media/f06bf9da926bae75-s.p.c68a79fb.woff2 (Font) 200
+[3541.779] GET http://localhost:3000/icon-light-512.webp (Image) 200
+[3541.780] GET http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__c56f73c5._.css (Stylesheet) 200
+[3541.781] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_956a0d3a._.js (Script) 200
+[3541.782] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js (Script) 200
+[3541.783] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_9212ccad._.js (Script) 200
+[3541.784] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_next-devtools_index_1dd7fb59.js (Script) 200
+[3541.785] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_a0e4c7b4._.js (Script) 200
+[3541.786] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js (Script) 200
+[3541.787] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js (Script) 200
+[3541.788] GET http://localhost:3000/_next/static/chunks/node_modules_%40swc_helpers_cjs_d80fb378._.js (Script) 200
+[3541.789] GET http://localhost:3000/_next/static/chunks/_a0ff3932._.js (Script) 200
+[3541.790] GET http://localhost:3000/_next/static/chunks/turbopack-_23a915ee._.js (Script) 200
+[3541.791] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_be32b49c._.js (Script) 200
+[3541.792] GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_components_builtin_global-error_1cf6b850.js (Script) 200
+[3541.793] GET http://localhost:3000/_next/static/chunks/node_modules_d94de143._.js (Script) 200
+[3541.794] GET http://localhost:3000/_next/static/chunks/src_2bc135c0._.js (Script) 200
+[3541.795] GET http://localhost:3000/_next/static/chunks/src_app_layout_tsx_1cf6b850._.js (Script) 200
+[3541.796] GET http://localhost:3000/_next/static/chunks/src_eddd9444._.js (Script) 200
+[3541.797] GET http://localhost:3000/_next/static/chunks/node_modules_motion-dom_dist_es_b195f008._.js (Script) 200
+[3541.798] GET http://localhost:3000/_next/static/chunks/node_modules_framer-motion_dist_es_6b85141c._.js (Script) 200
+[3541.799] GET http://localhost:3000/_next/static/chunks/node_modules_next_b4b7ca29._.js (Script) 200
+[3541.800] GET http://localhost:3000/_next/static/chunks/node_modules_%40supabase_postgrest-js_dist_index_mjs_55decf9c._.js (Script) 200
+[3541.801] GET http://localhost:3000/_next/static/chunks/node_modules_%40supabase_auth-js_dist_module_e6c70351._.js (Script) 200
+[3541.802] GET http://localhost:3000/_next/static/chunks/node_modules_a5e564c1._.js (Script) 200
+[3541.803] GET http://localhost:3000/_next/static/chunks/src_app_page_tsx_c16a0f07._.js (Script) 200
+[3541.840] GET http://localhost:3000/_next/static/media/instrument-sans-latin-wght-normal.2f09bc35.woff2 (Font) 200
+[3541.845] GET http://localhost:3000/_next/static/media/space-mono-latin-400-normal.3eb66031.woff2 (Font) 200
+[3541.850] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c8c997ce._.js (Script) 200
+[3541.851] GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_c7192189._.js (Script) 200
+[3541.858] GET http://localhost:3000/__nextjs_font/geist-latin.woff2 (Font) 200
+[3541.859] GET http://localhost:3000/__nextjs_font/geist-mono-latin.woff2 (Font) 200
+[3541.861] GET http://localhost:3000/favicon.png (Other) 200
+[3541.862] GET http://localhost:3000/icon-dark-512.webp (Image) 200
+[3541.865] GET http://localhost:3000/?_rsc=1ch6o (Fetch) 200
+[3541.866] GET http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__c56f73c5._.css (Stylesheet) 200
+[3541.875] GET http://localhost:3000/favicon.png (Other) 200
+[3541.876] GET http://localhost:3000/favicon.png (Other) 200
+[3541.877] GET http://localhost:3000/icon-dark-64.webp (Image) 200
+[3541.878] GET http://localhost:3000/icon-dark-32.webp (Image) 200
+[3541.881] GET http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__c56f73c5._.css (Stylesheet) 200
+[3541.890] GET http://localhost:3000/?_rsc=1ch6o (Fetch)
+[2F5D2A2EB60B8B9083B280CD14E3604D] GET http://localhost:3000/ (Document)
+[DAA262FC6DB4A71B32481B1F7FF13291] GET http://localhost:3000/ (Document)
+[8F45BDEC053A212EE155A007477BCD15] GET http://localhost:3000/ (Document)
+[8097434FCEC6B5E69ED881A677DFFF60] GET http://localhost:3000/ (Document)
+[E564B72732F46BD317A89FEC63B55E07] GET http://localhost:3000/ (Document)
+[589542DE59F191EDCFBE261A5732A03B] GET http://localhost:3000/ (Document)
+[29C585346B0269834EE949B11B6C21BD] GET http://localhost:3000/ (Document)
+[E22DC9DDD27ADE7904992624C1E2FC3A] GET http://localhost:3000/ (Document)
+[21E83E55B9A05942C2D7D27FD1EAEDA6] GET http://localhost:3000/ (Document)
+[8E4017425C5E8ED416D8EF60B1E996AB] GET http://localhost:3000/ (Document)
+[F2F0D998B0555A4ADE9E7FD8E9E454FC] GET http://localhost:3000/ (Document)
+[9A37CA3B0830C6E7586B2561339B5FD2] GET http://localhost:3000/ (Document)
+[4609374CE0C87CE63A321E270AACD0F8] GET http://localhost:3000/ (Document)
+[9EE700A8504C2800801F23F47A72D327] GET http://localhost:3000/ (Document)
+[036AA89C970C51BE105D8DFD28C89A54] GET http://localhost:3000/ (Document)
+[CBE1BB69263B2F4C02D7D84A835156FB] GET http://localhost:3000/ (Document)
+[81C42AE0E506DF1C2FB58D1C4DB9A77F] GET http://localhost:3000/ (Document)
+[A5DDD1A0C77562718F02C3618E483376] GET http://localhost:3000/ (Document)
+[89094CF8FC4B4A745E48FBB59F66F63D] GET http://localhost:3000/ (Document)
+[613844EA25BFA41D97B2A414A23AC86B] GET http://localhost:3000/ (Document)
+[FC68D02BF5DCD04207D77FA85585376D] GET http://localhost:3000/ (Document)
+[793EE78274336440AF1BC88000CCAEF8] GET http://localhost:3000/ (Document)
+[82D431CE2411ADFAD288BF10059D9FF3] GET http://localhost:3000/ (Document)
+[4963B1D7D48245C1700AF8A91884CB23] GET http://localhost:3000/ (Document)
+[8A23B9801A6AA102210860F0CC32C63C] GET http://localhost:3000/ (Document)
+[341ED888EBF2F2D6032E6B2B10C49E79] GET http://localhost:3000/ (Document)
+[74B0C7FE2E83D4E69D114C4497EADCA0] GET http://localhost:3000/ (Document)
+[3541.891] GET http://localhost:3000/?_rsc=1ch6o (Fetch) 500
+[3541.892] GET http://localhost:3000/?_rsc=1ch6o (Fetch) 500
+[3541.893] GET http://localhost:3000/?_rsc=1ch6o (Fetch)
+[3541.894] GET http://localhost:3000/?_rsc=1ch6o (Fetch)
+[FE88FC74945A3D4A3E619DEA03B7F600] GET http://localhost:3000/ (Document) 500
+[5B698E97984F56152329411A423AB953] GET https://palmkit.app/login (Document) 200
+[3749.2] GET https://palmkit.app/assets/root-3RzDnLaE.css (Stylesheet) 200
+[3749.3] GET https://palmkit.app/assets/ReactToastify-Bh76j7cs.css (Stylesheet) 200
+[3749.4] GET https://palmkit.app/assets/tailwind-compat-Bwh-BmjE.css (Stylesheet) 200
+[3749.5] GET https://palmkit.app/assets/index-CUxviMSp.css (Stylesheet) 200
+[3749.6] GET https://palmkit.app/assets/xterm-LZoznX6r.css (Stylesheet) 200
+[3749.7] GET https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap (Stylesheet) 200
+[3749.8] GET https://palmkit.app/assets/entry.client-CQQDtQ6Y.js (Script) 200
+[3749.9] GET https://palmkit.app/assets/components-Cxfat3lC.js (Script) 200
+[3749.10] GET https://palmkit.app/assets/profile-L8NyfjKf.js (Script) 200
+[3749.11] GET https://palmkit.app/assets/root-Gv_8DawS.js (Script) 200
+[3749.12] GET https://palmkit.app/assets/AuthLayout-CEdcGPhL.js (Script) 200
+[3749.13] GET https://palmkit.app/assets/login-Ca8lDfXf.js (Script) 200
+[3749.14] GET https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447 (Script) 200
+[3749.56] POST https://palmkit.app/cdn-cgi/rum? (XHR) 204
+[3749.57] GET https://palmkit.app/assets/debugLogger-D1kN4GJh.js (Script) 200
+[3749.58] GET https://palmkit.app/assets/mobile-hUsQfpQE.js (Script) 200
+[3749.59] GET https://palmkit.app/palmkit-logo-light.png (Image) 200
+[3749.60] GET https://palmkit.app/palmkit-logo-dark.png (Image) 200
+[3749.61] GET https://palmkit.app/palmkit-icon.jpg (Other) 200
+[3749.62] GET data:image/svg+xml;utf8,%3Csvg viewBox='0 0 256 256' width='1em' height='1em' xmlns='http://www.w3.org/2000/svg' %3E%3Cpath fill='currentColor' d='M216 104v8a56.06 56.06 0 0 1-48.44 55.47A39.8 39.8 0 0 1 176 192v40a8 8 0 0 1-8 8h-64a8 8 0 0 1-8-8v-16H72a40 40 0 0 1-40-40a24 24 0 0 0-24-24a8 8 0 0 1 0-16a40 40 0 0 1 40 40a24 24 0 0 0 24 24h24v-8a39.8 39.8 0 0 1 8.44-24.53A56.06 56.06 0 0 1 56 112v-8a58.14 58.14 0 0 1 7.69-28.32A59.78 59.78 0 0 1 69.07 28A8 8 0 0 1 76 24a59.75 59.75 0 0 1 48 24h24a59.75 59.75 0 0 1 48-24a8 8 0 0 1 6.93 4a59.74 59.74 0 0 1 5.37 47.68A58 58 0 0 1 216 104'/%3E%3C/svg%3E (Image) 200
+[3749.63] GET data:image/svg+xml;utf8,%3Csvg viewBox='0 0 256 256' width='1em' height='1em' xmlns='http://www.w3.org/2000/svg' %3E%3Cpath fill='currentColor' d='M215 219.85a8 8 0 0 1-7 4.15h-48a8 8 0 0 1-6.75-3.71l-40.49-63.63l-58.84 64.72a8 8 0 0 1-11.84-10.76l61.77-68l-62.6-98.32A8 8 0 0 1 48 32h48a8 8 0 0 1 6.75 3.71l40.49 63.63l58.84-64.72a8 8 0 0 1 11.84 10.76l-61.77 67.95l62.6 98.38a8 8 0 0 1 .25 8.14'/%3E%3C/svg%3E (Image) 200
+[3749.64] GET https://palmkit.app/__manifest?p=%2F&p=%2Fforgot-password&p=%2Flogin&p=%2Fprivacy&p=%2Fsignup&p=%2Fterms&version=a43eb396 (Fetch) 200
+[3749.65] GET https://palmkit.app/assets/signup-B9xwpceN.js (Script) 200
+[3749.66] GET https://palmkit.app/signup?_data=routes%2Fsignup (Fetch) 200
+[3749.71] POST https://palmkit.app/signup?_data=routes%2Fsignup (Fetch) 400
+[3749.72] GET https://palmkit.app/signup?_data=root (Fetch) 200
+[3749.73] GET https://palmkit.app/signup?_data=routes%2Fsignup (Fetch) 200
