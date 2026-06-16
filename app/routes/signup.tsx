@@ -76,7 +76,7 @@ export default function Signup() {
             We sent a confirmation link to <span className="text-bolt-elements-textPrimary">{actionData.email}</span>.
             Click it to finish creating your account.
           </p>
-          <Link to="/login" className="text-xs underline" style={{ color: 'var(--bolt-mobile-accent-text, #c4b5fd)' }}>
+          <Link to="/login" className="text-xs underline" style={{ color: '#5eead4' }}>
             Back to log in
           </Link>
         </div>
@@ -131,7 +131,7 @@ export default function Signup() {
 
       <p className="mt-4 text-center text-xs text-bolt-elements-textSecondary">
         Already have an account?{' '}
-        <Link to="/login" className="underline" style={{ color: 'var(--bolt-mobile-accent-text, #c4b5fd)' }}>
+        <Link to="/login" className="underline" style={{ color: '#5eead4' }}>
           Log in
         </Link>
       </p>

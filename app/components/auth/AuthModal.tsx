@@ -58,7 +58,7 @@ export function AuthModal() {
         className="relative w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl border p-6 pb-8 sm:pb-6"
         style={{
           background: 'var(--bolt-mobile-surface-bg, #0e0e16)',
-          borderColor: 'var(--bolt-mobile-surface-border, rgba(139,92,246,0.18))',
+          borderColor: 'rgba(0, 168, 181, 0.18)',
           animation: 'slide-up 0.28s cubic-bezier(0.16,1,0.3,1) forwards',
         }}
       >
@@ -100,7 +100,7 @@ export function AuthModal() {
           <a
             href={`/signup?redirectTo=${encodeURIComponent(redirectTo)}`}
             className="w-full h-12 rounded-xl font-medium text-white text-sm flex items-center justify-center transition-opacity hover:opacity-90"
-            style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #6234bb 100%)' }}
+            style={{ background: 'linear-gradient(135deg, #00A8B5 0%, #008C97 140%)' }}
           >
             Sign up with email
           </a>
@@ -108,7 +108,7 @@ export function AuthModal() {
             href={`/login?redirectTo=${encodeURIComponent(redirectTo)}`}
             className="text-xs text-bolt-elements-textSecondary hover:underline mt-1"
           >
-            Already have an account? <span style={{ color: 'var(--bolt-mobile-accent-text, #c4b5fd)' }}>Log in</span>
+            Already have an account? <span style={{ color: '#5eead4' }}>Log in</span>
           </a>
         </div>
       </div>

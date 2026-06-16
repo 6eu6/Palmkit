@@ -110,7 +110,7 @@ export default function Login() {
         <Link
           to="/forgot-password"
           className="self-end -mt-1 text-xs text-bolt-elements-textSecondary hover:underline"
-          style={{ color: 'var(--bolt-mobile-accent-text, #c4b5fd)' }}
+          style={{ color: '#5eead4' }}
         >
           Forgot password?
         </Link>
@@ -122,7 +122,7 @@ export default function Login() {
 
       <p className="mt-4 text-center text-xs text-bolt-elements-textSecondary">
         Don&apos;t have an account?{' '}
-        <Link to="/signup" className="underline" style={{ color: 'var(--bolt-mobile-accent-text, #c4b5fd)' }}>
+        <Link to="/signup" className="underline" style={{ color: '#5eead4' }}>
           Sign up
         </Link>
       </p>
