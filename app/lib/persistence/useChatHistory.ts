@@ -120,7 +120,15 @@ export function useChatHistory() {
 
       seedChatFromAccount(db, mixedId)
         .catch(() => false)
-        .then(() => Promise.all([getMessages(db, mixedId), getSnapshot(db, mixedId)]))
+        .then(async () => {
+          // getMessages resolves by both internal ID and urlId;
+          // use the resolved internal ID for snapshot lookup (snapshots are
+          // stored under the internal chat ID, not the urlId).
+          const storedMessages = await getMessages(db, mixedId);
+          const snapshotId = storedMessages?.id ?? mixedId;
+          const snapshot = await getSnapshot(db, snapshotId);
+          return [storedMessages, snapshot] as const;
+        })
         .then(async ([storedMessages, snapshot]) => {
           const hasMessages = storedMessages && storedMessages.messages.length > 0;
           const hasSnapshot = snapshot && snapshot.files && Object.keys(snapshot.files).length > 0;
