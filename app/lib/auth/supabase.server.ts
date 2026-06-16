@@ -6,18 +6,31 @@ import type { AppLoadContext } from '@remix-run/cloudflare';
  * Reads the runtime environment from the Cloudflare load context. On Cloudflare
  * Pages, secrets/vars live on `context.cloudflare.env`.
  *
- * Falls back to `process.env` for local development (where dotenv loads .env.local).
+ * Falls back to `process.env` and `VITE_`-prefixed variants for compatibility:
+ *   1. context.cloudflare.env.SUPABASE_URL  (Cloudflare Pages dashboard — recommended)
+ *   2. process.env.SUPABASE_URL              (local dev via dotenv / .env.local)
+ *   3. context.cloudflare.env.VITE_SUPABASE_URL  (fallback: some setups use VITE_ prefix)
+ *   4. process.env.VITE_SUPABASE_URL             (fallback: Vite embeds these at build time)
  */
 export function getEnv(context: AppLoadContext): Record<string, string | undefined> {
   const cloudflareEnv =
     (context as unknown as { cloudflare?: { env?: Record<string, string | undefined> } }).cloudflare?.env ?? {};
 
-  // Merge with process.env as fallback — critical for local dev where wrangler
-  // reads from .dev.vars (which may not exist) while dotenv loads .env.local.
+  // Resolve each key with a cascade of fallbacks
+  const resolve = (key: string, viteKey: string): string | undefined => {
+    return (
+      cloudflareEnv[key] ??
+      process.env[key] ??
+      cloudflareEnv[viteKey] ??
+      process.env[viteKey] ??
+      undefined
+    );
+  };
+
   return {
-    SUPABASE_URL: cloudflareEnv.SUPABASE_URL ?? process.env.SUPABASE_URL,
-    SUPABASE_ANON_KEY: cloudflareEnv.SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY,
-    API_KEY_ENCRYPTION_KEY: cloudflareEnv.API_KEY_ENCRYPTION_KEY ?? process.env.API_KEY_ENCRYPTION_KEY,
+    SUPABASE_URL: resolve('SUPABASE_URL', 'VITE_SUPABASE_URL'),
+    SUPABASE_ANON_KEY: resolve('SUPABASE_ANON_KEY', 'VITE_SUPABASE_ANON_KEY'),
+    API_KEY_ENCRYPTION_KEY: resolve('API_KEY_ENCRYPTION_KEY', 'VITE_API_KEY_ENCRYPTION_KEY'),
     ...cloudflareEnv, // keep any other Cloudflare vars
   };
 }
@@ -41,7 +54,7 @@ export function getSupabaseServerClient(request: Request, context: AppLoadContex
 
   if (!url || !anonKey) {
     throw new Error(
-      'Supabase is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY as Cloudflare Pages environment variables or in .env.local.',
+      'Supabase is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY (or VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY) as Cloudflare Pages environment variables or in .env.local.',
     );
   }
 
