@@ -70,6 +70,11 @@ export default async function handleRequest(
 
   responseHeaders.set('Content-Type', 'text/html');
 
+  // Prevent Cloudflare edge cache from serving stale HTML.
+  // This was the root cause of palmkit.app showing an old Next.js page
+  // for hours after a new deployment.
+  responseHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+
   responseHeaders.set('Cross-Origin-Embedder-Policy', 'require-corp');
   responseHeaders.set('Cross-Origin-Opener-Policy', 'same-origin');
 

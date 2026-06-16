@@ -1,0 +1,16 @@
+# Cloudflare Pages headers — prevents stale HTML from being served at the edge.
+# HTML responses must never be cached so new deployments are visible immediately.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# HTML routes (handled by the Pages Function) — never cache
+/
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# Static assets (JS/CSS/images with content hashes) — cache aggressively
+/_build/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/icons/*
+  Cache-Control: public, max-age=86400

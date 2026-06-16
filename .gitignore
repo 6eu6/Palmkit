@@ -33,6 +33,10 @@ functions/build/
 .wrangler
 _worker.bundle
 
+# Next.js artifacts (should never be committed)
+.next/
+next-env.d.ts
+
 Modelfile
 modelfiles
 
