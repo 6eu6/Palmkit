@@ -1,9 +1,7 @@
 import { type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction, json, redirect } from '@remix-run/cloudflare';
-import { Form, Link, useActionData, useRouteLoaderData, useNavigation, useSearchParams } from '@remix-run/react';
+import { Form, Link, useActionData, useNavigation, useSearchParams } from '@remix-run/react';
 import { AuthButton, AuthInput, AuthLayout } from '~/components/auth/AuthLayout';
 import { getAuthedUser, getSupabaseServerClient } from '~/lib/auth/supabase.server';
-import { getSupabaseBrowserClient } from '~/lib/auth/supabase.client';
-import { useCallback, useState } from 'react';
 
 type LoginActionData = { error: string };
 
@@ -26,7 +24,6 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const origin = new URL(request.url).origin;
   const redirectTo = String(formData.get('redirectTo') || '/');
 
-  // OAuth is handled client-side now, but keep server-side fallback
   if (intent === 'github' || intent === 'twitter') {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: intent,
@@ -63,75 +60,48 @@ export default function Login() {
   const redirectTo = searchParams.get('redirectTo') ?? '/';
   const busy = navigation.state !== 'idle';
 
-  // Get Supabase credentials from root loader for client-side OAuth
-  const rootData = useRouteLoaderData('root') as { supabaseUrl?: string | null; supabaseAnonKey?: string | null } | null;
-  const [oauthLoading, setOauthLoading] = useState<string | null>(null);
-
   // Check for URL error params (from OAuth callback failures)
   const urlError = searchParams.get('error');
 
-  const handleOAuth = useCallback(async (provider: 'github' | 'twitter') => {
-    const url = rootData?.supabaseUrl;
-    const anonKey = rootData?.supabaseAnonKey;
-
-    if (!url || !anonKey) {
-      // Fallback: submit the form server-side
-      return;
-    }
-
-    setOauthLoading(provider);
-
-    try {
-      const supabase = getSupabaseBrowserClient(url, anonKey);
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo)}` },
-      });
-
-      if (error) {
-        setOauthLoading(null);
-        return;
-      }
-
-      // Browser will redirect — no need to do anything else
-    } catch {
-      setOauthLoading(null);
-    }
-  }, [rootData?.supabaseUrl, rootData?.supabaseAnonKey, redirectTo]);
-
-  const isOAuthBusy = oauthLoading !== null;
-
   return (
     <AuthLayout title="Welcome back" subtitle="Log in to keep your projects and key in sync.">
-      {/* OAuth buttons — client-side redirect via Supabase browser SDK */}
+      {/* OAuth buttons — server-side via Remix Form with reloadDocument for external redirect */}
       <div className="flex flex-col gap-3">
-        <button
-          type="button"
-          onClick={() => handleOAuth('github')}
-          disabled={busy || isOAuthBusy}
-          className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors disabled:opacity-60"
-        >
-          {oauthLoading === 'github' ? (
-            <span className="i-ph:spinner-gap-bold text-lg animate-spin" />
-          ) : (
-            <span className="i-ph:github-logo-fill text-lg" />
-          )}
-          {oauthLoading === 'github' ? 'Redirecting…' : 'Continue with GitHub'}
-        </button>
+        <Form method="post" reloadDocument className="contents">
+          <input type="hidden" name="redirectTo" value={redirectTo} />
+          <button
+            type="submit"
+            name="intent"
+            value="github"
+            disabled={busy}
+            className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors disabled:opacity-60"
+          >
+            {busy ? (
+              <span className="i-ph:spinner-gap-bold text-lg animate-spin" />
+            ) : (
+              <span className="i-ph:github-logo-fill text-lg" />
+            )}
+            {busy ? 'Redirecting…' : 'Continue with GitHub'}
+          </button>
+        </Form>
 
-        <button
-          type="button"
-          onClick={() => handleOAuth('twitter')}
-          disabled={busy || isOAuthBusy}
-          className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors disabled:opacity-60"
-        >
-          {oauthLoading === 'twitter' ? (
-            <span className="i-ph:spinner-gap-bold text-lg animate-spin" />
-          ) : (
-            <span className="i-ph:x-logo-fill text-lg" />
-          )}
-          {oauthLoading === 'twitter' ? 'Redirecting…' : 'Continue with X'}
-        </button>
+        <Form method="post" reloadDocument className="contents">
+          <input type="hidden" name="redirectTo" value={redirectTo} />
+          <button
+            type="submit"
+            name="intent"
+            value="twitter"
+            disabled={busy}
+            className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors disabled:opacity-60"
+          >
+            {busy ? (
+              <span className="i-ph:spinner-gap-bold text-lg animate-spin" />
+            ) : (
+              <span className="i-ph:x-logo-fill text-lg" />
+            )}
+            {busy ? 'Redirecting…' : 'Continue with X'}
+          </button>
+        </Form>
       </div>
 
       <div className="flex items-center gap-3 my-4">

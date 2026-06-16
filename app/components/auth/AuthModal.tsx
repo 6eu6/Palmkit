@@ -1,20 +1,16 @@
 import { useStore } from '@nanostores/react';
-import { useEffect, useState, useCallback } from 'react';
-import { useRouteLoaderData } from '@remix-run/react';
+import { useEffect, useState } from 'react';
+import { Form } from '@remix-run/react';
 import { authModalStore, closeAuthModal } from '~/lib/stores/auth';
-import { getSupabaseBrowserClient } from '~/lib/auth/supabase.client';
 
 /**
  * Global "sign in to continue" modal. Shown when an unauthenticated user tries
- * to use a gated surface (e.g. the prompt box). OAuth buttons use the Supabase
- * browser SDK for client-side redirect; email sign-up routes to /signup.
+ * to use a gated surface (e.g. the prompt box). OAuth buttons submit to the
+ * /login route's action via Remix Form with reloadDocument for external redirect.
  */
 export function AuthModal() {
   const open = useStore(authModalStore);
   const [redirectTo, setRedirectTo] = useState('/');
-  const [oauthLoading, setOauthLoading] = useState<string | null>(null);
-
-  const rootData = useRouteLoaderData('root') as { supabaseUrl?: string | null; supabaseAnonKey?: string | null } | null;
 
   useEffect(() => {
     if (open && typeof window !== 'undefined') {
@@ -36,41 +32,9 @@ export function AuthModal() {
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
-  const handleOAuth = useCallback(async (provider: 'github' | 'twitter') => {
-    const url = rootData?.supabaseUrl;
-    const anonKey = rootData?.supabaseAnonKey;
-
-    if (!url || !anonKey) {
-      // Fallback: navigate to login page
-      window.location.href = `/login?redirectTo=${encodeURIComponent(redirectTo)}`;
-      return;
-    }
-
-    setOauthLoading(provider);
-
-    try {
-      const supabase = getSupabaseBrowserClient(url, anonKey);
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo)}` },
-      });
-
-      if (error) {
-        setOauthLoading(null);
-        return;
-      }
-
-      // Browser will redirect
-    } catch {
-      setOauthLoading(null);
-    }
-  }, [rootData?.supabaseUrl, rootData?.supabaseAnonKey, redirectTo]);
-
   if (!open) {
     return null;
   }
-
-  const isOAuthBusy = oauthLoading !== null;
 
   const oauthBtn =
     'w-full h-12 rounded-xl font-medium text-sm flex items-center justify-center gap-2.5 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors disabled:opacity-60';
@@ -115,32 +79,33 @@ export function AuthModal() {
         </div>
 
         <div className="flex flex-col gap-2.5">
-          <button
-            type="button"
-            onClick={() => handleOAuth('github')}
-            disabled={isOAuthBusy}
-            className={oauthBtn}
-          >
-            {oauthLoading === 'github' ? (
-              <span className="i-ph:spinner-gap-bold text-lg animate-spin" />
-            ) : (
+          {/* GitHub OAuth — submits to /login action via server-side Form */}
+          <Form method="post" action="/login" reloadDocument className="contents">
+            <input type="hidden" name="redirectTo" value={redirectTo} />
+            <button
+              type="submit"
+              name="intent"
+              value="github"
+              className={oauthBtn}
+            >
               <span className="i-ph:github-logo-fill text-lg" />
-            )}
-            {oauthLoading === 'github' ? 'Redirecting…' : 'Continue with GitHub'}
-          </button>
-          <button
-            type="button"
-            onClick={() => handleOAuth('twitter')}
-            disabled={isOAuthBusy}
-            className={oauthBtn}
-          >
-            {oauthLoading === 'twitter' ? (
-              <span className="i-ph:spinner-gap-bold text-lg animate-spin" />
-            ) : (
+              Continue with GitHub
+            </button>
+          </Form>
+
+          {/* Twitter/X OAuth — submits to /login action via server-side Form */}
+          <Form method="post" action="/login" reloadDocument className="contents">
+            <input type="hidden" name="redirectTo" value={redirectTo} />
+            <button
+              type="submit"
+              name="intent"
+              value="twitter"
+              className={oauthBtn}
+            >
               <span className="i-ph:x-logo-fill text-lg" />
-            )}
-            {oauthLoading === 'twitter' ? 'Redirecting…' : 'Continue with X'}
-          </button>
+              Continue with X
+            </button>
+          </Form>
         </div>
 
         <div className="flex items-center gap-3 my-4">
