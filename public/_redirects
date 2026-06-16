@@ -1,0 +1,4 @@
+# Cloudflare Pages redirects — processed BEFORE static files.
+# This bypasses any stale static index.html served at / from old deployments.
+# / is redirected to /home which is a Remix Function route (always dynamic).
+/ /home 302
