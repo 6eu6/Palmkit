@@ -1,0 +1,669 @@
+     1→import { Link } from '@remix-run/react';
+     2→import type { ReactNode } from 'react';
+     3→
+     4→/**
+     5→ * Marketing landing page shown to logged-out visitors at "/". Mobile-first,
+     6→ * dark with teal + mint accents — the Palmkit brand identity. The editor lives
+     7→ * behind authentication.
+     8→ */
+     9→
+    10→/* ─── Brand Colors ─── */
+    11→const TEAL = '#00A8B5';
+    12→const TEAL_DARK = '#008C97';
+    13→const MINT = '#4CD4B0';
+    14→const TEAL_GLOW = 'rgba(0, 168, 181, 0.25)';
+    15→const TEAL_SUBTLE = 'rgba(0, 168, 181, 0.08)';
+    16→const MINT_SUBTLE = 'rgba(76, 212, 176, 0.08)';
+    17→const TEAL_TEXT = '#5eead4';
+    18→const MINT_TEXT = '#6ee7b7';
+    19→
+    20→export function Landing() {
+    21→  return (
+    22→    <div className="min-h-[100dvh] flex flex-col bg-bolt-elements-background-depth-1 text-bolt-elements-textPrimary overflow-x-hidden">
+    23→      <LandingHeader />
+    24→      <main className="flex-1">
+    25→        <Hero />
+    26→        <LogoStrip />
+    27→        <Features />
+    28→        <HowItWorks />
+    29→        <Testimonials />
+    30→        <Pricing />
+    31→        <FinalCta />
+    32→      </main>
+    33→      <LandingFooter />
+    34→    </div>
+    35→  );
+    36→}
+    37→
+    38→/* ─── Header ─── */
+    39→
+    40→function LandingHeader() {
+    41→  return (
+    42→    <header
+    43→      className="sticky top-0 z-20 flex items-center px-4 sm:px-6 h-14 border-b backdrop-blur-xl"
+    44→      style={{
+    45→        background: 'var(--bolt-mobile-surface-bg, rgba(10,10,18,0.88))',
+    46→        borderColor: 'rgba(0, 168, 181, 0.12)',
+    47→      }}
+    48→    >
+    49→      <Link to="/" className="flex items-center" aria-label="Palmkit home">
+    50→        <img src="/palmkit-logo-dark.png" alt="Palmkit" className="h-7 w-auto select-none" />
+    51→      </Link>
+    52→      <nav className="hidden md:flex items-center gap-6 ml-10 text-sm text-bolt-elements-textSecondary">
+    53→        <a href="#features" className="hover:text-bolt-elements-textPrimary transition-colors">Features</a>
+    54→        <a href="#how-it-works" className="hover:text-bolt-elements-textPrimary transition-colors">How it works</a>
+    55→        <a href="#pricing" className="hover:text-bolt-elements-textPrimary transition-colors">Pricing</a>
+    56→      </nav>
+    57→      <div className="ml-auto flex items-center gap-2">
+    58→        <Link
+    59→          to="/login"
+    60→          className="h-9 px-3.5 flex items-center text-sm font-medium text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary transition-colors"
+    61→        >
+    62→          Log in
+    63→        </Link>
+    64→        <Link
+    65→          to="/signup"
+    66→          className="h-9 px-4 flex items-center rounded-lg text-sm font-semibold text-white transition-all hover:shadow-lg active:scale-[0.97]"
+    67→          style={{
+    68→            background: `linear-gradient(135deg, ${TEAL} 0%, ${MINT} 140%)`,
+    69→            boxShadow: `0 4px 14px ${TEAL_GLOW}`,
+    70→          }}
+    71→        >
+    72→          Sign up free
+    73→        </Link>
+    74→      </div>
+    75→    </header>
+    76→  );
+    77→}
+    78→
+    79→/* ─── Hero ─── */
+    80→
+    81→function Hero() {
+    82→  return (
+    83→    <section className="relative px-5 sm:px-6 pt-16 sm:pt-24 pb-14 sm:pb-20 text-center overflow-hidden">
+    84→      {/* Ambient glow layers */}
+    85→      <div
+    86→        className="pointer-events-none absolute inset-0 -z-10"
+    87→        style={{
+    88→          background:
+    89→            'radial-gradient(60% 50% at 50% 0%, rgba(0,168,181,0.18) 0%, rgba(76,212,176,0.06) 40%, transparent 70%)',
+    90→        }}
+    91→      />
+    92→      {/* Floating orbs */}
+    93→      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+    94→        <div
+    95→          className="absolute w-[500px] h-[500px] rounded-full opacity-[0.04] blur-[100px] -top-40 -left-40"
+    96→          style={{ background: TEAL }}
+    97→        />
+    98→        <div
+    99→          className="absolute w-[400px] h-[400px] rounded-full opacity-[0.03] blur-[80px] -bottom-20 -right-40"
+   100→          style={{ background: MINT }}
+   101→        />
+   102→      </div>
+   103→
+   104→      {/* Badge */}
+   105→      <div
+   106→        className="inline-flex items-center gap-1.5 text-[11px] sm:text-xs font-medium px-3 py-1.5 rounded-full mb-6"
+   107→        style={{
+   108→          background: TEAL_SUBTLE,
+   109→          color: TEAL_TEXT,
+   110→          border: '1px solid rgba(0, 168, 181, 0.15)',
+   111→        }}
+   112→      >
+   113→        <span className="i-ph:sparkle-fill text-xs" />
+   114→        AI-powered vibe coding platform
+   115→      </div>
+   116→
+   117→      {/* Headline */}
+   118→      <h1 className="mx-auto max-w-3xl text-4xl sm:text-6xl font-bold tracking-tight leading-[1.08]">
+   119→        Build web apps
+   120→        <br />
+   121→        <span
+   122→          style={{
+   123→            background: `linear-gradient(110deg, ${TEAL} 0%, ${MINT} 60%, #a7f3d0 100%)`,
+   124→            WebkitBackgroundClip: 'text',
+   125→            WebkitTextFillColor: 'transparent',
+   126→            backgroundClip: 'text',
+   127→          }}
+   128→        >
+   129→          from your pocket
+   130→        </span>
+   131→      </h1>
+   132→
+   133→      <p className="mx-auto mt-5 max-w-xl text-base sm:text-lg text-bolt-elements-textSecondary leading-relaxed">
+   134→        Describe what you want. Palmkit generates the code, installs dependencies, and shows a live preview — all in
+   135→        your browser, on any device.
+   136→      </p>
+   137→
+   138→      {/* CTA buttons */}
+   139→      <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+   140→        <Link
+   141→          to="/signup"
+   142→          className="w-full sm:w-auto h-12 px-7 flex items-center justify-center rounded-xl text-sm font-semibold text-white transition-all active:scale-[0.97] hover:shadow-xl"
+   143→          style={{
+   144→            background: `linear-gradient(135deg, ${TEAL} 0%, ${TEAL_DARK} 140%)`,
+   145→            boxShadow: `0 8px 30px ${TEAL_GLOW}`,
+   146→          }}
+   147→        >
+   148→          Start building — it's free
+   149→        </Link>
+   150→        <Link
+   151→          to="/login"
+   152→          className="w-full sm:w-auto h-12 px-7 flex items-center justify-center rounded-xl text-sm font-semibold border text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-2 transition-colors"
+   153→          style={{ borderColor: 'rgba(0, 168, 181, 0.2)' }}
+   154→        >
+   155→          Log in
+   156→        </Link>
+   157→      </div>
+   158→
+   159→      <p className="mt-4 text-xs text-bolt-elements-textTertiary">Bring your own AI key · No credit card · Deploy in seconds</p>
+   160→
+   161→      {/* Hero mockup */}
+   162→      <div className="mx-auto mt-12 max-w-4xl relative">
+   163→        <div
+   164→          className="rounded-2xl border overflow-hidden shadow-2xl"
+   165→          style={{
+   166→            borderColor: 'rgba(0, 168, 181, 0.12)',
+   167→            background: 'rgba(10, 10, 18, 0.6)',
+   168→            boxShadow: `0 25px 60px rgba(0, 0, 0, 0.5), 0 0 100px ${TEAL_GLOW}`,
+   169→          }}
+   170→        >
+   171→          {/* Browser chrome */}
+   172→          <div
+   173→            className="flex items-center gap-2 px-4 py-2.5 border-b"
+   174→            style={{
+   175→              borderColor: 'rgba(0, 168, 181, 0.08)',
+   176→              background: 'rgba(10, 10, 18, 0.8)',
+   177→            }}
+   178→          >
+   179→            <div className="flex gap-1.5">
+   180→              <div className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
+   181→              <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/70" />
+   182→              <div className="w-2.5 h-2.5 rounded-full bg-green-500/70" />
+   183→            </div>
+   184→            <div
+   185→              className="flex-1 h-6 rounded-md flex items-center px-3 text-[11px] text-bolt-elements-textTertiary"
+   186→              style={{ background: 'rgba(255,255,255,0.04)' }}
+   187→            >
+   188→              palmkit.app
+   189→            </div>
+   190→          </div>
+   191→          {/* App preview content */}
+   192→          <div className="flex min-h-[200px] sm:min-h-[320px]">
+   193→            {/* Sidebar */}
+   194→            <div
+   195→              className="hidden sm:flex flex-col w-56 border-r p-3 gap-2"
+   196→              style={{
+   197→                borderColor: 'rgba(0, 168, 181, 0.06)',
+   198→                background: 'rgba(10, 10, 18, 0.4)',
+   199→              }}
+   200→            >
+   201→              <div className="flex items-center gap-2 mb-3">
+   202→                <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: TEAL_SUBTLE }}>
+   203→                  <span className="i-ph:chat-circle-dots-fill text-sm" style={{ color: TEAL_TEXT }} />
+   204→                </div>
+   205→                <span className="text-xs font-medium">Chat</span>
+   206→              </div>
+   207→              {['Build a landing page', 'Add dark mode', 'Fix responsive nav', 'Deploy to Vercel'].map((msg, i) => (
+   208→                <div
+   209→                  key={msg}
+   210→                  className="text-[11px] px-2 py-1.5 rounded-md truncate"
+   211→                  style={{
+   212→                    background: i === 0 ? TEAL_SUBTLE : 'transparent',
+   213→                    color: i === 0 ? TEAL_TEXT : 'var(--bolt-elements-textTertiary)',
+   214→                  }}
+   215→                >
+   216→                  {msg}
+   217→                </div>
+   218→              ))}
+   219→            </div>
+   220→            {/* Main area */}
+   221→            <div className="flex-1 flex flex-col">
+   222→              {/* Code area */}
+   223→              <div className="flex-1 p-4 sm:p-5">
+   224→                <div className="space-y-2">
+   225→                  <div className="flex items-center gap-2 mb-3">
+   226→                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: TEAL_SUBTLE, color: TEAL_TEXT }}>tsx</span>
+   227→                    <span className="text-[11px] text-bolt-elements-textTertiary font-mono">page.tsx</span>
+   228→                  </div>
+   229→                  <CodeLine indent={0} color="var(--bolt-elements-textTertiary)">{'export default'}<span style={{ color: TEAL_TEXT }}>{' function'}</span>{' Page()'}<span style={{ color: MINT_TEXT }}>{' {'}</span></CodeLine>
+   230→                  <CodeLine indent={1} color="var(--bolt-elements-textTertiary)">{'return ('}</CodeLine>
+   231→                  <CodeLine indent={2}><span style={{ color: TEAL_TEXT }}>{'<div'}</span><span style={{ color: MINT_TEXT }}>{' className='}</span><span style={{ color: '#fbbf24' }}>"flex min-h-screen"</span><span style={{ color: TEAL_TEXT }}>{'>'}</span></CodeLine>
+   232→                  <CodeLine indent={3}><span style={{ color: TEAL_TEXT }}>{'<h1'}</span><span style={{ color: MINT_TEXT }}>{' className='}</span><span style={{ color: '#fbbf24' }}>"text-4xl"</span><span style={{ color: TEAL_TEXT }}>{'>'}</span>{'Hello World'}<span style={{ color: TEAL_TEXT }}>{'</h1>'}</span></CodeLine>
+   233→                  <CodeLine indent={2}><span style={{ color: TEAL_TEXT }}>{'</div>'}</span></CodeLine>
+   234→                  <CodeLine indent={1}>{')'}</CodeLine>
+   235→                  <CodeLine indent={0}><span style={{ color: MINT_TEXT }}>{'}'}</span></CodeLine>
+   236→                </div>
+   237→              </div>
+   238→              {/* Chat input */}
+   239→              <div
+   240→                className="mx-3 sm:mx-4 mb-3 sm:mb-4 flex items-center gap-2 px-3 py-2.5 rounded-xl border"
+   241→                style={{
+   242→                  borderColor: 'rgba(0, 168, 181, 0.15)',
+   243→                  background: 'rgba(255,255,255,0.03)',
+   244→                }}
+   245→              >
+   246→                <span className="text-xs text-bolt-elements-textTertiary flex-1">Describe what you want to build...</span>
+   247→                <div
+   248→                  className="w-7 h-7 rounded-lg flex items-center justify-center"
+   249→                  style={{ background: `linear-gradient(135deg, ${TEAL}, ${MINT})` }}
+   250→                >
+   251→                  <span className="i-ph:arrow-up-bold text-white text-xs" />
+   252→                </div>
+   253→              </div>
+   254→            </div>
+   255→          </div>
+   256→        </div>
+   257→        {/* Glow behind mockup */}
+   258→        <div
+   259→          className="pointer-events-none absolute inset-0 -z-10 blur-[60px] opacity-20 rounded-2xl"
+   260→          style={{ background: `linear-gradient(135deg, ${TEAL}, ${MINT})` }}
+   261→        />
+   262→      </div>
+   263→    </section>
+   264→  );
+   265→}
+   266→
+   267→function CodeLine({ indent, children, color }: { indent: number; children?: ReactNode; color?: string }) {
+   268→  return (
+   269→    <div className="font-mono text-[11px] sm:text-xs leading-relaxed" style={{ paddingLeft: `${indent * 16}px`, color }}>
+   270→      {children}
+   271→    </div>
+   272→  );
+   273→}
+   274→
+   275→/* ─── Logo Strip ─── */
+   276→
+   277→function LogoStrip() {
+   278→  const logos = ['Vercel', 'GitHub', 'Netlify', 'Cloudflare', 'Supabase'];
+   279→  return (
+   280→    <section className="py-10 sm:py-14 border-y" style={{ borderColor: 'rgba(0, 168, 181, 0.06)' }}>
+   281→      <p className="text-center text-xs text-bolt-elements-textTertiary mb-5 tracking-wide uppercase">Deploy anywhere</p>
+   282→      <div className="flex items-center justify-center gap-8 sm:gap-12 flex-wrap px-5">
+   283→        {logos.map((name) => (
+   284→          <span key={name} className="text-sm sm:text-base font-semibold text-bolt-elements-textTertiary/50 hover:text-bolt-elements-textTertiary transition-colors">
+   285→            {name}
+   286→          </span>
+   287→        ))}
+   288→      </div>
+   289→    </section>
+   290→  );
+   291→}
+   292→
+   293→/* ─── Features ─── */
+   294→
+   295→function Features() {
+   296→  const items = [
+   297→    {
+   298→      icon: 'i-ph:chat-circle-dots-fill',
+   299→      title: 'Build by chatting',
+   300→      body: 'Describe a feature in plain language and watch the files appear, edit, and refine in real time.',
+   301→      tint: TEAL_TEXT,
+   302→      bg: TEAL_SUBTLE,
+   303→    },
+   304→    {
+   305→      icon: 'i-ph:rocket-launch-fill',
+   306→      title: 'Live preview, real runtime',
+   307→      body: 'Dependencies install and your app runs in a cloud sandbox — a real preview, not a mockup.',
+   308→      tint: MINT_TEXT,
+   309→      bg: MINT_SUBTLE,
+   310→    },
+   311→    {
+   312→      icon: 'i-ph:lock-key-fill',
+   313→      title: 'Your key, encrypted',
+   314→      body: 'Bring your own model key. It\'s encrypted at rest and synced to your account so you never re-enter it.',
+   315→      tint: TEAL_TEXT,
+   316→      bg: TEAL_SUBTLE,
+   317→    },
+   318→    {
+   319→      icon: 'i-ph:device-mobile-fill',
+   320→      title: 'Made for mobile',
+   321→      body: 'A real mobile-first workspace — generate, preview, inspect elements, and export from your phone.',
+   322→      tint: MINT_TEXT,
+   323→      bg: MINT_SUBTLE,
+   324→    },
+   325→    {
+   326→      icon: 'i-ph:git-branch-fill',
+   327→      title: 'Git integration',
+   328→      body: 'Clone repos, push changes, manage branches — all from within Palmkit. Full GitHub & GitLab support.',
+   329→      tint: TEAL_TEXT,
+   330→      bg: TEAL_SUBTLE,
+   331→    },
+   332→    {
+   333→      icon: 'i-ph:globe-hemisphere-west-fill',
+   334→      title: 'One-click deploy',
+   335→      body: 'Ship to Vercel, Netlify, or Cloudflare Pages in a single click. Your app goes live in seconds.',
+   336→      tint: MINT_TEXT,
+   337→      bg: MINT_SUBTLE,
+   338→    },
+   339→  ];
+   340→
+   341→  return (
+   342→    <section id="features" className="px-5 sm:px-6 py-14 sm:py-20">
+   343→      <div className="mx-auto max-w-5xl">
+   344→        <div className="text-center mb-10">
+   345→          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">Everything you need to ship</h2>
+   346→          <p className="text-bolt-elements-textSecondary text-sm sm:text-base max-w-lg mx-auto">
+   347→            From idea to production — Palmkit handles the entire workflow so you can focus on building.
+   348→          </p>
+   349→        </div>
+   350→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   351→          {items.map((it) => (
+   352→            <div
+   353→              key={it.title}
+   354→              className="group rounded-2xl border p-5 sm:p-6 transition-all hover:border-opacity-30"
+   355→              style={{
+   356→                background: 'var(--bolt-mobile-surface-bg, rgba(255,255,255,0.02))',
+   357→                borderColor: 'rgba(0, 168, 181, 0.10)',
+   358→              }}
+   359→            >
+   360→              <span
+   361→                className="flex items-center justify-center w-11 h-11 rounded-xl mb-4 group-hover:scale-110 transition-transform"
+   362→                style={{ background: it.bg, color: it.tint }}
+   363→              >
+   364→                <span className={`${it.icon} text-xl`} />
+   365→              </span>
+   366→              <h3 className="text-lg font-semibold mb-1.5">{it.title}</h3>
+   367→              <p className="text-sm text-bolt-elements-textSecondary leading-relaxed">{it.body}</p>
+   368→            </div>
+   369→          ))}
+   370→        </div>
+   371→      </div>
+   372→    </section>
+   373→  );
+   374→}
+   375→
+   376→/* ─── How it Works ─── */
+   377→
+   378→function HowItWorks() {
+   379→  const steps = [
+   380→    {
+   381→      n: '1',
+   382→      icon: 'i-ph:chat-text-fill',
+   383→      title: 'Describe it',
+   384→      body: 'Tell Palmkit what to build in a sentence. Our AI understands natural language.',
+   385→    },
+   386→    {
+   387→      n: '2',
+   388→      icon: 'i-ph:code-fill',
+   389→      title: 'Watch it build',
+   390→      body: 'Code is generated, dependencies install, and your app runs live in a sandbox.',
+   391→    },
+   392→    {
+   393→      n: '3',
+   394→      icon: 'i-ph:rocket-launch-fill',
+   395→      title: 'Refine & deploy',
+   396→      body: 'Iterate by chatting, then export or deploy to Vercel, Netlify, or Cloudflare.',
+   397→    },
+   398→  ];
+   399→
+   400→  return (
+   401→    <section id="how-it-works" className="px-5 sm:px-6 py-14 sm:py-20" style={{ background: 'rgba(0, 168, 181, 0.02)' }}>
+   402→      <div className="mx-auto max-w-4xl">
+   403→        <div className="text-center mb-10">
+   404→          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">How it works</h2>
+   405→          <p className="text-bolt-elements-textSecondary text-sm sm:text-base">Three steps from idea to live app.</p>
+   406→        </div>
+   407→        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8">
+   408→          {steps.map((s, i) => (
+   409→            <div key={s.n} className="text-center px-2 relative">
+   410→              {/* Connector line */}
+   411→              {i < steps.length - 1 && (
+   412→                <div
+   413→                  className="hidden sm:block absolute top-5 left-[calc(50%+30px)] w-[calc(100%-60px)] h-px"
+   414→                  style={{ background: `linear-gradient(90deg, rgba(0,168,181,0.3), rgba(76,212,176,0.3))` }}
+   415→                />
+   416→              )}
+   417→              <div
+   418→                className="mx-auto mb-4 flex items-center justify-center w-14 h-14 rounded-2xl text-white relative"
+   419→                style={{ background: `linear-gradient(135deg, ${TEAL} 0%, ${MINT} 140%)` }}
+   420→              >
+   421→                <span className={`${s.icon} text-xl`} />
+   422→                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-bolt-elements-background-depth-1 border text-[10px] font-bold flex items-center justify-center" style={{ borderColor: TEAL, color: TEAL }}>
+   423→                  {s.n}
+   424→                </span>
+   425→              </div>
+   426→              <h3 className="text-base font-semibold mb-1.5">{s.title}</h3>
+   427→              <p className="text-sm text-bolt-elements-textSecondary leading-relaxed">{s.body}</p>
+   428→            </div>
+   429→          ))}
+   430→        </div>
+   431→      </div>
+   432→    </section>
+   433→  );
+   434→}
+   435→
+   436→/* ─── Testimonials ─── */
+   437→
+   438→function Testimonials() {
+   439→  const quotes = [
+   440→    {
+   441→      text: "I built and deployed a full SaaS landing page from my phone in 15 minutes. This is insane.",
+   442→      author: "Ahmed K.",
+   443→      role: "Indie hacker",
+   444→    },
+   445→    {
+   446→      text: "Finally a coding tool that works beautifully on mobile. The live preview is a game-changer.",
+   447→      author: "Sarah M.",
+   448→      role: "Frontend dev",
+   449→    },
+   450→    {
+   451→      text: "Palmkit replaced my entire dev setup. I prototype everything here now before writing a single line.",
+   452→      author: "Leo R.",
+   453→      role: "CTO, Startup",
+   454→    },
+   455→  ];
+   456→
+   457→  return (
+   458→    <section className="px-5 sm:px-6 py-14 sm:py-20">
+   459→      <div className="mx-auto max-w-5xl">
+   460→        <h2 className="text-center text-2xl sm:text-3xl font-bold tracking-tight mb-10">Loved by builders</h2>
+   461→        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   462→          {quotes.map((q) => (
+   463→            <div
+   464→              key={q.author}
+   465→              className="rounded-2xl border p-5 sm:p-6 flex flex-col"
+   466→              style={{
+   467→                background: 'var(--bolt-mobile-surface-bg, rgba(255,255,255,0.02))',
+   468→                borderColor: 'rgba(0, 168, 181, 0.10)',
+   469→              }}
+   470→            >
+   471→              <p className="text-sm text-bolt-elements-textSecondary leading-relaxed flex-1 mb-4">"{q.text}"</p>
+   472→              <div className="flex items-center gap-3">
+   473→                <div
+   474→                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
+   475→                  style={{ background: `linear-gradient(135deg, ${TEAL}, ${MINT})` }}
+   476→                >
+   477→                  {q.author[0]}
+   478→                </div>
+   479→                <div>
+   480→                  <p className="text-sm font-medium">{q.author}</p>
+   481→                  <p className="text-[11px] text-bolt-elements-textTertiary">{q.role}</p>
+   482→                </div>
+   483→              </div>
+   484→            </div>
+   485→          ))}
+   486→        </div>
+   487→      </div>
+   488→    </section>
+   489→  );
+   490→}
+   491→
+   492→/* ─── Pricing ─── */
+   493→
+   494→function Pricing() {
+   495→  const plans = [
+   496→    {
+   497→      name: 'Free',
+   498→      price: '$0',
+   499→      period: 'forever',
+   500→      desc: 'Try Palmkit with your own AI key.',
+   501→      features: ['Unlimited projects', 'Bring your own key', 'Live preview', 'Export & download', 'Mobile workspace'],
+   502→      cta: 'Get started',
+   503→      href: '/signup',
+   504→      highlight: false,
+   505→    },
+   506→    {
+   507→      name: 'Pro',
+   508→      price: '$12',
+   509→      period: '/month',
+   510→      desc: 'More power, more models, more deploys.',
+   511→      features: ['Everything in Free', 'Included AI credits', 'Priority sandbox', 'One-click deploy', 'GitHub integration', 'Project sync across devices'],
+   512→      cta: 'Start free trial',
+   513→      href: '/signup?plan=pro',
+   514→      highlight: true,
+   515→    },
+   516→  ];
+   517→
+   518→  return (
+   519→    <section id="pricing" className="px-5 sm:px-6 py-14 sm:py-20" style={{ background: 'rgba(0, 168, 181, 0.02)' }}>
+   520→      <div className="mx-auto max-w-4xl">
+   521→        <div className="text-center mb-10">
+   522→          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">Simple, transparent pricing</h2>
+   523→          <p className="text-bolt-elements-textSecondary text-sm sm:text-base">Start free. Upgrade when you need more.</p>
+   524→        </div>
+   525→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+   526→          {plans.map((plan) => (
+   527→            <div
+   528→              key={plan.name}
+   529→              className="rounded-2xl border p-6 sm:p-7 flex flex-col relative"
+   530→              style={{
+   531→                background: plan.highlight
+   532→                  ? 'radial-gradient(120% 120% at 50% 0%, rgba(0,168,181,0.10) 0%, rgba(76,212,176,0.04) 60%, rgba(10,10,18,0.02) 100%)'
+   533→                  : 'var(--bolt-mobile-surface-bg, rgba(255,255,255,0.02))',
+   534→                borderColor: plan.highlight ? 'rgba(0, 168, 181, 0.25)' : 'rgba(0, 168, 181, 0.10)',
+   535→              }}
+   536→            >
+   537→              {plan.highlight && (
+   538→                <span
+   539→                  className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[10px] font-semibold px-3 py-0.5 rounded-full text-white"
+   540→                  style={{ background: `linear-gradient(135deg, ${TEAL}, ${MINT})` }}
+   541→                >
+   542→                  Popular
+   543→                </span>
+   544→              )}
+   545→              <h3 className="text-lg font-semibold mb-1">{plan.name}</h3>
+   546→              <p className="text-sm text-bolt-elements-textSecondary mb-4">{plan.desc}</p>
+   547→              <div className="flex items-baseline gap-1 mb-5">
+   548→                <span className="text-3xl font-bold">{plan.price}</span>
+   549→                <span className="text-sm text-bolt-elements-textTertiary">{plan.period}</span>
+   550→              </div>
+   551→              <ul className="space-y-2.5 mb-6 flex-1">
+   552→                {plan.features.map((f) => (
+   553→                  <li key={f} className="flex items-start gap-2 text-sm text-bolt-elements-textSecondary">
+   554→                    <span className="i-ph:check-circle-fill mt-0.5 flex-shrink-0" style={{ color: MINT }} />
+   555→                    {f}
+   556→                  </li>
+   557→                ))}
+   558→              </ul>
+   559→              <Link
+   560→                to={plan.href}
+   561→                className="w-full h-11 flex items-center justify-center rounded-xl text-sm font-semibold transition-all hover:opacity-90 active:scale-[0.97]"
+   562→                style={
+   563→                  plan.highlight
+   564→                    ? {
+   565→                        background: `linear-gradient(135deg, ${TEAL} 0%, ${TEAL_DARK} 140%)`,
+   566→                        color: '#fff',
+   567→                        boxShadow: `0 6px 20px ${TEAL_GLOW}`,
+   568→                      }
+   569→                    : {
+   570→                        background: 'rgba(255,255,255,0.05)',
+   571→                        color: 'var(--bolt-elements-textPrimary)',
+   572→                        border: '1px solid rgba(0, 168, 181, 0.15)',
+   573→                      }
+   574→                }
+   575→              >
+   576→                {plan.cta}
+   577→              </Link>
+   578→            </div>
+   579→          ))}
+   580→        </div>
+   581→      </div>
+   582→    </section>
+   583→  );
+   584→}
+   585→
+   586→/* ─── Final CTA ─── */
+   587→
+   588→function FinalCta() {
+   589→  return (
+   590→    <section className="px-5 sm:px-6 py-14 sm:py-20">
+   591→      <div
+   592→        className="mx-auto max-w-3xl rounded-3xl border p-8 sm:p-12 text-center relative overflow-hidden"
+   593→        style={{
+   594→          background:
+   595→            'radial-gradient(120% 120% at 50% 0%, rgba(0,168,181,0.12) 0%, rgba(76,212,176,0.04) 60%, transparent 100%)',
+   596→          borderColor: 'rgba(0, 168, 181, 0.15)',
+   597→        }}
+   598→      >
+   599→        {/* Decorative orbs */}
+   600→        <div
+   601→          className="pointer-events-none absolute -top-20 -right-20 w-40 h-40 rounded-full opacity-[0.06] blur-[40px]"
+   602→          style={{ background: TEAL }}
+   603→        />
+   604→        <div
+   605→          className="pointer-events-none absolute -bottom-20 -left-20 w-40 h-40 rounded-full opacity-[0.04] blur-[40px]"
+   606→          style={{ background: MINT }}
+   607→        />
+   608→
+   609→        <h2 className="text-2xl sm:text-4xl font-bold tracking-tight mb-3 relative">Your next app starts with a sentence</h2>
+   610→        <p className="text-bolt-elements-textSecondary mb-7 max-w-md mx-auto relative">
+   611→          Create a free account and build your first project in minutes. No setup required.
+   612→        </p>
+   613→        <Link
+   614→          to="/signup"
+   615→          className="relative inline-flex h-12 px-8 items-center justify-center rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-[0.97]"
+   616→          style={{
+   617→            background: `linear-gradient(135deg, ${TEAL} 0%, ${TEAL_DARK} 140%)`,
+   618→            boxShadow: `0 8px 30px ${TEAL_GLOW}`,
+   619→          }}
+   620→        >
+   621→          Get started free
+   622→        </Link>
+   623→      </div>
+   624→    </section>
+   625→  );
+   626→}
+   627→
+   628→/* ─── Footer ─── */
+   629→
+   630→function LandingFooter() {
+   631→  return (
+   632→    <footer
+   633→      className="px-5 sm:px-6 py-8 border-t text-sm"
+   634→      style={{ borderColor: 'rgba(0, 168, 181, 0.08)' }}
+   635→    >
+   636→      <div className="mx-auto max-w-5xl">
+   637→        <div className="flex flex-col sm:flex-row items-center gap-6 sm:gap-0 justify-between">
+   638→          <Link to="/" className="flex items-center" aria-label="Palmkit home">
+   639→            <img src="/palmkit-logo-dark.png" alt="Palmkit" className="h-6 w-auto select-none opacity-90" />
+   640→          </Link>
+   641→          <div className="flex items-center gap-5 text-bolt-elements-textSecondary">
+   642→            <FooterLink to="/terms">Terms</FooterLink>
+   643→            <FooterLink to="/privacy">Privacy</FooterLink>
+   644→            <FooterLink to="/login">Log in</FooterLink>
+   645→            <a
+   646→              href="https://github.com/6eu6/palmkit"
+   647→              target="_blank"
+   648→              rel="noopener noreferrer"
+   649→              className="hover:text-bolt-elements-textPrimary transition-colors"
+   650→              aria-label="GitHub"
+   651→            >
+   652→              <span className="i-ph:github-logo text-lg" />
+   653→            </a>
+   654→          </div>
+   655→          <p className="text-xs text-bolt-elements-textTertiary">&copy; {new Date().getFullYear()} Palmkit</p>
+   656→        </div>
+   657→      </div>
+   658→    </footer>
+   659→  );
+   660→}
+   661→
+   662→function FooterLink({ to, children }: { to: string; children: ReactNode }) {
+   663→  return (
+   664→    <Link to={to} className="hover:text-bolt-elements-textPrimary transition-colors">
+   665→      {children}
+   666→    </Link>
+   667→  );
+   668→}
+   669→
