@@ -25,6 +25,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const { supabase, headers } = getSupabaseServerClient(request, context);
   const origin = new URL(request.url).origin;
 
+  // OAuth via server-side action (fallback for Form-based submission)
   if (intent === 'github' || intent === 'twitter') {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: intent,
@@ -38,6 +39,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return redirect(data.url, { headers });
   }
 
+  // Email/password sign-up
   const email = String(formData.get('email') ?? '').trim();
   const password = String(formData.get('password') ?? '');
 
@@ -90,41 +92,26 @@ export default function Signup() {
 
   return (
     <AuthLayout title="Create your account" subtitle="Keep your projects and API key across devices.">
-      {/* OAuth buttons — server-side via Remix Form with reloadDocument for external redirect */}
+      {/* OAuth buttons — plain <a> links to dedicated API routes.
+          No JS required, no form submission, no client-side SDK.
+          The browser navigates directly to /api/auth/github or /api/auth/twitter
+          which redirects to the OAuth provider. */}
       <div className="flex flex-col gap-3">
-        <Form method="post" reloadDocument className="contents">
-          <button
-            type="submit"
-            name="intent"
-            value="github"
-            disabled={busy}
-            className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors disabled:opacity-60"
-          >
-            {busy ? (
-              <span className="i-ph:spinner-gap-bold text-lg animate-spin" />
-            ) : (
-              <span className="i-ph:github-logo-fill text-lg" />
-            )}
-            {busy ? 'Redirecting…' : 'Continue with GitHub'}
-          </button>
-        </Form>
+        <a
+          href="/api/auth/github"
+          className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors"
+        >
+          <span className="i-ph:github-logo-fill text-lg" />
+          Continue with GitHub
+        </a>
 
-        <Form method="post" reloadDocument className="contents">
-          <button
-            type="submit"
-            name="intent"
-            value="twitter"
-            disabled={busy}
-            className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors disabled:opacity-60"
-          >
-            {busy ? (
-              <span className="i-ph:spinner-gap-bold text-lg animate-spin" />
-            ) : (
-              <span className="i-ph:x-logo-fill text-lg" />
-            )}
-            {busy ? 'Redirecting…' : 'Continue with X'}
-          </button>
-        </Form>
+        <a
+          href="/api/auth/twitter"
+          className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors"
+        >
+          <span className="i-ph:x-logo-fill text-lg" />
+          Continue with X
+        </a>
       </div>
 
       <div className="flex items-center gap-3 my-4">

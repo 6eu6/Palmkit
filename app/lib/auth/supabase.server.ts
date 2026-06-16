@@ -5,9 +5,21 @@ import type { AppLoadContext } from '@remix-run/cloudflare';
 /**
  * Reads the runtime environment from the Cloudflare load context. On Cloudflare
  * Pages, secrets/vars live on `context.cloudflare.env`.
+ *
+ * Falls back to `process.env` for local development (where dotenv loads .env.local).
  */
 export function getEnv(context: AppLoadContext): Record<string, string | undefined> {
-  return (context as unknown as { cloudflare?: { env?: Record<string, string | undefined> } }).cloudflare?.env ?? {};
+  const cloudflareEnv =
+    (context as unknown as { cloudflare?: { env?: Record<string, string | undefined> } }).cloudflare?.env ?? {};
+
+  // Merge with process.env as fallback — critical for local dev where wrangler
+  // reads from .dev.vars (which may not exist) while dotenv loads .env.local.
+  return {
+    SUPABASE_URL: cloudflareEnv.SUPABASE_URL ?? process.env.SUPABASE_URL,
+    SUPABASE_ANON_KEY: cloudflareEnv.SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY,
+    API_KEY_ENCRYPTION_KEY: cloudflareEnv.API_KEY_ENCRYPTION_KEY ?? process.env.API_KEY_ENCRYPTION_KEY,
+    ...cloudflareEnv, // keep any other Cloudflare vars
+  };
 }
 
 export interface SupabaseServer {
@@ -29,7 +41,7 @@ export function getSupabaseServerClient(request: Request, context: AppLoadContex
 
   if (!url || !anonKey) {
     throw new Error(
-      'Supabase is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY as Cloudflare Pages environment variables.',
+      'Supabase is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY as Cloudflare Pages environment variables or in .env.local.',
     );
   }
 

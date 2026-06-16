@@ -6,7 +6,7 @@ import { Chat } from '~/components/chat/Chat.client';
 import { Header } from '~/components/header/Header';
 import { Landing } from '~/components/landing/Landing';
 import BackgroundRays from '~/components/ui/BackgroundRays';
-import { getAuthedUser } from '~/lib/auth/supabase.server';
+import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
 
 export const meta: MetaFunction = () => {
   return [
@@ -19,8 +19,8 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = (context as unknown as { cloudflare?: { env?: Record<string, string | undefined> } }).cloudflare?.env;
-  const authEnabled = Boolean(env?.SUPABASE_URL && env?.SUPABASE_ANON_KEY);
+  const env = getEnv(context);
+  const authEnabled = Boolean(env.SUPABASE_URL && env.SUPABASE_ANON_KEY);
 
   // When auth is configured, logged-out visitors see the marketing landing.
   if (authEnabled) {

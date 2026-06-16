@@ -10,7 +10,7 @@ import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { ClientOnly } from 'remix-utils/client-only';
 import { cssTransition, ToastContainer } from 'react-toastify';
-import { getAuthedUser } from './lib/auth/supabase.server';
+import { getAuthedUser, getEnv } from './lib/auth/supabase.server';
 import { decryptSecret } from './lib/auth/crypto.server';
 import { authEnabledStore, authUserStore, type AuthUser } from './lib/stores/auth';
 import { profileStore } from './lib/stores/profile';
@@ -56,8 +56,8 @@ export const links: LinksFunction = () => [
 ];
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = (context as unknown as { cloudflare?: { env?: Record<string, string | undefined> } }).cloudflare?.env;
-  const authEnabled = Boolean(env?.SUPABASE_URL && env?.SUPABASE_ANON_KEY);
+  const env = getEnv(context);
+  const authEnabled = Boolean(env.SUPABASE_URL && env.SUPABASE_ANON_KEY);
 
   let user: AuthUser | null = null;
   let headers = new Headers();
@@ -82,7 +82,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
        */
       const hasApiKeyCookie = request.headers.get('Cookie')?.includes('apiKeys=');
 
-      if (!hasApiKeyCookie && result.supabase && env?.API_KEY_ENCRYPTION_KEY) {
+      if (!hasApiKeyCookie && result.supabase && env.API_KEY_ENCRYPTION_KEY) {
         const { data } = await result.supabase
           .from('user_api_keys')
           .select('provider, encrypted_key')
@@ -102,7 +102,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     }
   }
 
-  return json({ user, authEnabled, supabaseUrl: env?.SUPABASE_URL ?? null, supabaseAnonKey: env?.SUPABASE_ANON_KEY ?? null }, { headers });
+  return json({ user, authEnabled, supabaseUrl: env.SUPABASE_URL ?? null, supabaseAnonKey: env.SUPABASE_ANON_KEY ?? null }, { headers });
 }
 
 const inlineThemeCode = stripIndents`
@@ -171,6 +171,38 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 import { logStore } from './lib/stores/logs';
+import { isRouteErrorResponse, useRouteError } from '@remix-run/react';
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const message = isRouteErrorResponse(error)
+    ? `${error.status} ${error.statusText}: ${typeof error.data === 'string' ? error.data : JSON.stringify(error.data)}`
+    : error instanceof Error
+      ? error.message
+      : 'Unknown error';
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-bolt-elements-bg-depth-1 text-bolt-elements-textPrimary p-6">
+      <div className="max-w-md w-full text-center">
+        <div className="text-4xl mb-4">⚠️</div>
+        <h1 className="text-xl font-bold mb-3">Something went wrong</h1>
+        <p className="text-sm text-bolt-elements-textSecondary mb-4 break-words">{message}</p>
+        {message.includes('Supabase') && (
+          <p className="text-xs text-bolt-elements-textTertiary mb-4">
+            Make sure SUPABASE_URL and SUPABASE_ANON_KEY are set as environment variables.
+          </p>
+        )}
+        <a
+          href="/"
+          className="inline-block px-5 py-2.5 rounded-xl text-sm font-medium text-white"
+          style={{ background: 'linear-gradient(135deg, #00A8B5 0%, #008C97 140%)' }}
+        >
+          Go home
+        </a>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const theme = useStore(themeStore);

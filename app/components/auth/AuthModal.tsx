@@ -1,12 +1,12 @@
 import { useStore } from '@nanostores/react';
 import { useEffect, useState } from 'react';
-import { Form } from '@remix-run/react';
 import { authModalStore, closeAuthModal } from '~/lib/stores/auth';
 
 /**
  * Global "sign in to continue" modal. Shown when an unauthenticated user tries
- * to use a gated surface (e.g. the prompt box). OAuth buttons submit to the
- * /login route's action via Remix Form with reloadDocument for external redirect.
+ * to use a gated surface (e.g. the prompt box). OAuth buttons are plain <a>
+ * links to /api/auth/github and /api/auth/twitter — no client-side JS or
+ * form submission required.
  */
 export function AuthModal() {
   const open = useStore(authModalStore);
@@ -37,7 +37,7 @@ export function AuthModal() {
   }
 
   const oauthBtn =
-    'w-full h-12 rounded-xl font-medium text-sm flex items-center justify-center gap-2.5 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors disabled:opacity-60';
+    'w-full h-12 rounded-xl font-medium text-sm flex items-center justify-center gap-2.5 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors';
 
   return (
     <div
@@ -79,33 +79,23 @@ export function AuthModal() {
         </div>
 
         <div className="flex flex-col gap-2.5">
-          {/* GitHub OAuth — submits to /login action via server-side Form */}
-          <Form method="post" action="/login" reloadDocument className="contents">
-            <input type="hidden" name="redirectTo" value={redirectTo} />
-            <button
-              type="submit"
-              name="intent"
-              value="github"
-              className={oauthBtn}
-            >
-              <span className="i-ph:github-logo-fill text-lg" />
-              Continue with GitHub
-            </button>
-          </Form>
+          {/* GitHub OAuth — plain <a> link to API route */}
+          <a
+            href={`/api/auth/github?redirectTo=${encodeURIComponent(redirectTo)}`}
+            className={oauthBtn}
+          >
+            <span className="i-ph:github-logo-fill text-lg" />
+            Continue with GitHub
+          </a>
 
-          {/* Twitter/X OAuth — submits to /login action via server-side Form */}
-          <Form method="post" action="/login" reloadDocument className="contents">
-            <input type="hidden" name="redirectTo" value={redirectTo} />
-            <button
-              type="submit"
-              name="intent"
-              value="twitter"
-              className={oauthBtn}
-            >
-              <span className="i-ph:x-logo-fill text-lg" />
-              Continue with X
-            </button>
-          </Form>
+          {/* Twitter/X OAuth — plain <a> link to API route */}
+          <a
+            href={`/api/auth/twitter?redirectTo=${encodeURIComponent(redirectTo)}`}
+            className={oauthBtn}
+          >
+            <span className="i-ph:x-logo-fill text-lg" />
+            Continue with X
+          </a>
         </div>
 
         <div className="flex items-center gap-3 my-4">
