@@ -1,4 +1,4 @@
-import { useParams } from '@remix-run/react';
+import { Link, useParams } from '@remix-run/react';
 import { classNames } from '~/utils/classNames';
 import { type ChatHistoryItem } from '~/lib/persistence';
 import WithTooltip from '~/components/ui/Tooltip';
@@ -103,8 +103,8 @@ export function HistoryItem({
           />
         </form>
       ) : (
-        <a
-          href={`/chat/${item.urlId}`}
+        <Link
+          to={`/chat/${item.urlId}`}
           className="flex w-full relative truncate block"
           onClick={selectionMode ? handleItemClick : undefined}
         >
@@ -151,7 +151,7 @@ export function HistoryItem({
               />
             </div>
           </div>
-        </a>
+        </Link>
       )}
     </div>
   );

@@ -438,9 +438,9 @@ The development server is now running. Ready for your next instructions.</assist
 
   <example>
     <user_query>The login button doesn't work when I click it</user_query>
-    <assistant_response>Let me check the login handler. The issue is likely in the form's onSubmit — it's calling `event.preventDefault()` after the async login call completes, but the browser's default form submission happens first, causing a page reload.
+    <assistant_response>Let me check the login handler. The issue is likely in the form onSubmit — it is calling event.preventDefault() after the async login call completes, but the browser default form submission happens first, causing a page reload.
 
-The fix is to call `event.preventDefault()` at the **start** of the handler, before any async operations. Here's the corrected file:
+The fix is to call event.preventDefault() at the **start** of the handler, before any async operations. Here is the corrected file:
 
 <boltArtifact id="fix-login-handler" title="Fix login button click handler">
 <boltAction type="file" filePath="src/components/LoginForm.tsx">...corrected full file content...</boltAction>

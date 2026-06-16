@@ -54,6 +54,7 @@ export default defineConfig((config) => {
       }),
       UnoCSS(),
       tsconfigPaths(),
+      e2bNodeStubPlugin(),
       chrome129IssuePlugin(),
       config.mode === 'production' && optimizeCssModules({ apply: 'build' }),
     ],
@@ -84,6 +85,90 @@ export default defineConfig((config) => {
     },
   };
 });
+
+/**
+ * Vite plugin that stubs Node.js builtins (`fs`, `path`) ONLY when imported
+ * from the `e2b` SDK package.
+ *
+ * The e2b SDK (v2.29.1) bundles top-level `import fs from "node:fs"` and
+ * `import path from "node:path"` for template/Dockerfile features we never use.
+ * On Cloudflare Workers SSR build, Rollup can't resolve these — but we can't
+ * add them to `nodePolyfills.include` because `api.git-info.ts` needs the REAL
+ * `fs` module.
+ *
+ * This plugin intercepts `fs`/`path` imports specifically from the `e2b`
+ * package and provides inert stubs, leaving all other imports untouched.
+ */
+function e2bNodeStubPlugin() {
+  const FS_STUB = `
+export const existsSync = () => false;
+export const readFileSync = () => '';
+export const statSync = () => ({ isFile: () => false, throwIfNoEntry: () => {} });
+export const lstatSync = () => ({ isFile: () => false });
+export const readlinkSync = () => '';
+export const writeFileSync = () => {};
+export const mkdirSync = () => {};
+export const readdirSync = () => [];
+export const createReadStream = () => ({ pipe: () => {} });
+export default {
+  existsSync, readFileSync, statSync, lstatSync, readlinkSync,
+  writeFileSync, mkdirSync, readdirSync, createReadStream,
+};
+`.trimStart();
+
+  const PATH_STUB = `
+export const join = (...args: string[]) => args.join('/');
+export const normalize = (p: string) => p;
+export const sep = '/';
+export const isAbsolute = (p: string) => p.startsWith('/');
+export const resolve = (...args: string[]) => args.filter(Boolean).join('/');
+export const dirname = (p: string) => p.split('/').slice(0, -1).join('/') || '.';
+export const basename = (p: string) => p.split('/').pop() || p;
+export const extname = (p: string) => {
+  const base = p.split('/').pop() || '';
+  const dot = base.lastIndexOf('.');
+  return dot > 0 ? base.slice(dot) : '';
+};
+export default { join, normalize, sep, isAbsolute, resolve, dirname, basename, extname };
+`.trimStart();
+
+  return {
+    name: 'e2b-node-stub',
+    enforce: 'pre' as const,
+    resolveId(id: string, importer: string | undefined) {
+      if (!importer) {
+        return null;
+      }
+
+      const isE2b = importer.includes('node_modules/e2b') || importer.includes('node_modules/.pnpm') && importer.includes('e2b');
+
+      if (!isE2b) {
+        return null;
+      }
+
+      if (id === 'fs' || id === 'node:fs') {
+        return '\0e2b-fs-stub';
+      }
+
+      if (id === 'path' || id === 'node:path') {
+        return '\0e2b-path-stub';
+      }
+
+      return null;
+    },
+    load(id: string) {
+      if (id === '\0e2b-fs-stub') {
+        return FS_STUB;
+      }
+
+      if (id === '\0e2b-path-stub') {
+        return PATH_STUB;
+      }
+
+      return null;
+    },
+  };
+}
 
 function chrome129IssuePlugin() {
   return {

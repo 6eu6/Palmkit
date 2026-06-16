@@ -1,9 +1,19 @@
 import { json } from '@remix-run/cloudflare';
-import { execSync } from 'child_process';
-import { existsSync } from 'fs';
 
+/**
+ * Git info endpoint — returns branch, commit, dirty status.
+ *
+ * Uses dynamic imports for `fs` and `child_process` so the SSR bundle
+ * doesn't crash on Cloudflare Workers (where these Node.js builtins are
+ * either unavailable or stubbed). On Workers the route returns a safe
+ * fallback; it's primarily useful in local development.
+ */
 export async function loader() {
   try {
+    const [fsMod, cpMod] = await Promise.all([import('fs'), import('child_process')]);
+    const { existsSync } = fsMod;
+    const { execSync } = cpMod;
+
     // Check if we're in a git repository
     if (!existsSync('.git')) {
       return json({
@@ -55,15 +65,13 @@ export async function loader() {
       lastCommit,
     });
   } catch (error) {
-    console.error('Error fetching git info:', error);
-    return json(
-      {
-        branch: 'error',
-        commit: 'error',
-        isDirty: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 },
-    );
+    // On Cloudflare Workers (no fs/child_process), return fallback
+    console.error('[api/git-info] unavailable in this environment:', error);
+
+    return json({
+      branch: 'unknown',
+      commit: 'unknown',
+      isDirty: false,
+    });
   }
 }

@@ -1,5 +1,4 @@
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from '@remix-run/cloudflare';
-import { Sandbox } from 'e2b';
 
 /**
  * Server-side sandbox proxy (E2B).
@@ -11,6 +10,14 @@ import { Sandbox } from 'e2b';
  *
  * The E2B API key lives only here (Cloudflare env `E2B_API_KEY`) and is never
  * exposed to the browser. The client talks to this route via /api/sandbox.
+ *
+ * IMPORTANT: The `e2b` SDK is imported DYNAMICALLY (inside action handlers),
+ * not at the module level. The SDK depends on Node.js internals (WebSocket,
+ * crypto, buffer) that may not all be polyfilled in Cloudflare Workers. A
+ * static top-level import would crash the entire route module on load, making
+ * even the GET health check fail. By deferring the import, the loader stays
+ * healthy and can report `configured: true` while only the sandbox operations
+ * fail gracefully if the SDK truly can't load.
  */
 
 const PROJECT_DIR = '/home/user/project';
@@ -20,12 +27,22 @@ const SANDBOX_TIMEOUT_MS = 1000 * 60 * 7; // auto-close after 7 min idle (cost c
 function getApiKey(context: ActionFunctionArgs['context']): string | undefined {
   const env = (context as unknown as { cloudflare?: { env?: Record<string, string> } }).cloudflare?.env;
 
-  return env?.E2B_API_KEY || (typeof process !== 'undefined' ? process.env?.E2B_API_KEY : undefined);
+  const key = env?.E2B_API_KEY;
+
+  if (key) {
+    console.log('[api/sandbox] E2B_API_KEY found in cloudflare env');
+  } else {
+    console.warn('[api/sandbox] E2B_API_KEY is NOT set in cloudflare env');
+  }
+
+  return key || (typeof process !== 'undefined' ? process.env?.E2B_API_KEY : undefined);
 }
 
 // GET /api/sandbox — health/config check
 export async function loader({ context }: LoaderFunctionArgs) {
-  return json({ ok: true, configured: Boolean(getApiKey(context)) });
+  const hasKey = Boolean(getApiKey(context));
+  console.log(`[api/sandbox] health check: configured=${hasKey}`);
+  return json({ ok: true, configured: hasKey });
 }
 
 interface SandboxRequest {
@@ -55,8 +72,12 @@ export async function action({ context, request }: ActionFunctionArgs) {
   try {
     switch (body.op) {
       case 'create': {
+        // Dynamic import — isolated to this code path so a failure here
+        // doesn't crash the GET loader.
+        const { Sandbox } = await import('e2b');
         const sandbox = await Sandbox.create({ apiKey, timeoutMs: SANDBOX_TIMEOUT_MS });
 
+        console.log(`[api/sandbox] created sandbox: ${sandbox.sandboxId}`);
         return json({ id: sandbox.sandboxId });
       }
 
@@ -65,6 +86,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
           return json({ error: 'id and files are required' }, { status: 400 });
         }
 
+        const { Sandbox } = await import('e2b');
         const sandbox = await Sandbox.connect(body.id, { apiKey });
 
         for (const [path, content] of Object.entries(body.files)) {
@@ -80,6 +102,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
           return json({ error: 'id is required' }, { status: 400 });
         }
 
+        const { Sandbox } = await import('e2b');
         const sandbox = await Sandbox.connect(body.id, { apiKey });
         const port = body.port ?? DEFAULT_PORT;
         const install = body.install ?? 'npm install';
@@ -108,6 +131,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
         });
 
         const host = sandbox.getHost(port);
+        console.log(`[api/sandbox] sandbox ${body.id} started, preview at https://${host}`);
 
         return json({ url: `https://${host}`, port });
       }
@@ -117,6 +141,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
           return json({ error: 'id is required' }, { status: 400 });
         }
 
+        const { Sandbox } = await import('e2b');
         const sandbox = await Sandbox.connect(body.id, { apiKey });
         const out = await sandbox.commands
           .run('tail -n 60 /tmp/dev.log 2>/dev/null || echo "(no logs yet)"', { timeoutMs: 8000 })
@@ -160,9 +185,11 @@ export async function action({ context, request }: ActionFunctionArgs) {
           return json({ error: 'id is required' }, { status: 400 });
         }
 
+        const { Sandbox } = await import('e2b');
         const sandbox = await Sandbox.connect(body.id, { apiKey });
         await sandbox.kill();
 
+        console.log(`[api/sandbox] destroyed sandbox: ${body.id}`);
         return json({ ok: true });
       }
 
@@ -172,6 +199,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
+    console.error(`[api/sandbox] operation ${body.op} failed:`, message);
     return json({ error: message }, { status: 500 });
   }
 }

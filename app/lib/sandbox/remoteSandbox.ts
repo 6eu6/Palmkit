@@ -61,13 +61,16 @@ export async function isRemoteSandboxAvailable(): Promise<boolean> {
     const res = await fetch(BASE, { method: 'GET' });
 
     if (!res.ok) {
+      console.warn(`[E2B] GET ${BASE} returned ${res.status} — E2B disabled for this session`);
       availabilityCache = false;
       return false;
     }
 
     const data = (await res.json()) as { configured?: boolean };
     availabilityCache = Boolean(data.configured);
-  } catch {
+    console.info(`[E2B] availability check: configured=${availabilityCache}`);
+  } catch (err) {
+    console.error('[E2B] availability check failed (network error or CORS):', err);
     availabilityCache = false;
   }
 

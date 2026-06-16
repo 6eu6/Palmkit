@@ -22,4 +22,5 @@ interface Env {
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
   API_KEY_ENCRYPTION_KEY: string;
+  E2B_API_KEY: string;
 }
