@@ -58,6 +58,9 @@ export default function Login() {
   const redirectTo = searchParams.get('redirectTo') ?? '/';
   const busy = navigation.state !== 'idle';
 
+  // Check for URL error params (from OAuth callback failures)
+  const urlError = searchParams.get('error');
+
   return (
     <AuthLayout title="Welcome back" subtitle="Log in to keep your projects and key in sync.">
       <Form method="post" className="flex flex-col gap-3">
@@ -70,7 +73,7 @@ export default function Login() {
           className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors disabled:opacity-60"
         >
           <span className="i-ph:github-logo-fill text-lg" />
-          Continue with GitHub
+          {busy ? 'Redirecting…' : 'Continue with GitHub'}
         </button>
 
         <button
@@ -81,7 +84,7 @@ export default function Login() {
           className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary bg-bolt-elements-bg-depth-2 hover:bg-bolt-elements-bg-depth-3 transition-colors disabled:opacity-60"
         >
           <span className="i-ph:x-logo-fill text-lg" />
-          Continue with X
+          {busy ? 'Redirecting…' : 'Continue with X'}
         </button>
 
         <div className="flex items-center gap-3 my-1">
@@ -115,7 +118,19 @@ export default function Login() {
           Forgot password?
         </Link>
 
-        {actionData?.error ? <p className="text-xs text-red-400">{actionData.error}</p> : null}
+        {(actionData?.error || urlError) ? (
+          <div
+            className="flex items-start gap-2 p-3 rounded-xl text-xs"
+            style={{
+              background: 'rgba(239, 68, 68, 0.08)',
+              border: '1px solid rgba(239, 68, 68, 0.15)',
+              color: '#fca5a5',
+            }}
+          >
+            <span className="i-ph:warning-circle-fill text-sm mt-0.5 flex-shrink-0" />
+            <span>{actionData?.error || urlError}</span>
+          </div>
+        ) : null}
 
         <AuthButton disabled={busy}>{busy ? 'Logging in…' : 'Log in'}</AuthButton>
       </Form>
