@@ -162,16 +162,22 @@ export const Markdown = memo(
                     console.log('Message appended:', message);
                   } else if (type === 'implement' && append && setChatMode) {
                     setChatMode('build');
-                    append({
-                      id: `quick-action-implement-${Date.now()}`,
-                      content: [
-                        {
-                          type: 'text',
-                          text: `[Model: ${model}]\n\n[Provider: ${provider?.name}]\n\n${message}`,
-                        },
-                      ] as any,
-                      role: 'user',
-                    });
+                    // Use setTimeout to ensure React has re-rendered with the new
+                    // chatMode='build' before append fires — otherwise the old
+                    // 'discuss' body is sent to the server and the AI gets the
+                    // wrong system prompt (no artifact support).
+                    setTimeout(() => {
+                      append({
+                        id: `quick-action-implement-${Date.now()}`,
+                        content: [
+                          {
+                            type: 'text',
+                            text: `[Model: ${model}]\n\n[Provider: ${provider?.name}]\n\n${message}`,
+                          },
+                        ] as any,
+                        role: 'user',
+                      });
+                    }, 0);
                   } else if (type === 'link' && typeof href === 'string') {
                     try {
                       const url = new URL(href, window.location.origin);
