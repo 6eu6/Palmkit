@@ -77,12 +77,12 @@ export default function Signup() {
     return (
       <AuthLayout title="Check your inbox" subtitle="One more step to activate your account.">
         <div className="flex flex-col items-center text-center gap-3 py-2">
-          <span className="i-ph:envelope-simple-open text-3xl" style={{ color: '#5eead4' }} />
+          <span className="i-ph:envelope-simple-open text-3xl" style={{ color: '#f5f5f5' }} />
           <p className="text-sm text-palmkit-elements-textSecondary">
             We sent a confirmation link to <span className="text-palmkit-elements-textPrimary">{actionData.email}</span>.
             Click it to finish creating your account.
           </p>
-          <Link to="/login" className="text-xs underline" style={{ color: '#5eead4' }}>
+          <Link to="/login" className="text-xs underline" style={{ color: '#f5f5f5' }}>
             Back to log in
           </Link>
         </div>
@@ -164,7 +164,7 @@ export default function Signup() {
 
       <p className="mt-4 text-center text-xs text-palmkit-elements-textSecondary">
         Already have an account?{' '}
-        <Link to="/login" className="underline" style={{ color: '#5eead4' }}>
+        <Link to="/login" className="underline" style={{ color: '#f5f5f5' }}>
           Log in
         </Link>
       </p>

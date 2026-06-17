@@ -80,7 +80,7 @@ export default function Terms() {
       <LegalSection heading="9. Contact">
         <p>
           Questions about these terms? Contact us at{' '}
-          <span style={{ color: '#5eead4' }}>support@palmkit.app</span>.
+          <span style={{ color: '#f5f5f5' }}>support@palmkit.app</span>.
         </p>
       </LegalSection>
     </LegalLayout>

@@ -818,7 +818,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                         <span className="text-xs text-palmkit-elements-textTertiary">Show Device Frame</span>
                         <button
                           className={`w-10 h-5 rounded-full transition-colors duration-200 ${
-                            showDeviceFrame ? 'bg-[#6D28D9]' : 'bg-gray-300 dark:bg-gray-700'
+                            showDeviceFrame ? 'bg-gray-800 dark:bg-gray-200' : 'bg-gray-300 dark:bg-gray-700'
                           } relative`}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -836,7 +836,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                         <span className="text-xs text-palmkit-elements-textTertiary">Landscape Mode</span>
                         <button
                           className={`w-10 h-5 rounded-full transition-colors duration-200 ${
-                            isLandscape ? 'bg-[#6D28D9]' : 'bg-gray-300 dark:bg-gray-700'
+                            isLandscape ? 'bg-gray-800 dark:bg-gray-200' : 'bg-gray-300 dark:bg-gray-700'
                           } relative`}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -855,7 +855,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                   {WINDOW_SIZES.map((size) => (
                     <button
                       key={size.name}
-                      className="w-full px-4 py-3.5 text-left text-[#111827] dark:text-gray-300 text-sm whitespace-nowrap flex items-center gap-3 group hover:bg-[#F5EEFF] dark:hover:bg-gray-900 bg-white dark:bg-black"
+                      className="w-full px-4 py-3.5 text-left text-[#111827] dark:text-gray-300 text-sm whitespace-nowrap flex items-center gap-3 group hover:bg-gray-100 dark:hover:bg-gray-900 bg-white dark:bg-black"
                       onClick={() => {
                         setSelectedWindowSize(size);
                         setIsWindowSizeDropdownOpen(false);
@@ -863,13 +863,13 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                       }}
                     >
                       <div
-                        className={`${size.icon} w-5 h-5 text-[#6B7280] dark:text-gray-400 group-hover:text-[#6D28D9] dark:group-hover:text-[#6D28D9] transition-colors duration-200`}
+                        className={`${size.icon} w-5 h-5 text-[#6B7280] dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-100 transition-colors duration-200`}
                       />
                       <div className="flex-grow flex flex-col">
-                        <span className="font-medium group-hover:text-[#6D28D9] dark:group-hover:text-[#6D28D9] transition-colors duration-200">
+                        <span className="font-medium group-hover:text-gray-900 dark:group-hover:text-gray-100 transition-colors duration-200">
                           {size.name}
                         </span>
-                        <span className="text-xs text-[#6B7280] dark:text-gray-400 group-hover:text-[#6D28D9] dark:group-hover:text-[#6D28D9] transition-colors duration-200">
+                        <span className="text-xs text-[#6B7280] dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-100 transition-colors duration-200">
                           {isLandscape && (size.frameType === 'mobile' || size.frameType === 'tablet')
                             ? `${size.height} × ${size.width}`
                             : `${size.width} × ${size.height}`}
@@ -877,7 +877,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                         </span>
                       </div>
                       {selectedWindowSize.name === size.name && (
-                        <div className="text-[#6D28D9] dark:text-[#6D28D9]">
+                        <div className="text-gray-800 dark:text-gray-200">
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
                             width="16"
@@ -1021,8 +1021,8 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                 className="flex flex-col items-center gap-5 max-w-xs text-center"
                 style={{ animation: 'fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}
               >
-                <div className="w-16 h-16 rounded-2xl flex items-center justify-center bg-[rgba(139,92,246,0.06)] border border-[rgba(139,92,246,0.12)]">
-                  <div className="i-ph:browser text-2xl text-teal-400/50" />
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center bg-palmkit-elements-item-backgroundAccent border border-palmkit-elements-borderColor">
+                  <div className="i-ph:browser text-2xl text-palmkit-elements-textTertiary" />
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-palmkit-elements-textPrimary mb-1.5">No preview available</h3>
@@ -1036,8 +1036,8 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                     onClick={() => workbenchStore.currentView.set('code')}
                     className={classNames(
                       'flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium',
-                      'bg-[rgba(139,92,246,0.08)] text-teal-300 border border-[rgba(139,92,246,0.15)]',
-                      'hover:bg-[rgba(139,92,246,0.14)] hover:border-[rgba(139,92,246,0.25)]',
+                      'bg-palmkit-elements-item-backgroundAccent text-palmkit-elements-textSecondary border border-palmkit-elements-borderColor',
+                      'hover:bg-palmkit-elements-item-backgroundActive hover:border-palmkit-elements-borderColorActive',
                       'active:scale-[0.97] transition-all duration-200',
                     )}
                   >

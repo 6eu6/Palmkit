@@ -70,12 +70,17 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
   return (
     <div
       className={classNames(
-        'relative bg-palmkit-elements-prompt-background backdrop-blur-xl p-2 sm:p-3 rounded-xl border border-palmkit-elements-borderColor relative w-full max-w-chat mx-auto z-prompt',
-        'shadow-[0_2px_20px_rgba(0,0,0,0.04)] dark:shadow-[0_2px_20px_rgba(0,0,0,0.3)]',
-        'transition-shadow duration-300',
-        'hover:shadow-[0_4px_30px_var(--palmkit-glow-color)]',
+        'relative w-full max-w-chat mx-auto z-prompt',
+        'rounded-2xl',
+        'bg-palmkit-elements-prompt-background',
+        'border border-palmkit-elements-borderColor',
+        'shadow-[0_1px_3px_rgba(0,0,0,0.04)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)]',
+        'transition-shadow duration-200',
+        'focus-within:shadow-[0_0_0_1px_var(--palmkit-elements-borderColorActive)]',
+        'focus-within:border-palmkit-elements-borderColorActive',
       )}
     >
+      {/* Animated border effect - subtle monochrome shimmer */}
       <svg className={classNames(styles.PromptEffectContainer)}>
         <defs>
           <linearGradient
@@ -88,20 +93,22 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             gradientTransform="rotate(-45)"
           >
             <stop offset="0%" stopColor="var(--palmkit-gradient-start)" stopOpacity="0%"></stop>
-            <stop offset="40%" stopColor="var(--palmkit-gradient-mid)" stopOpacity="80%"></stop>
-            <stop offset="50%" stopColor="var(--palmkit-gradient-end)" stopOpacity="80%"></stop>
+            <stop offset="40%" stopColor="var(--palmkit-gradient-mid)" stopOpacity="40%"></stop>
+            <stop offset="50%" stopColor="var(--palmkit-gradient-end)" stopOpacity="40%"></stop>
             <stop offset="100%" stopColor="var(--palmkit-gradient-start)" stopOpacity="0%"></stop>
           </linearGradient>
           <linearGradient id="shine-gradient">
             <stop offset="0%" stopColor="white" stopOpacity="0%"></stop>
-            <stop offset="40%" stopColor="#ffffff" stopOpacity="80%"></stop>
-            <stop offset="50%" stopColor="#ffffff" stopOpacity="80%"></stop>
+            <stop offset="40%" stopColor="#ffffff" stopOpacity="60%"></stop>
+            <stop offset="50%" stopColor="#ffffff" stopOpacity="60%"></stop>
             <stop offset="100%" stopColor="white" stopOpacity="0%"></stop>
           </linearGradient>
         </defs>
         <rect className={classNames(styles.PromptEffectLine)} pathLength="100" strokeLinecap="round"></rect>
         <rect className={classNames(styles.PromptShine)} x="48" y="24" width="70" height="1"></rect>
       </svg>
+
+      {/* Model settings - collapsible section */}
       <div>
         <ClientOnly>
           {() => (
@@ -132,6 +139,8 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
           )}
         </ClientOnly>
       </div>
+
+      {/* File previews */}
       <FilePreview
         files={props.uploadedFiles}
         imageDataList={props.imageDataList}
@@ -150,8 +159,10 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
           />
         )}
       </ClientOnly>
+
+      {/* Element inspector banner */}
       {props.selectedElement && (
-        <div className="flex mx-1.5 gap-2 items-center justify-between rounded-lg rounded-b-none border border-b-none border-palmkit-elements-borderColor text-palmkit-elements-textPrimary py-1 px-2.5 font-medium text-xs">
+        <div className="flex mx-2 mt-1 gap-2 items-center justify-between rounded-lg border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary py-1 px-2.5 text-xs">
           <div className="flex gap-2 items-center lowercase">
             <code className="bg-palmkit-elements-button-primary-background text-palmkit-elements-button-primary-text rounded px-1.5 py-0.5 mr-0.5 text-[10px] font-bold">
               {props?.selectedElement?.tagName}
@@ -166,18 +177,16 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
           </button>
         </div>
       )}
-      <div
-        className={classNames(
-          'relative border border-palmkit-elements-borderColor backdrop-blur rounded-lg',
-          'transition-all duration-200',
-          'focus-within:border-palmkit-elements-borderColorActive focus-within:shadow-[0_0_0_3px_var(--palmkit-glow-color)]',
-        )}
-      >
+
+      {/* Main input area — Mistral-inspired clean design */}
+      <div className="relative">
         <textarea
           ref={props.textareaRef}
           className={classNames(
-            'w-full pl-3 sm:pl-4 pt-3 sm:pt-4 pr-14 outline-none resize-none text-palmkit-elements-textPrimary placeholder-palmkit-elements-textTertiary bg-transparent text-sm',
-            'transition-all duration-200',
+            'w-full pl-4 pr-12 pt-3.5 pb-1 outline-none resize-none',
+            'text-palmkit-elements-textPrimary placeholder-palmkit-elements-textTertiary',
+            'bg-transparent text-sm leading-relaxed',
+            'transition-colors duration-150',
           )}
           onMouseDown={(e) => {
             if (!ensureSignedIn()) {
@@ -192,23 +201,15 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
           }}
           onDragEnter={(e) => {
             e.preventDefault();
-            e.currentTarget.style.borderColor = 'var(--palmkit-elements-borderColorActive)';
-            e.currentTarget.style.boxShadow = '0 0 0 3px var(--palmkit-glow-color)';
           }}
           onDragOver={(e) => {
             e.preventDefault();
-            e.currentTarget.style.borderColor = 'var(--palmkit-elements-borderColorActive)';
-            e.currentTarget.style.boxShadow = '0 0 0 3px var(--palmkit-glow-color)';
           }}
           onDragLeave={(e) => {
             e.preventDefault();
-            e.currentTarget.style.borderColor = 'var(--palmkit-elements-borderColor)';
-            e.currentTarget.style.boxShadow = 'none';
           }}
           onDrop={(e) => {
             e.preventDefault();
-            e.currentTarget.style.borderColor = 'var(--palmkit-elements-borderColor)';
-            e.currentTarget.style.boxShadow = 'none';
 
             const files = Array.from(e.dataTransfer.files);
             files.forEach((file) => {
@@ -257,9 +258,11 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             minHeight: props.TEXTAREA_MIN_HEIGHT,
             maxHeight: props.TEXTAREA_MAX_HEIGHT,
           }}
-          placeholder={props.chatMode === 'build' ? 'What do you want to build?' : 'What would you like to discuss?'}
+          placeholder={props.chatMode === 'build' ? 'What do you want to build?' : 'Ask anything...'}
           translate="no"
         />
+
+        {/* Send / Stop button — positioned inside textarea */}
         <ClientOnly>
           {() => (
             <SendButton
@@ -279,25 +282,40 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             />
           )}
         </ClientOnly>
-        <div className="flex items-center gap-1 sm:gap-1 p-2 sm:p-3 pt-1 sm:pt-2 flex-wrap">
-          {/* Primary actions — always visible */}
-          <IconButton title="Upload file" className="transition-all" onClick={() => props.handleFileUpload()}>
-            <div className="i-ph:paperclip text-lg sm:text-xl"></div>
+      </div>
+
+      {/* Action toolbar — Mistral-style bottom bar */}
+      <div className="flex items-center justify-between px-2 pb-2 pt-0">
+        {/* Left: attachment and tool actions */}
+        <div className="flex items-center gap-0.5">
+          <IconButton
+            title="Attach file"
+            className="!p-1.5 rounded-lg text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary hover:bg-palmkit-elements-item-backgroundActive transition-all duration-150"
+            onClick={() => props.handleFileUpload()}
+          >
+            <div className="i-ph:paperclip text-[18px]"></div>
           </IconButton>
+
           <WebSearch onSearchResult={(result) => props.onWebSearchResult?.(result)} disabled={props.isStreaming} />
+
           <IconButton
             title="Enhance prompt"
             disabled={props.input.length === 0 || props.enhancingPrompt}
-            className={classNames('transition-all', props.enhancingPrompt ? 'opacity-100' : '')}
+            className={classNames(
+              '!p-1.5 rounded-lg transition-all duration-150',
+              props.enhancingPrompt
+                ? 'text-palmkit-elements-textTertiary'
+                : 'text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary hover:bg-palmkit-elements-item-backgroundActive',
+            )}
             onClick={() => {
               props.enhancePrompt?.();
               toast.success('Prompt enhanced!');
             }}
           >
             {props.enhancingPrompt ? (
-              <div className="i-svg-spinners:90-ring-with-bg text-palmkit-elements-loader-progress text-lg sm:text-xl animate-spin"></div>
+              <div className="i-svg-spinners:90-ring-with-bg text-palmkit-elements-loader-progress text-[18px] animate-spin"></div>
             ) : (
-              <div className="i-palmkit:stars text-lg sm:text-xl"></div>
+              <div className="i-palmkit:stars text-[18px]"></div>
             )}
           </IconButton>
 
@@ -308,82 +326,66 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             disabled={props.isStreaming}
           />
 
-          {/* Mode toggle — visible after chat starts */}
+          {/* Mode toggle */}
           {props.chatStarted && (
             <IconButton
               title={props.chatMode === 'discuss' ? 'Switch to Build mode' : 'Switch to Discuss mode'}
               className={classNames(
-                'transition-all flex items-center gap-1 px-1.5',
+                '!p-1.5 rounded-lg transition-all duration-150',
                 props.chatMode === 'discuss'
-                  ? '!bg-palmkit-elements-item-backgroundAccent !text-palmkit-elements-item-contentAccent'
-                  : 'bg-palmkit-elements-item-backgroundDefault text-palmkit-elements-item-contentDefault',
+                  ? '!text-palmkit-elements-textPrimary !bg-palmkit-elements-item-backgroundActive'
+                  : 'text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary hover:bg-palmkit-elements-item-backgroundActive',
               )}
               onClick={() => {
                 props.setChatMode?.(props.chatMode === 'discuss' ? 'build' : 'discuss');
               }}
             >
-              <div className={`i-ph:chats text-lg sm:text-xl`} />
-              {props.chatMode === 'discuss' ? (
-                <span className="text-[10px] sm:text-xs font-medium">Discuss</span>
-              ) : (
-                <span />
-              )}
+              <div className={`i-ph:chats text-[18px]`} />
             </IconButton>
           )}
 
-          {/* Secondary actions — visible on both mobile & desktop now */}
           <div className="flex items-center gap-0.5">
             <ColorSchemeDialog designScheme={props.designScheme} setDesignScheme={props.setDesignScheme} />
             <McpTools />
           </div>
+        </div>
 
-          {/* Model settings toggle — pushed to end */}
+        {/* Right: model indicator + supabase */}
+        <div className="flex items-center gap-0.5">
+          <SupabaseConnection />
           <IconButton
             title="Model Settings"
-            className={classNames('transition-all flex items-center gap-1 ml-auto', {
-              'bg-palmkit-elements-item-backgroundAccent text-palmkit-elements-item-contentAccent':
-                props.isModelSettingsCollapsed,
-              'bg-palmkit-elements-item-backgroundDefault text-palmkit-elements-item-contentDefault':
-                !props.isModelSettingsCollapsed,
-            })}
+            className={classNames(
+              '!p-1.5 rounded-lg transition-all duration-150 flex items-center gap-1',
+              props.isModelSettingsCollapsed
+                ? 'text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary hover:bg-palmkit-elements-item-backgroundActive'
+                : 'text-palmkit-elements-textPrimary bg-palmkit-elements-item-backgroundActive',
+            )}
             onClick={() => props.setIsModelSettingsCollapsed(!props.isModelSettingsCollapsed)}
             disabled={!props.providerList || props.providerList.length === 0}
           >
-            <div className={`i-ph:caret-${props.isModelSettingsCollapsed ? 'right' : 'down'} text-base sm:text-lg`} />
+            <div className={`i-ph:caret-${props.isModelSettingsCollapsed ? 'right' : 'down'} text-[14px]`} />
             {props.isModelSettingsCollapsed ? (
-              <span className="text-[10px] sm:text-xs font-medium max-w-[60px] sm:max-w-[80px] truncate">
+              <span className="text-[11px] font-medium max-w-[60px] sm:max-w-[80px] truncate text-palmkit-elements-textTertiary">
                 {props.model}
               </span>
             ) : (
               <span />
             )}
           </IconButton>
+        </div>
+      </div>
 
-          {/* Supabase — visible on both mobile & desktop */}
-          <div className="flex items-center">
-            <SupabaseConnection />
+      {/* Mobile keyboard hint */}
+      {props.input.length > 1 && (
+        <div className="flex sm:hidden items-center justify-end px-3 pb-2">
+          <div className="text-[10px] text-palmkit-elements-textTertiary">
+            <kbd className="px-1 py-0.5 rounded bg-palmkit-elements-bg-depth-2 text-[10px]">Enter</kbd> send{' '}
+            <kbd className="px-1 py-0.5 rounded bg-palmkit-elements-bg-depth-2 text-[10px]">Shift+Enter</kbd> new line
           </div>
         </div>
-
-        {/* Mobile hint: Enter to send */}
-        {props.input.length > 1 && (
-          <div className="flex sm:hidden items-center justify-end px-3 pb-2">
-            <div className="text-[11px] text-palmkit-elements-textTertiary">
-              <kbd className="px-1.5 py-0.5 rounded bg-palmkit-elements-bg-depth-2">Enter</kbd> send &middot; <kbd className="px-1.5 py-0.5 rounded bg-palmkit-elements-bg-depth-2">Shift+Enter</kbd> new line
-            </div>
-          </div>
-        )}
-        {/* Desktop hint: Shift + Return for new line */}
-        {props.input.length > 3 && (
-          <div className="hidden sm:flex items-center justify-end px-3 pb-2">
-            <div className="text-xs text-palmkit-elements-textTertiary">
-              <kbd className="kdb px-1.5 py-0.5 rounded bg-palmkit-elements-bg-depth-2">Shift</kbd> +{' '}
-              <kbd className="kdb px-1.5 py-0.5 rounded bg-palmkit-elements-bg-depth-2">Return</kbd> for new line
-            </div>
-          </div>
-        )}
-        <ExpoQrModal open={props.qrModalOpen} onClose={() => props.setQrModalOpen(false)} />
-      </div>
+      )}
+      <ExpoQrModal open={props.qrModalOpen} onClose={() => props.setQrModalOpen(false)} />
     </div>
   );
 };

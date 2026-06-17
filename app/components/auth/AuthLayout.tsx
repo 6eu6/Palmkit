@@ -26,7 +26,7 @@ export function AuthLayout({ title, subtitle, children }: { title: string; subti
             className="rounded-2xl border p-5 sm:p-6"
             style={{
               background: 'var(--palmkit-mobile-surface-bg, rgba(255,255,255,0.02))',
-              borderColor: 'rgba(0, 168, 181, 0.14)',
+              borderColor: 'rgba(255, 255, 255, 0.14)',
             }}
           >
             {children}
@@ -34,11 +34,11 @@ export function AuthLayout({ title, subtitle, children }: { title: string; subti
 
           <p className="mt-6 text-center text-[11px] text-palmkit-elements-textTertiary leading-relaxed">
             By continuing you agree to our{' '}
-            <Link to="/terms" className="underline" style={{ color: '#5eead4' }}>
+            <Link to="/terms" className="underline" style={{ color: '#f5f5f5' }}>
               Terms
             </Link>{' '}
             and{' '}
-            <Link to="/privacy" className="underline" style={{ color: '#5eead4' }}>
+            <Link to="/privacy" className="underline" style={{ color: '#f5f5f5' }}>
               Privacy Policy
             </Link>
             .

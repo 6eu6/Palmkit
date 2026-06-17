@@ -35,7 +35,7 @@ const STATUS_CONFIG: Record<
     icon: 'i-ph:arrow-counter-clockwise',
     title: 'Restoring workspace',
     description: 'Recovering your last session...',
-    colorClass: 'border-[rgba(139,92,246,0.2)] bg-[var(--palmkit-mobile-accent-faint)]',
+    colorClass: 'border-[rgba(0,0,0,0.10)] bg-[var(--palmkit-mobile-accent-faint)]',
     animate: true,
   },
   restored: {

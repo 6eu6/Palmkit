@@ -114,7 +114,7 @@ export const MobileActionDock = memo(() => {
                   style={{
                     transition: `all var(--palmkit-duration-fast) var(--palmkit-ease-default)`,
                     ...(isActive && {
-                      filter: 'drop-shadow(0 0 6px rgba(0, 168, 181, 0.4))',
+                      filter: 'drop-shadow(0 0 6px rgba(255, 255, 255, 0.4))',
                     }),
                   }}
                 />
@@ -137,7 +137,7 @@ export const MobileActionDock = memo(() => {
                   className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full"
                   style={{
                     background: 'var(--palmkit-gradient-mid)',
-                    boxShadow: '0 0 6px rgba(45, 212, 191, 0.5)',
+                    boxShadow: '0 0 6px rgba(229, 229, 229, 0.5)',
                     animation: 'dockIndicatorPulse 2s ease-in-out infinite',
                   }}
                   initial={{ scale: 0, opacity: 0 }}

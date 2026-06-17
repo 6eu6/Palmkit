@@ -350,7 +350,7 @@
   position: absolute;
   inset: 0;
   border-radius: 9999px;
-  background: var(--palmkit-mobile-accent, #00a8b5);
+  background: var(--palmkit-mobile-accent, #e5e5e5);
   opacity: 0.65;
   animation: pf-file-ping 1.3s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
@@ -360,6 +360,6 @@
   position: absolute;
   inset: 0;
   border-radius: 9999px;
-  background: var(--palmkit-mobile-accent, #00a8b5);
-  box-shadow: 0 0 6px var(--palmkit-mobile-accent, #00a8b5);
+  background: var(--palmkit-mobile-accent, #e5e5e5);
+  box-shadow: 0 0 6px var(--palmkit-mobile-accent, #e5e5e5);
 }

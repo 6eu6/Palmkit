@@ -2,19 +2,19 @@
 :root,
 :root[data-theme='light'] {
   --palmkit-elements-borderColor: theme('colors.alpha.gray.10');
-  --palmkit-elements-borderColorActive: theme('colors.accent.500');
+  --palmkit-elements-borderColorActive: theme('colors.gray.400');
 
   --palmkit-elements-bg-depth-1: theme('colors.white');
   --palmkit-elements-bg-depth-2: theme('colors.gray.50');
   --palmkit-elements-bg-depth-3: theme('colors.gray.200');
   --palmkit-elements-bg-depth-4: theme('colors.alpha.gray.5');
 
-  /* Unified Teal design system — matches landing page */
-  --palmkit-gradient-start: #0097a7;
-  --palmkit-gradient-mid: #00bfa5;
-  --palmkit-gradient-end: #4cd4b0;
-  --palmkit-glow-color: rgba(0, 168, 181, 0.15);
-  --palmkit-glow-color-strong: rgba(0, 168, 181, 0.25);
+  /* Monochrome design system — clean white/black */
+  --palmkit-gradient-start: #1a1a1a;
+  --palmkit-gradient-mid: #404040;
+  --palmkit-gradient-end: #525252;
+  --palmkit-glow-color: rgba(0, 0, 0, 0.08);
+  --palmkit-glow-color-strong: rgba(0, 0, 0, 0.14);
 
   --palmkit-elements-textPrimary: theme('colors.gray.950');
   --palmkit-elements-textSecondary: theme('colors.gray.600');
@@ -23,9 +23,9 @@
   --palmkit-elements-code-background: theme('colors.gray.100');
   --palmkit-elements-code-text: theme('colors.gray.950');
 
-  --palmkit-elements-button-primary-background: theme('colors.alpha.accent.10');
-  --palmkit-elements-button-primary-backgroundHover: theme('colors.alpha.accent.20');
-  --palmkit-elements-button-primary-text: theme('colors.accent.600');
+  --palmkit-elements-button-primary-background: theme('colors.alpha.gray.10');
+  --palmkit-elements-button-primary-backgroundHover: theme('colors.alpha.gray.20');
+  --palmkit-elements-button-primary-text: theme('colors.gray.800');
 
   --palmkit-elements-button-secondary-background: theme('colors.alpha.gray.5');
   --palmkit-elements-button-secondary-backgroundHover: theme('colors.alpha.gray.10');
@@ -37,15 +37,15 @@
 
   --palmkit-elements-item-contentDefault: theme('colors.alpha.gray.50');
   --palmkit-elements-item-contentActive: theme('colors.gray.950');
-  --palmkit-elements-item-contentAccent: theme('colors.accent.700');
+  --palmkit-elements-item-contentAccent: theme('colors.gray.800');
   --palmkit-elements-item-contentDanger: theme('colors.red.500');
   --palmkit-elements-item-backgroundDefault: rgba(0, 0, 0, 0);
   --palmkit-elements-item-backgroundActive: theme('colors.alpha.gray.5');
-  --palmkit-elements-item-backgroundAccent: theme('colors.alpha.accent.10');
+  --palmkit-elements-item-backgroundAccent: theme('colors.alpha.gray.10');
   --palmkit-elements-item-backgroundDanger: theme('colors.alpha.red.10');
 
   --palmkit-elements-loader-background: theme('colors.alpha.gray.10');
-  --palmkit-elements-loader-progress: theme('colors.accent.500');
+  --palmkit-elements-loader-progress: theme('colors.gray.800');
 
   --palmkit-elements-artifacts-background: theme('colors.white');
   --palmkit-elements-artifacts-backgroundHover: theme('colors.alpha.gray.2');
@@ -57,7 +57,7 @@
   --palmkit-elements-actions-code-background: theme('colors.gray.800');
 
   --palmkit-elements-messages-background: theme('colors.gray.50');
-  --palmkit-elements-messages-linkColor: theme('colors.accent.600');
+  --palmkit-elements-messages-linkColor: theme('colors.gray.700');
   --palmkit-elements-messages-code-background: theme('colors.gray.800');
   --palmkit-elements-messages-inlineCode-background: theme('colors.gray.200');
   --palmkit-elements-messages-inlineCode-text: theme('colors.gray.800');
@@ -73,9 +73,9 @@
   --palmkit-elements-prompt-background: theme('colors.alpha.white.90');
 
   --palmkit-elements-sidebar-dropdownShadow: theme('colors.alpha.gray.10');
-  --palmkit-elements-sidebar-buttonBackgroundDefault: theme('colors.alpha.accent.10');
-  --palmkit-elements-sidebar-buttonBackgroundHover: theme('colors.alpha.accent.20');
-  --palmkit-elements-sidebar-buttonText: theme('colors.accent.700');
+  --palmkit-elements-sidebar-buttonBackgroundDefault: theme('colors.alpha.gray.10');
+  --palmkit-elements-sidebar-buttonBackgroundHover: theme('colors.alpha.gray.20');
+  --palmkit-elements-sidebar-buttonText: theme('colors.gray.700');
 
   --palmkit-elements-preview-addressBar-background: theme('colors.gray.100');
   --palmkit-elements-preview-addressBar-backgroundHover: theme('colors.alpha.gray.5');
@@ -116,7 +116,7 @@
 /* Color Tokens Dark Theme */
 :root[data-theme='dark'] {
   --palmkit-elements-borderColor: theme('colors.alpha.white.10');
-  --palmkit-elements-borderColorActive: theme('colors.accent.400');
+  --palmkit-elements-borderColorActive: theme('colors.gray.500');
 
   --palmkit-elements-bg-depth-1: #0a0a0f;
   --palmkit-elements-bg-depth-2: #111118;
@@ -124,11 +124,11 @@
   --palmkit-elements-bg-depth-4: theme('colors.alpha.white.5');
 
   /* Unified Teal design system — matches landing page */
-  --palmkit-gradient-start: #00a8b5;
-  --palmkit-gradient-mid: #2dd4bf;
-  --palmkit-gradient-end: #4cd4b0;
-  --palmkit-glow-color: rgba(0, 168, 181, 0.12);
-  --palmkit-glow-color-strong: rgba(0, 168, 181, 0.22);
+  --palmkit-gradient-start: #e5e5e5;
+  --palmkit-gradient-mid: #d4d4d4;
+  --palmkit-gradient-end: #a3a3a3;
+  --palmkit-glow-color: rgba(255, 255, 255, 0.06);
+  --palmkit-glow-color-strong: rgba(255, 255, 255, 0.10);
 
   --palmkit-elements-textPrimary: #f0f0f5;
   --palmkit-elements-textSecondary: theme('colors.gray.400');
@@ -137,9 +137,9 @@
   --palmkit-elements-code-background: theme('colors.gray.800');
   --palmkit-elements-code-text: theme('colors.white');
 
-  --palmkit-elements-button-primary-background: theme('colors.alpha.accent.10');
-  --palmkit-elements-button-primary-backgroundHover: theme('colors.alpha.accent.20');
-  --palmkit-elements-button-primary-text: theme('colors.accent.400');
+  --palmkit-elements-button-primary-background: theme('colors.alpha.gray.10');
+  --palmkit-elements-button-primary-backgroundHover: theme('colors.alpha.gray.20');
+  --palmkit-elements-button-primary-text: theme('colors.gray.300');
 
   --palmkit-elements-button-secondary-background: theme('colors.alpha.white.5');
   --palmkit-elements-button-secondary-backgroundHover: theme('colors.alpha.white.10');
@@ -151,15 +151,15 @@
 
   --palmkit-elements-item-contentDefault: theme('colors.alpha.white.50');
   --palmkit-elements-item-contentActive: theme('colors.white');
-  --palmkit-elements-item-contentAccent: theme('colors.accent.500');
+  --palmkit-elements-item-contentAccent: theme('colors.gray.300');
   --palmkit-elements-item-contentDanger: theme('colors.red.500');
   --palmkit-elements-item-backgroundDefault: rgba(255, 255, 255, 0);
   --palmkit-elements-item-backgroundActive: theme('colors.alpha.white.10');
-  --palmkit-elements-item-backgroundAccent: theme('colors.alpha.accent.10');
+  --palmkit-elements-item-backgroundAccent: theme('colors.alpha.gray.10');
   --palmkit-elements-item-backgroundDanger: theme('colors.alpha.red.10');
 
   --palmkit-elements-loader-background: theme('colors.alpha.gray.10');
-  --palmkit-elements-loader-progress: theme('colors.accent.500');
+  --palmkit-elements-loader-progress: theme('colors.gray.800');
 
   --palmkit-elements-artifacts-background: theme('colors.gray.900');
   --palmkit-elements-artifacts-backgroundHover: theme('colors.alpha.white.5');
@@ -171,7 +171,7 @@
   --palmkit-elements-actions-code-background: theme('colors.gray.800');
 
   --palmkit-elements-messages-background: theme('colors.gray.800');
-  --palmkit-elements-messages-linkColor: theme('colors.accent.400');
+  --palmkit-elements-messages-linkColor: theme('colors.gray.300');
   --palmkit-elements-messages-code-background: theme('colors.gray.900');
   --palmkit-elements-messages-inlineCode-background: theme('colors.gray.700');
   --palmkit-elements-messages-inlineCode-text: var(--palmkit-elements-textPrimary);
@@ -187,9 +187,9 @@
   --palmkit-elements-prompt-background: #14141c;
 
   --palmkit-elements-sidebar-dropdownShadow: theme('colors.alpha.gray.30');
-  --palmkit-elements-sidebar-buttonBackgroundDefault: theme('colors.alpha.accent.10');
-  --palmkit-elements-sidebar-buttonBackgroundHover: theme('colors.alpha.accent.20');
-  --palmkit-elements-sidebar-buttonText: theme('colors.accent.400');
+  --palmkit-elements-sidebar-buttonBackgroundDefault: theme('colors.alpha.gray.10');
+  --palmkit-elements-sidebar-buttonBackgroundHover: theme('colors.alpha.gray.20');
+  --palmkit-elements-sidebar-buttonText: theme('colors.gray.300');
 
   --palmkit-elements-preview-addressBar-background: var(--palmkit-elements-bg-depth-1);
   --palmkit-elements-preview-addressBar-backgroundHover: theme('colors.alpha.white.5');
@@ -227,10 +227,10 @@
   --modern-scrollbar-thumb-backgroundHover: rgba(10, 10, 10, 0.8);
 
   /* Mobile dark theme overrides */
-  --palmkit-mobile-surface-bg: rgba(10, 10, 18, 0.94);
-  --palmkit-mobile-surface-border: rgba(0, 168, 181, 0.14);
-  --palmkit-mobile-surface-glow: rgba(0, 168, 181, 0.08);
-  --palmkit-mobile-accent-text: #2dd4bf;
+  --palmkit-mobile-surface-bg: rgba(10, 10, 10, 0.94);
+  --palmkit-mobile-surface-border: rgba(255, 255, 255, 0.10);
+  --palmkit-mobile-surface-glow: rgba(255, 255, 255, 0.04);
+  --palmkit-mobile-accent-text: #e5e5e5;
 }
 
 /*
@@ -306,34 +306,34 @@
   --palmkit-mobile-touch-target: 44px;
 
   /* --- Mobile Surface System --- */
-  --palmkit-mobile-surface-bg: rgba(10, 10, 18, 0.92);
-  --palmkit-mobile-surface-bg-elevated: rgba(14, 14, 24, 0.96);
-  --palmkit-mobile-surface-bg-overlay: rgba(8, 8, 16, 0.92);
-  --palmkit-mobile-surface-border: rgba(0, 168, 181, 0.12);
-  --palmkit-mobile-surface-border-subtle: rgba(0, 168, 181, 0.06);
-  --palmkit-mobile-surface-border-strong: rgba(0, 168, 181, 0.22);
-  --palmkit-mobile-surface-glow: rgba(0, 168, 181, 0.06);
+  --palmkit-mobile-surface-bg: rgba(10, 10, 10, 0.92);
+  --palmkit-mobile-surface-bg-elevated: rgba(18, 18, 18, 0.96);
+  --palmkit-mobile-surface-bg-overlay: rgba(8, 8, 8, 0.92);
+  --palmkit-mobile-surface-border: rgba(255, 255, 255, 0.08);
+  --palmkit-mobile-surface-border-subtle: rgba(255, 255, 255, 0.04);
+  --palmkit-mobile-surface-border-strong: rgba(255, 255, 255, 0.15);
+  --palmkit-mobile-surface-glow: rgba(255, 255, 255, 0.03);
 
-  /* --- Mobile Accent System (Teal — Palmkit brand) --- */
-  --palmkit-mobile-accent: rgba(0, 168, 181, 1);
-  --palmkit-mobile-accent-hover: rgba(45, 212, 191, 1);
-  --palmkit-mobile-accent-muted: rgba(0, 168, 181, 0.15);
-  --palmkit-mobile-accent-subtle: rgba(0, 168, 181, 0.08);
-  --palmkit-mobile-accent-faint: rgba(0, 168, 181, 0.04);
-  --palmkit-mobile-accent-text: #5eead4;
+  /* --- Mobile Accent System (Monochrome — Clean B&W) --- */
+  --palmkit-mobile-accent: rgba(255, 255, 255, 1);
+  --palmkit-mobile-accent-hover: rgba(229, 229, 229, 1);
+  --palmkit-mobile-accent-muted: rgba(255, 255, 255, 0.12);
+  --palmkit-mobile-accent-subtle: rgba(255, 255, 255, 0.06);
+  --palmkit-mobile-accent-faint: rgba(255, 255, 255, 0.03);
+  --palmkit-mobile-accent-text: #e5e5e5;
 
-  /* --- Secondary Accent (Teal, from the Palmkit logo) --- */
-  --palmkit-teal: rgba(45, 212, 191, 1);
-  --palmkit-teal-hover: rgba(94, 234, 212, 1);
-  --palmkit-teal-text: #5eead4;
-  --palmkit-teal-muted: rgba(45, 212, 191, 0.15);
-  --palmkit-teal-subtle: rgba(45, 212, 191, 0.08);
+  /* --- Secondary Accent (Monochrome) --- */
+  --palmkit-teal: rgba(212, 212, 212, 1);
+  --palmkit-teal-hover: rgba(229, 229, 229, 1);
+  --palmkit-teal-text: #d4d4d4;
+  --palmkit-teal-muted: rgba(212, 212, 212, 0.12);
+  --palmkit-teal-subtle: rgba(212, 212, 212, 0.06);
 
   /* --- Mobile Text Hierarchy --- */
   --palmkit-mobile-text-primary: #f0f0f5;
   --palmkit-mobile-text-secondary: #8b8b9e;
   --palmkit-mobile-text-tertiary: #5a5a6e;
-  --palmkit-mobile-text-accent: #2dd4bf;
+  --palmkit-mobile-text-accent: #d4d4d4;
   --palmkit-mobile-text-inverse: #0a0a0f;
 
   /* --- Mobile Status Colors --- */
@@ -351,8 +351,8 @@
   --palmkit-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.2);
   --palmkit-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.25);
   --palmkit-shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.6), 0 8px 16px rgba(0, 0, 0, 0.3);
-  --palmkit-shadow-accent: 0 0 16px rgba(0, 168, 181, 0.15);
-  --palmkit-shadow-accent-strong: 0 0 24px rgba(0, 168, 181, 0.25);
+  --palmkit-shadow-accent: 0 0 16px rgba(255, 255, 255, 0.06);
+  --palmkit-shadow-accent-strong: 0 0 24px rgba(255, 255, 255, 0.10);
 
   /* --- Motion / Duration Scale --- */
   --palmkit-duration-instant: 75ms;

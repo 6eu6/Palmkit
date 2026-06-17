@@ -49,12 +49,12 @@ export default function ForgotPassword() {
     return (
       <AuthLayout title="Check your inbox" subtitle="We sent you a reset link.">
         <div className="flex flex-col items-center text-center gap-3 py-2">
-          <span className="i-ph:envelope-simple-open text-3xl" style={{ color: '#5eead4' }} />
+          <span className="i-ph:envelope-simple-open text-3xl" style={{ color: '#f5f5f5' }} />
           <p className="text-sm text-palmkit-elements-textSecondary">
             If an account exists for <span className="text-palmkit-elements-textPrimary">{actionData.email}</span>, a link
             to reset your password is on its way.
           </p>
-          <Link to="/login" className="text-xs underline" style={{ color: '#5eead4' }}>
+          <Link to="/login" className="text-xs underline" style={{ color: '#f5f5f5' }}>
             Back to log in
           </Link>
         </div>
@@ -83,7 +83,7 @@ export default function ForgotPassword() {
 
       <p className="mt-4 text-center text-xs text-palmkit-elements-textSecondary">
         Remembered it?{' '}
-        <Link to="/login" className="underline" style={{ color: '#5eead4' }}>
+        <Link to="/login" className="underline" style={{ color: '#f5f5f5' }}>
           Log in
         </Link>
       </p>

@@ -445,7 +445,7 @@ export const ModelSelector = ({
                 useSettingsStore.getState().openSettings();
               });
             }}
-            className="text-teal-600 dark:text-teal-400 hover:underline font-medium"
+            className="text-gray-700 dark:text-gray-300 hover:underline font-medium"
           >
             Open Settings to enable a provider →
           </button>
@@ -701,7 +701,7 @@ export const ModelSelector = ({
                       'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-all',
                       'hover:bg-palmkit-elements-background-depth-3',
                       showFreeModelsOnly
-                        ? 'bg-teal-500/20 text-teal-400 border border-teal-500/30'
+                        ? 'bg-gray-500/20 text-gray-400 border border-gray-500/30'
                         : 'bg-palmkit-elements-background-depth-3 text-palmkit-elements-textSecondary border border-palmkit-elements-borderColor',
                     )}
                   >
@@ -862,7 +862,7 @@ export const ModelSelector = ({
                       </div>
                       <div className="flex items-center gap-1 ml-2">
                         {isModelLikelyFree(modelOption, provider?.name) && (
-                          <span className="i-ph:gift text-xs text-teal-400" title="Free model" />
+                          <span className="i-ph:gift text-xs text-gray-400" title="Free model" />
                         )}
                         {model === modelOption.name && (
                           <span className="i-ph:check text-xs text-green-500" title="Selected" />

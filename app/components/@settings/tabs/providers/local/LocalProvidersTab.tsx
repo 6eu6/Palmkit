@@ -305,8 +305,8 @@ export default function LocalProvidersTab() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-500/20 to-blue-500/20 flex items-center justify-center ring-1 ring-teal-500/30">
-              <Cpu className="w-6 h-6 text-teal-500" />
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-gray-500/20 to-blue-500/20 flex items-center justify-center ring-1 ring-gray-500/30">
+              <Cpu className="w-6 h-6 text-gray-600" />
             </div>
             <div>
               <h2 className="text-2xl font-semibold text-palmkit-elements-textPrimary">Local AI Providers</h2>
@@ -327,7 +327,7 @@ export default function LocalProvidersTab() {
                 variant="outline"
                 size="sm"
                 onClick={() => setViewMode('guide')}
-                className="bg-palmkit-elements-background-depth-2 hover:bg-palmkit-elements-background-depth-3 border-palmkit-elements-borderColor hover:border-teal-500/30 transition-all duration-200 gap-2"
+                className="bg-palmkit-elements-background-depth-2 hover:bg-palmkit-elements-background-depth-3 border-palmkit-elements-borderColor hover:border-gray-500/30 transition-all duration-200 gap-2"
               >
                 <BookOpen className="w-4 h-4" />
                 Setup Guide
@@ -336,7 +336,7 @@ export default function LocalProvidersTab() {
                 variant="outline"
                 size="sm"
                 onClick={() => setViewMode('status')}
-                className="bg-palmkit-elements-background-depth-2 hover:bg-palmkit-elements-background-depth-3 border-palmkit-elements-borderColor hover:border-teal-500/30 transition-all duration-200 gap-2"
+                className="bg-palmkit-elements-background-depth-2 hover:bg-palmkit-elements-background-depth-3 border-palmkit-elements-borderColor hover:border-gray-500/30 transition-all duration-200 gap-2"
               >
                 <Activity className="w-4 h-4" />
                 Status
@@ -364,7 +364,7 @@ export default function LocalProvidersTab() {
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <PackageOpen className="w-5 h-5 text-teal-500" />
+                        <PackageOpen className="w-5 h-5 text-gray-600" />
                         <h3 className="text-lg font-semibold text-palmkit-elements-textPrimary">Installed Models</h3>
                       </div>
                       <Button
@@ -400,7 +400,7 @@ export default function LocalProvidersTab() {
                             href="https://ollama.com/library"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-teal-500 hover:underline inline-flex items-center gap-1"
+                            className="text-gray-600 hover:underline inline-flex items-center gap-1"
                           >
                             ollama.com/library
                             <ExternalLink className="w-3 h-3" />
@@ -410,7 +410,7 @@ export default function LocalProvidersTab() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="bg-gradient-to-r from-teal-500/8 to-teal-600/8 hover:from-teal-500/15 hover:to-teal-600/15 border-teal-500/25 hover:border-teal-500/40 transition-all duration-300 gap-2 group shadow-sm hover:shadow-md font-medium"
+                          className="bg-gradient-to-r from-gray-500/8 to-gray-600/8 hover:from-gray-500/15 hover:to-gray-600/15 border-gray-500/25 hover:border-gray-500/40 transition-all duration-300 gap-2 group shadow-sm hover:shadow-md font-medium"
                           _asChild
                         >
                           <a

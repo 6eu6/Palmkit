@@ -89,7 +89,7 @@ const FeatureSection = memo(
       transition={{ duration: 0.3 }}
     >
       <div className="flex items-center gap-3">
-        <div className={classNames(icon, 'text-xl text-teal-500')} />
+        <div className={classNames(icon, 'text-xl text-gray-600')} />
         <div>
           <h3 className="text-lg font-medium text-palmkit-elements-textPrimary">{title}</h3>
           <p className="text-sm text-palmkit-elements-textSecondary">{description}</p>
@@ -254,13 +254,13 @@ export default function FeaturesTab() {
               'p-2 rounded-lg text-xl',
               'bg-palmkit-elements-background-depth-3 group-hover:bg-palmkit-elements-background-depth-4',
               'transition-colors duration-200',
-              'text-teal-500',
+              'text-gray-600',
             )}
           >
             <div className="i-ph:book" />
           </div>
           <div className="flex-1">
-            <h4 className="text-sm font-medium text-palmkit-elements-textPrimary group-hover:text-teal-500 transition-colors">
+            <h4 className="text-sm font-medium text-palmkit-elements-textPrimary group-hover:text-gray-600 transition-colors">
               Prompt Library
             </h4>
             <p className="text-xs text-palmkit-elements-textSecondary mt-0.5">
@@ -277,8 +277,8 @@ export default function FeaturesTab() {
               'p-2 rounded-lg text-sm min-w-[200px]',
               'bg-palmkit-elements-background-depth-3 border border-palmkit-elements-borderColor',
               'text-palmkit-elements-textPrimary',
-              'focus:outline-none focus:ring-2 focus:ring-teal-500/30',
-              'group-hover:border-teal-500/30',
+              'focus:outline-none focus:ring-2 focus:ring-gray-500/30',
+              'group-hover:border-gray-500/30',
               'transition-all duration-200',
             )}
           >

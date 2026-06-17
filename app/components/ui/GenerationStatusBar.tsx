@@ -139,7 +139,7 @@ export function GenerationStatusBar() {
             onClick={() => {
               setGenerationStep('waiting-for-model');
             }}
-            className="text-xs px-2.5 py-1 rounded-[var(--palmkit-radius-sm)] bg-[var(--palmkit-mobile-accent-muted)] text-[var(--palmkit-mobile-accent-text)] hover:bg-[rgba(139,92,246,0.25)] transition-all duration-[var(--palmkit-duration-normal)] active:scale-95"
+            className="text-xs px-2.5 py-1 rounded-[var(--palmkit-radius-sm)] bg-[var(--palmkit-mobile-accent-muted)] text-[var(--palmkit-mobile-accent-text)] hover:bg-[rgba(0,0,0,0.12)] transition-all duration-[var(--palmkit-duration-normal)] active:scale-95"
           >
             Retry
           </button>

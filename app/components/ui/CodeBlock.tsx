@@ -81,7 +81,7 @@ export function CodeBlock({
               <tr
                 key={index}
                 className={classNames(
-                  highlightLines.includes(index + 1) ? 'bg-teal-500/10 dark:bg-teal-500/20' : '',
+                  highlightLines.includes(index + 1) ? 'bg-gray-500/10 dark:bg-gray-500/20' : '',
                   'hover:bg-palmkit-elements-background-depth-3 dark:hover:bg-palmkit-elements-background-depth-4',
                 )}
               >

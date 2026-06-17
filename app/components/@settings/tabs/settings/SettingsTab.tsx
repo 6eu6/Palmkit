@@ -69,7 +69,7 @@ export default function SettingsTab() {
         transition={{ delay: 0.1 }}
       >
         <div className="flex items-center gap-2 mb-4">
-          <div className="i-ph:palette-fill w-4 h-4 text-teal-500" />
+          <div className="i-ph:palette-fill w-4 h-4 text-gray-600" />
           <span className="text-sm font-medium text-palmkit-elements-textPrimary">Preferences</span>
         </div>
 
@@ -86,7 +86,7 @@ export default function SettingsTab() {
               'bg-[#FAFAFA] dark:bg-[#0A0A0A]',
               'border border-[#E5E5E5] dark:border-[#1A1A1A]',
               'text-palmkit-elements-textPrimary',
-              'focus:outline-none focus:ring-2 focus:ring-teal-500/30',
+              'focus:outline-none focus:ring-2 focus:ring-gray-500/30',
               'transition-all duration-200',
             )}
           >
@@ -149,7 +149,7 @@ export default function SettingsTab() {
         transition={{ delay: 0.2 }}
       >
         <div className="flex items-center gap-2 mb-4">
-          <div className="i-ph:clock-fill w-4 h-4 text-teal-500" />
+          <div className="i-ph:clock-fill w-4 h-4 text-gray-600" />
           <span className="text-sm font-medium text-palmkit-elements-textPrimary">Time Settings</span>
         </div>
 
@@ -166,7 +166,7 @@ export default function SettingsTab() {
               'bg-[#FAFAFA] dark:bg-[#0A0A0A]',
               'border border-[#E5E5E5] dark:border-[#1A1A1A]',
               'text-palmkit-elements-textPrimary',
-              'focus:outline-none focus:ring-2 focus:ring-teal-500/30',
+              'focus:outline-none focus:ring-2 focus:ring-gray-500/30',
               'transition-all duration-200',
             )}
           >
@@ -183,7 +183,7 @@ export default function SettingsTab() {
         transition={{ delay: 0.3 }}
       >
         <div className="flex items-center gap-2 mb-4">
-          <div className="i-ph:keyboard-fill w-4 h-4 text-teal-500" />
+          <div className="i-ph:keyboard-fill w-4 h-4 text-gray-600" />
           <span className="text-sm font-medium text-palmkit-elements-textPrimary">Keyboard Shortcuts</span>
         </div>
 
@@ -219,7 +219,7 @@ export default function SettingsTab() {
         transition={{ delay: 0.4 }}
       >
         <div className="flex items-center gap-2 mb-4">
-          <div className="i-ph:scroll-fill w-4 h-4 text-teal-500" />
+          <div className="i-ph:scroll-fill w-4 h-4 text-gray-600" />
           <span className="text-sm font-medium text-palmkit-elements-textPrimary">About &amp; Legal</span>
         </div>
 

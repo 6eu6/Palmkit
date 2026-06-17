@@ -44,7 +44,7 @@ export const WorkspaceShell = memo(
               className="absolute inset-0 opacity-[0.02] dark:opacity-[0.035]"
               style={{
                 backgroundImage:
-                  'linear-gradient(rgba(0, 168, 181, 0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 168, 181, 0.4) 1px, transparent 1px)',
+                  'linear-gradient(rgba(255, 255, 255, 0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.4) 1px, transparent 1px)',
                 backgroundSize: '40px 40px',
               }}
             />
@@ -59,7 +59,7 @@ export const WorkspaceShell = memo(
             <div
               className="absolute inset-0"
               style={{
-                background: 'radial-gradient(ellipse 40% 30% at 50% 100%, rgba(0, 168, 181, 0.03), transparent)',
+                background: 'radial-gradient(ellipse 40% 30% at 50% 100%, rgba(255, 255, 255, 0.03), transparent)',
               }}
             />
           </div>

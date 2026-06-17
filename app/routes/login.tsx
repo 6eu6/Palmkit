@@ -119,7 +119,7 @@ export default function Login() {
         <Link
           to="/forgot-password"
           className="self-end -mt-1 text-xs text-palmkit-elements-textSecondary hover:underline"
-          style={{ color: '#5eead4' }}
+          style={{ color: '#f5f5f5' }}
         >
           Forgot password?
         </Link>
@@ -143,7 +143,7 @@ export default function Login() {
 
       <p className="mt-4 text-center text-xs text-palmkit-elements-textSecondary">
         Don&apos;t have an account?{' '}
-        <Link to="/signup" className="underline" style={{ color: '#5eead4' }}>
+        <Link to="/signup" className="underline" style={{ color: '#f5f5f5' }}>
           Sign up
         </Link>
       </p>

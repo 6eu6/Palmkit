@@ -45,7 +45,7 @@ const StarterTemplates: React.FC = () => {
       className="flex flex-col items-center gap-2 sm:gap-3"
       style={{ animation: 'fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards', opacity: 0 }}
     >
-      <span className="text-[10px] sm:text-xs font-medium text-teal-300/40 uppercase tracking-wider">
+      <span className="text-[10px] sm:text-xs font-medium text-gray-300/40 uppercase tracking-wider">
         or start a blank app with your favorite stack
       </span>
       <div className="flex justify-center">

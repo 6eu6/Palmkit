@@ -385,7 +385,7 @@ const ToolCallsList = memo(({ toolInvocations, toolCallAnnotations, addToolResul
                       className={classNames(
                         'h-10 inline-flex items-center gap-2 px-3 py-1.5 text-xs font-normal rounded-lg transition-colors',
                         'bg-palmkit-elements-background-depth-2 border border-palmkit-elements-borderColor',
-                        'text-accent-500 hover:text-palmkit-elements-textPrimary',
+                        'text-gray-700 dark:text-gray-300 hover:text-palmkit-elements-textPrimary',
                         'disabled:opacity-50 disabled:cursor-not-allowed',
                       )}
                       onClick={() =>

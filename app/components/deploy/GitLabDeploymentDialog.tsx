@@ -333,7 +333,7 @@ export function GitLabDeploymentDialog({ isOpen, onClose, projectName, files }: 
 
                   <div className="bg-palmkit-elements-background-depth-2 dark:bg-palmkit-elements-background-depth-3 rounded-lg p-4 border border-palmkit-elements-borderColor dark:border-palmkit-elements-borderColor-dark">
                     <p className="text-sm font-medium text-palmkit-elements-textPrimary dark:text-palmkit-elements-textPrimary-dark mb-2 flex items-center gap-2">
-                      <span className="i-ph:files w-4 h-4 text-teal-500" />
+                      <span className="i-ph:files w-4 h-4 text-gray-600" />
                       Pushed Files ({pushedFiles.length})
                     </p>
                     <div className="max-h-[200px] overflow-y-auto custom-scrollbar pr-2">

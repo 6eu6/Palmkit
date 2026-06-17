@@ -11,8 +11,8 @@ import { useCallback, useRef, useState, type KeyboardEvent } from 'react';
 /* ─── Brand colors (mirror Landing.tsx) ─── */
 const TEAL = '#00A8B5';
 const MINT = '#4CD4B0';
-const TEAL_GLOW = 'rgba(0, 168, 181, 0.25)';
-const TEAL_TEXT = '#5eead4';
+const TEAL_GLOW = 'rgba(255, 255, 255, 0.25)';
+const TEAL_TEXT = '#f5f5f5';
 
 /** sessionStorage key shared with Chat.client.tsx */
 export const PENDING_PROMPT_KEY = 'palmkit_pending_prompt';
@@ -80,7 +80,7 @@ export function LandingPromptBox() {
       <div
         className="relative rounded-2xl border transition-all duration-200"
         style={{
-          borderColor: focused ? 'rgba(0, 168, 181, 0.45)' : 'rgba(0, 168, 181, 0.16)',
+          borderColor: focused ? 'rgba(255, 255, 255, 0.45)' : 'rgba(255, 255, 255, 0.16)',
           background: 'rgba(10, 10, 18, 0.55)',
           boxShadow: focused ? `0 0 0 4px ${TEAL_GLOW}, 0 12px 40px rgba(0,0,0,0.35)` : '0 12px 40px rgba(0,0,0,0.3)',
         }}
@@ -133,9 +133,9 @@ export function LandingPromptBox() {
             onClick={() => pickSuggestion(s)}
             className="text-[11px] sm:text-xs px-3 py-1.5 rounded-full border transition-colors hover:bg-palmkit-elements-background-depth-2"
             style={{
-              borderColor: 'rgba(0, 168, 181, 0.14)',
+              borderColor: 'rgba(255, 255, 255, 0.14)',
               color: TEAL_TEXT,
-              background: 'rgba(0, 168, 181, 0.04)',
+              background: 'rgba(255, 255, 255, 0.04)',
             }}
           >
             {s}

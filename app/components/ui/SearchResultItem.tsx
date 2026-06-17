@@ -28,7 +28,7 @@ export function SearchResultItem({
   description,
   icon,
   iconBackground = 'bg-palmkit-elements-background-depth-1/80 dark:bg-palmkit-elements-background-depth-4/80',
-  iconColor = 'text-teal-500',
+  iconColor = 'text-gray-600',
   tags,
   metadata,
   actionLabel,
@@ -39,7 +39,7 @@ export function SearchResultItem({
   return (
     <motion.div
       className={classNames(
-        'p-5 rounded-xl border border-palmkit-elements-borderColor dark:border-palmkit-elements-borderColor-dark hover:border-teal-500/40 transition-all duration-300 shadow-sm hover:shadow-md bg-palmkit-elements-background-depth-1/50 dark:bg-palmkit-elements-background-depth-3/50',
+        'p-5 rounded-xl border border-palmkit-elements-borderColor dark:border-palmkit-elements-borderColor-dark hover:border-gray-500/40 transition-all duration-300 shadow-sm hover:shadow-md bg-palmkit-elements-background-depth-1/50 dark:bg-palmkit-elements-background-depth-3/50',
         onClick ? 'cursor-pointer' : '',
         className,
       )}
@@ -84,7 +84,7 @@ export function SearchResultItem({
               e.stopPropagation();
               onAction();
             }}
-            className="px-4 py-2 h-9 rounded-lg bg-teal-500 text-white hover:bg-teal-600 transition-all duration-200 flex items-center gap-2 min-w-[100px] justify-center text-sm shadow-sm hover:shadow-md"
+            className="px-4 py-2 h-9 rounded-lg bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900 hover:bg-gray-700 dark:hover:bg-gray-300 transition-all duration-200 flex items-center gap-2 min-w-[100px] justify-center text-sm shadow-sm hover:shadow-md"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >

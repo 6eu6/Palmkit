@@ -83,7 +83,7 @@ export function TabsWithSlider({
           className={classNames(
             'px-4 py-2 h-10 rounded-lg transition-all duration-200 flex items-center gap-2 min-w-[120px] justify-center relative overflow-hidden',
             tab.id === activeTab
-              ? classNames('text-white shadow-sm shadow-teal-500/20', activeTabClassName)
+              ? classNames('text-white shadow-sm shadow-gray-500/20', activeTabClassName)
               : classNames(
                   'bg-palmkit-elements-background-depth-2 dark:bg-palmkit-elements-background-depth-3 text-palmkit-elements-textPrimary dark:text-palmkit-elements-textPrimary-dark hover:bg-palmkit-elements-background-depth-3 dark:hover:bg-palmkit-elements-background-depth-4 border border-palmkit-elements-borderColor dark:border-palmkit-elements-borderColor-dark',
                   tabClassName,
@@ -99,7 +99,7 @@ export function TabsWithSlider({
 
       {/* Animated slider */}
       <motion.div
-        className={classNames('absolute bottom-0 left-0 h-10 rounded-lg bg-teal-500 -z-10', sliderClassName)}
+        className={classNames('absolute bottom-0 left-0 h-10 rounded-lg bg-gray-600 -z-10', sliderClassName)}
         initial={false}
         animate={{
           width: sliderDimensions.width,

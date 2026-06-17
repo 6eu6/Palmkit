@@ -15,16 +15,16 @@ export const SendButton = ({ show, isStreaming, disabled, onClick }: SendButtonP
     <AnimatePresence>
       {show ? (
         <motion.button
-          className="absolute flex justify-center items-center top-[18px] right-[22px] p-1 rounded-lg w-[34px] h-[34px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="absolute flex justify-center items-center top-3 right-3 p-1.5 rounded-xl w-[32px] h-[32px] transition-all duration-150 disabled:opacity-30 disabled:cursor-not-allowed"
           style={{
             background: isStreaming
-              ? 'linear-gradient(135deg, #ef4444, #dc2626)'
-              : 'linear-gradient(135deg, var(--palmkit-gradient-start), var(--palmkit-gradient-end))',
+              ? 'rgba(239, 68, 68, 0.9)'
+              : 'var(--palmkit-elements-textPrimary)',
           }}
-          transition={{ ease: customEasingFn, duration: 0.17 }}
-          initial={{ opacity: 0, y: 10, scale: 0.9 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 10, scale: 0.9 }}
+          transition={{ ease: customEasingFn, duration: 0.15 }}
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.8 }}
           disabled={disabled}
           onClick={(event) => {
             event.preventDefault();
@@ -36,8 +36,8 @@ export const SendButton = ({ show, isStreaming, disabled, onClick }: SendButtonP
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
-          <div className="text-lg text-white">
-            {!isStreaming ? <div className="i-ph:arrow-right"></div> : <div className="i-ph:stop-circle-bold"></div>}
+          <div className="text-sm text-palmkit-elements-bg-depth-1">
+            {!isStreaming ? <div className="i-ph:arrow-up-bold"></div> : <div className="i-ph:stop-bold"></div>}
           </div>
         </motion.button>
       ) : null}

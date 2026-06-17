@@ -293,6 +293,50 @@
     font-size: 12px;
   }
 
+  /* Preview container: full bleed on mobile */
+  .z-workbench > div > div > div > div {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+
+  /* Preview toolbar: extra compact for mobile */
+  .z-workbench [data-workbench-toolbar] {
+    padding: 6px 8px;
+    gap: 4px;
+
+    /* Hide less-important buttons on mobile to save space */
+    button[title='Full Screen'],
+    button[title='New Window Options'] {
+      display: none;
+    }
+  }
+
+  /* Preview iframe: no extra margins */
+  .z-workbench iframe {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 0;
+  }
+
+  /* Preview address bar: more compact */
+  .z-workbench .flex-grow.flex.items-center {
+    min-width: 0;
+    flex: 1;
+  }
+
+  /* Device frame: disable on very small screens */
+  @media (max-width: 374px) {
+    .device-frame-container,
+    .device-wrapper {
+      display: none !important;
+    }
+    .z-workbench iframe {
+      width: 100% !important;
+      height: 100% !important;
+    }
+  }
+
   /* ============================================
    * N) CUSTOM SCROLLBAR — Mobile
    * ============================================ */

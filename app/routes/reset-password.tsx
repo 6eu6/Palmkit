@@ -85,7 +85,7 @@ export default function ResetPassword() {
       </Form>
 
       <p className="mt-4 text-center text-xs text-palmkit-elements-textSecondary">
-        <Link to="/login" className="underline" style={{ color: '#5eead4' }}>
+        <Link to="/login" className="underline" style={{ color: '#f5f5f5' }}>
           Back to log in
         </Link>
       </p>

@@ -40,7 +40,7 @@ function ProviderCard({
   const Icon = getIcon(provider.name);
 
   return (
-    <Card className="bg-palmkit-elements-background-depth-2 hover:bg-palmkit-elements-background-depth-3 transition-all duration-300 shadow-sm hover:shadow-md border border-palmkit-elements-borderColor hover:border-teal-500/30">
+    <Card className="bg-palmkit-elements-background-depth-2 hover:bg-palmkit-elements-background-depth-3 transition-all duration-300 shadow-sm hover:shadow-md border border-palmkit-elements-borderColor hover:border-gray-500/30">
       <CardContent className="p-6">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-4 flex-1">
@@ -48,14 +48,14 @@ function ProviderCard({
               className={classNames(
                 'w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-300',
                 provider.settings.enabled
-                  ? 'bg-gradient-to-br from-teal-500/20 to-teal-600/20 ring-1 ring-teal-500/30'
+                  ? 'bg-gradient-to-br from-gray-500/20 to-gray-600/20 ring-1 ring-gray-500/30'
                   : 'bg-palmkit-elements-background-depth-3',
               )}
             >
               <Icon
                 className={classNames(
                   'w-6 h-6 transition-all duration-300',
-                  provider.settings.enabled ? 'text-teal-500' : 'text-palmkit-elements-textTertiary',
+                  provider.settings.enabled ? 'text-gray-600' : 'text-palmkit-elements-textTertiary',
                 )}
               />
             </div>
@@ -76,7 +76,7 @@ function ProviderCard({
                       type="text"
                       defaultValue={provider.settings.baseUrl}
                       placeholder={`Enter ${provider.name} base URL`}
-                      className="w-full px-4 py-3 rounded-lg text-sm bg-palmkit-elements-background-depth-4 border border-teal-500/30 text-palmkit-elements-textPrimary placeholder-palmkit-elements-textTertiary focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 transition-all duration-200 shadow-sm"
+                      className="w-full px-4 py-3 rounded-lg text-sm bg-palmkit-elements-background-depth-4 border border-gray-500/30 text-palmkit-elements-textPrimary placeholder-palmkit-elements-textTertiary focus:outline-none focus:ring-2 focus:ring-gray-500/50 focus:border-gray-500 transition-all duration-200 shadow-sm"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
                           onUpdateBaseUrl(e.currentTarget.value);
@@ -94,10 +94,10 @@ function ProviderCard({
                   ) : (
                     <button
                       onClick={onStartEditing}
-                      className="w-full px-4 py-3 rounded-lg text-sm bg-palmkit-elements-background-depth-3 border border-palmkit-elements-borderColor hover:border-teal-500/30 hover:bg-palmkit-elements-background-depth-4 hover:shadow-sm transition-all duration-200 text-left group"
+                      className="w-full px-4 py-3 rounded-lg text-sm bg-palmkit-elements-background-depth-3 border border-palmkit-elements-borderColor hover:border-gray-500/30 hover:bg-palmkit-elements-background-depth-4 hover:shadow-sm transition-all duration-200 text-left group"
                     >
                       <div className="flex items-center gap-3 text-palmkit-elements-textSecondary group-hover:text-palmkit-elements-textPrimary">
-                        <Link className="w-4 h-4 group-hover:text-teal-500 transition-colors" />
+                        <Link className="w-4 h-4 group-hover:text-gray-600 transition-colors" />
                         <span className="font-mono">{provider.settings.baseUrl || 'Click to set base URL'}</span>
                       </div>
                     </button>

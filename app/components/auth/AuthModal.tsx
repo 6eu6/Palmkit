@@ -58,7 +58,7 @@ export function AuthModal() {
         className="relative w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl border p-6 pb-8 sm:pb-6"
         style={{
           background: 'var(--palmkit-mobile-surface-bg, #0e0e16)',
-          borderColor: 'rgba(0, 168, 181, 0.18)',
+          borderColor: 'rgba(255, 255, 255, 0.18)',
           animation: 'slide-up 0.28s cubic-bezier(0.16,1,0.3,1) forwards',
         }}
       >
@@ -116,7 +116,7 @@ export function AuthModal() {
             href={`/login?redirectTo=${encodeURIComponent(redirectTo)}`}
             className="text-xs text-palmkit-elements-textSecondary hover:underline mt-1"
           >
-            Already have an account? <span style={{ color: '#5eead4' }}>Log in</span>
+            Already have an account? <span style={{ color: '#f5f5f5' }}>Log in</span>
           </a>
         </div>
       </div>

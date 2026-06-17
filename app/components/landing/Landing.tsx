@@ -16,10 +16,10 @@ import { LandingPromptBox } from './LandingPromptBox';
 const TEAL = '#00A8B5';
 const TEAL_DARK = '#008C97';
 const MINT = '#4CD4B0';
-const TEAL_GLOW = 'rgba(0, 168, 181, 0.25)';
-const TEAL_SUBTLE = 'rgba(0, 168, 181, 0.08)';
-const TEAL_BORDER = 'rgba(0, 168, 181, 0.14)';
-const TEAL_TEXT = '#5eead4';
+const TEAL_GLOW = 'rgba(255, 255, 255, 0.25)';
+const TEAL_SUBTLE = 'rgba(255, 255, 255, 0.08)';
+const TEAL_BORDER = 'rgba(255, 255, 255, 0.14)';
+const TEAL_TEXT = '#f5f5f5';
 const MINT_TEXT = '#6ee7b7';
 
 const SURFACE = 'rgba(10, 10, 18, 0.55)';
@@ -88,7 +88,7 @@ function Hero() {
         className="pointer-events-none absolute inset-0 -z-10"
         style={{
           background:
-            'radial-gradient(55% 45% at 50% 0%, rgba(0,168,181,0.20) 0%, rgba(76,212,176,0.06) 40%, transparent 70%)',
+            'radial-gradient(55% 45% at 50% 0%, rgba(255, 255, 255, 0.20) 0%, rgba(212, 212, 212, 0.06) 40%, transparent 70%)',
         }}
       />
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
@@ -99,7 +99,7 @@ function Hero() {
       {/* Badge */}
       <div
         className="inline-flex items-center gap-1.5 text-[11px] sm:text-xs font-medium px-3 py-1.5 rounded-full mb-7"
-        style={{ background: TEAL_SUBTLE, color: TEAL_TEXT, border: '1px solid rgba(0, 168, 181, 0.15)' }}
+        style={{ background: TEAL_SUBTLE, color: TEAL_TEXT, border: '1px solid rgba(255, 255, 255, 0.15)' }}
       >
         <span className="i-ph:sparkle-fill text-xs" />
         AI-powered vibe coding platform
@@ -185,7 +185,7 @@ function Process() {
         {steps.map((s, i) => (
           <div
             key={s.title}
-            className="relative rounded-2xl p-6 border transition-colors hover:border-[rgba(0,168,181,0.3)]"
+            className="relative rounded-2xl p-6 border transition-colors hover:border-[rgba(255, 255, 255, 0.3)]"
             style={{ background: SURFACE, borderColor: BORDER_SUBTLE }}
           >
             <div className="flex items-center gap-3 mb-4">
@@ -231,11 +231,11 @@ function Templates() {
         {templates.map((t) => (
           <div
             key={t.name}
-            className="group rounded-2xl p-5 border transition-all hover:-translate-y-0.5 hover:border-[rgba(0,168,181,0.3)] cursor-pointer"
+            className="group rounded-2xl p-5 border transition-all hover:-translate-y-0.5 hover:border-[rgba(255, 255, 255, 0.3)] cursor-pointer"
             style={{ background: SURFACE, borderColor: BORDER_SUBTLE }}
           >
             <div
-              className="w-9 h-9 rounded-lg flex items-center justify-center mb-3 transition-colors group-hover:bg-[rgba(0,168,181,0.14)]"
+              className="w-9 h-9 rounded-lg flex items-center justify-center mb-3 transition-colors group-hover:bg-[rgba(255, 255, 255, 0.14)]"
               style={{ background: TEAL_SUBTLE }}
             >
               <span className={`${t.icon} text-base`} style={{ color: TEAL_TEXT }} />
@@ -297,7 +297,7 @@ function SecondaryCta() {
         className="pointer-events-none absolute inset-0 -z-10"
         style={{
           background:
-            'radial-gradient(50% 60% at 50% 50%, rgba(0,168,181,0.12) 0%, rgba(76,212,176,0.04) 40%, transparent 70%)',
+            'radial-gradient(50% 60% at 50% 50%, rgba(255, 255, 255, 0.12) 0%, rgba(212, 212, 212, 0.04) 40%, transparent 70%)',
         }}
       />
       <div className="text-center max-w-2xl mx-auto">

@@ -147,7 +147,7 @@ const CloudProvidersTab = () => {
               className={classNames(
                 'w-8 h-8 flex items-center justify-center rounded-lg',
                 'bg-palmkit-elements-background-depth-3',
-                'text-teal-500',
+                'text-gray-600',
               )}
             >
               <TbCloudComputing className="w-5 h-5" />
@@ -184,7 +184,7 @@ const CloudProvidersTab = () => {
               <div className="absolute top-0 right-0 p-2 flex gap-1">
                 {URL_CONFIGURABLE_PROVIDERS.includes(provider.name) && (
                   <motion.span
-                    className="px-2 py-0.5 text-xs rounded-full bg-teal-500/10 text-teal-500 font-medium"
+                    className="px-2 py-0.5 text-xs rounded-full bg-gray-500/10 text-gray-600 font-medium"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
@@ -199,7 +199,7 @@ const CloudProvidersTab = () => {
                     'w-10 h-10 flex items-center justify-center rounded-xl',
                     'bg-palmkit-elements-background-depth-3 group-hover:bg-palmkit-elements-background-depth-4',
                     'transition-all duration-200',
-                    provider.settings.enabled ? 'text-teal-500' : 'text-palmkit-elements-textSecondary',
+                    provider.settings.enabled ? 'text-gray-600' : 'text-palmkit-elements-textSecondary',
                   )}
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
@@ -215,7 +215,7 @@ const CloudProvidersTab = () => {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-4 mb-2">
                     <div>
-                      <h4 className="text-sm font-medium text-palmkit-elements-textPrimary group-hover:text-teal-500 transition-colors">
+                      <h4 className="text-sm font-medium text-palmkit-elements-textPrimary group-hover:text-gray-600 transition-colors">
                         {provider.name}
                       </h4>
                       <p className="text-xs text-palmkit-elements-textSecondary mt-0.5">
@@ -248,7 +248,7 @@ const CloudProvidersTab = () => {
                               'flex-1 px-3 py-1.5 rounded-lg text-sm',
                               'bg-palmkit-elements-background-depth-3 border border-palmkit-elements-borderColor',
                               'text-palmkit-elements-textPrimary placeholder-palmkit-elements-textTertiary',
-                              'focus:outline-none focus:ring-2 focus:ring-teal-500/30',
+                              'focus:outline-none focus:ring-2 focus:ring-gray-500/30',
                               'transition-all duration-200',
                             )}
                             onKeyDown={(e) => {
@@ -268,7 +268,7 @@ const CloudProvidersTab = () => {
                           >
                             <div className="flex items-center gap-2 text-palmkit-elements-textSecondary">
                               <div className="i-ph:link text-sm" />
-                              <span className="group-hover/url:text-teal-500 transition-colors">
+                              <span className="group-hover/url:text-gray-600 transition-colors">
                                 {provider.settings.baseUrl || 'Click to set base URL'}
                               </span>
                             </div>
@@ -290,9 +290,9 @@ const CloudProvidersTab = () => {
               </div>
 
               <motion.div
-                className="absolute inset-0 border-2 border-teal-500/0 rounded-lg pointer-events-none"
+                className="absolute inset-0 border-2 border-gray-500/0 rounded-lg pointer-events-none"
                 animate={{
-                  borderColor: provider.settings.enabled ? 'rgba(45, 212, 191, 0.2)' : 'rgba(45, 212, 191, 0)',
+                  borderColor: provider.settings.enabled ? 'rgba(229, 229, 229, 0.2)' : 'rgba(229, 229, 229, 0)',
                   scale: provider.settings.enabled ? 1 : 0.98,
                 }}
                 transition={{ duration: 0.2 }}

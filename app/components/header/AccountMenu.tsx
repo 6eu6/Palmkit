@@ -84,7 +84,7 @@ export function AccountMenu() {
           className="absolute right-0 mt-2 w-56 rounded-xl border shadow-xl overflow-hidden z-[60]"
           style={{
             background: 'var(--palmkit-mobile-surface-bg, #0e0e16)',
-            borderColor: 'var(--palmkit-mobile-surface-border, rgba(0,168,181,0.18))',
+            borderColor: 'var(--palmkit-mobile-surface-border, rgba(255, 255, 255, 0.18))',
             animation: 'fade-in-scale 0.16s ease forwards',
           }}
         >

@@ -13,7 +13,7 @@ const badgeVariants = cva(
           'border-transparent bg-palmkit-elements-background text-palmkit-elements-textSecondary hover:bg-palmkit-elements-background/80',
         destructive: 'border-transparent bg-red-500/10 text-red-500 hover:bg-red-500/20',
         outline: 'text-palmkit-elements-textPrimary',
-        primary: 'bg-teal-500/10 text-teal-600 dark:text-teal-400',
+        primary: 'bg-gray-500/10 text-gray-700 dark:text-gray-300',
         success: 'bg-green-500/10 text-green-600 dark:text-green-400',
         warning: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400',
         danger: 'bg-red-500/10 text-red-600 dark:text-red-400',

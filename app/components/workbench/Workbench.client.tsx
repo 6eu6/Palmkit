@@ -100,7 +100,7 @@ const FileModifiedDropdown = memo(
               <Popover.Button className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg bg-palmkit-elements-background-depth-2 hover:bg-palmkit-elements-background-depth-3 transition-colors text-palmkit-elements-item-contentDefault">
                 <span>File Changes</span>
                 {hasChanges && (
-                  <span className="w-5 h-5 rounded-full bg-accent-500/20 text-accent-500 text-xs flex items-center justify-center border border-accent-500/30">
+                  <span className="w-5 h-5 rounded-full bg-gray-800/20 dark:bg-gray-300/20 text-gray-700 dark:text-gray-300 text-xs flex items-center justify-center border border-gray-800/30 dark:border-gray-300/30">
                     {modifiedFiles.length}
                   </span>
                 )}
@@ -263,7 +263,7 @@ const FileModifiedDropdown = memo(
                         onClick={() => {
                           navigator.clipboard.writeText(filteredFiles.map(([filePath]) => filePath).join('\n'));
                           toast('File list copied to clipboard', {
-                            icon: <div className="i-ph:check-circle text-accent-500" />,
+                            icon: <div className="i-ph:check-circle text-gray-700 dark:text-gray-300" />,
                           });
                         }}
                         className="w-full flex items-center justify-center gap-2 px-3 py-1.5 text-sm rounded-lg bg-palmkit-elements-background-depth-1 hover:bg-palmkit-elements-background-depth-3 transition-colors text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary"
@@ -398,7 +398,7 @@ export const Workbench = memo(
               <div className="h-full flex flex-col bg-palmkit-elements-background-depth-2 border border-palmkit-elements-borderColor shadow-lg shadow-black/5 dark:shadow-black/20 rounded-xl overflow-hidden">
                 <div
                   data-workbench-toolbar
-                  className="flex items-center px-3 py-2 border-b border-[rgba(139,92,246,0.08)] gap-1.5 bg-[rgba(8,8,16,0.6)]"
+                  className="flex items-center px-3 py-2 border-b border-palmkit-elements-borderColor gap-1.5 bg-palmkit-elements-bg-depth-2"
                 >
                   <button
                     className={`${showChat ? 'i-ph:sidebar-simple-fill' : 'i-ph:sidebar-simple'} text-base text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary mr-1 shrink-0 transition-colors duration-200`}
@@ -421,7 +421,7 @@ export const Workbench = memo(
                         <DropdownMenu.Root>
                           <DropdownMenu.Trigger
                             disabled={isSyncing || streaming}
-                            className="rounded-md items-center justify-center [&:is(:disabled,.disabled)]:cursor-not-allowed [&:is(:disabled,.disabled)]:opacity-60 px-2 py-1 sm:px-3 sm:py-1.5 text-xs bg-accent-500 text-white hover:text-palmkit-elements-item-contentAccent [&:not(:disabled,.disabled)]:hover:bg-palmkit-elements-button-primary-backgroundHover outline-accent-500 flex gap-1.7"
+                            className="rounded-md items-center justify-center [&:is(:disabled,.disabled)]:cursor-not-allowed [&:is(:disabled,.disabled)]:opacity-60 px-2 py-1 sm:px-3 sm:py-1.5 text-xs bg-gray-800 dark:bg-gray-300 text-white hover:text-palmkit-elements-item-contentAccent [&:not(:disabled,.disabled)]:hover:bg-palmkit-elements-button-primary-backgroundHover outline-gray-800 dark:outline-gray-300 flex gap-1.7"
                           >
                             <div className="i-ph:cloud-arrow-down sm:hidden" />
                             <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync'}</span>
@@ -465,7 +465,7 @@ export const Workbench = memo(
                           onClick={() => {
                             workbenchStore.toggleTerminal(!workbenchStore.showTerminal.get());
                           }}
-                          className="rounded-md items-center justify-center [&:is(:disabled,.disabled)]:cursor-not-allowed [&:is(:disabled,.disabled)]:opacity-60 px-2 py-1 sm:px-3 sm:py-1.5 text-xs bg-accent-500 text-white hover:text-palmkit-elements-item-contentAccent [&:not(:disabled,.disabled)]:hover:bg-palmkit-elements-button-primary-backgroundHover outline-accent-500 flex gap-1.7"
+                          className="rounded-md items-center justify-center [&:is(:disabled,.disabled)]:cursor-not-allowed [&:is(:disabled,.disabled)]:opacity-60 px-2 py-1 sm:px-3 sm:py-1.5 text-xs bg-gray-800 dark:bg-gray-300 text-white hover:text-palmkit-elements-item-contentAccent [&:not(:disabled,.disabled)]:hover:bg-palmkit-elements-button-primary-backgroundHover outline-gray-800 dark:outline-gray-300 flex gap-1.7"
                         >
                           <div className="i-ph:terminal-window" />
                           <span className="hidden sm:inline">Toggle Terminal</span>

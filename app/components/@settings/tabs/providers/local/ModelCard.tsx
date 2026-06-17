@@ -14,7 +14,7 @@ interface ModelCardProps {
 
 function ModelCard({ model, onUpdate, onDelete }: ModelCardProps) {
   return (
-    <Card className="bg-palmkit-elements-background-depth-3 hover:bg-palmkit-elements-background-depth-4 transition-all duration-200 shadow-sm hover:shadow-md border border-palmkit-elements-borderColor hover:border-teal-500/20">
+    <Card className="bg-palmkit-elements-background-depth-3 hover:bg-palmkit-elements-background-depth-4 transition-all duration-200 shadow-sm hover:shadow-md border border-palmkit-elements-borderColor hover:border-gray-500/20">
       <CardContent className="p-5">
         <div className="flex items-center justify-between">
           <div className="space-y-2">
@@ -59,8 +59,8 @@ function ModelCard({ model, onUpdate, onDelete }: ModelCardProps) {
               disabled={model.status === 'updating'}
               className={classNames(
                 'flex items-center gap-2 px-3 py-2 text-xs rounded-lg transition-all duration-200',
-                'bg-teal-500/10 text-teal-500 hover:bg-teal-500/20 hover:shadow-sm',
-                'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-teal-500/10',
+                'bg-gray-500/10 text-gray-600 hover:bg-gray-500/20 hover:shadow-sm',
+                'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gray-500/10',
               )}
             >
               {model.status === 'updating' ? (

@@ -603,7 +603,7 @@ export function GitHubDeploymentDialog({ isOpen, onClose, projectName, files }: 
 
                   <div className="bg-palmkit-elements-background-depth-2 dark:bg-palmkit-elements-background-depth-3 rounded-lg p-4 text-left border border-palmkit-elements-borderColor dark:border-palmkit-elements-borderColor-dark">
                     <p className="text-sm font-medium text-palmkit-elements-textPrimary dark:text-palmkit-elements-textPrimary-dark mb-2 flex items-center gap-2">
-                      <span className="i-ph:github-logo w-4 h-4 text-teal-500" />
+                      <span className="i-ph:github-logo w-4 h-4 text-gray-600" />
                       Repository URL
                     </p>
                     <div className="flex items-center gap-2">
@@ -626,7 +626,7 @@ export function GitHubDeploymentDialog({ isOpen, onClose, projectName, files }: 
 
                   <div className="bg-palmkit-elements-background-depth-2 dark:bg-palmkit-elements-background-depth-3 rounded-lg p-4 border border-palmkit-elements-borderColor dark:border-palmkit-elements-borderColor-dark">
                     <p className="text-sm font-medium text-palmkit-elements-textPrimary dark:text-palmkit-elements-textPrimary-dark mb-2 flex items-center gap-2">
-                      <span className="i-ph:files w-4 h-4 text-teal-500" />
+                      <span className="i-ph:files w-4 h-4 text-gray-600" />
                       Pushed Files ({pushedFiles.length})
                     </p>
                     <div className="max-h-[200px] overflow-y-auto custom-scrollbar pr-2">
@@ -654,7 +654,7 @@ export function GitHubDeploymentDialog({ isOpen, onClose, projectName, files }: 
                       href={createdRepoUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-4 py-2 rounded-lg bg-teal-500 text-white hover:bg-teal-600 text-sm inline-flex items-center gap-2"
+                      className="px-4 py-2 rounded-lg bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900 hover:bg-gray-700 dark:hover:bg-gray-300 text-sm inline-flex items-center gap-2"
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >
@@ -723,7 +723,7 @@ export function GitHubDeploymentDialog({ isOpen, onClose, projectName, files }: 
                     initial={{ scale: 0.8 }}
                     animate={{ scale: 1 }}
                     transition={{ delay: 0.1 }}
-                    className="mx-auto w-16 h-16 rounded-xl bg-palmkit-elements-background-depth-3 flex items-center justify-center text-teal-500"
+                    className="mx-auto w-16 h-16 rounded-xl bg-palmkit-elements-background-depth-3 flex items-center justify-center text-gray-600"
                   >
                     <div className="i-ph:github-logo w-8 h-8" />
                   </motion.div>
@@ -747,7 +747,7 @@ export function GitHubDeploymentDialog({ isOpen, onClose, projectName, files }: 
                     </motion.button>
                     <motion.button
                       onClick={() => setShowAuthDialog(true)}
-                      className="px-4 py-2 rounded-lg bg-teal-500 text-white text-sm hover:bg-teal-600 inline-flex items-center gap-2"
+                      className="px-4 py-2 rounded-lg bg-gray-600 text-white text-sm hover:bg-gray-600 inline-flex items-center gap-2"
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >
@@ -789,7 +789,7 @@ export function GitHubDeploymentDialog({ isOpen, onClose, projectName, files }: 
                     initial={{ scale: 0.8 }}
                     animate={{ scale: 1 }}
                     transition={{ delay: 0.1 }}
-                    className="w-10 h-10 rounded-xl bg-palmkit-elements-background-depth-3 flex items-center justify-center text-teal-500"
+                    className="w-10 h-10 rounded-xl bg-palmkit-elements-background-depth-3 flex items-center justify-center text-gray-600"
                   >
                     <div className="i-ph:github-logo w-5 h-5" />
                   </motion.div>
@@ -818,7 +818,7 @@ export function GitHubDeploymentDialog({ isOpen, onClose, projectName, files }: 
                 <div className="flex items-center gap-3 mb-6 p-4 bg-palmkit-elements-background-depth-2 dark:bg-palmkit-elements-background-depth-3 rounded-lg border border-palmkit-elements-borderColor dark:border-palmkit-elements-borderColor-dark">
                   <div className="relative">
                     <img src={user.avatar_url} alt={user.login} className="w-10 h-10 rounded-full" />
-                    <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-teal-500 flex items-center justify-center text-white">
+                    <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-gray-600 flex items-center justify-center text-white">
                       <div className="i-ph:github-logo w-3 h-3" />
                     </div>
                   </div>
@@ -863,7 +863,7 @@ export function GitHubDeploymentDialog({ isOpen, onClose, projectName, files }: 
                           }
                         }}
                         placeholder="my-awesome-project"
-                        className="w-full pl-10 px-4 py-2 rounded-lg bg-palmkit-elements-background-depth-2 dark:bg-palmkit-elements-background-depth-3 border border-palmkit-elements-borderColor dark:border-palmkit-elements-borderColor-dark text-palmkit-elements-textPrimary dark:text-palmkit-elements-textPrimary-dark placeholder-palmkit-elements-textTertiary dark:placeholder-palmkit-elements-textTertiary-dark focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        className="w-full pl-10 px-4 py-2 rounded-lg bg-palmkit-elements-background-depth-2 dark:bg-palmkit-elements-background-depth-3 border border-palmkit-elements-borderColor dark:border-palmkit-elements-borderColor-dark text-palmkit-elements-textPrimary dark:text-palmkit-elements-textPrimary-dark placeholder-palmkit-elements-textTertiary dark:placeholder-palmkit-elements-textTertiary-dark focus:outline-none focus:ring-2 focus:ring-gray-500"
                         required
                         maxLength={100}
                         pattern="[a-zA-Z0-9\-_\s]+"
@@ -873,7 +873,7 @@ export function GitHubDeploymentDialog({ isOpen, onClose, projectName, files }: 
                     {repoName && sanitizeRepoName(repoName) !== repoName && (
                       <p className="text-xs text-palmkit-elements-textSecondary dark:text-palmkit-elements-textSecondary-dark mt-1">
                         Will be created as:{' '}
-                        <span className="font-mono text-teal-600 dark:text-teal-400">
+                        <span className="font-mono text-gray-700 dark:text-gray-300">
                           {sanitizeRepoName(repoName)}
                         </span>
                       </p>
@@ -922,14 +922,14 @@ export function GitHubDeploymentDialog({ isOpen, onClose, projectName, files }: 
                               key={repo.full_name}
                               type="button"
                               onClick={() => setRepoName(repo.name)}
-                              className="w-full p-3 text-left rounded-lg bg-palmkit-elements-background-depth-2 dark:bg-palmkit-elements-background-depth-3 hover:bg-palmkit-elements-background-depth-3 dark:hover:bg-palmkit-elements-background-depth-4 transition-colors group border border-palmkit-elements-borderColor dark:border-palmkit-elements-borderColor-dark hover:border-teal-500/30"
+                              className="w-full p-3 text-left rounded-lg bg-palmkit-elements-background-depth-2 dark:bg-palmkit-elements-background-depth-3 hover:bg-palmkit-elements-background-depth-3 dark:hover:bg-palmkit-elements-background-depth-4 transition-colors group border border-palmkit-elements-borderColor dark:border-palmkit-elements-borderColor-dark hover:border-gray-500/30"
                               whileHover={{ scale: 1.01 }}
                               whileTap={{ scale: 0.99 }}
                             >
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
-                                  <div className="i-ph:git-branch w-4 h-4 text-teal-500" />
-                                  <span className="text-sm font-medium text-palmkit-elements-textPrimary dark:text-palmkit-elements-textPrimary-dark group-hover:text-teal-500">
+                                  <div className="i-ph:git-branch w-4 h-4 text-gray-600" />
+                                  <span className="text-sm font-medium text-palmkit-elements-textPrimary dark:text-palmkit-elements-textPrimary-dark group-hover:text-gray-600">
                                     {repo.name}
                                   </span>
                                 </div>
@@ -980,7 +980,7 @@ export function GitHubDeploymentDialog({ isOpen, onClose, projectName, files }: 
                         id="private"
                         checked={isPrivate}
                         onChange={(e) => setIsPrivate(e.target.checked)}
-                        className="rounded border-palmkit-elements-borderColor dark:border-palmkit-elements-borderColor-dark text-teal-500 focus:ring-teal-500 dark:bg-palmkit-elements-background-depth-3"
+                        className="rounded border-palmkit-elements-borderColor dark:border-palmkit-elements-borderColor-dark text-gray-600 focus:ring-gray-500 dark:bg-palmkit-elements-background-depth-3"
                       />
                       <label
                         htmlFor="private"
@@ -1008,7 +1008,7 @@ export function GitHubDeploymentDialog({ isOpen, onClose, projectName, files }: 
                       type="submit"
                       disabled={isLoading}
                       className={classNames(
-                        'flex-1 px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 text-sm inline-flex items-center justify-center gap-2',
+                        'flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-600 text-sm inline-flex items-center justify-center gap-2',
                         isLoading ? 'opacity-50 cursor-not-allowed' : '',
                       )}
                       whileHover={!isLoading ? { scale: 1.02 } : {}}

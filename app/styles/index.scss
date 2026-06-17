@@ -22,9 +22,9 @@ body {
 
 :root {
   --gradient-opacity: 0.8;
-  --primary-color: rgba(0, 168, 181, var(--gradient-opacity));
-  --secondary-color: rgba(45, 212, 191, var(--gradient-opacity));
-  --accent-color: rgba(76, 212, 176, var(--gradient-opacity));
+  --primary-color: rgba(20, 20, 20, var(--gradient-opacity));
+  --secondary-color: rgba(80, 80, 80, var(--gradient-opacity));
+  --accent-color: rgba(120, 120, 120, var(--gradient-opacity));
 }
 
 .modern-scrollbar {

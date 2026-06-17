@@ -45,7 +45,7 @@ export function FilterChip({ label, value, onRemove, active = false, icon, class
       className={classNames(
         'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all',
         active
-          ? 'bg-teal-500/15 text-teal-600 dark:text-teal-400 border border-teal-500/30'
+          ? 'bg-gray-500/15 text-gray-700 dark:text-gray-300 border border-gray-500/30'
           : 'bg-palmkit-elements-background-depth-2 dark:bg-palmkit-elements-background-depth-3 text-palmkit-elements-textSecondary dark:text-palmkit-elements-textSecondary-dark border border-palmkit-elements-borderColor dark:border-palmkit-elements-borderColor-dark',
         onRemove && 'pr-1',
         className,
@@ -62,7 +62,7 @@ export function FilterChip({ label, value, onRemove, active = false, icon, class
           <span
             className={
               active
-                ? 'text-teal-700 dark:text-teal-300 font-semibold'
+                ? 'text-gray-700 dark:text-gray-300 font-semibold'
                 : 'text-palmkit-elements-textPrimary dark:text-palmkit-elements-textPrimary-dark'
             }
           >
@@ -79,7 +79,7 @@ export function FilterChip({ label, value, onRemove, active = false, icon, class
           className={classNames(
             'ml-1 p-0.5 rounded-full hover:bg-palmkit-elements-background-depth-3 dark:hover:bg-palmkit-elements-background-depth-4 transition-colors',
             active
-              ? 'text-teal-600 dark:text-teal-400'
+              ? 'text-gray-700 dark:text-gray-300'
               : 'text-palmkit-elements-textTertiary dark:text-palmkit-elements-textTertiary-dark',
           )}
           aria-label={`Remove ${label} filter`}
