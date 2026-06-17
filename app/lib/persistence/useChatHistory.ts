@@ -631,6 +631,18 @@ ${value.content}
             }
           }
         }
+      } else {
+        // Fix existing descriptions that contain model/provider tags (legacy cleanup)
+        const currentDesc = description.get();
+        if (currentDesc && (currentDesc.includes('[Model:') || currentDesc.includes('[Provider:'))) {
+          const firstUserMsg = messages.find((m) => m.role === 'user');
+          if (firstUserMsg && typeof firstUserMsg.content === 'string') {
+            const cleanDesc = generateSmartTitle(firstUserMsg.content);
+            if (cleanDesc && cleanDesc !== 'New Chat') {
+              description.set(cleanDesc);
+            }
+          }
+        }
       }
 
       const finalChatId = chatId.get();
