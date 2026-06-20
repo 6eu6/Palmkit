@@ -109,7 +109,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
         const { Sandbox: sandboxClass } = await import('e2b');
         const sandbox = await sandboxClass.connect(body.id, { apiKey });
         const port = body.port ?? DEFAULT_PORT;
-        const install = body.install ?? 'npm install';
+        const install = body.install ?? 'npm install --no-audit --no-fund';
         const dev = body.dev ?? `npm run dev -- --host 0.0.0.0 --port ${port} --base=/preview/`;
 
         /*
