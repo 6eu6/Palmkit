@@ -15,6 +15,7 @@ import {
   pushFiles,
   startRemoteSandbox,
   checkRemoteStatus,
+  getRemoteLogs,
   isRemoteSandboxAvailable,
   isMemoryConstrainedDevice,
   destroyRemoteSandbox,
@@ -174,8 +175,43 @@ export async function ensureRemotePreview(): Promise<void> {
 
       /*
        * Wait until the cloud dev server actually responds before exposing it.
+       * If it never comes up, pull the real dev-server logs and surface the
+       * failure instead of silently injecting a blank/broken iframe (this was
+       * the "preview just doesn't show" symptom on mobile).
        */
-      await waitForServerReady(sandboxId, DEV_PORT);
+      const ready = await waitForServerReady(sandboxId, DEV_PORT);
+
+      if (!ready) {
+        const logs = await getRemoteLogs(sandboxId);
+        const looksFailed = /error|ELIFECYCLE|not found|cannot find module|enoent|failed|exited/i.test(logs);
+
+        if (looksFailed) {
+          const tail = logs
+            .split('\n')
+            .map((l) => l.trim())
+            .filter(Boolean)
+            .slice(-6)
+            .join(' · ')
+            .slice(0, 300);
+
+          console.error('[RemotePreview] dev server failed to start. Log tail:', tail);
+
+          // Allow a clean retry from the UI.
+          started = false;
+          lastSignature = '';
+          remotePreviewStatus.set({
+            state: 'error',
+            error: tail || 'The cloud preview server did not start. Try again.',
+            retryable: true,
+          });
+
+          return;
+        }
+
+        // Otherwise it's likely still booting — inject optimistically so a
+        // manual refresh picks it up once the dev server finishes.
+        console.warn('[RemotePreview] server not confirmed ready yet — injecting optimistically');
+      }
 
       /*
        * Serve the preview SAME-ORIGIN through /preview/* (see
@@ -248,19 +284,23 @@ async function waitForFilesStable(): Promise<Record<string, string>> {
   return files;
 }
 
-/** Poll the cloud dev server until it responds (or give up after ~160s). */
-async function waitForServerReady(id: string, port: number): Promise<void> {
+/**
+ * Poll the cloud dev server until it responds (or give up after ~160s).
+ * Returns true if the server became reachable, false on timeout.
+ */
+async function waitForServerReady(id: string, port: number): Promise<boolean> {
   const maxAttempts = 40;
 
   for (let i = 0; i < maxAttempts; i++) {
     if (await checkRemoteStatus(id, port)) {
-      return;
+      return true;
     }
 
     await new Promise((resolve) => setTimeout(resolve, 4000));
   }
 
-  // Timed out — inject anyway so the user can refresh the preview manually.
+  // Timed out.
+  return false;
 }
 
 /** Reset on new project / chat switch. */

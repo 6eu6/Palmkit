@@ -231,6 +231,17 @@ export async function checkRemoteStatus(id: string, port?: number): Promise<bool
   }
 }
 
+/** Fetch the tail of the dev-server log (best-effort, never throws). */
+export async function getRemoteLogs(id: string): Promise<string> {
+  try {
+    const { logs } = await callWithRetry<{ logs: string }>({ op: 'logs', id }, 0);
+
+    return logs || '';
+  } catch {
+    return '';
+  }
+}
+
 /** Tear down the sandbox (also auto-reaped after inactivity). */
 export async function destroyRemoteSandbox(id: string): Promise<void> {
   await callWithRetry({ op: 'destroy', id }, 0).catch(() => undefined);
