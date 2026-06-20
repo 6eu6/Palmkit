@@ -4,7 +4,7 @@ import { toast } from 'react-toastify';
 import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
 import { ThemeSwitch } from '~/components/ui/ThemeSwitch';
 import { ControlPanel } from '~/components/@settings/core/ControlPanel';
-import { SettingsButton, HelpButton } from '~/components/ui/SettingsButton';
+import { HelpButton } from '~/components/ui/SettingsButton';
 import { Button } from '~/components/ui/Button';
 import { db, deleteById, getAll, getMessages, chatId, type ChatHistoryItem, useChatHistory } from '~/lib/persistence';
 import { deleteAccountProject } from '~/lib/persistence/accountSync';
@@ -15,6 +15,7 @@ import { useSearchFilter } from '~/lib/hooks/useSearchFilter';
 import { classNames } from '~/utils/classNames';
 import { useStore } from '@nanostores/react';
 import { profileStore } from '~/lib/stores/profile';
+import { authUserStore } from '~/lib/stores/auth';
 
 const menuVariants = {
   closed: {
@@ -72,6 +73,7 @@ export const Menu = () => {
   const [dialogContent, setDialogContent] = useState<DialogContent>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const profile = useStore(profileStore);
+  const authUser = useStore(authUserStore);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
 
@@ -350,25 +352,13 @@ export const Menu = () => {
         )}
       >
         <div className="h-12 flex items-center justify-between px-4 border-b border-gray-100 dark:border-gray-800/50 bg-gray-50/50 dark:bg-gray-900/50 rounded-tr-2xl">
-          <div className="text-gray-900 dark:text-white font-medium"></div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <img src="/palmkit-icon.jpg" alt="Palmkit" className="w-6 h-6 rounded-md object-cover" />
+            <span className="font-semibold text-sm text-gray-900 dark:text-white">Palmkit</span>
+          </div>
+          <div className="flex items-center gap-2">
             <HelpButton onClick={() => window.open('https://palmkit.app/', '_blank')} />
-            <span className="font-medium text-sm text-gray-900 dark:text-white truncate">
-              {profile?.username || 'Guest User'}
-            </span>
-            <div className="flex items-center justify-center w-[32px] h-[32px] overflow-hidden bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-500 rounded-full shrink-0">
-              {profile?.avatar ? (
-                <img
-                  src={profile.avatar}
-                  alt={profile?.username || 'User'}
-                  className="w-full h-full object-cover"
-                  loading="eager"
-                  decoding="sync"
-                />
-              ) : (
-                <div className="i-ph:user-fill text-lg" />
-              )}
-            </div>
+            <ThemeSwitch />
           </div>
         </div>
         <CurrentDateTime />
@@ -537,11 +527,36 @@ export const Menu = () => {
               </Dialog>
             </DialogRoot>
           </div>
-          <div className="flex items-center justify-between border-t border-gray-200 dark:border-gray-800 px-4 py-3">
-            <div className="flex items-center gap-3">
-              <SettingsButton onClick={handleSettingsClick} />
-            </div>
-            <ThemeSwitch />
+          {/* Account card — profile + settings live together at the bottom */}
+          <div className="border-t border-gray-200 dark:border-gray-800 p-3">
+            <button
+              onClick={handleSettingsClick}
+              className="w-full flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/50 hover:bg-gray-100 dark:hover:bg-gray-800/60 p-2.5 transition-colors text-left"
+              aria-label="Open settings and profile"
+            >
+              <div className="flex items-center justify-center w-9 h-9 overflow-hidden bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-full shrink-0 ring-1 ring-gray-200 dark:ring-gray-700">
+                {profile?.avatar ? (
+                  <img
+                    src={profile.avatar}
+                    alt={profile?.username || 'User'}
+                    className="w-full h-full object-cover"
+                    loading="eager"
+                    decoding="sync"
+                  />
+                ) : (
+                  <div className="i-ph:user-fill text-lg" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
+                  {profile?.username || authUser?.name || 'Guest User'}
+                </p>
+                <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                  {authUser?.email || 'Settings & profile'}
+                </p>
+              </div>
+              <div className="i-ph:gear-six text-lg text-gray-400 dark:text-gray-500 shrink-0" />
+            </button>
           </div>
         </div>
       </motion.div>
