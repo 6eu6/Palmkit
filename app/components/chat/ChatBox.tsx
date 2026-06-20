@@ -17,6 +17,7 @@ import { ColorSchemeDialog } from '~/components/ui/ColorSchemeDialog';
 import type { DesignScheme } from '~/types/design-scheme';
 import type { ElementInfo } from '~/components/workbench/Inspector';
 import { McpTools } from './MCPTools';
+import { WebSearch } from './WebSearch.client';
 
 interface ChatBoxProps {
   isModelSettingsCollapsed: boolean;
@@ -358,7 +359,10 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             loading={props.enhancingPrompt}
           />
 
-          {/* Self-contained dialog triggers */}
+          {/* Self-contained dialog / action triggers */}
+          <ClientOnly>
+            {() => <WebSearch onSearchResult={props.onWebSearchResult || (() => {})} disabled={props.isStreaming} />}
+          </ClientOnly>
           <ColorSchemeDialog designScheme={props.designScheme} setDesignScheme={props.setDesignScheme} />
           <McpTools />
           <SupabaseConnection />

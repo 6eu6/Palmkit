@@ -128,7 +128,7 @@
   --palmkit-gradient-mid: #d4d4d4;
   --palmkit-gradient-end: #a3a3a3;
   --palmkit-glow-color: rgba(255, 255, 255, 0.06);
-  --palmkit-glow-color-strong: rgba(255, 255, 255, 0.10);
+  --palmkit-glow-color-strong: rgba(255, 255, 255, 0.1);
 
   --palmkit-elements-textPrimary: #f0f0f5;
   --palmkit-elements-textSecondary: theme('colors.gray.400');
@@ -228,7 +228,7 @@
 
   /* Mobile dark theme overrides */
   --palmkit-mobile-surface-bg: rgba(10, 10, 10, 0.94);
-  --palmkit-mobile-surface-border: rgba(255, 255, 255, 0.10);
+  --palmkit-mobile-surface-border: rgba(255, 255, 255, 0.1);
   --palmkit-mobile-surface-glow: rgba(255, 255, 255, 0.04);
   --palmkit-mobile-accent-text: #e5e5e5;
 }
@@ -352,7 +352,7 @@
   --palmkit-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.25);
   --palmkit-shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.6), 0 8px 16px rgba(0, 0, 0, 0.3);
   --palmkit-shadow-accent: 0 0 16px rgba(255, 255, 255, 0.06);
-  --palmkit-shadow-accent-strong: 0 0 24px rgba(255, 255, 255, 0.10);
+  --palmkit-shadow-accent-strong: 0 0 24px rgba(255, 255, 255, 0.1);
 
   /* --- Motion / Duration Scale --- */
   --palmkit-duration-instant: 75ms;

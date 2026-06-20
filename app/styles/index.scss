@@ -81,7 +81,12 @@ html {
 
 /* Gradient text utility */
 .gradient-text {
-  background: linear-gradient(135deg, var(--palmkit-gradient-start), var(--palmkit-gradient-mid), var(--palmkit-gradient-end));
+  background: linear-gradient(
+    135deg,
+    var(--palmkit-gradient-start),
+    var(--palmkit-gradient-mid),
+    var(--palmkit-gradient-end)
+  );
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
