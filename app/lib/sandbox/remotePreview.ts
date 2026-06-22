@@ -1,7 +1,7 @@
 /**
  * Remote preview orchestrator.
  *
- * Bridges the workbench to the server-side E2B sandbox (/api/sandbox): collects
+ * Bridges the workbench to the server-side E2B sandbox (/api/sb): collects
  * the current project files, runs them in the cloud (install + dev server) and
  * injects the resulting public URL into `workbenchStore.previews` so the normal
  * Preview UI renders it. Used on memory-constrained devices (mobile Safari)
@@ -335,7 +335,7 @@ export function killCurrentRemotePreview(): void {
   resetRemotePreview();
 
   try {
-    fetch('/api/sandbox', {
+    fetch('/api/sb', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ op: 'destroy', id }),

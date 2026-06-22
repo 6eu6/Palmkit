@@ -1,18 +1,18 @@
 /**
  * Remote (server-side) sandbox client.
  *
- * Talks to the same-origin `/api/sandbox` route (see app/routes/api.sandbox.ts),
+ * Talks to the same-origin `/api/sb` route (see app/routes/api.sb.ts),
  * which runs AI-generated projects in a managed E2B cloud sandbox and returns a
  * public preview URL. This is the reliable execution tier for memory-constrained
  * devices (mobile Safari), where the in-browser WebContainer cannot run real
  * dev servers.
  *
  * Activation is server-side: set the `E2B_API_KEY` secret in Cloudflare. The
- * client discovers availability via `GET /api/sandbox`. When E2B is not
+ * client discovers availability via `GET /api/sb`. When E2B is not
  * configured, the app keeps using the in-browser WebContainer unchanged.
  */
 
-const BASE = '/api/sandbox';
+const BASE = '/api/sb';
 
 export interface RemoteSandbox {
   id: string;
