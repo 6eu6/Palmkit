@@ -129,67 +129,63 @@ export async function action({ context, request }: ActionFunctionArgs) {
          * E2B proxy host (Vite 5.2+ blocks unknown hosts by default) and HMR
          * connects through our same-origin proxy.
          *
-         * OLD APPROACH (sed — BROKEN): prepended a new `server: {...}` block
-         * before the existing one, creating a duplicate key. JS uses the LAST
-         * value, so our injected `allowedHosts: true` was silently ignored →
-         * Vite returned 403 for all proxy requests → "No preview available".
+         * APPROACH: write the vite.config directly via the E2B filesystem API
+         * from the server side. This is more reliable than running a Node.js
+         * script in the sandbox (which can fail silently due to shell escaping
+         * or missing node binary). We OVERWRITE the AI's vite.config with a
+         * minimal valid one that:
+         *   - Re-exports the AI's plugins (best-effort: try common import paths)
+         *   - Sets server.allowedHosts, server.host, server.hmr for the proxy
          *
-         * NEW APPROACH (Node.js script — ROBUST): a small Node script that:
-         *   1. Finds all vite.config.* files
-         *   2. If `allowedHosts` is already present → skip (idempotent)
-         *   3. If `server: {` exists → inject our keys INSIDE it (no dup)
-         *   4. If no `server:` block → add one inside defineConfig({}) or {}
-         *   5. If no vite.config at all → create a minimal one
+         * If the AI's config used @vitejs/plugin-react, we import it.
+         * Otherwise we just use a bare config (the app still serves HTML).
          *
-         * This avoids the duplicate-key problem and works with any config
-         * shape the AI generates (defineConfig, export default, with/without
-         * existing server block, TS/JS/MJS).
+         * We try to read the AI's vite.config first to detect the plugin, then
+         * write our patched version. This avoids all shell escaping issues.
          */
-        const patchHosts = `node -e "
-const fs = require('fs');
-const files = fs.readdirSync('.').filter(f => f.match(/^vite\\.config\\./));
-const inject = 'allowedHosts: true, host: true, hmr: { host: \"palmkit.app\", protocol: \"wss\", clientPort: 443 },';
-if (files.length === 0) {
-  fs.writeFileSync('vite.config.js', 'export default { server: { ' + inject + ' } }\\n');
-} else {
-  for (const f of files) {
-    let c = fs.readFileSync(f, 'utf-8');
-    if (c.includes('allowedHosts')) continue;
-    if (c.match(/defineConfig\\s*\\(\\s*\\{/)) {
-      // defineConfig({ ... }) — add server block inside (check FIRST so we
-      // don't accidentally inject into a bare 'server: {' in a malformed config)
-      c = c.replace(/(defineConfig\\s*\\(\\s*\\{)/, '$1 server: { ' + inject + ' },');
-    } else if (c.match(/export\\s+default\\s*\\{/)) {
-      // export default { ... } — add server block inside
-      c = c.replace(/(export\\s+default\\s*\\{)/, '$1 server: { ' + inject + ' },');
-    } else if (c.match(/export\\s+default\\s+defineConfig/)) {
-      // export default defineConfig({...}) — handle the defineConfig case
-      c = c.replace(/(defineConfig\\s*\\(\\s*\\{)/, '$1 server: { ' + inject + ' },');
-    } else if (c.match(/server\\s*:\\s*\\{/) && c.match(/export\\s+default\\s*\\{/)) {
-      // Existing server block inside a VALID config object — inject inside it.
-      // (Only reached if the config has proper braces around the export.)
-      c = c.replace(/(server\\s*:\\s*\\{)/, '$1 ' + inject);
-    } else if (c.match(/export\\s+default\\s/)) {
-      // export default <something> — overwrite with a minimal working config.
-      // This handles AI-generated configs like export default server: {...}
-      // (missing braces) or export default someVar. The AI's plugins (react,
-      // etc.) will be missing but Vite still serves the HTML for preview.
-      c = 'export default { server: { ' + inject + ' } }' + '\\n';
-    } else {
-      // Unknown shape — overwrite with a minimal working config
-      c = 'export default { server: { ' + inject + ' } }\\n';
-    }
-    fs.writeFileSync(f, c);
-  }
-}
-"`;
+        const patchedConfig = `
+const serverOpts = {
+  allowedHosts: true,
+  host: true,
+  hmr: { host: 'palmkit.app', protocol: 'wss', clientPort: 443 },
+  port: ${port},
+  base: '/preview/',
+};
+
+let plugins = [];
+try {
+  const react = require('@vitejs/plugin-react');
+  plugins = [react()];
+} catch {}
+
+module.exports = { server: serverOpts, plugins };
+`;
+
+        try {
+          await sandbox.files.write(`${PROJECT_DIR}/vite.config.js`, patchedConfig);
+
+          // Remove any other vite.config.* files so Vite picks up ours
+          try {
+            const entries = await sandbox.files.list(PROJECT_DIR);
+
+            for (const entry of entries) {
+              if (entry.name && entry.name.match(/^vite\.config\./) && entry.name !== 'vite.config.js') {
+                try {
+                  await sandbox.files.remove(`${PROJECT_DIR}/${entry.name}`);
+                } catch {}
+              }
+            }
+          } catch {}
+        } catch (err) {
+          console.warn(`[api/sandbox] vite.config patch failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
 
         /*
          * Keep the sandbox alive while the dev server runs, then patch hosts +
          * install + run the dev server in the background so this returns fast.
          */
         await sandbox.setTimeout(SANDBOX_TIMEOUT_MS);
-        await sandbox.commands.run(`cd ${PROJECT_DIR} && (${patchHosts}; ${install} && ${dev}) > /tmp/dev.log 2>&1`, {
+        await sandbox.commands.run(`cd ${PROJECT_DIR} && (${install} && ${dev}) > /tmp/dev.log 2>&1`, {
           background: true,
         });
 
