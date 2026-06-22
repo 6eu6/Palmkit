@@ -156,11 +156,26 @@ if (files.length === 0) {
     let c = fs.readFileSync(f, 'utf-8');
     if (c.includes('allowedHosts')) continue;
     if (c.match(/server\\s*:\\s*\\{/)) {
+      // Existing server block — inject inside it
       c = c.replace(/(server\\s*:\\s*\\{)/, '$1 ' + inject);
-    } else if (c.includes('defineConfig(')) {
+    } else if (c.match(/defineConfig\\s*\\(\\s*\\{/)) {
+      // defineConfig({ ... }) — add server block inside
       c = c.replace(/(defineConfig\\s*\\(\\s*\\{)/, '$1 server: { ' + inject + ' },');
-    } else {
+    } else if (c.match(/export\\s+default\\s*\\{/)) {
+      // export default { ... } — add server block inside
       c = c.replace(/(export\\s+default\\s*\\{)/, '$1 server: { ' + inject + ' },');
+    } else if (c.match(/export\\s+default\\s+defineConfig/)) {
+      // export default defineConfig({...}) — handle the defineConfig case
+      c = c.replace(/(defineConfig\\s*\\(\\s*\\{)/, '$1 server: { ' + inject + ' },');
+    } else if (c.match(/export\\s+default\\s/)) {
+      // export default <something> — overwrite with a minimal working config.
+      // This handles AI-generated configs like export default server: {...}
+      // (missing braces) or export default someVar. The AI's plugins (react,
+      // etc.) will be missing but Vite still serves the HTML for preview.
+      c = 'export default { server: { ' + inject + ' } }' + '\\n';
+    } else {
+      // Unknown shape — overwrite with a minimal working config
+      c = 'export default { server: { ' + inject + ' } }\\n';
     }
     fs.writeFileSync(f, c);
   }
