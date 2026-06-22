@@ -1,5 +1,25 @@
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from '@remix-run/cloudflare';
 
+/*
+ * STATIC import of the E2B SDK.
+ *
+ * The old code used dynamic `import('e2b')` inside action handlers, claiming
+ * it was to avoid crashing the GET loader if the SDK failed to load. In
+ * practice, Cloudflare's esbuild bundler mis-resolves the dynamic import of
+ * this CJS/ESM hybrid package on cold Worker starts — `mod.Sandbox` comes
+ * back undefined even though the package clearly exports it. curl requests
+ * (which hit a warm Worker) worked; browser requests after a cold start
+ * failed with "E2B SDK import failed: Sandbox class not found".
+ *
+ * A static top-level import lets esbuild analyze the dependency graph at
+ * build time and bundle the SDK correctly. The SDK's Node.js deps (ws,
+ * crypto, buffer) are polyfilled by the `nodejs_compat` flag (already set
+ * in wrangler.toml) + vite-plugin-node-polyfills, so a static import is
+ * safe. The GET loader stays healthy because if the SDK truly can't load,
+ * the whole module fails to build (caught at deploy time, not runtime).
+ */
+import { Sandbox as E2BSandbox } from 'e2b';
+
 /**
  * Server-side sandbox proxy (E2B).
  *
@@ -9,57 +29,12 @@ import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from '@remix-r
  * run real dev servers.
  *
  * The E2B API key lives only here (Cloudflare env `E2B_API_KEY`) and is never
- * exposed to the browser. The client talks to this route via /api/sandbox.
- *
- * IMPORTANT: The `e2b` SDK is imported DYNAMICALLY (inside action handlers),
- * not at the module level. The SDK depends on Node.js internals (WebSocket,
- * crypto, buffer) that may not all be polyfilled in Cloudflare Workers. A
- * static top-level import would crash the entire route module on load, making
- * even the GET health check fail. By deferring the import, the loader stays
- * healthy and can report `configured: true` while only the sandbox operations
- * fail gracefully if the SDK truly can't load.
+ * exposed to the browser. The client talks to this route via /api/sb.
  */
 
 const PROJECT_DIR = '/home/user/project';
 const DEFAULT_PORT = 3000;
 const SANDBOX_TIMEOUT_MS = 1000 * 60 * 7; // auto-close after 7 min idle (cost control)
-
-/*
- * Cached E2B Sandbox class.
- *
- * The E2B SDK is imported dynamically (not at module top level) so a failure
- * here doesn't crash the GET health-check loader. In Cloudflare Workers, the
- * dynamic `import('e2b')` sometimes resolves but the named `Sandbox` export
- * is undefined — the Workers bundler doesn't always preserve named exports
- * from large CJS/ESM hybrid packages. So we try BOTH the named export and
- * the default export, and cache the result.
- */
-let cachedSandboxClass: any = null;
-
-async function getSandboxClass(): Promise<any> {
-  if (cachedSandboxClass) {
-    return cachedSandboxClass;
-  }
-
-  /*
-   * Use `any` for the module to avoid TS errors when accessing .default
-   * (the SDK exports Sandbox as both named and default).
-   */
-  const mod: any = await import('e2b');
-  const cls = mod.Sandbox || mod.default?.Sandbox || mod.default;
-
-  if (!cls || typeof cls.create !== 'function') {
-    throw new Error(
-      `E2B SDK import failed: Sandbox class not found. ` +
-        `Named export: ${typeof mod.Sandbox}, Default: ${typeof mod.default}. ` +
-        `Available keys: ${Object.keys(mod).slice(0, 10).join(', ')}`,
-    );
-  }
-
-  cachedSandboxClass = cls;
-
-  return cls;
-}
 
 function getApiKey(context: ActionFunctionArgs['context']): string | undefined {
   const env = (context as unknown as { cloudflare?: { env?: Record<string, string> } }).cloudflare?.env;
@@ -114,7 +89,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
          * Dynamic import — isolated to this code path so a failure here
          * doesn't crash the GET loader.
          */
-        const sandboxClass = await getSandboxClass();
+        const sandboxClass = E2BSandbox;
         const sandbox = await sandboxClass.create({ apiKey, timeoutMs: SANDBOX_TIMEOUT_MS });
 
         console.log(`[api/sandbox] created sandbox: ${sandbox.sandboxId}`);
@@ -127,7 +102,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
           return json({ error: 'id and files are required' }, { status: 400 });
         }
 
-        const sandboxClass = await getSandboxClass();
+        const sandboxClass = E2BSandbox;
         const sandbox = await sandboxClass.connect(body.id, { apiKey });
 
         for (const [path, content] of Object.entries(body.files)) {
@@ -143,7 +118,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
           return json({ error: 'id is required' }, { status: 400 });
         }
 
-        const sandboxClass = await getSandboxClass();
+        const sandboxClass = E2BSandbox;
         const sandbox = await sandboxClass.connect(body.id, { apiKey });
         const port = body.port ?? DEFAULT_PORT;
         const install = body.install ?? 'npm install --no-audit --no-fund';
@@ -212,7 +187,7 @@ if (files.length === 0) {
           return json({ error: 'id is required' }, { status: 400 });
         }
 
-        const sandboxClass = await getSandboxClass();
+        const sandboxClass = E2BSandbox;
         const sandbox = await sandboxClass.connect(body.id, { apiKey });
         const out = await sandbox.commands
           .run('tail -n 60 /tmp/dev.log 2>/dev/null || echo "(no logs yet)"', { timeoutMs: 8000 })
@@ -267,7 +242,7 @@ if (files.length === 0) {
           return json({ error: 'id is required' }, { status: 400 });
         }
 
-        const sandboxClass = await getSandboxClass();
+        const sandboxClass = E2BSandbox;
         const sandbox = await sandboxClass.connect(body.id, { apiKey });
         await sandbox.kill();
 
