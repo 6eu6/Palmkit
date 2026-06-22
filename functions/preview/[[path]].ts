@@ -47,20 +47,22 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const [sandboxId, port = '3000'] = session.split(':');
 
   /*
-   * Forward the /preview/* path to the sandbox AS-IS (keep the /preview prefix).
+   * Strip the /preview prefix before forwarding to the sandbox.
    *
-   * Vite runs with --base=/preview/ so it serves HTML at /preview/ and assets
-   * at /preview/src/... etc. The iframe loads /preview/ on our origin; we
-   * forward /preview/* → /preview/* on the sandbox.
+   * Vite runs WITHOUT --base=/preview/ (serving at /), so:
+   *   /preview/             → /          (HTML)
+   *   /preview/src/main.jsx → /src/main.jsx (asset)
+   *   /preview/@vite/client → /@vite/client (Vite HMR client)
    *
-   * Vite's --base=/preview/ makes / redirect to /preview/ (which is fine —
-   * we never request / on the sandbox, only /preview/*).
+   * The iframe loads /preview/ on our origin. We strip /preview and forward
+   * the remaining path to the sandbox. Vite serves at / (no redirect).
    *
-   * The redirect loop we hit before was caused by the proxy STRIPPING /preview
-   * (→ /), which Vite then redirected back to /preview/. Keeping the prefix
-   * avoids that.
+   * Asset URLs in the HTML (e.g. <script src="/src/main.jsx">) are rewritten
+   * below to include the /preview prefix so the browser requests them from
+   * /preview/src/main.jsx (which our proxy forwards to /src/main.jsx).
    */
-  const target = `https://${port}-${sandboxId}.e2b.app${url.pathname}${url.search}`;
+  const sandboxPath = url.pathname.replace(/^\/preview/, '') || '/';
+  const target = `https://${port}-${sandboxId}.e2b.app${sandboxPath}${url.search}`;
 
   /*
    * WebSocket upgrade — Vite HMR + user app sockets.
@@ -155,9 +157,34 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   const contentType = upstream.headers.get('content-type') || '';
 
-  // Inject the inspector bridge into HTML so element selection works in-iframe.
+  /*
+   * Inject the inspector bridge into HTML so element selection works in-iframe,
+   * AND rewrite asset URLs to include the /preview prefix.
+   */
   if (contentType.includes('text/html')) {
     let html = await upstream.text();
+
+    /*
+     * Rewrite asset URLs so the browser requests them through /preview/*.
+     * Vite serves at / (no --base), so the HTML contains URLs like:
+     *   <script src="/src/main.jsx">
+     *   <link href="/src/index.css">
+     *   <script src="/@vite/client">
+     *   /@react-refresh
+     *
+     * The browser is on palmkit.app/preview/, so a bare /src/main.jsx would
+     * request palmkit.app/src/main.jsx (404 — our proxy only serves /preview/*).
+     * We rewrite /xxx → /preview/xxx for these root-absolute URLs.
+     *
+     * Regex matches src="/...", href="/...", and bare "/@vite/..." paths in
+     * <script> tags. Does NOT touch relative URLs (./foo, foo.js) or
+     * https://... URLs.
+     */
+    html = html.replace(/((?:src|href)\s*=\s*["'])\/(?!\/)/g, '$1/preview/');
+
+    // Rewrite bare import paths in inline scripts (Vite client uses these)
+    html = html.replace(/["']\/(@vite|@react-refresh|src|node_modules)\//g, '"/preview/$1/');
+
     const tag = '<script src="/inspector-script.js"></script>';
 
     if (html.includes('</head>')) {

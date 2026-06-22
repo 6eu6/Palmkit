@@ -122,7 +122,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
         const sandbox = await sandboxClass.connect(body.id, { apiKey });
         const port = body.port ?? DEFAULT_PORT;
         const install = body.install ?? 'npm install --no-audit --no-fund';
-        const dev = body.dev ?? `npm run dev -- --host 0.0.0.0 --port ${port} --base=/preview/`;
+        const dev = body.dev ?? `npm run dev -- --host 0.0.0.0 --port ${port}`;
 
         /*
          * Patch the Vite config so the dev server accepts requests from the
@@ -158,7 +158,7 @@ try {
   plugins = [react()];
 } catch {}
 
-export default { base: '/preview/', server: serverOpts, plugins };
+export default { server: serverOpts, plugins };
 `;
 
         try {
