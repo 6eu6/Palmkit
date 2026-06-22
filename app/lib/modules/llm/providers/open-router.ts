@@ -12,6 +12,22 @@ interface OpenRouterModel {
     prompt: number;
     completion: number;
   };
+
+  /*
+   * OpenRouter's /models API also returns top_provider.max_completion_tokens
+   * for models that publish it. We use it to set maxCompletionTokens on the
+   * ModelInfo so stream-text.ts doesn't fall back to the conservative
+   * PROVIDER_COMPLETION_LIMITS (16K for OpenRouter) — which truncates
+   * large code-generation responses mid-file.
+   */
+  top_provider?: {
+    max_completion_tokens?: number;
+  };
+
+  /*
+   * Some models also expose a top-level max_completion_tokens field.
+   */
+  max_completion_tokens?: number;
 }
 
 interface OpenRouterModelsResponse {
@@ -65,17 +81,33 @@ export default class OpenRouterProvider extends BaseProvider {
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((m) => {
           // Get accurate context window from OpenRouter API
-          const contextWindow = m.context_length || 32000; // Use API value or fallback
+          const contextWindow = m.context_length || 32000;
 
           // Cap at reasonable limits to prevent issues (OpenRouter has some very large models)
           const maxAllowed = 1000000; // 1M tokens max for safety
           const finalContext = Math.min(contextWindow, maxAllowed);
+
+          /*
+           * Extract max_completion_tokens from the OpenRouter API response.
+           * OpenRouter returns it in either:
+           *   - m.top_provider.max_completion_tokens (preferred, per-provider)
+           *   - m.max_completion_tokens (top-level fallback)
+           *
+           * This is CRITICAL: without it, stream-text.ts falls back to
+           * PROVIDER_COMPLETION_LIMITS['OpenRouter'] = 16384, which truncates
+           * large code-generation responses mid-file. With it, models like
+           * GLM-5.2 (65536), Claude Sonnet (8192+), GPT-4o (16384+) all
+           * get their full output capacity.
+           */
+          const rawMaxCompletion = m.top_provider?.max_completion_tokens ?? m.max_completion_tokens ?? 0;
+          const maxCompletionTokens = rawMaxCompletion > 0 ? rawMaxCompletion : undefined;
 
           return {
             name: m.id,
             label: `${m.name} - in:$${(m.pricing.prompt * 1_000_000).toFixed(2)} out:$${(m.pricing.completion * 1_000_000).toFixed(2)} - context ${finalContext >= 1000000 ? Math.floor(finalContext / 1000000) + 'M' : Math.floor(finalContext / 1000) + 'k'}`,
             provider: this.name,
             maxTokenAllowed: finalContext,
+            maxCompletionTokens,
           };
         });
     } catch (error) {

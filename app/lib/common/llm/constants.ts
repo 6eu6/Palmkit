@@ -20,7 +20,7 @@ export const PROVIDER_COMPLETION_LIMITS: Record<string, number> = {
   HuggingFace: 8192,
   Mistral: 8192,
   Ollama: 8192,
-  OpenRouter: 16384, // OpenRouter proxies modern models (DeepSeek, Claude, GPT) that support 16k+
+  OpenRouter: 32768, // OpenRouter proxies modern models (GLM-5.2, DeepSeek, Claude, GPT) that support 32k+
   Perplexity: 8192,
   Together: 8192,
   xAI: 8192,
