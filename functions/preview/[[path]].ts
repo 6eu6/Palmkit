@@ -47,27 +47,19 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const [sandboxId, port = '3000'] = session.split(':');
 
   /*
-   * Strip the /preview prefix from the path before forwarding to the sandbox.
+   * Forward the /preview/* path to the sandbox. We DO NOT strip the /preview
+   * prefix because Vite now runs WITHOUT --base=/preview/ (serving at /), so
+   * we need to translate /preview/* → /* on the sandbox.
    *
-   * The iframe loads /preview/ on our origin. The sandbox's Vite dev server
-   * runs with --base=/preview/ so ASSET URLs in the HTML are prefixed with
-   * /preview/ (e.g. <script src="/preview/src/main.jsx">). The browser then
-   * requests /preview/src/main.jsx, which arrives here.
+   * The iframe loads /preview/ on our origin. Vite serves at / on the sandbox.
+   * So /preview/ → /, /preview/src/main.jsx → /src/main.jsx, etc.
    *
-   * We strip /preview and forward the REMAINING path to the sandbox:
-   *   /preview/           → /          (HTML)
-   *   /preview/src/main   → /src/main  (asset)
-   *   /preview/@vite/client → /@vite/client (Vite client)
-   *
-   * This works across ALL Vite versions:
-   *  - Vite 5+: --base=/preview/ serves HTML at /preview/ internally, but
-   *    stripping the prefix and hitting / also works (Vite serves at both).
-   *  - Vite 4:  --base=/preview/ only affects asset URLs; HTML is at /.
-   *    Without stripping, /preview/ would 404.
-   *  - Vite 3:  same as Vite 4.
+   * This avoids the redirect loop that happened when Vite ran with
+   * --base=/preview/ (Vite redirected / → /preview/, our proxy stripped
+   * /preview → /, Vite redirected again → infinite loop).
    */
-  const strippedPath = url.pathname.replace(/^\/preview/, '') || '/';
-  const target = `https://${port}-${sandboxId}.e2b.app${strippedPath}${url.search}`;
+  const sandboxPath = url.pathname.replace(/^\/preview/, '') || '/';
+  const target = `https://${port}-${sandboxId}.e2b.app${sandboxPath}${url.search}`;
 
   /*
    * WebSocket upgrade — Vite HMR + user app sockets.
