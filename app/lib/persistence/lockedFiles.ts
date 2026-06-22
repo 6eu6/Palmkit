@@ -498,6 +498,34 @@ export function batchUnlockItems(chatId: string, paths: string[]): void {
 }
 
 /**
+ * Delete ALL locked items for a specific chat. Called when a chat is deleted
+ * to ensure no orphaned locks remain in localStorage or the in-memory map.
+ *
+ * @param chatId The chat ID whose locks should be purged.
+ * @returns The number of locked items removed.
+ */
+export function deleteAllLockedForChat(chatId: string): number {
+  const items = getLockedItems();
+  const before = items.length;
+  const filtered = items.filter((item) => item.chatId !== chatId);
+  const removed = before - filtered.length;
+
+  if (removed > 0) {
+    saveLockedItems(filtered);
+
+    /*
+     * Also remove from the in-memory map immediately (saveLockedItems rebuilds
+     * it, but this is explicit and safe if the debounce hasn't fired yet).
+     */
+    lockedItemsMap.delete(chatId);
+
+    logger.info(`Deleted ${removed} locked items for deleted chat: ${chatId}`);
+  }
+
+  return removed;
+}
+
+/**
  * Add event listener for storage events to sync cache across tabs
  * This ensures that if locks are modified in another tab, the changes are reflected here
  */

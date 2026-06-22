@@ -16,6 +16,9 @@ import { classNames } from '~/utils/classNames';
 import { useStore } from '@nanostores/react';
 import { profileStore } from '~/lib/stores/profile';
 import { authUserStore } from '~/lib/stores/auth';
+import { killCurrentRemotePreview } from '~/lib/sandbox/remotePreview';
+import { workbenchStore } from '~/lib/stores/workbench';
+import { deleteAllLockedForChat } from '~/lib/persistence/lockedFiles';
 
 const menuVariants = {
   closed: {
@@ -97,7 +100,30 @@ export const Menu = () => {
         throw new Error('Database not available');
       }
 
-      // Delete chat snapshot from localStorage
+      /*
+       * FULL CLEANUP on chat deletion — 6 layers, each best-effort so one
+       * failure doesn't block the others:
+       *
+       * 1. Cloud sandbox (E2B) — kill the running dev server so it doesn't
+       *    consume quota / count against the rate limit for 7 minutes.
+       * 2. localStorage snapshot — the chat's file-state snapshot.
+       * 3. Supabase account-synced copy — so it isn't re-pulled on next sync.
+       * 4. IndexedDB (chats + snapshots stores) — the conversation itself.
+       * 5. Workbench store — clear file tree + previews so stale files don't
+       *    bleed into the next conversation the user opens.
+       * 6. Locked files — purge all lock entries for this chat from
+       *    localStorage + in-memory map so they don't linger.
+       */
+
+      // 1. Kill the cloud sandbox if this chat owns the active one
+      try {
+        killCurrentRemotePreview();
+        console.log('Killed cloud sandbox for deleted chat:', id);
+      } catch (sandboxError) {
+        console.error('Failed to kill sandbox for chat', id, ':', sandboxError);
+      }
+
+      // 2. Delete chat snapshot from localStorage
       try {
         const snapshotKey = `snapshot:${id}`;
         localStorage.removeItem(snapshotKey);
@@ -106,7 +132,7 @@ export const Menu = () => {
         console.error(`Error deleting snapshot for chat ${id}:`, snapshotError);
       }
 
-      // Remove the account-synced copy too (best-effort) so it isn't re-pulled.
+      // 3. Remove the account-synced copy (best-effort) so it isn't re-pulled
       try {
         const item = await getMessages(db, id);
 
@@ -117,9 +143,37 @@ export const Menu = () => {
         console.error('Failed to delete account project copy:', accountError);
       }
 
-      // Delete the chat from the database
+      // 4. Delete the chat + its snapshot from IndexedDB
       await deleteById(db, id);
-      console.log('Successfully deleted chat:', id);
+      console.log('Successfully deleted chat from IndexedDB:', id);
+
+      /*
+       * 5. Clear the workbench store (files + previews) so stale files from
+       *    the deleted chat don't appear when the user starts a new one.
+       *    Only clear if the deleted chat was the active one.
+       */
+      if (chatId.get() === id) {
+        try {
+          workbenchStore.files.set({});
+          workbenchStore.previews.set([]);
+          console.log('Cleared workbench store for deleted active chat:', id);
+        } catch (workbenchError) {
+          console.error('Failed to clear workbench store:', workbenchError);
+        }
+      }
+
+      // 6. Purge all locked files for this chat from localStorage + memory
+      try {
+        const removed = deleteAllLockedForChat(id);
+
+        if (removed > 0) {
+          console.log(`Purged ${removed} locked file(s) for deleted chat:`, id);
+        }
+      } catch (lockedFilesError) {
+        console.error('Failed to purge locked files for chat', id, ':', lockedFilesError);
+      }
+
+      console.log('Chat deletion complete (all 6 layers):', id);
     },
     [db],
   );
