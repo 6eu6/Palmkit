@@ -1,6 +1,6 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { createDataStream, generateId } from 'ai';
-import { MAX_RESPONSE_SEGMENTS, type FileMap } from '~/lib/common/llm/constants';
+import { isReasoningModel, MAX_RESPONSE_SEGMENTS, type FileMap } from '~/lib/common/llm/constants';
 import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
 import type { IProviderSetting } from '~/types/model';
@@ -99,30 +99,17 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     const dataStream = createDataStream({
       async execute(dataStream) {
         /*
-         * Stream recovery: if no data arrives for 45 s the AI service is
-         * likely unresponsive.  We cannot re-create the stream mid-flight, but
-         * we CAN notify the client so it can show a clear error instead of
-         * hanging forever.
+         * Stream recovery: if no data arrives for the configured timeout the
+         * AI service is likely unresponsive.  We cannot re-create the stream
+         * mid-flight, but we CAN notify the client so it can show a clear
+         * error instead of hanging forever.
+         *
+         * NOTE: the actual StreamRecoveryManager is constructed further down,
+         * AFTER processedMessages is available — we need the message list to
+         * detect the selected model and pick a dynamic timeout (reasoning
+         * models get 5 min, standard models get 2 min). This early block just
+         * sets up the file-path / summary state used by context optimization.
          */
-        streamRecovery = new StreamRecoveryManager({
-          timeout: 120000, // 120s - reasoning models (DeepSeek R1, o1) can take 60-90s before first token
-          maxRetries: 2,
-          onTimeout: () => {
-            logger.warn('Stream timeout — no data received for 120 s, notifying client');
-            dataStream.writeData({
-              type: 'progress',
-              label: 'response',
-              status: 'error',
-              order: progressCounter++,
-              message:
-                'The AI service timed out after 2 minutes. The model may be processing a complex request. Try again or select a faster model.',
-            } satisfies ProgressAnnotation);
-            streamRecovery?.stop();
-          },
-        });
-
-        streamRecovery.startMonitoring();
-
         const filePaths = getFilePaths(files || {});
         let filteredFiles: FileMap | undefined = undefined;
         let summary: string | undefined = undefined;
@@ -289,6 +276,46 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           message: 'Generating Response',
         } satisfies ProgressAnnotation);
 
+        /*
+         * Stream recovery — constructed here (after processedMessages is
+         * available) so we can detect the selected model and pick a dynamic
+         * timeout:
+         *  - Reasoning models (DeepSeek R1, o1/o3, Claude thinking, Gemini
+         *    thinking, Qwen QwQ): 300s — these can spend 2-4 minutes
+         *    "thinking" before the first output token.
+         *  - Standard models: 120s — plenty for first-token latency.
+         *
+         * The old fixed 120s was killing reasoning models mid-thought, which
+         * users experienced as "cuts off mid-creation" / "Server Error".
+         */
+        const lastUserMsgForModel = processedMessages.filter((x) => x.role === 'user').slice(-1)[0];
+        const { model: selectedModel } = extractPropertiesFromMessage(lastUserMsgForModel);
+        const isReasoning = isReasoningModel(selectedModel);
+        const streamTimeoutMs = isReasoning ? 300_000 : 120_000;
+        const streamTimeoutLabel = isReasoning ? '5 minutes' : '2 minutes';
+
+        streamRecovery = new StreamRecoveryManager({
+          timeout: streamTimeoutMs,
+          maxRetries: 2,
+          onTimeout: () => {
+            logger.warn(
+              `Stream timeout — no data received for ${streamTimeoutLabel} (model=${selectedModel}, reasoning=${isReasoning}), notifying client`,
+            );
+            dataStream.writeData({
+              type: 'progress',
+              label: 'response',
+              status: 'error',
+              order: progressCounter++,
+              message: isReasoning
+                ? `The AI service timed out after ${streamTimeoutLabel}. ${selectedModel} is a reasoning model and can spend several minutes thinking. Try again, or select a non-reasoning model for faster responses.`
+                : `The AI service timed out after ${streamTimeoutLabel}. The model may be processing a complex request. Try again or select a faster model.`,
+            } satisfies ProgressAnnotation);
+            streamRecovery?.stop();
+          },
+        });
+
+        streamRecovery.startMonitoring();
+
         const currentMessages = [...processedMessages];
         let continueSegmentCount = 0;
 
@@ -428,6 +455,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
         // Provide more specific error messages for common issues
         const errorMessage = error.message || 'Unknown error';
+        const lowerMessage = errorMessage.toLowerCase();
 
         if (errorMessage.includes('model') && errorMessage.includes('not found')) {
           return 'Custom error: Invalid model selected. Please check that the model name is correct and available.';
@@ -437,10 +465,30 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           return 'Custom error: The AI service returned an invalid response. This may be due to an invalid model name, API rate limiting, or server issues. Try selecting a different model or check your API key.';
         }
 
+        /*
+         * Forbidden / 403 — the provider rejected the request. Most common
+         * causes on OpenRouter:
+         *  - The selected model is not enabled in the account (some models
+         *    require manual activation at openrouter.ai)
+         *  - The API key lacks permission for that provider
+         *  - The account has no credits and the model is not free
+         *  - The model was deprecated/renamed
+         * Give the user a clear, actionable message instead of a bare
+         * "Custom error: Forbidden".
+         */
+        if (
+          lowerMessage.includes('forbidden') ||
+          lowerMessage.includes('403') ||
+          lowerMessage.includes('access denied')
+        ) {
+          return 'Custom error: The AI provider rejected the request (Forbidden). This usually means the selected model is not enabled for your API key, your account has insufficient credits, or the model has been deprecated. Try selecting a different model (e.g. a free one) or check your provider account.';
+        }
+
         if (
           errorMessage.includes('API key') ||
           errorMessage.includes('unauthorized') ||
-          errorMessage.includes('authentication')
+          errorMessage.includes('authentication') ||
+          lowerMessage.includes('401')
         ) {
           return 'Custom error: Invalid or missing API key. Please check your API key configuration.';
         }

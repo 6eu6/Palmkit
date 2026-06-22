@@ -112,7 +112,7 @@ export class FilesStore {
         const currentChatId = getCurrentChatId();
 
         if (currentChatId !== lastChatId) {
-          logger.info(`Chat ID changed from ${lastChatId} to ${currentChatId}, reloading locks`);
+          logger.debug(`Chat ID changed from ${lastChatId} to ${currentChatId}, reloading locks`);
           lastChatId = currentChatId;
           this.#loadLockedFiles(currentChatId);
         }
@@ -144,11 +144,11 @@ export class FilesStore {
       const lockedFolders = lockedItems.filter((item) => item.isFolder);
 
       if (lockedItems.length === 0) {
-        logger.info(`No locked items found for chat ID: ${currentChatId}`);
+        logger.debug(`No locked items found for chat ID: ${currentChatId}`);
         return;
       }
 
-      logger.info(
+      logger.debug(
         `Found ${lockedFiles.length} locked files and ${lockedFolders.length} locked folders for chat ID: ${currentChatId}`,
       );
 
@@ -187,7 +187,7 @@ export class FilesStore {
       }
 
       const endTime = performance.now();
-      logger.info(`Loaded locked items in ${Math.round(endTime - startTime)}ms`);
+      logger.debug(`Loaded locked items in ${Math.round(endTime - startTime)}ms`);
     } catch (error) {
       logger.error('Failed to load locked files from localStorage', error);
     }
@@ -581,7 +581,7 @@ export class FilesStore {
         isLocked,
       });
 
-      logger.info('File updated');
+      logger.debug('File updated');
     } catch (error) {
       logger.error('Failed to update file content\n\n', error);
 

@@ -112,7 +112,7 @@ export function saveLockedItems(items: LockedItem[]): void {
     try {
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem(LOCKED_FILES_KEY, JSON.stringify(items));
-        logger.info(`Saved ${items.length} locked items to localStorage`);
+        logger.debug(`Saved ${items.length} locked items to localStorage`);
       }
     } catch (error) {
       logger.error('Failed to save locked items to localStorage', error);
@@ -411,7 +411,7 @@ export function migrateLegacyLocks(currentChatId: string): void {
           // Only save if we found and updated legacy items
           if (hasLegacyItems) {
             saveLockedItems(updatedItems);
-            logger.info(`Migrated ${updatedItems.length} legacy locks to chat ID: ${currentChatId}`);
+            logger.debug(`Migrated ${updatedItems.length} legacy locks to chat ID: ${currentChatId}`);
           }
         }
       }
@@ -429,7 +429,7 @@ export function migrateLegacyLocks(currentChatId: string): void {
 export function clearCache(): void {
   lockedItemsCache = null;
   lockedItemsMap.clear();
-  logger.info('Cleared locked items cache');
+  logger.debug('Cleared locked items cache');
 }
 
 /**
@@ -504,7 +504,7 @@ export function batchUnlockItems(chatId: string, paths: string[]): void {
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
     if (event.key === LOCKED_FILES_KEY) {
-      logger.info('Detected localStorage change for locked items, refreshing cache');
+      logger.debug('Detected localStorage change for locked items, refreshing cache');
       clearCache();
     }
   });

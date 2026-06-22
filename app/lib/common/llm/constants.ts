@@ -32,19 +32,69 @@ export const PROVIDER_COMPLETION_LIMITS: Record<string, number> = {
 
 /*
  * Reasoning models that require maxCompletionTokens instead of maxTokens
- * These models use internal reasoning tokens and have different API parameter requirements
+ * These models use internal reasoning tokens and have different API parameter requirements.
+ *
+ * Detection covers:
+ *  - OpenAI o1 / o3 / o4 / gpt-5 series
+ *  - DeepSeek R1 + DeepSeek Reasoner
+ *  - Claude models with extended thinking (claude-*thinking*, opus 4.x reasoning)
+ *  - Gemini thinking / pro with reasoning
+ *  - Qwen QwQ + Qwen reasoning
+ *  - xAI Grok 4 reasoning
+ *
+ * Why this matters: reasoning models can spend 60-120s "thinking" before the
+ * first output token. The stream-recovery timeout (120s) was killing these
+ * models mid-thought — see api.chat.ts. isReasoningModel() lets the caller
+ * bump the timeout dynamically.
  */
 export function isReasoningModel(modelName: string): boolean {
-  return /^(o1|o3|gpt-5)/i.test(modelName);
+  if (!modelName) {
+    return false;
+  }
+
+  const name = modelName.toLowerCase();
+
+  // OpenAI reasoning family
+  if (/^(o1|o3|o4|gpt-5)/i.test(name)) {
+    return true;
+  }
+
+  // DeepSeek reasoning family (R1, Reasoner, V3.1 Terminus reasoning, etc.)
+  if (/(deepseek.*(r1|reasoner|reasoning))|deepseek-r1/i.test(name)) {
+    return true;
+  }
+
+  // Claude with extended thinking / reasoning variants
+  if (/(claude.*thinking|claude.*reasoning|opus-4\.[5-9]|claude.*extended)/i.test(name)) {
+    return true;
+  }
+
+  // Gemini thinking / reasoning variants
+  if (/(gemini.*thinking|gemini.*reasoning|gemini.*pro.*[2-9])/i.test(name)) {
+    return true;
+  }
+
+  // Qwen reasoning models
+  if (/(qwen.*qwq|qwen.*reasoning|qwq)/i.test(name)) {
+    return true;
+  }
+
+  // xAI Grok 4 reasoning
+  if (/(grok-4.*reasoning|grok.*reason)/i.test(name)) {
+    return true;
+  }
+
+  return false;
 }
 
 /*
  * Limits the number of model responses (auto-continue segments) in a single
- * request. Raised from 2 → 8: models cap their output (finishReason 'length')
- * mid-file on large apps; with only 2 segments generation stopped and the user
- * had to type "continue". 8 segments lets it auto-continue to completion.
+ * request. Raised from 2 → 8 → 16 → 32: large multi-file projects (full
+ * portfolios, dashboards) regularly exceed 16 segments at 16k tokens each,
+ * causing the "cuts off mid-creation" bug. 32 segments × 16k = up to 512k
+ * output tokens, enough for any realistic single-turn generation.
  */
-export const MAX_RESPONSE_SEGMENTS = 16;
+export const MAX_RESPONSE_SEGMENTS = 32;
 
 export interface File {
   type: 'file';
