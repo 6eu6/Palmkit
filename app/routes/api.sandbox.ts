@@ -24,6 +24,42 @@ const PROJECT_DIR = '/home/user/project';
 const DEFAULT_PORT = 3000;
 const SANDBOX_TIMEOUT_MS = 1000 * 60 * 7; // auto-close after 7 min idle (cost control)
 
+/*
+ * COEP/CORP header helper.
+ *
+ * The HTML page is served with Cross-Origin-Embedder-Policy: require-corp
+ * (mandatory for WebContainer's SharedArrayBuffer). Under that policy the
+ * browser blocks reading the BODY of any subresource — including same-origin
+ * fetch responses — unless the response carries
+ * Cross-Origin-Resource-Policy: same-origin.
+ *
+ * Without this, the client's fetch() to /api/sandbox returns 200 OK but the
+ * browser delivers an EMPTY body '{}' to JS — so createRemoteSandbox() reads
+ * `id` as undefined and every subsequent op fails ("Cloud preview failed").
+ *
+ * `handleDataRequest` in entry.server.tsx is supposed to add this globally,
+ * but the Cloudflare Pages adapter doesn't always invoke it for resource
+ * routes that return raw Response objects. So we add it explicitly here.
+ */
+const CORP_HEADERS: Record<string, string> = {
+  'Cross-Origin-Resource-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'require-corp',
+  'Cross-Origin-Opener-Policy': 'same-origin',
+};
+
+/** json() wrapper that injects the COEP-required CORP header. */
+function jsonWithCorp<T>(data: T, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+
+  for (const [k, v] of Object.entries(CORP_HEADERS)) {
+    if (!headers.has(k)) {
+      headers.set(k, v);
+    }
+  }
+
+  return json(data, { ...init, headers });
+}
+
 function getApiKey(context: ActionFunctionArgs['context']): string | undefined {
   const env = (context as unknown as { cloudflare?: { env?: Record<string, string> } }).cloudflare?.env;
 
@@ -43,7 +79,7 @@ export async function loader({ context }: LoaderFunctionArgs) {
   const hasKey = Boolean(getApiKey(context));
   console.log(`[api/sandbox] health check: configured=${hasKey}`);
 
-  return json({ ok: true, configured: hasKey });
+  return jsonWithCorp({ ok: true, configured: hasKey });
 }
 
 interface SandboxRequest {
@@ -59,7 +95,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
   const apiKey = getApiKey(context);
 
   if (!apiKey) {
-    return json({ error: 'E2B_API_KEY is not configured on the server' }, { status: 501 });
+    return jsonWithCorp({ error: 'E2B_API_KEY is not configured on the server' }, { status: 501 });
   }
 
   let body: SandboxRequest;
@@ -67,7 +103,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
   try {
     body = (await request.json()) as SandboxRequest;
   } catch {
-    return json({ error: 'invalid JSON body' }, { status: 400 });
+    return jsonWithCorp({ error: 'invalid JSON body' }, { status: 400 });
   }
 
   try {
@@ -82,12 +118,12 @@ export async function action({ context, request }: ActionFunctionArgs) {
 
         console.log(`[api/sandbox] created sandbox: ${sandbox.sandboxId}`);
 
-        return json({ id: sandbox.sandboxId });
+        return jsonWithCorp({ id: sandbox.sandboxId });
       }
 
       case 'files': {
         if (!body.id || !body.files) {
-          return json({ error: 'id and files are required' }, { status: 400 });
+          return jsonWithCorp({ error: 'id and files are required' }, { status: 400 });
         }
 
         const { Sandbox: sandboxClass } = await import('e2b');
@@ -98,12 +134,12 @@ export async function action({ context, request }: ActionFunctionArgs) {
           await sandbox.files.write(`${PROJECT_DIR}/${clean}`, content);
         }
 
-        return json({ ok: true, count: Object.keys(body.files).length });
+        return jsonWithCorp({ ok: true, count: Object.keys(body.files).length });
       }
 
       case 'start': {
         if (!body.id) {
-          return json({ error: 'id is required' }, { status: 400 });
+          return jsonWithCorp({ error: 'id is required' }, { status: 400 });
         }
 
         const { Sandbox: sandboxClass } = await import('e2b');
@@ -137,12 +173,12 @@ export async function action({ context, request }: ActionFunctionArgs) {
         const host = sandbox.getHost(port);
         console.log(`[api/sandbox] sandbox ${body.id} started, preview at https://${host}`);
 
-        return json({ url: `https://${host}`, port });
+        return jsonWithCorp({ url: `https://${host}`, port });
       }
 
       case 'logs': {
         if (!body.id) {
-          return json({ error: 'id is required' }, { status: 400 });
+          return jsonWithCorp({ error: 'id is required' }, { status: 400 });
         }
 
         const { Sandbox: sandboxClass } = await import('e2b');
@@ -151,12 +187,12 @@ export async function action({ context, request }: ActionFunctionArgs) {
           .run('tail -n 60 /tmp/dev.log 2>/dev/null || echo "(no logs yet)"', { timeoutMs: 8000 })
           .catch(() => ({ stdout: '(logs unavailable)' }) as { stdout: string });
 
-        return json({ logs: out.stdout || '' });
+        return jsonWithCorp({ logs: out.stdout || '' });
       }
 
       case 'status': {
         if (!body.id) {
-          return json({ error: 'id is required' }, { status: 400 });
+          return jsonWithCorp({ error: 'id is required' }, { status: 400 });
         }
 
         const port = body.port ?? DEFAULT_PORT;
@@ -181,12 +217,12 @@ export async function action({ context, request }: ActionFunctionArgs) {
 
         const ready = code >= 200 && code < 400;
 
-        return json({ ready, code });
+        return jsonWithCorp({ ready, code });
       }
 
       case 'destroy': {
         if (!body.id) {
-          return json({ error: 'id is required' }, { status: 400 });
+          return jsonWithCorp({ error: 'id is required' }, { status: 400 });
         }
 
         const { Sandbox: sandboxClass } = await import('e2b');
@@ -195,17 +231,17 @@ export async function action({ context, request }: ActionFunctionArgs) {
 
         console.log(`[api/sandbox] destroyed sandbox: ${body.id}`);
 
-        return json({ ok: true });
+        return jsonWithCorp({ ok: true });
       }
 
       default:
-        return json({ error: `unknown op: ${String(body.op)}` }, { status: 400 });
+        return jsonWithCorp({ error: `unknown op: ${String(body.op)}` }, { status: 400 });
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
     console.error(`[api/sandbox] operation ${body.op} failed:`, message);
 
-    return json({ error: message }, { status: 500 });
+    return jsonWithCorp({ error: message }, { status: 500 });
   }
 }
