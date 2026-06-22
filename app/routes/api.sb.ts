@@ -1,62 +1,118 @@
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from '@remix-run/cloudflare';
-
-/*
- * STATIC import of the E2B SDK.
- *
- * The old code used dynamic `import('e2b')` inside action handlers, claiming
- * it was to avoid crashing the GET loader if the SDK failed to load. In
- * practice, Cloudflare's esbuild bundler mis-resolves the dynamic import of
- * this CJS/ESM hybrid package on cold Worker starts — `mod.Sandbox` comes
- * back undefined even though the package clearly exports it. curl requests
- * (which hit a warm Worker) worked; browser requests after a cold start
- * failed with "E2B SDK import failed: Sandbox class not found".
- *
- * A static top-level import lets esbuild analyze the dependency graph at
- * build time and bundle the SDK correctly. The SDK's Node.js deps (ws,
- * crypto, buffer) are polyfilled by the `nodejs_compat` flag (already set
- * in wrangler.toml) + vite-plugin-node-polyfills, so a static import is
- * safe. The GET loader stays healthy because if the SDK truly can't load,
- * the whole module fails to build (caught at deploy time, not runtime).
- */
-import { Sandbox as E2BSandbox } from 'e2b';
+import { Sandbox as E2BSandbox, SandboxPaginator } from 'e2b';
+import { getAuthedUser } from '~/lib/auth/supabase.server';
 
 /**
- * Server-side sandbox proxy (E2B).
+ * Server-side sandbox proxy (E2B) — with auth, ownership, rate limit, audit.
  *
- * Runs AI-generated projects in a managed cloud sandbox — full `npm install` +
- * dev server — and returns a public preview URL. This is the reliable
- * execution tier for mobile Safari, where the in-browser WebContainer cannot
- * run real dev servers.
+ * SECURITY (Level 2):
+ *   1. AUTH: Every operation requires a valid Supabase session. Anonymous
+ *      requests are rejected with 401.
+ *   2. OWNERSHIP: Each sandbox is tagged with `metadata.userId` at creation.
+ *      Every subsequent operation (files/start/status/logs/destroy) verifies
+ *      that the requesting user owns the sandbox via `Sandbox.getInfo()`.
+ *      A user cannot read, control, or destroy another user's sandbox.
+ *   3. RATE LIMIT: Max MAX_SANDBOXES_PER_USER (3) concurrent running sandboxes
+ *      per user. Enforced by listing sandboxes filtered by `metadata.userId`
+ *      before creating a new one.
+ *   4. AUDIT LOG: Every operation is logged with userId, op, sandboxId, and
+ *      timestamp in structured JSON (captured by Cloudflare Pages logs).
  *
- * The E2B API key lives only here (Cloudflare env `E2B_API_KEY`) and is never
- * exposed to the browser. The client talks to this route via /api/sb.
+ * The E2B API key lives only here (Cloudflare env `E2B_API_KEY`).
  */
 
 const PROJECT_DIR = '/home/user/project';
 const DEFAULT_PORT = 3000;
-const SANDBOX_TIMEOUT_MS = 1000 * 60 * 7; // auto-close after 7 min idle (cost control)
+const SANDBOX_TIMEOUT_MS = 1000 * 60 * 7; // auto-close after 7 min idle
+const MAX_SANDBOXES_PER_USER = 3;
+
+// ─── helpers ───────────────────────────────────────────────────────────────
 
 function getApiKey(context: ActionFunctionArgs['context']): string | undefined {
   const env = (context as unknown as { cloudflare?: { env?: Record<string, string> } }).cloudflare?.env;
 
-  const key = env?.E2B_API_KEY;
-
-  if (key) {
-    console.log('[api/sandbox] E2B_API_KEY found in cloudflare env');
-  } else {
-    console.warn('[api/sandbox] E2B_API_KEY is NOT set in cloudflare env');
-  }
-
-  return key || (typeof process !== 'undefined' ? process.env?.E2B_API_KEY : undefined);
+  return env?.E2B_API_KEY || (typeof process !== 'undefined' ? process.env?.E2B_API_KEY : undefined);
 }
 
-// GET /api/sandbox — health/config check
+/** Structured audit log — captured by Cloudflare Pages function logs. */
+function audit(op: string, userId: string, sandboxId: string | undefined, extra?: string) {
+  console.log(
+    JSON.stringify({
+      type: 'sandbox-audit',
+      op,
+      userId,
+      sandboxId: sandboxId ?? null,
+      ts: new Date().toISOString(),
+      extra: extra ?? null,
+    }),
+  );
+}
+
+/**
+ * Verify that the requesting user owns the sandbox. Calls E2B getInfo to
+ * read the sandbox's metadata and checks `metadata.userId`.
+ * Returns { ok: true } or { ok: false, error, status }.
+ */
+async function verifyOwnership(
+  sandboxId: string,
+  userId: string,
+  apiKey: string,
+): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
+  try {
+    const info = await E2BSandbox.getInfo(sandboxId, { apiKey });
+    const ownerId = info.metadata?.userId;
+
+    if (!ownerId) {
+      /*
+       * Sandbox has no owner metadata — it predates the security update.
+       * Reject to be safe (don't allow access to legacy unowned sandboxes).
+       */
+      return { ok: false, error: 'Sandbox has no owner metadata', status: 403 };
+    }
+
+    if (ownerId !== userId) {
+      audit('ownership-denied', userId, sandboxId, `owner=${ownerId}`);
+      return { ok: false, error: 'You do not own this sandbox', status: 403 };
+    }
+
+    return { ok: true };
+  } catch {
+    // Sandbox doesn't exist or E2B API error
+    return { ok: false, error: 'Sandbox not found', status: 404 };
+  }
+}
+
+/**
+ * Count the user's currently running sandboxes by listing sandboxes filtered
+ * by metadata.userId. Used for rate limiting.
+ */
+async function countUserSandboxes(userId: string, apiKey: string): Promise<number> {
+  try {
+    const paginator = new SandboxPaginator({
+      query: { metadata: { userId }, state: ['running'] },
+      apiKey,
+    });
+    const items = await paginator.nextItems();
+
+    return items.length;
+  } catch {
+    /*
+     * If listing fails, allow the create (fail-open to avoid blocking users
+     * on transient E2B API errors — the 7-min auto-timeout is the backstop).
+     */
+    return 0;
+  }
+}
+
+// ─── loader (GET /api/sb — health check, no auth needed) ───────────────────
+
 export async function loader({ context }: LoaderFunctionArgs) {
   const hasKey = Boolean(getApiKey(context));
-  console.log(`[api/sandbox] health check: configured=${hasKey}`);
 
   return json({ ok: true, configured: hasKey });
 }
+
+// ─── action (POST /api/sb — all operations require auth) ───────────────────
 
 interface SandboxRequest {
   op: 'create' | 'files' | 'start' | 'status' | 'logs' | 'destroy';
@@ -68,12 +124,24 @@ interface SandboxRequest {
 }
 
 export async function action({ context, request }: ActionFunctionArgs) {
+  // ── 1. AUTH: verify the user is logged in ──────────────────────────────
+  const { user, headers: authHeaders } = await getAuthedUser(request, context);
+
+  if (!user) {
+    return json({ error: 'Authentication required' }, { status: 401 });
+  }
+
+  const userId = user.id;
+  const userEmail = user.email ?? 'unknown';
+
+  // ── 2. E2B API key check ───────────────────────────────────────────────
   const apiKey = getApiKey(context);
 
   if (!apiKey) {
     return json({ error: 'E2B_API_KEY is not configured on the server' }, { status: 501 });
   }
 
+  // ── 3. Parse request body ──────────────────────────────────────────────
   let body: SandboxRequest;
 
   try {
@@ -82,66 +150,93 @@ export async function action({ context, request }: ActionFunctionArgs) {
     return json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
+  // Merge auth Set-Cookie headers into our responses so sessions persist.
+  const respond = (data: unknown, status = 200) => {
+    const h = new Headers({ 'Content-Type': 'application/json' });
+
+    authHeaders.forEach((v, k) => h.append(k, v));
+
+    return json(data, { status, headers: h });
+  };
+
+  // ── 4. Dispatch ────────────────────────────────────────────────────────
   try {
     switch (body.op) {
+      // ── CREATE ──────────────────────────────────────────────────────────
       case 'create': {
-        /*
-         * Dynamic import — isolated to this code path so a failure here
-         * doesn't crash the GET loader.
-         */
-        const sandboxClass = E2BSandbox;
-        const sandbox = await sandboxClass.create({ apiKey, timeoutMs: SANDBOX_TIMEOUT_MS });
+        // Rate limit: max MAX_SANDBOXES_PER_USER running sandboxes
+        const count = await countUserSandboxes(userId, apiKey);
 
-        console.log(`[api/sandbox] created sandbox: ${sandbox.sandboxId}`);
-
-        return json({ id: sandbox.sandboxId });
-      }
-
-      case 'files': {
-        if (!body.id || !body.files) {
-          return json({ error: 'id and files are required' }, { status: 400 });
+        if (count >= MAX_SANDBOXES_PER_USER) {
+          audit('rate-limited', userId, undefined, `count=${count}`);
+          return respond(
+            {
+              error: `Rate limit: you have ${count} active sandboxes (max ${MAX_SANDBOXES_PER_USER}). Wait for one to time out or destroy it.`,
+            },
+            429,
+          );
         }
 
-        const sandboxClass = E2BSandbox;
-        const sandbox = await sandboxClass.connect(body.id, { apiKey });
+        // Create with ownership metadata
+        const sandbox = await E2BSandbox.create({
+          apiKey,
+          timeoutMs: SANDBOX_TIMEOUT_MS,
+          metadata: { userId, userEmail },
+        });
+
+        audit('create', userId, sandbox.sandboxId, `email=${userEmail}`);
+
+        return respond({ id: sandbox.sandboxId });
+      }
+
+      // ── FILES (push files to sandbox) ──────────────────────────────────
+      case 'files': {
+        if (!body.id || !body.files) {
+          return respond({ error: 'id and files are required' }, 400);
+        }
+
+        const ownership = await verifyOwnership(body.id, userId, apiKey);
+
+        if (!ownership.ok) {
+          return respond({ error: ownership.error }, ownership.status);
+        }
+
+        const sandbox = await E2BSandbox.connect(body.id, { apiKey });
 
         for (const [path, content] of Object.entries(body.files)) {
           const clean = path.replace(/^\/+/, '');
           await sandbox.files.write(`${PROJECT_DIR}/${clean}`, content);
         }
 
-        return json({ ok: true, count: Object.keys(body.files).length });
+        audit('files', userId, body.id, `${Object.keys(body.files).length} files`);
+
+        return respond({ ok: true, count: Object.keys(body.files).length });
       }
 
+      // ── START (install + dev server) ───────────────────────────────────
       case 'start': {
         if (!body.id) {
-          return json({ error: 'id is required' }, { status: 400 });
+          return respond({ error: 'id is required' }, 400);
         }
 
-        const sandboxClass = E2BSandbox;
-        const sandbox = await sandboxClass.connect(body.id, { apiKey });
+        const ownership = await verifyOwnership(body.id, userId, apiKey);
+
+        if (!ownership.ok) {
+          return respond({ error: ownership.error }, ownership.status);
+        }
+
+        const sandbox = await E2BSandbox.connect(body.id, { apiKey });
         const port = body.port ?? DEFAULT_PORT;
         const install = body.install ?? 'npm install --no-audit --no-fund';
         const dev = body.dev ?? `npm run dev -- --host 0.0.0.0 --port ${port} --base=/preview/`;
 
         /*
-         * Patch the Vite config so the dev server accepts requests from the
-         * E2B proxy host (Vite 5.2+ blocks unknown hosts by default) and HMR
-         * connects through our same-origin proxy.
-         *
-         * APPROACH: write the vite.config directly via the E2B filesystem API
-         * from the server side. This is more reliable than running a Node.js
-         * script in the sandbox (which can fail silently due to shell escaping
-         * or missing node binary). We OVERWRITE the AI's vite.config with a
-         * minimal valid one that:
-         *   - Re-exports the AI's plugins (best-effort: try common import paths)
-         *   - Sets server.allowedHosts, server.host, server.hmr for the proxy
-         *
-         * If the AI's config used @vitejs/plugin-react, we import it.
-         * Otherwise we just use a bare config (the app still serves HTML).
-         *
-         * We try to read the AI's vite.config first to detect the plugin, then
-         * write our patched version. This avoids all shell escaping issues.
+         * Patch the Vite config via the E2B filesystem API (not shell script).
+         * Writes a minimal valid vite.config.js with:
+         *   - server.allowedHosts (Vite 5.2+ proxy host acceptance)
+         *   - server.hmr (HMR through our same-origin WebSocket proxy)
+         *   - base: '/preview/' (all asset URLs use /preview/ prefix)
+         * Tries to restore the AI's @vitejs/plugin-react if available.
          */
         const patchedConfig = `
 const serverOpts = {
@@ -177,56 +272,55 @@ export default { base: '/preview/', server: serverOpts, plugins };
             }
           } catch {}
         } catch (err) {
-          console.warn(`[api/sandbox] vite.config patch failed: ${err instanceof Error ? err.message : String(err)}`);
+          console.warn(`[api/sb] vite.config patch failed: ${err instanceof Error ? err.message : String(err)}`);
         }
 
-        /*
-         * Keep the sandbox alive while the dev server runs, then patch hosts +
-         * install + run the dev server in the background so this returns fast.
-         */
         await sandbox.setTimeout(SANDBOX_TIMEOUT_MS);
         await sandbox.commands.run(`cd ${PROJECT_DIR} && (${install} && ${dev}) > /tmp/dev.log 2>&1`, {
           background: true,
         });
 
         const host = sandbox.getHost(port);
-        console.log(`[api/sandbox] sandbox ${body.id} started, preview at https://${host}`);
+        audit('start', userId, body.id, `preview=https://${host}`);
 
-        return json({ url: `https://${host}`, port });
+        return respond({ url: `https://${host}`, port });
       }
 
+      // ── LOGS (read dev server output) ──────────────────────────────────
       case 'logs': {
         if (!body.id) {
-          return json({ error: 'id is required' }, { status: 400 });
+          return respond({ error: 'id is required' }, 400);
         }
 
-        const sandboxClass = E2BSandbox;
-        const sandbox = await sandboxClass.connect(body.id, { apiKey });
+        const ownership = await verifyOwnership(body.id, userId, apiKey);
+
+        if (!ownership.ok) {
+          return respond({ error: ownership.error }, ownership.status);
+        }
+
+        const sandbox = await E2BSandbox.connect(body.id, { apiKey });
         const out = await sandbox.commands
           .run('tail -n 60 /tmp/dev.log 2>/dev/null || echo "(no logs yet)"', { timeoutMs: 8000 })
           .catch(() => ({ stdout: '(logs unavailable)' }) as { stdout: string });
 
-        return json({ logs: out.stdout || '' });
+        return respond({ logs: out.stdout || '' });
       }
 
+      // ── STATUS (probe if dev server is ready) ──────────────────────────
       case 'status': {
         if (!body.id) {
-          return json({ error: 'id is required' }, { status: 400 });
+          return respond({ error: 'id is required' }, 400);
+        }
+
+        const ownership = await verifyOwnership(body.id, userId, apiKey);
+
+        if (!ownership.ok) {
+          return respond({ error: ownership.error }, ownership.status);
         }
 
         const port = body.port ?? DEFAULT_PORT;
 
-        /*
-         * Probe the PUBLIC e2b host to verify the dev server is up and serving.
-         *
-         * We try BOTH / and /preview/ because:
-         *  - Vite 5+ with --base=/preview/ serves HTML at /preview/
-         *  - Vite 4 and earlier with --base=/preview/ serves HTML at / (the
-         *    base only affects asset URLs, not the serving path)
-         *  - Other dev servers (Next.js, Astro, etc.) serve at /
-         *
-         * If EITHER path returns a 2xx/3xx, the sandbox is ready.
-         */
+        // Probe the public E2B host on both / and /preview/
         let code = 0;
 
         for (const probePath of ['/', '/preview/']) {
@@ -238,40 +332,45 @@ export default { base: '/preview/', server: serverOpts, plugins };
             code = probe.status;
 
             if (code >= 200 && code < 400) {
-              break; // ready!
+              break;
             }
-          } catch {
-            // try next path
-          }
+          } catch {}
         }
 
         const ready = code >= 200 && code < 400;
 
-        return json({ ready, code });
+        return respond({ ready, code });
       }
 
+      // ── DESTROY (kill sandbox) ─────────────────────────────────────────
       case 'destroy': {
         if (!body.id) {
-          return json({ error: 'id is required' }, { status: 400 });
+          return respond({ error: 'id is required' }, 400);
         }
 
-        const sandboxClass = E2BSandbox;
-        const sandbox = await sandboxClass.connect(body.id, { apiKey });
+        const ownership = await verifyOwnership(body.id, userId, apiKey);
+
+        if (!ownership.ok) {
+          return respond({ error: ownership.error }, ownership.status);
+        }
+
+        const sandbox = await E2BSandbox.connect(body.id, { apiKey });
         await sandbox.kill();
 
-        console.log(`[api/sandbox] destroyed sandbox: ${body.id}`);
+        audit('destroy', userId, body.id);
 
-        return json({ ok: true });
+        return respond({ ok: true });
       }
 
       default:
-        return json({ error: `unknown op: ${String(body.op)}` }, { status: 400 });
+        return respond({ error: `unknown op: ${String(body.op)}` }, 400);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
-    console.error(`[api/sandbox] operation ${body.op} failed:`, message);
+    console.error(`[api/sb] operation ${body.op} failed:`, message);
+    audit('error', userId, body.id, message);
 
-    return json({ error: message }, { status: 500 });
+    return respond({ error: message }, 500);
   }
 }
