@@ -24,6 +24,43 @@ const PROJECT_DIR = '/home/user/project';
 const DEFAULT_PORT = 3000;
 const SANDBOX_TIMEOUT_MS = 1000 * 60 * 7; // auto-close after 7 min idle (cost control)
 
+/*
+ * Cached E2B Sandbox class.
+ *
+ * The E2B SDK is imported dynamically (not at module top level) so a failure
+ * here doesn't crash the GET health-check loader. In Cloudflare Workers, the
+ * dynamic `import('e2b')` sometimes resolves but the named `Sandbox` export
+ * is undefined — the Workers bundler doesn't always preserve named exports
+ * from large CJS/ESM hybrid packages. So we try BOTH the named export and
+ * the default export, and cache the result.
+ */
+let cachedSandboxClass: any = null;
+
+async function getSandboxClass(): Promise<any> {
+  if (cachedSandboxClass) {
+    return cachedSandboxClass;
+  }
+
+  /*
+   * Use `any` for the module to avoid TS errors when accessing .default
+   * (the SDK exports Sandbox as both named and default).
+   */
+  const mod: any = await import('e2b');
+  const cls = mod.Sandbox || mod.default?.Sandbox || mod.default;
+
+  if (!cls || typeof cls.create !== 'function') {
+    throw new Error(
+      `E2B SDK import failed: Sandbox class not found. ` +
+        `Named export: ${typeof mod.Sandbox}, Default: ${typeof mod.default}. ` +
+        `Available keys: ${Object.keys(mod).slice(0, 10).join(', ')}`,
+    );
+  }
+
+  cachedSandboxClass = cls;
+
+  return cls;
+}
+
 function getApiKey(context: ActionFunctionArgs['context']): string | undefined {
   const env = (context as unknown as { cloudflare?: { env?: Record<string, string> } }).cloudflare?.env;
 
@@ -77,7 +114,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
          * Dynamic import — isolated to this code path so a failure here
          * doesn't crash the GET loader.
          */
-        const { Sandbox: sandboxClass } = await import('e2b');
+        const sandboxClass = await getSandboxClass();
         const sandbox = await sandboxClass.create({ apiKey, timeoutMs: SANDBOX_TIMEOUT_MS });
 
         console.log(`[api/sandbox] created sandbox: ${sandbox.sandboxId}`);
@@ -90,7 +127,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
           return json({ error: 'id and files are required' }, { status: 400 });
         }
 
-        const { Sandbox: sandboxClass } = await import('e2b');
+        const sandboxClass = await getSandboxClass();
         const sandbox = await sandboxClass.connect(body.id, { apiKey });
 
         for (const [path, content] of Object.entries(body.files)) {
@@ -106,7 +143,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
           return json({ error: 'id is required' }, { status: 400 });
         }
 
-        const { Sandbox: sandboxClass } = await import('e2b');
+        const sandboxClass = await getSandboxClass();
         const sandbox = await sandboxClass.connect(body.id, { apiKey });
         const port = body.port ?? DEFAULT_PORT;
         const install = body.install ?? 'npm install --no-audit --no-fund';
@@ -151,7 +188,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
           return json({ error: 'id is required' }, { status: 400 });
         }
 
-        const { Sandbox: sandboxClass } = await import('e2b');
+        const sandboxClass = await getSandboxClass();
         const sandbox = await sandboxClass.connect(body.id, { apiKey });
         const out = await sandbox.commands
           .run('tail -n 60 /tmp/dev.log 2>/dev/null || echo "(no logs yet)"', { timeoutMs: 8000 })
@@ -195,7 +232,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
           return json({ error: 'id is required' }, { status: 400 });
         }
 
-        const { Sandbox: sandboxClass } = await import('e2b');
+        const sandboxClass = await getSandboxClass();
         const sandbox = await sandboxClass.connect(body.id, { apiKey });
         await sandbox.kill();
 
