@@ -368,27 +368,99 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           let usage: any;
 
           try {
-            [finishReason, text, usage] = await Promise.all([
-              result.finishReason as Promise<string>,
-              result.text as Promise<string>,
-              result.usage as Promise<any>,
+            /*
+             * Phase 1 Safety Gate — Silent Cutoff Protection
+             * ================================================
+             * The result.text/finishReason promises can hang indefinitely if
+             * the stream is silently cut (CF Pages Function wall-clock
+             * expiry, OpenRouter connection drop, etc.). The old code
+             * awaited Promise.all without a timeout, which meant the
+             * validation gate NEVER ran on silent cutoffs — the user saw
+             * a broken preview with no error message.
+             *
+             * Fix: race the await against a 25s timeout. If the timeout
+             * fires, we treat the segment as incomplete and run validation
+             * on whatever text accumulated so far (result.text is a
+             * ResolvablePromise that may have partially resolved).
+             *
+             * 25s is chosen because:
+             *   - CF Pages Free wall-clock is generous but CPU is 10ms.
+             *   - OpenRouter streams tokens every ~1-2s; 25s of silence
+             *     = definite cutoff.
+             *   - The StreamRecoveryManager has its own 120s no-data
+             *     timeout, but that's for TOTAL inactivity. This 25s is
+             *     for the await itself hanging.
+             */
+            const SEGMENT_AWAIT_TIMEOUT_MS = 25_000;
+            const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('SEGMENT_AWAIT_TIMEOUT')), SEGMENT_AWAIT_TIMEOUT_MS),
+            );
+
+            [finishReason, text, usage] = await Promise.race([
+              Promise.all([
+                result.finishReason as Promise<string>,
+                result.text as Promise<string>,
+                result.usage as Promise<any>,
+              ]),
+              timeoutPromise,
             ]);
           } catch (resultError: any) {
-            logger.error(`Stream result error in segment ${continueSegmentCount + 1}: ${resultError.message}`);
+            const isTimeout = resultError?.message === 'SEGMENT_AWAIT_TIMEOUT';
+            logger.error(
+              `Stream result ${isTimeout ? 'timeout' : 'error'} in segment ${continueSegmentCount + 1}: ${resultError.message}`,
+            );
 
+            /*
+             * On timeout/error, try to salvage whatever text accumulated.
+             * result.text is a ResolvablePromise — if the stream produced
+             * ANY tokens before dying, the promise may have partially
+             * resolved. We race it against a 1s deadline to avoid hanging
+             * the error path too.
+             */
+            let salvagedText = '';
             try {
-              dataStream.writeData({
-                type: 'progress',
-                label: 'response',
-                status: 'error',
-                order: progressCounter++,
-                message: `Stream error: ${resultError.message || 'Unknown error'}`,
-              } satisfies ProgressAnnotation);
+              salvagedText = await Promise.race([
+                result.text as Promise<string>,
+                new Promise<string>((resolve) => setTimeout(() => resolve(''), 1000)),
+              ]);
             } catch {
-              /* dataStream may already be closed */
+              /* ignore — salvagedText stays '' */
             }
-            streamRecovery?.stop();
-            break;
+
+            text = salvagedText;
+            finishReason = isTimeout ? 'silent_cutoff' : 'error';
+            usage = null;
+
+            /*
+             * Run validation on the salvaged text. This is the KEY fix:
+             * even on silent cutoff, the validator runs and either:
+             *   - finds incomplete output → emit failed_clean (if retries
+             *     exhausted) OR auto-continue (if retries remain)
+             *   - finds complete output (unlikely but possible) → ready
+             *
+             * The validation logic below handles all outcomes.
+             */
+            if (text) {
+              logger.info(`Salvaged ${text.length} chars after ${finishReason}, running validation`);
+              // Fall through to the validation block below — don't break.
+              // The validation logic will decide: retry, fail clean, or ready.
+            } else {
+              try {
+                dataStream.writeData({
+                  type: 'progress',
+                  label: 'response',
+                  status: 'error',
+                  order: progressCounter++,
+                  message: isTimeout
+                    ? 'Build incomplete — stream was interrupted. Please try again.'
+                    : `Stream error: ${resultError.message || 'Unknown error'}`,
+                } satisfies ProgressAnnotation);
+              } catch {
+                /* dataStream may already be closed */
+              }
+              streamRecovery?.stop();
+              break;
+            }
           }
 
           logger.debug(`Segment ${continueSegmentCount + 1} finished: reason=${finishReason}, textLen=${text.length}`);
