@@ -17,6 +17,9 @@ const BASE = '/api/sb';
 export interface RemoteSandbox {
   id: string;
   previewUrl?: string;
+
+  /** Whether this sandbox was created from a cached snapshot. */
+  cached?: boolean;
 }
 
 /** Whether the device is a phone where WebContainer dev servers struggle. */
@@ -178,11 +181,19 @@ async function callWithRetry<T>(payload: Record<string, unknown>, retries = 2, b
   throw lastError || new Error('E2B operation failed after retries');
 }
 
-/** Create a sandbox session (with retry). */
-export async function createRemoteSandbox(): Promise<RemoteSandbox> {
-  const { id } = await callWithRetry<{ id: string }>({ op: 'create' });
+/**
+ * Create a sandbox session (with retry).
+ * @param framework Framework type from the Project Analyzer (vite/nextjs/node/python).
+ *                  If provided, the server will try to use a cached snapshot
+ *                  with pre-installed node_modules for that framework.
+ */
+export async function createRemoteSandbox(framework?: string): Promise<RemoteSandbox> {
+  const { id, cached } = await callWithRetry<{ id: string; cached?: boolean }>({
+    op: 'create',
+    framework,
+  });
 
-  return { id };
+  return { id, cached: cached ?? false };
 }
 
 /** Upload project files (path -> contents) (with retry). */
@@ -253,4 +264,21 @@ export async function getRemoteLogs(id: string): Promise<string> {
 /** Tear down the sandbox (also auto-reaped after inactivity). */
 export async function destroyRemoteSandbox(id: string): Promise<void> {
   await callWithRetry({ op: 'destroy', id }, 0).catch(() => undefined);
+}
+
+/**
+ * Take a snapshot of the sandbox for future caching.
+ * Called AFTER the dev server is confirmed ready — the snapshot includes
+ * node_modules + installed deps so the next sandbox for this framework
+ * can skip the full npm install.
+ *
+ * Best-effort: if it fails, we just continue without cache (no error thrown).
+ */
+export async function cacheRemoteSandbox(id: string, framework: string): Promise<void> {
+  try {
+    await callWithRetry({ op: 'cache', id, framework }, 0);
+    console.info(`[E2B] snapshot cached for framework=${framework}`);
+  } catch {
+    // Best-effort — don't fail if caching fails
+  }
 }

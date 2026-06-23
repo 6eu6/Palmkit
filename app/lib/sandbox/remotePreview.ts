@@ -20,6 +20,7 @@ import {
   isMemoryConstrainedDevice,
   destroyRemoteSandbox,
   resetAvailabilityCache,
+  cacheRemoteSandbox,
 } from './remoteSandbox';
 
 export type RemotePreviewState = 'idle' | 'creating' | 'installing' | 'ready' | 'error';
@@ -99,7 +100,11 @@ export async function shouldUseRemotePreview(): Promise<boolean> {
  *
  * On sandbox creation failure, cleans up the failed sandbox and allows retry.
  */
-export async function ensureRemotePreview(opts?: { install?: string; dev?: string }): Promise<void> {
+export async function ensureRemotePreview(opts?: {
+  install?: string;
+  dev?: string;
+  framework?: string;
+}): Promise<void> {
   if (inflight) {
     return;
   }
@@ -139,10 +144,10 @@ export async function ensureRemotePreview(opts?: { install?: string; dev?: strin
       console.info('[RemotePreview] creating new E2B sandbox...');
 
       try {
-        const sandbox = await createRemoteSandbox();
+        const sandbox = await createRemoteSandbox(opts?.framework);
         sandboxId = sandbox.id;
         createRetryCount = 0; // reset on success
-        console.info(`[RemotePreview] sandbox created: ${sandboxId}`);
+        console.info(`[RemotePreview] sandbox created: ${sandboxId} (cached=${sandbox.cached})`);
       } catch (createError) {
         createRetryCount++;
 
@@ -242,6 +247,19 @@ export async function ensureRemotePreview(opts?: { install?: string; dev?: strin
       const sameOrigin = typeof window !== 'undefined' ? `${window.location.origin}/preview/` : '/preview/';
       workbenchStore.previews.set([{ port: DEV_PORT, ready: true, baseUrl: sameOrigin }]);
       remotePreviewStatus.set({ state: 'ready', url });
+
+      /*
+       * Snapshot cache: if this sandbox was NOT created from a cached snapshot,
+       * take a snapshot now (node_modules + deps are installed and ready).
+       * Next time a project with the same framework is created, it will use
+       * this snapshot → npm install is incremental (2-3s instead of 10-15s).
+       *
+       * Best-effort: if snapshot fails, we just continue without cache.
+       * Only cache if the framework is known and the dev server is ready.
+       */
+      if (opts?.framework && ready && sandboxId) {
+        void cacheRemoteSandbox(sandboxId, opts.framework);
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

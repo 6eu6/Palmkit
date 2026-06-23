@@ -161,6 +161,7 @@ export const RemotePreviewTrigger = memo(() => {
         await ensureRemotePreview({
           install: analysis.installCommand,
           dev: analysis.devCommand,
+          framework: analysis.type !== 'static' && analysis.type !== 'unknown' ? analysis.type : undefined,
         });
       }
     })();

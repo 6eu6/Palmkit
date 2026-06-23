@@ -114,15 +114,71 @@ export async function loader({ context }: LoaderFunctionArgs) {
   return json({ ok: true, configured: hasKey });
 }
 
+/*
+ * Snapshot cache — avoids repeating `npm install` on every sandbox creation.
+ *
+ * After the first sandbox for a framework (e.g., 'vite') completes npm install,
+ * we take a snapshot. Next time a 'vite' sandbox is created, we restore from
+ * the snapshot (node_modules already present) → npm install is incremental
+ * (2-3s instead of 10-15s).
+ *
+ * Snapshot naming convention: palmkit-cache-{framework}
+ * (e.g., palmkit-cache-vite, palmkit-cache-nextjs)
+ */
+const CACHE_SNAPSHOT_PREFIX = 'palmkit-cache-';
+
+/**
+ * Find a cached snapshot for the given framework type.
+ * Returns the snapshotId if found, or undefined if no cache exists.
+ */
+async function findCacheSnapshot(framework: string, apiKey: string): Promise<string | undefined> {
+  try {
+    const paginator = E2BSandbox.listSnapshots({ apiKey });
+    const snapshots = await paginator.nextItems();
+    const cacheName = `${CACHE_SNAPSHOT_PREFIX}${framework}`;
+    const found = snapshots.find(
+      (s) => s.names?.some((n) => n.includes(cacheName)) || s.snapshotId?.includes(cacheName),
+    );
+
+    return found?.snapshotId;
+  } catch {
+    // Fail-open — if listing fails, just create from base
+    return undefined;
+  }
+}
+
+/**
+ * Take a snapshot of a sandbox for future caching.
+ * Called after npm install completes successfully.
+ * Best-effort — if it fails, we continue without cache.
+ */
+async function takeCacheSnapshot(sandboxId: string, framework: string, apiKey: string): Promise<void> {
+  try {
+    const name = `${CACHE_SNAPSHOT_PREFIX}${framework}`;
+    await E2BSandbox.createSnapshot(sandboxId, { name, apiKey });
+    console.log(`[api/sb] snapshot cache created: ${name} from sandbox ${sandboxId}`);
+  } catch (err) {
+    // Best-effort — don't block the start op if snapshot fails
+    console.warn(`[api/sb] snapshot cache creation failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 // ─── action (POST /api/sb — all operations require auth) ───────────────────
 
 interface SandboxRequest {
-  op: 'create' | 'files' | 'start' | 'status' | 'logs' | 'destroy';
+  op: 'create' | 'files' | 'start' | 'status' | 'logs' | 'destroy' | 'cache';
   id?: string;
   files?: Record<string, string>;
   install?: string;
   dev?: string;
   port?: number;
+
+  /**
+   * Framework type from the Project Analyzer (vite/nextjs/node/python).
+   *  Used for snapshot caching — sandboxes created from a cached snapshot
+   *  have node_modules pre-installed, skipping the 10-15s npm install.
+   */
+  framework?: string;
 }
 
 export async function action({ context, request }: ActionFunctionArgs) {
@@ -179,16 +235,42 @@ export async function action({ context, request }: ActionFunctionArgs) {
           );
         }
 
-        // Create with ownership metadata
-        const sandbox = await E2BSandbox.create({
+        /*
+         * Snapshot cache: if the client provides a framework type (from the
+         * Project Analyzer), try to find a cached snapshot for that framework.
+         * If found, create the sandbox from it — node_modules will already be
+         * installed, so the subsequent `npm install` in the start op is
+         * incremental (2-3s instead of 10-15s).
+         */
+        let cached = false;
+        const createOpts: Record<string, unknown> = {
           apiKey,
           timeoutMs: SANDBOX_TIMEOUT_MS,
           metadata: { userId, userEmail },
-        });
+        };
 
-        audit('create', userId, sandbox.sandboxId, `email=${userEmail}`);
+        if (body.framework) {
+          const snapshotId = await findCacheSnapshot(body.framework, apiKey);
 
-        return respond({ id: sandbox.sandboxId });
+          if (snapshotId) {
+            createOpts.template = snapshotId;
+            cached = true;
+            console.log(`[api/sb] cache HIT for framework=${body.framework}, using snapshot ${snapshotId}`);
+          } else {
+            console.log(`[api/sb] cache MISS for framework=${body.framework}, creating from base`);
+          }
+        }
+
+        const sandbox = await E2BSandbox.create(createOpts as any);
+
+        audit(
+          'create',
+          userId,
+          sandbox.sandboxId,
+          `email=${userEmail}, framework=${body.framework || 'none'}, cached=${cached}`,
+        );
+
+        return respond({ id: sandbox.sandboxId, cached });
       }
 
       // ── FILES (push files to sandbox) ──────────────────────────────────
@@ -378,6 +460,33 @@ export default { base: '/preview/', server: serverOpts, plugins };
         audit('destroy', userId, body.id);
 
         return respond({ ok: true });
+      }
+
+      // ── CACHE (take a snapshot for future use) ────────────────────────
+      case 'cache': {
+        if (!body.id || !body.framework) {
+          return respond({ error: 'id and framework are required' }, 400);
+        }
+
+        const ownership = await verifyOwnership(body.id, userId, apiKey);
+
+        if (!ownership.ok) {
+          return respond({ error: ownership.error }, ownership.status);
+        }
+
+        /*
+         * Take a snapshot of the current sandbox state (node_modules +
+         * installed deps) so the next sandbox for this framework can be
+         * created from it — skipping the full npm install.
+         *
+         * This is called by the client AFTER the dev server is confirmed
+         * ready (via the status op). The snapshot includes node_modules,
+         * so next time we just push source files + run incremental install.
+         */
+        await takeCacheSnapshot(body.id, body.framework, apiKey);
+        audit('cache', userId, body.id, `framework=${body.framework}`);
+
+        return respond({ ok: true, cached: true });
       }
 
       default:
