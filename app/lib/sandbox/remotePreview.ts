@@ -359,6 +359,14 @@ if (typeof window !== 'undefined') {
 export function resetForChat(): void {
   killCurrentRemotePreview();
 
+  // Also clean up any static (blob URL) preview from the previous chat
+  try {
+    // Dynamic import to avoid circular dependency
+    void import('~/lib/runtime/static-preview').then((m) => m.clearStaticPreview());
+  } catch {
+    // best-effort
+  }
+
   if (typeof document !== 'undefined') {
     document.cookie = 'pf_preview=; path=/; max-age=0';
   }

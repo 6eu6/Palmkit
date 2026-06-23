@@ -17,6 +17,8 @@ import {
 } from '~/lib/sandbox/remotePreview';
 import { isMemoryConstrainedDevice } from '~/lib/sandbox/remoteSandbox';
 import { createScopedLogger } from '~/utils/logger';
+import { analyzeProject } from '~/lib/runtime/project-analyzer';
+import { showStaticPreview, clearStaticPreview } from '~/lib/runtime/static-preview';
 
 const logger = createScopedLogger('RPT');
 
@@ -97,9 +99,33 @@ export const RemotePreviewTrigger = memo(() => {
     }
 
     void (async () => {
+      /*
+       * PROJECT ANALYZER — check if this is a static HTML/CSS/JS project.
+       * If so, render it instantly via iframe blob URL (zero E2B cost).
+       * Only fall through to E2B if the project needs a real server.
+       */
+      const analysis = analyzeProject(files);
+      logger.info(`project analysis: ${analysis.type} — ${analysis.reason}`);
+
+      if (analysis.type === 'static') {
+        // Static project — render directly in iframe, no sandbox needed
+        clearStaticPreview(); // clean up any previous static preview
+
+        const ok = showStaticPreview(files, analysis.entryHtmlPath);
+
+        if (ok) {
+          // Skip E2B entirely — preview is already showing
+          return;
+        }
+
+        // If static preview failed (e.g., no HTML file), fall through to E2B
+        logger.warn('static preview failed, falling back to E2B');
+      }
+
+      // Non-static project — use E2B (mobile) or WebContainer (desktop)
       const useRemote = await shouldUseRemotePreview();
       logger.debug(
-        `trigger: justFinished=${justFinished}, sandboxState=${sandbox.state}, hasFiles=${hasFiles}, useRemote=${useRemote}`,
+        `trigger: justFinished=${justFinished}, sandboxState=${sandbox.state}, hasFiles=${hasFiles}, useRemote=${useRemote}, projectType=${analysis.type}`,
       );
 
       if (useRemote) {
