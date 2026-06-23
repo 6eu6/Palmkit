@@ -20,6 +20,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { logger } from './logger';
 import { planProject, generateStaticFiles, validateGeneration, type GenerationResult } from './generator';
 import { putFile, buildKey } from './r2-client';
+import { getUserApiKey } from './key-fetcher';
 import { createHash } from 'crypto';
 
 interface BuildJob {
@@ -129,9 +130,10 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
   logger.info(`Processing job ${job.id} (user=${job.user_id})`);
 
-  // Extract prompt from validation_result (stored by /api/jobs on enqueue).
+  // Extract prompt + provider + model from validation_result (stored by /api/jobs on enqueue).
   const prompt: string = job.validation_result?.prompt ?? '';
-  const model: string = job.validation_result?.model ?? 'deepseek/deepseek-chat-v3.1';
+  const providerName: string = job.validation_result?.provider ?? 'OpenRouter';
+  const modelName: string = job.validation_result?.model ?? 'deepseek/deepseek-chat-v3.1';
 
   if (!prompt) {
     await failJob(supabase, job.id, 'No prompt found in job metadata');
@@ -139,6 +141,18 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
   }
 
   try {
+    // ─── Phase 0: FETCH + DECRYPT USER'S API KEY ──────────────────────
+    await updateJobProgress(supabase, job.id, 5, 'fetch_api_key');
+
+    const apiKey = await getUserApiKey(supabase, job.user_id, providerName);
+
+    if (!apiKey) {
+      await failJob(supabase, job.id, `No API key found for your account (provider: ${providerName}). Add one via Edit API Key in the UI.`);
+      return;
+    }
+
+    logger.info(`Job ${job.id}: API key fetched for provider ${providerName}`);
+
     // ─── Phase 1: PLAN ─────────────────────────────────────────────────
     await updateJobProgress(supabase, job.id, 10, 'plan');
     await recordStep(supabase, job.id, { type: 'plan', status: 'running', order: 1, inputSummary: prompt.slice(0, 100) });
@@ -161,7 +175,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
     let result: GenerationResult;
 
     try {
-      result = await generateStaticFiles(prompt, spec, model);
+      result = await generateStaticFiles(prompt, spec, providerName, modelName, apiKey);
     } catch (genError: any) {
       await recordStep(supabase, job.id, {
         type: 'generate_file',
@@ -169,7 +183,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         order: 2,
         error: genError.message,
       });
-      await failJob(supabase, job.id, `Generation failed: ${genError.message}`);
+      await failJob(supabase, job.id, `Generation failed (${providerName}/${modelName}): ${genError.message}`);
       return;
     }
 

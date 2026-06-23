@@ -12,6 +12,14 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
     "@aws-sdk/client-s3": "^3.658.0",
+    "ai": "^4.0.0",
+    "@ai-sdk/openai": "^1.0.0",
+    "@ai-sdk/anthropic": "^1.0.0",
+    "@ai-sdk/google": "^1.0.0",
+    "@ai-sdk/cohere": "^1.0.0",
+    "@ai-sdk/mistral": "^1.0.0",
+    "@ai-sdk/amazon-bedrock": "^1.0.0",
+    "@openrouter/ai-sdk-provider": "^1.0.0",
     "hono": "^4.6.0",
     "@hono/node-server": "^1.13.0"
   },

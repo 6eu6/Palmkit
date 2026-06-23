@@ -1,24 +1,19 @@
 /**
- * Generator — Phase 2 actual LLM generation
+ * Generator — Phase 2 LLM generation using Vercel AI SDK
  *
- * The simplest possible end-to-end flow:
- *   1. planProject(prompt) → spec (what to build, which files)
- *   2. generateStaticFiles(prompt, spec) → { files: [{path, content}], complete: boolean }
+ * Uses the provider registry (provider-registry.ts) so the worker can call
+ * ANY of the 22 providers Palmkit supports — NOT just OpenRouter.
  *
- * Output is file-operations JSON (NOT raw HTML). The worker validates it
- * with output-validator logic, uploads to R2, and records the manifest.
+ * The user's decrypted API key is passed in (fetched by key-fetcher.ts from
+ * the encrypted user_api_keys table). The worker NEVER reads provider keys
+ * from its own env vars — keys come from the user's account.
  *
- * Uses OpenRouter directly via fetch (no SDK dependency) for portability.
+ * Output: file-operations JSON (same format as before).
  */
 
+import { generateText } from 'ai';
+import { getModelInstance } from './provider-registry';
 import { logger } from './logger';
-
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY!;
-
-if (!OPENROUTER_KEY) {
-  logger.error('OPENROUTER_API_KEY env var missing — generation will fail.');
-}
 
 export interface FileOperation {
   op: 'write_file';
@@ -42,10 +37,6 @@ export interface ProjectSpec {
 
 /**
  * Phase 1: Plan the project from the user prompt.
- *
- * For the narrow Phase 2 scope, we only handle STATIC projects (HTML/CSS/JS).
- * If the prompt asks for React/Vite/Next.js, we still produce a static version
- * for now (Phase 3 will add framework support).
  */
 export function planProject(prompt: string): ProjectSpec {
   const lower = prompt.toLowerCase();
@@ -54,7 +45,7 @@ export function planProject(prompt: string): ProjectSpec {
     !/react|vue|vite|next|svelte|angular|express|flask|python/i.test(lower);
 
   return {
-    appType: isStatic ? 'static' : 'static', // Phase 2: force static for now
+    appType: isStatic ? 'static' : 'static',
     description: prompt.slice(0, 200),
     files: [
       { path: 'index.html', purpose: 'Main HTML structure with semantic tags' },
@@ -65,13 +56,6 @@ export function planProject(prompt: string): ProjectSpec {
   };
 }
 
-/**
- * Build the system prompt for static generation.
- *
- * This is a COMPACT version of app/lib/common/prompts/prompts.ts, focused
- * on the file-operations JSON format (not the <palmkitArtifact> XML format).
- * The worker doesn't stream to a browser, so we use a simpler JSON contract.
- */
 function buildSystemPrompt(spec: ProjectSpec): string {
   return `You are Palmkit's build worker. Generate a COMPLETE static web project.
 
@@ -115,55 +99,37 @@ Return ONLY the JSON object. No prose before or after.`;
 /**
  * Phase 2: Generate all static files in ONE LLM call.
  *
- * Uses OpenRouter's chat completions API (non-streaming for the worker —
- * we don't need to stream to a browser, and non-streaming is more reliable
- * for getting complete JSON).
- *
- * Model: deepseek/deepseek-chat-v3.1 (same as the live site uses).
+ * Uses the Vercel AI SDK with whatever provider the user has configured.
+ * The apiKey is the user's DECRYPTED key from user_api_keys.
  */
 export async function generateStaticFiles(
   prompt: string,
   spec: ProjectSpec,
-  model = 'deepseek/deepseek-chat-v3.1',
+  providerName: string,
+  modelName: string,
+  apiKey: string,
 ): Promise<GenerationResult> {
-  logger.info(`Generating static files with ${model} for: "${prompt.slice(0, 60)}..."`);
+  logger.info(`Generating with provider=${providerName}, model=${modelName}`);
 
   const systemPrompt = buildSystemPrompt(spec);
+  const model = getModelInstance(providerName, modelName, apiKey);
 
-  const response = await fetch(OPENROUTER_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${OPENROUTER_KEY}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://palmkit.app',
-      'X-Title': 'Palmkit Build Worker',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: prompt },
-      ],
-      // Large enough for 3 complete files, small enough to stay fast.
-      max_tokens: 16000,
-      temperature: 0.7,
-      response_format: { type: 'json_object' },
-    }),
+  const result = await generateText({
+    model,
+    system: systemPrompt,
+    prompt,
+    // Large enough for 3 complete files, small enough to stay fast.
+    maxTokens: 16000,
+    temperature: 0.7,
   });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`OpenRouter error ${response.status}: ${errText.slice(0, 300)}`);
-  }
-
-  const data: any = await response.json();
-  const rawText: string = data.choices?.[0]?.message?.content ?? '';
+  const rawText: string = result.text ?? '';
 
   if (!rawText) {
-    throw new Error('OpenRouter returned empty content');
+    throw new Error(`${providerName} returned empty content (finishReason: ${result.finishReason})`);
   }
 
-  logger.info(`Received ${rawText.length} chars from LLM`);
+  logger.info(`Received ${rawText.length} chars from ${providerName} (usage: ${JSON.stringify(result.usage)})`);
 
   // Parse the JSON response.
   let parsed: { files?: FileOperation[]; complete?: boolean };
@@ -171,11 +137,13 @@ export async function generateStaticFiles(
   try {
     parsed = JSON.parse(rawText);
   } catch (parseError: any) {
-    // Try to extract JSON from a fenced code block (in case the LLM ignored instructions).
+    // Try to extract JSON from a fenced code block (LLM may have ignored instructions).
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
 
     if (!jsonMatch) {
-      throw new Error(`LLM did not return valid JSON: ${parseError.message}. First 200 chars: ${rawText.slice(0, 200)}`);
+      throw new Error(
+        `LLM did not return valid JSON: ${parseError.message}. First 200 chars: ${rawText.slice(0, 200)}`,
+      );
     }
 
     parsed = JSON.parse(jsonMatch[0]);
@@ -184,7 +152,6 @@ export async function generateStaticFiles(
   const files = Array.isArray(parsed.files) ? parsed.files : [];
   const complete = Boolean(parsed.complete);
 
-  // Validate: must have at least index.html.
   if (files.length === 0) {
     throw new Error('LLM returned no files in the JSON response');
   }
@@ -199,7 +166,6 @@ export async function generateStaticFiles(
       throw new Error(`File ${f.path} has empty content`);
     }
 
-    // Auto-fill mime_type if missing.
     if (!f.mime_type) {
       f.mime_type = inferMimeType(f.path);
     }
@@ -221,7 +187,6 @@ function inferMimeType(path: string): string {
 
 /**
  * Validate the generation result.
- * Returns an array of issues (empty = valid).
  */
 export function validateGeneration(result: GenerationResult): string[] {
   const issues: string[] = [];
@@ -236,30 +201,15 @@ export function validateGeneration(result: GenerationResult): string[] {
 
   const paths = result.files.map((f) => f.path);
 
-  if (!paths.includes('index.html')) {
-    issues.push('Missing index.html');
-  }
+  if (!paths.includes('index.html')) issues.push('Missing index.html');
+  if (!paths.includes('styles.css')) issues.push('Missing styles.css');
+  if (!paths.includes('app.js')) issues.push('Missing app.js');
 
-  if (!paths.includes('styles.css')) {
-    issues.push('Missing styles.css');
-  }
-
-  if (!paths.includes('app.js')) {
-    issues.push('Missing app.js');
-  }
-
-  // Check index.html links to styles.css and app.js.
   const html = result.files.find((f) => f.path === 'index.html')?.content ?? '';
 
-  if (html && !html.includes('styles.css')) {
-    issues.push('index.html does not link to styles.css');
-  }
+  if (html && !html.includes('styles.css')) issues.push('index.html does not link to styles.css');
+  if (html && !html.includes('app.js')) issues.push('index.html does not reference app.js');
 
-  if (html && !html.includes('app.js')) {
-    issues.push('index.html does not reference app.js');
-  }
-
-  // Check for placeholders.
   for (const f of result.files) {
     if (/\/\/\s*TODO|\/\/\s*FIXME|<!--\s*add.*here\s*-->|<!--\s*COMPLETE/i.test(f.content)) {
       issues.push(`File ${f.path} contains placeholder content`);
