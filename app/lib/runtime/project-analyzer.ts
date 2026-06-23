@@ -1,21 +1,23 @@
 /**
  * Project Analyzer — determines the project type from the workbench file map
- * and routes it to the correct runtime:
+ * and routes it to the correct runtime with the correct install/dev commands.
+ *
+ * Supported project types:
  *
  *   static   → iframe preview (zero cost, instant, works on all devices)
- *   vite     → WebContainer (desktop) or E2B (mobile)
- *   nextjs   → E2B (needs a real server)
- *   node     → E2B (needs a runtime)
+ *   vite     → WebContainer (desktop) or E2B (mobile) — React/Vue/Svelte + Vite
+ *   nextjs   → E2B (needs a real Node server)
+ *   node     → E2B (Express/Koa/Fastify/NestJS backend)
+ *   python   → E2B (Flask/FastAPI/Django)
  *   unknown  → E2B as fallback
  *
- * The analyzer is called by RemotePreviewTrigger AFTER the AI finishes
- * generating files. If the project is "static", the trigger skips E2B
- * entirely and injects a blob URL directly into workbenchStore.previews.
+ * Each non-static type includes the correct `installCommand` and `devCommand`
+ * so api.sb.ts knows exactly how to install deps and start the dev server.
  */
 
 import type { FileMap } from '~/lib/common/llm/constants';
 
-export type ProjectType = 'static' | 'vite' | 'nextjs' | 'node' | 'unknown';
+export type ProjectType = 'static' | 'vite' | 'nextjs' | 'node' | 'python' | 'unknown';
 
 export interface ProjectAnalysis {
   type: ProjectType;
@@ -24,23 +26,43 @@ export interface ProjectAnalysis {
   hasVite: boolean;
   hasNextjs: boolean;
   hasNodeBackend: boolean;
+  hasPython: boolean;
 
   /** For static projects: the path to the entry HTML file. */
   entryHtmlPath?: string;
+
+  /**
+   * For non-static projects: the shell command to install dependencies.
+   * Passed to E2B's `sandbox.commands.run()`.
+   */
+  installCommand?: string;
+
+  /**
+   * For non-static projects: the shell command to start the dev server.
+   * Passed to E2B's `sandbox.commands.run()`.
+   * Must bind to 0.0.0.0 so the preview proxy can reach it.
+   */
+  devCommand?: string;
 
   /** Human-readable reason for the routing decision (for logging). */
   reason: string;
 }
 
+/** Default port for all dev servers inside the sandbox. */
+export const PREVIEW_PORT = 3000;
+
 /**
- * Analyze the workbench file map and determine the project type.
+ * Analyze the workbench file map and determine the project type + commands.
  *
- * Decision tree:
- *  1. No package.json → static (HTML/CSS/JS) → iframe preview
- *  2. package.json + vite dep → vite → WebContainer/E2B
- *  3. package.json + next dep → nextjs → E2B
- *  4. package.json + express/koa/fastify → node → E2B
- *  5. package.json only → unknown → E2B fallback
+ * Decision tree (ordered by specificity):
+ *  1. No package.json + has .html        → static  → iframe
+ *  2. No package.json + has .py          → python  → E2B (pip + python)
+ *  3. No package.json + has .go/.rs      → unknown → E2B fallback
+ *  4. package.json + next dep            → nextjs  → E2B (next dev)
+ *  5. package.json + vite dep            → vite    → E2B/WebContainer (vite)
+ *  6. package.json + express/koa/fastify → node    → E2B (node server.js)
+ *  7. package.json + has server.js/.ts   → node    → E2B (node server.js)
+ *  8. package.json only                  → unknown → E2B fallback (npm run dev)
  */
 export function analyzeProject(files: FileMap): ProjectAnalysis {
   const filePaths = Object.keys(files).filter((p) => files[p]?.type === 'file');
@@ -55,10 +77,20 @@ export function analyzeProject(files: FileMap): ProjectAnalysis {
   const hasIndexHtml = Boolean(indexHtmlPath);
   const hasPackageJson = Boolean(packageJsonPath);
 
+  // Check for Python entry points
+  const hasRequirementsTxt = relPaths.some((p) => p === 'requirements.txt');
+  const pyEntryFile = relPaths.find((p) => p === 'app.py' || p === 'main.py' || p === 'server.py' || p === 'manage.py');
+  const hasPython = hasRequirementsTxt || Boolean(pyEntryFile);
+
+  // Check for Go/Rust (future support)
+  const hasGo = relPaths.some((p) => p.endsWith('.go'));
+  const hasRust = relPaths.some((p) => p === 'Cargo.toml');
+
   // Parse package.json if it exists
   let hasVite = false;
   let hasNextjs = false;
   let hasNodeBackend = false;
+  let pkgScripts: Record<string, string> = {};
 
   if (packageJsonPath && files[`${prefix}${packageJsonPath}`]?.type === 'file') {
     const content = (files[`${prefix}${packageJsonPath}`] as { content: string }).content;
@@ -73,56 +105,106 @@ export function analyzeProject(files: FileMap): ProjectAnalysis {
       hasVite = Boolean(allDeps.vite);
       hasNextjs = Boolean(allDeps.next);
       hasNodeBackend = Boolean(allDeps.express || allDeps.koa || allDeps.fastify || allDeps['@nestjs/core']);
+      pkgScripts = pkg.scripts || {};
     } catch {
       // Malformed package.json — treat as unknown
     }
   }
 
-  // Decision tree
+  // Check for server entry files (even without known backend deps)
+  const hasServerFile = relPaths.some((p) => p === 'server.js' || p === 'server.ts' || p === 'server.mjs');
+
+  // ─── Decision tree ───────────────────────────────────────────────────
   let type: ProjectType;
   let reason: string;
+  let installCommand: string | undefined;
+  let devCommand: string | undefined;
 
   if (!hasPackageJson) {
-    // No package.json — pure static HTML/CSS/JS project
-    if (hasIndexHtml) {
+    // ── No package.json ──
+    if (hasIndexHtml || relPaths.some((p) => p.endsWith('.html'))) {
+      // Static HTML/CSS/JS project — iframe preview
       type = 'static';
-      reason = 'No package.json + has index.html → static iframe preview (zero cost)';
-    } else {
-      /*
-       * No package.json and no index.html — could be a Python script or something
-       * Check for common static entry points
-       */
-      const hasHtml = relPaths.some((p) => p.endsWith('.html'));
-      const hasPython = relPaths.some((p) => p.endsWith('.py'));
-      const hasGo = relPaths.some((p) => p.endsWith('.go'));
+      reason = 'No package.json + has .html → static iframe preview (zero cost)';
 
-      if (hasHtml) {
-        type = 'static';
-        reason = 'No package.json + has .html file → static iframe preview';
-
-        // Use the first HTML file found
-        const htmlPath = relPaths.find((p) => p.endsWith('.html'));
-        indexHtmlPath = htmlPath;
-      } else if (hasPython || hasGo) {
-        type = 'node';
-        reason = 'No package.json + has .py/.go → needs runtime (E2B)';
-      } else {
-        type = 'unknown';
-        reason = 'No package.json, no index.html → unknown (E2B fallback)';
+      if (!indexHtmlPath) {
+        indexHtmlPath = relPaths.find((p) => p.endsWith('.html'));
       }
+    } else if (hasPython) {
+      // Python project — Flask/FastAPI/Django
+      type = 'python';
+      reason = 'No package.json + has .py/requirements.txt → Python (E2B)';
+
+      installCommand = hasRequirementsTxt ? 'pip install -r requirements.txt' : 'pip install flask';
+      devCommand = pyEntryFile ? `python ${pyEntryFile}` : 'python app.py';
+    } else if (hasGo) {
+      // Go project (future — for now E2B fallback)
+      type = 'unknown';
+      reason = 'No package.json + has .go → unknown (E2B fallback)';
+      installCommand = 'echo "Go project — no install needed"';
+      devCommand = 'echo "Go not yet supported"';
+    } else if (hasRust) {
+      type = 'unknown';
+      reason = 'No package.json + has Cargo.toml → unknown (E2B fallback)';
+      installCommand = 'echo "Rust project — no install needed"';
+      devCommand = 'echo "Rust not yet supported"';
+    } else {
+      type = 'unknown';
+      reason = 'No package.json, no index.html → unknown (E2B fallback)';
     }
-  } else if (hasVite) {
-    type = 'vite';
-    reason = 'package.json + vite → Vite dev server (WebContainer/E2B)';
   } else if (hasNextjs) {
+    // ── Next.js ──
     type = 'nextjs';
     reason = 'package.json + next → Next.js server (E2B)';
-  } else if (hasNodeBackend) {
+    installCommand = 'npm install --no-audit --no-fund';
+
+    /*
+     * Next.js dev server needs --hostname (not --host) and doesn't use
+     * --base (it serves at /). The preview proxy strips /preview/ for
+     * the initial HTML request, then Next.js takes over.
+     */
+    devCommand = `npm run dev -- --hostname 0.0.0.0 --port ${PREVIEW_PORT}`;
+  } else if (hasVite) {
+    // ── Vite (React/Vue/Svelte/Astro) ──
+    type = 'vite';
+    reason = 'package.json + vite → Vite dev server (WebContainer/E2B)';
+    installCommand = 'npm install --no-audit --no-fund';
+    devCommand = `npm run dev -- --host 0.0.0.0 --port ${PREVIEW_PORT} --base=/preview/`;
+  } else if (hasNodeBackend || hasServerFile) {
+    // ── Node backend (Express/Koa/Fastify/NestJS) ──
     type = 'node';
-    reason = 'package.json + express/koa/fastify → Node backend (E2B)';
+    reason = hasNodeBackend
+      ? 'package.json + express/koa/fastify → Node backend (E2B)'
+      : 'package.json + server.js → Node backend (E2B)';
+    installCommand = 'npm install --no-audit --no-fund';
+
+    /*
+     * For Node backends, use the start script from package.json if it exists.
+     * Otherwise, run server.js directly. The server must bind to 0.0.0.0
+     * so the E2B preview proxy can reach it.
+     */
+    if (pkgScripts.start && !pkgScripts.start.includes('vite')) {
+      // Use `npm start` but override the host/port via env vars
+      devCommand = `PORT=${PREVIEW_PORT} HOST=0.0.0.0 npm start`;
+    } else if (pkgScripts.dev && !pkgScripts.dev.includes('vite')) {
+      devCommand = `PORT=${PREVIEW_PORT} HOST=0.0.0.0 npm run dev`;
+    } else {
+      // Find the server entry file
+      const serverFile =
+        relPaths.find((p) => p === 'server.js') ||
+        relPaths.find((p) => p === 'server.ts') ||
+        relPaths.find((p) => p === 'server.mjs') ||
+        relPaths.find((p) => p === 'app.js') ||
+        relPaths.find((p) => p === 'index.js') ||
+        'server.js';
+      devCommand = `PORT=${PREVIEW_PORT} HOST=0.0.0.0 node ${serverFile}`;
+    }
   } else {
+    // ── Unknown package.json project — try npm run dev as fallback ──
     type = 'unknown';
-    reason = 'package.json but no known framework → E2B fallback';
+    reason = 'package.json but no known framework → E2B fallback (npm run dev)';
+    installCommand = 'npm install --no-audit --no-fund';
+    devCommand = `npm run dev -- --host 0.0.0.0 --port ${PREVIEW_PORT} --base=/preview/ 2>/dev/null || npm start 2>/dev/null || echo "Could not start dev server"`;
   }
 
   return {
@@ -132,7 +214,10 @@ export function analyzeProject(files: FileMap): ProjectAnalysis {
     hasVite,
     hasNextjs,
     hasNodeBackend,
+    hasPython,
     entryHtmlPath: indexHtmlPath,
+    installCommand,
+    devCommand,
     reason,
   };
 }

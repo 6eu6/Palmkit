@@ -94,9 +94,12 @@ export async function shouldUseRemotePreview(): Promise<boolean> {
  * - First call: create sandbox, push files, install + start dev, inject preview.
  * - Later calls: push updated files (Vite HMR reloads the running preview).
  *
+ * @param opts Optional install/dev commands from the Project Analyzer.
+ *             If provided, these override the defaults in api.sb.ts.
+ *
  * On sandbox creation failure, cleans up the failed sandbox and allows retry.
  */
-export async function ensureRemotePreview(): Promise<void> {
+export async function ensureRemotePreview(opts?: { install?: string; dev?: string }): Promise<void> {
   if (inflight) {
     return;
   }
@@ -176,7 +179,11 @@ export async function ensureRemotePreview(): Promise<void> {
     if (!started) {
       remotePreviewStatus.set({ state: 'installing' });
 
-      const url = await startRemoteSandbox(sandboxId, { port: DEV_PORT });
+      const url = await startRemoteSandbox(sandboxId, {
+        port: DEV_PORT,
+        install: opts?.install,
+        dev: opts?.dev,
+      });
       started = true;
 
       /*

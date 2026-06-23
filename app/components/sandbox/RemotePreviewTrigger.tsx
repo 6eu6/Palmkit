@@ -158,7 +158,10 @@ export const RemotePreviewTrigger = memo(() => {
       );
 
       if (useRemote) {
-        await ensureRemotePreview();
+        await ensureRemotePreview({
+          install: analysis.installCommand,
+          dev: analysis.devCommand,
+        });
       }
     })();
   }, [isStreaming, files, sandbox.state]);

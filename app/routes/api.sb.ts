@@ -229,18 +229,33 @@ export async function action({ context, request }: ActionFunctionArgs) {
 
         const sandbox = await E2BSandbox.connect(body.id, { apiKey });
         const port = body.port ?? DEFAULT_PORT;
+
+        /*
+         * Install + dev commands come from the Project Analyzer (client-side).
+         * If not provided, fall back to sensible defaults (Vite).
+         * The analyzer determines the correct commands based on the project
+         * type: vite, nextjs, node (express), python, or unknown.
+         */
         const install = body.install ?? 'npm install --no-audit --no-fund';
         const dev = body.dev ?? `npm run dev -- --host 0.0.0.0 --port ${port} --base=/preview/`;
 
         /*
-         * Patch the Vite config via the E2B filesystem API (not shell script).
-         * Writes a minimal valid vite.config.js with:
-         *   - server.allowedHosts (Vite 5.2+ proxy host acceptance)
-         *   - server.hmr (HMR through our same-origin WebSocket proxy)
-         *   - base: '/preview/' (all asset URLs use /preview/ prefix)
-         * Tries to restore the AI's @vitejs/plugin-react if available.
+         * Only patch the Vite config if this is a Vite project (has vite.config
+         * or the dev command uses vite). For Next.js, Node backends, and Python,
+         * patching the Vite config is unnecessary and can break the project.
          */
-        const patchedConfig = `
+        const isViteProject = dev.includes('vite') || dev.includes('--base=/preview/');
+
+        if (isViteProject) {
+          /*
+           * Patch the Vite config via the E2B filesystem API (not shell script).
+           * Writes a minimal valid vite.config.js with:
+           *   - server.allowedHosts (Vite 5.2+ proxy host acceptance)
+           *   - server.hmr (HMR through our same-origin WebSocket proxy)
+           *   - base: '/preview/' (all asset URLs use /preview/ prefix)
+           * Tries to restore the AI's @vitejs/plugin-react if available.
+           */
+          const patchedConfig = `
 const serverOpts = {
   allowedHosts: true,
   host: true,
@@ -258,24 +273,25 @@ try {
 export default { base: '/preview/', server: serverOpts, plugins };
 `;
 
-        try {
-          await sandbox.files.write(`${PROJECT_DIR}/vite.config.js`, patchedConfig);
-
-          // Remove any other vite.config.* files so Vite picks up ours
           try {
-            const entries = await sandbox.files.list(PROJECT_DIR);
+            await sandbox.files.write(`${PROJECT_DIR}/vite.config.js`, patchedConfig);
 
-            for (const entry of entries) {
-              if (entry.name && entry.name.match(/^vite\.config\./) && entry.name !== 'vite.config.js') {
-                try {
-                  await sandbox.files.remove(`${PROJECT_DIR}/${entry.name}`);
-                } catch {}
+            // Remove any other vite.config.* files so Vite picks up ours
+            try {
+              const entries = await sandbox.files.list(PROJECT_DIR);
+
+              for (const entry of entries) {
+                if (entry.name && entry.name.match(/^vite\.config\./) && entry.name !== 'vite.config.js') {
+                  try {
+                    await sandbox.files.remove(`${PROJECT_DIR}/${entry.name}`);
+                  } catch {}
+                }
               }
-            }
-          } catch {}
-        } catch (err) {
-          console.warn(`[api/sb] vite.config patch failed: ${err instanceof Error ? err.message : String(err)}`);
-        }
+            } catch {}
+          } catch (err) {
+            console.warn(`[api/sb] vite.config patch failed: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        } // end if (isViteProject)
 
         await sandbox.setTimeout(SANDBOX_TIMEOUT_MS);
         await sandbox.commands.run(`cd ${PROJECT_DIR} && (${install} && ${dev}) > /tmp/dev.log 2>&1`, {
