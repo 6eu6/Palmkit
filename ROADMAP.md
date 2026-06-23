@@ -135,11 +135,26 @@ User prompt
 
 ---
 
-### Phase 2 — Build Orchestrator (الفصل المعماري) ○
+### Phase 2 — Build Orchestrator (الفصل المعماري) 🚧 scaffold مكتمل
+
+**ما تم**:
+- ✅ External Worker scaffold (`external-worker/` مشروع Bun مستقل)
+- ✅ R2 client (S3-compatible) + Supabase Storage bucket `palmkit-files`
+- ✅ `claim_next_build_job()` RPC (atomic, multi-worker safe)
+- ✅ `/api/jobs` thin API على CF Pages (enqueue + status)
+- ✅ Migration 0007 (pending status + RPC + bucket)
+
+**ما تبقّى**:
+- ○ نقل logic التوليد من `api.chat.ts` إلى `job-processor.ts` (phases: plan/generate/validate/repair)
+- ○ SSE endpoint للـ progress الحقيقي
+- ○ Frontend polling لـ `/api/jobs/:id` + عرض progress حقيقي
+- ○ اختبار end-to-end: enqueue → worker → R2 → preview
 
 **الهدف**: Palmkit يبني مشاريع كبيرة بدون ما يكسر.
 
 **القرار المعلّق**: Cloudflare Workflows (lock-in، أبسط) vs External Worker على Render/Railway (أقل lock-in، تعقيد infra أعلى).
+
+**القرار المتخذ**: ✅ External Worker + R2 (أقل lock-in، تحكم كامل).
 
 **المخطط**:
 1. External worker يستلم job من queue (Supabase)
