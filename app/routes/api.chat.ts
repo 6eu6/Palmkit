@@ -13,6 +13,7 @@ import { extractPropertiesFromMessage } from '~/lib/.server/llm/utils';
 import type { DesignScheme } from '~/types/design-scheme';
 import { MCPService } from '~/lib/services/mcpService';
 import { StreamRecoveryManager } from '~/lib/.server/llm/stream-recovery';
+import { validateBuildOutput, completenessToJobStatus } from '~/lib/runtime/output-validator';
 
 export async function action(args: ActionFunctionArgs) {
   return chatAction(args);
@@ -398,28 +399,103 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             cumulativeUsage.totalTokens += usage.totalTokens || 0;
           }
 
-          /* Normal completion — no token limit hit */
-          if (finishReason !== 'length') {
+          /*
+           * Phase 1 Safety Gate — Output Validation
+           * ========================================
+           * After each segment completes normally (finishReason !== 'length'),
+           * we run the output validator. This is the GATE that prevents broken
+           * previews from reaching the user.
+           *
+           * Outcomes:
+           *   - complete       → ready_for_preview, break the loop
+           *   - incomplete     → if retryCount < MAX_VALIDATION_RETRIES (2),
+           *                      emit incomplete_retrying + auto-continue with
+           *                      CONTINUE_PROMPT. Otherwise: failed_clean.
+           *   - garbage/invalid → failed_clean immediately (retry won't help).
+           *
+           * IMPORTANT: this is BOUNDED. We do NOT loop forever inside Cloudflare.
+           * After MAX_VALIDATION_RETRIES the user sees a clean failure message,
+           * never a broken preview.
+           *
+           * See ROADMAP.md → Phase 1 for the full design.
+           */
+
+          // Aggregate the full assistant text from all segments so far.
+          // currentMessages already contains the assistant segments we pushed
+          // in previous iterations (line ~445 below), plus the current `text`.
+          const fullAssistantText = currentMessages
+            .filter((m) => m.role === 'assistant')
+            .map((m) => (typeof m.content === 'string' ? m.content : ''))
+            .join('\n') + '\n' + text;
+
+          const validationResult = validateBuildOutput(fullAssistantText);
+          const jobStatus = completenessToJobStatus(validationResult);
+          const MAX_VALIDATION_RETRIES = 2;
+
+          // Push an annotation so the frontend knows the validation outcome.
+          dataStream.writeMessageAnnotation({
+            type: 'validation' as const,
+            value: {
+              completeness: validationResult.completeness,
+              jobStatus,
+              hasCompletionMarker: validationResult.hasCompletionMarker,
+              artifactTagsBalanced: validationResult.artifactTagsBalanced,
+              fileActionsBalanced: validationResult.fileActionsBalanced,
+              fileCount: validationResult.fileCount,
+              issues: validationResult.issues,
+              retryCount: continueSegmentCount,
+            },
+          } as any);
+
+          if (validationResult.completeness === 'complete') {
+            // ✅ All checks passed — emit ready_for_preview and break.
             streamRecovery?.stop();
-            dataStream.writeMessageAnnotation({
-              type: 'usage',
-              value: {
-                completionTokens: cumulativeUsage.completionTokens,
-                promptTokens: cumulativeUsage.promptTokens,
-                totalTokens: cumulativeUsage.totalTokens,
-              },
-            });
             dataStream.writeData({
               type: 'progress',
               label: 'response',
               status: 'complete',
               order: progressCounter++,
-              message: 'Response Generated',
+              message: 'Build complete — ready for preview',
             } satisfies ProgressAnnotation);
             break;
           }
 
-          /* Token limit hit — auto-continue */
+          if (!validationResult.retryable || continueSegmentCount >= MAX_VALIDATION_RETRIES) {
+            // ❌ Not retryable, or we've exhausted retries — fail clean.
+            streamRecovery?.stop();
+            const failMessage =
+              validationResult.completeness === 'garbage'
+                ? 'Build failed: model did not produce valid project structure. Try rephrasing your request.'
+                : validationResult.completeness === 'invalid'
+                  ? `Build failed: ${validationResult.issues[0]?.message || 'placeholder/empty file detected'}`
+                  : `Build incomplete after ${continueSegmentCount} attempts. Stream was interrupted. Please try again.`;
+
+            dataStream.writeData({
+              type: 'progress',
+              label: 'response',
+              status: 'error',
+              order: progressCounter++,
+              message: failMessage,
+            } satisfies ProgressAnnotation);
+            logger.warn(
+              `Build failed clean: completeness=${validationResult.completeness}, retries=${continueSegmentCount}, issues=${validationResult.issues.length}`,
+            );
+            break;
+          }
+
+          // 🔄 Retryable incomplete — emit incomplete_retrying + auto-continue.
+          dataStream.writeData({
+            type: 'progress',
+            label: 'response',
+            status: 'in-progress',
+            order: progressCounter++,
+            message: `Still building… (attempt ${continueSegmentCount + 1}/${MAX_VALIDATION_RETRIES + 1})`,
+          } satisfies ProgressAnnotation);
+          logger.info(
+            `Build incomplete (attempt ${continueSegmentCount + 1}), retrying. Issues: ${validationResult.issues.map((i) => i.code).join(', ')}`,
+          );
+
+          /* Token limit hit — auto-continue (also used for incomplete retry) */
           continueSegmentCount++;
 
           if (continueSegmentCount > MAX_RESPONSE_SEGMENTS) {

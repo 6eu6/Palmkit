@@ -86,9 +86,16 @@ export default function ProgressCompilation({ data }: { data?: ProgressAnnotatio
 }
 
 const ProgressItem = ({ progress }: { progress: ProgressAnnotation }) => {
+  const isError = progress.status === 'error';
+  const isWarning = progress.message?.toLowerCase().includes('still building');
+
   return (
     <motion.div
-      className={classNames('flex text-sm gap-3')}
+      className={classNames(
+        'flex text-sm gap-3',
+        isError && 'text-palmkit-elements-textError',
+        isWarning && 'text-palmkit-elements-textSecondary',
+      )}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -100,6 +107,8 @@ const ProgressItem = ({ progress }: { progress: ProgressAnnotation }) => {
             <div className="i-svg-spinners:90-ring-with-bg"></div>
           ) : progress.status === 'complete' ? (
             <div className="i-ph:check"></div>
+          ) : progress.status === 'error' ? (
+            <div className="i-ph:warning-circle"></div>
           ) : null}
         </div>
         {/* {x.label} */}
