@@ -395,206 +395,53 @@ export default function App() {
   <example>
     <user_query>Make a landing page for a coffee shop — pure HTML, CSS, JS, no frameworks</user_query>
     <assistant_response>
-      I'll create a warm, cozy coffee shop landing page with hero, menu, about, and contact sections — all in vanilla HTML/CSS/JS with cream and brown tones.
+      I'll create a cozy coffee shop landing page in vanilla HTML/CSS/JS.
 
-      <palmkitArtifact id="coffee-shop-landing" title="Coffee Shop Landing Page">
+      <palmkitArtifact id="coffee-shop" title="Coffee Shop Landing Page">
         <palmkitAction type="file" filePath="index.html"><!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Brew & Co. | Coffee Shop</title>
+  <title>Brew & Co.</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
-  <nav class="navbar">
-    <div class="nav-container">
-      <a href="#" class="logo">☕ Brew & Co.</a>
-      <ul class="nav-links">
-        <li><a href="#home">Home</a></li>
-        <li><a href="#menu">Menu</a></li>
-        <li><a href="#about">About</a></li>
-        <li><a href="#contact">Contact</a></li>
-      </ul>
-    </div>
-  </nav>
-
-  <section class="hero" id="home">
-    <div class="hero-content">
-      <h1>Sip. Savor. <span>Smile.</span></h1>
-      <p>Handcrafted coffee, cozy vibes, and stories in every cup.</p>
-      <a href="#menu" class="btn-primary">Explore Menu</a>
-    </div>
-  </section>
-
-  <section class="menu" id="menu">
-    <h2>Our Signature Brews</h2>
-    <div class="menu-grid">
-      <div class="menu-card"><h3>Caramel Latte</h3><p>$4.50</p><span>Velvety espresso with house caramel.</span></div>
-      <div class="menu-card"><h3>Cold Brew</h3><p>$3.75</p><span>18-hour steep, smooth and bold.</span></div>
-      <div class="menu-card"><h3>Cappuccino</h3><p>$4.00</p><span>Classic with silky microfoam.</span></div>
-      <div class="menu-card"><h3>Mocha</h3><p>$4.75</p><span>Rich cocoa meets dark espresso.</span></div>
-    </div>
-  </section>
-
-  <section class="about" id="about">
-    <h2>Our Story</h2>
-    <p>Since 2018, we've roasted beans in small batches and served them with love. Every visit should feel like coming home.</p>
-  </section>
-
-  <section class="contact" id="contact">
-    <h2>Visit Us</h2>
-    <form id="contact-form">
-      <input type="text" placeholder="Your Name" required>
-      <input type="email" placeholder="Your Email" required>
-      <textarea placeholder="Your Message" rows="4" required></textarea>
-      <button type="submit">Send Message</button>
-    </form>
-  </section>
-
-  <footer class="footer"><p>© 2024 Brew & Co. Brewed with love.</p></footer>
+  <header><h1>☕ Brew & Co.</h1></header>
+  <main>
+    <section class="hero"><h2>Sip. Savor. Smile.</h2><p>Handcrafted coffee, cozy vibes.</p></section>
+    <section class="menu">
+      <h2>Our Brews</h2>
+      <div class="card"><h3>Latte</h3><span>$4.50</span></div>
+      <div class="card"><h3>Cold Brew</h3><span>$3.75</span></div>
+    </section>
+  </main>
+  <footer><p>© 2024 Brew & Co.</p></footer>
   <script src="script.js"></script>
 </body>
 </html></palmkitAction>
-        <palmkitAction type="file" filePath="style.css">:root {
-  --cream: #f5ebe0;
-  --brown: #6f4e37;
-  --dark: #3e2723;
-  --accent: #d4a373;
-  --white: #ffffff;
-}
-
+        <palmkitAction type="file" filePath="style.css">:root { --brown: #6f4e37; --cream: #f5ebe0; --accent: #d4a373; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-
-body {
-  font-family: 'Inter', sans-serif;
-  color: var(--dark);
-  background: var(--cream);
-  line-height: 1.6;
-}
-
-.navbar {
-  position: sticky; top: 0; z-index: 100;
-  background: var(--dark);
-  padding: 1rem 0;
-}
-.nav-container {
-  max-width: 1100px; margin: 0 auto;
-  padding: 0 1.5rem;
-  display: flex; justify-content: space-between; align-items: center;
-}
-.logo { color: var(--cream); font-family: 'Playfair Display', serif; font-size: 1.5rem; font-weight: 700; text-decoration: none; }
-.nav-links { list-style: none; display: flex; gap: 2rem; }
-.nav-links a { color: var(--cream); text-decoration: none; font-size: 0.95rem; transition: color 0.2s; }
-.nav-links a:hover { color: var(--accent); }
-
-.hero {
-  background: linear-gradient(135deg, var(--brown), var(--dark));
-  color: var(--cream);
-  padding: 6rem 1.5rem;
-  text-align: center;
-}
-.hero h1 { font-family: 'Playfair Display', serif; font-size: 3rem; margin-bottom: 1rem; }
-.hero h1 span { color: var(--accent); }
-.hero p { font-size: 1.1rem; margin-bottom: 2rem; opacity: 0.9; }
-.btn-primary {
-  background: var(--accent); color: var(--dark);
-  padding: 0.9rem 2rem; border-radius: 50px;
-  text-decoration: none; font-weight: 600;
-  display: inline-block; transition: transform 0.2s, background 0.2s;
-}
-.btn-primary:hover { background: var(--cream); transform: translateY(-2px); }
-
-.menu { padding: 4rem 1.5rem; max-width: 1100px; margin: 0 auto; }
-.menu h2 { font-family: 'Playfair Display', serif; text-align: center; font-size: 2.2rem; color: var(--brown); margin-bottom: 2.5rem; }
-.menu-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; }
-.menu-card {
-  background: var(--white); border-radius: 12px;
-  padding: 1.8rem; box-shadow: 0 4px 16px rgba(62, 39, 35, 0.08);
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-.menu-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(62, 39, 35, 0.15); }
-.menu-card h3 { color: var(--brown); font-size: 1.25rem; margin-bottom: 0.5rem; }
-.menu-card p { color: var(--accent); font-weight: 600; font-size: 1.1rem; margin-bottom: 0.5rem; }
-.menu-card span { color: var(--dark); opacity: 0.8; font-size: 0.9rem; }
-
-.about { background: var(--white); padding: 4rem 1.5rem; text-align: center; }
-.about h2 { font-family: 'Playfair Display', serif; font-size: 2.2rem; color: var(--brown); margin-bottom: 1.5rem; }
-.about p { max-width: 600px; margin: 0 auto; font-size: 1.05rem; color: var(--dark); opacity: 0.85; }
-
-.contact { padding: 4rem 1.5rem; max-width: 600px; margin: 0 auto; }
-.contact h2 { font-family: 'Playfair Display', serif; text-align: center; font-size: 2.2rem; color: var(--brown); margin-bottom: 2rem; }
-#contact-form { display: flex; flex-direction: column; gap: 1rem; }
-#contact-form input, #contact-form textarea {
-  padding: 0.9rem 1rem; border: 1px solid #e0d3c5;
-  border-radius: 8px; font-family: inherit; font-size: 1rem;
-  background: var(--white); transition: border-color 0.2s;
-}
-#contact-form input:focus, #contact-form textarea:focus { outline: none; border-color: var(--accent); }
-#contact-form button {
-  background: var(--brown); color: var(--cream);
-  padding: 1rem; border: none; border-radius: 8px;
-  font-size: 1rem; font-weight: 600; cursor: pointer;
-  transition: background 0.2s;
-}
-#contact-form button:hover { background: var(--dark); }
-
-.footer { background: var(--dark); color: var(--cream); text-align: center; padding: 2rem 1.5rem; font-size: 0.9rem; opacity: 0.9; }
-
-@media (max-width: 600px) {
-  .hero h1 { font-size: 2.2rem; }
-  .nav-links { gap: 1rem; }
-  .nav-links a { font-size: 0.85rem; }
-}</palmkitAction>
-        <palmkitAction type="file" filePath="script.js">// Mobile nav toggle & smooth scroll
-document.querySelectorAll('.nav-links a').forEach(link => {
-  link.addEventListener('click', (e) => {
-    const target = document.querySelector(link.getAttribute('href'));
-    if (target) {
-      e.preventDefault();
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+body { font-family: sans-serif; background: var(--cream); color: var(--brown); }
+header { background: var(--brown); color: var(--cream); padding: 1.5rem; text-align: center; }
+.hero { padding: 4rem 1.5rem; text-align: center; background: linear-gradient(135deg, var(--brown), #3e2723); color: var(--cream); }
+.hero h2 { font-size: 2.5rem; margin-bottom: 0.5rem; }
+.menu { padding: 3rem 1.5rem; max-width: 800px; margin: 0 auto; }
+.menu h2 { text-align: center; margin-bottom: 2rem; }
+.card { background: #fff; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.card span { color: var(--accent); font-weight: 600; float: right; }
+footer { background: #3e2723; color: var(--cream); text-align: center; padding: 1.5rem; }</palmkitAction>
+        <palmkitAction type="file" filePath="script.js">// Smooth scroll for any anchor links
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.addEventListener('click', e => {
+    const t = document.querySelector(a.getAttribute('href'));
+    if (t) { e.preventDefault(); t.scrollIntoView({ behavior: 'smooth' }); }
   });
 });
-
-// Contact form handler
-document.getElementById('contact-form').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const btn = e.target.querySelector('button');
-  const originalText = btn.textContent;
-  btn.textContent = 'Sending...';
-  btn.disabled = true;
-  setTimeout(() => {
-    btn.textContent = '✓ Message Sent!';
-    e.target.reset();
-    setTimeout(() => {
-      btn.textContent = originalText;
-      btn.disabled = false;
-    }, 2000);
-  }, 800);
-});
-
-// Fade-in on scroll
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach(entry => {
-    if (entry.isIntersecting) {
-      entry.target.style.opacity = '1';
-      entry.target.style.transform = 'translateY(0)';
-    }
-  });
-}, { threshold: 0.1 });
-
-document.querySelectorAll('.menu-card, .about, .contact').forEach(el => {
-  el.style.opacity = '0';
-  el.style.transform = 'translateY(20px)';
-  el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
-  observer.observe(el);
-});</palmkitAction>
+console.log('Coffee shop page loaded');</palmkitAction>
       </palmkitArtifact>
 
-      Built a cozy coffee shop landing page with a sticky navbar, gradient hero, responsive 4-card menu grid, about section, working contact form with loading state, and scroll fade-in animations — all in vanilla HTML/CSS/JS.
+      Built a coffee shop landing page with hero, menu cards, and smooth-scroll JS — all in vanilla HTML/CSS/JS.
     </assistant_response>
   </example>
 </examples>
