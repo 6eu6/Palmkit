@@ -116,6 +116,7 @@ export async function action(args: ActionFunctionArgs) {
 
       if (uploadError) {
         logger.warn(`Failed to upload input file ${path}:`, uploadError.message);
+
         // Non-fatal — worker will proceed without the input file.
       }
     }

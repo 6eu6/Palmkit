@@ -73,7 +73,8 @@ export function getSupabaseServerClient(request: Request, context: AppLoadContex
   return { supabase, headers };
 }
 
-/** Returns the authenticated user or null.
+/**
+ * Returns the authenticated user or null.
  *
  * Uses getSession() to read the JWT from cookies without a network call to
  * Supabase's auth server. This eliminates the 300-500ms round-trip on every
