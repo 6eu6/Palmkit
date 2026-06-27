@@ -8,6 +8,7 @@ import { ScreenshotSelector } from './ScreenshotSelector';
 import { expoUrlAtom } from '~/lib/stores/qrCodeStore';
 import { ExpoQrModal } from '~/components/workbench/ExpoQrModal';
 import { canShowPreview, buildStatusMessage, buildStatusStore, previewFilesStore } from '~/lib/stores/build-status';
+import { useWorkerSandbox } from '~/lib/hooks/use-worker-sandbox';
 import type { ElementInfo } from './Inspector';
 
 type ResizeSide = 'left' | 'right' | null;
@@ -84,6 +85,12 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
   const effectiveActivePreview = canShowPreviewValue ? activePreview : undefined;
 
   /*
+   * Phase 3: Sandbox bridge — runs Oracle worker files in WebContainer (desktop)
+   * or E2B (mobile/Python). Auto-launches on desktop; requires a button on mobile.
+   */
+  const { sandboxState, sandboxUrl, sandboxError, launchSandbox, usesMobileE2B, canUseSandbox } = useWorkerSandbox();
+
+  /*
    * Phase 2: External Worker preview from R2.
    * When the worker completes a job, previewFilesStore has {path: content}.
    * We build a blob URL (rewriting relative links) and use it as the iframe src.
@@ -141,11 +148,14 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
   const [currentWidth, setCurrentWidth] = useState<number>(0);
 
   /*
-   * If external worker preview is available, use it as the effective iframe URL.
-   * (Declared AFTER iframeUrl to avoid temporal dead zone.)
+   * Effective iframe URL precedence:
+   *   1. Phase 3 sandbox URL (WebContainer or E2B preview)
+   *   2. Phase 2 blob URL (static R2 preview)
+   *   3. Phase 1 WebContainer URL (bolt editor flow)
    */
-  const finalIframeUrl = extWorkerBlobUrl ?? iframeUrl;
+  const finalIframeUrl = sandboxUrl ?? extWorkerBlobUrl ?? iframeUrl;
   const hasExtWorkerPreview = Boolean(extWorkerBlobUrl);
+  const hasSandboxPreview = sandboxState === 'ready' && Boolean(sandboxUrl);
 
   const resizingState = useRef({
     isResizing: false,
@@ -991,7 +1001,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
             alignItems: 'center',
           }}
         >
-          {effectiveActivePreview || hasExtWorkerPreview ? (
+          {effectiveActivePreview || hasExtWorkerPreview || hasSandboxPreview ? (
             <>
               {isDeviceModeOn && showDeviceFrameInPreview ? (
                 <div
@@ -1098,28 +1108,81 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                 style={{ animation: 'fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}
               >
                 <div className="w-16 h-16 rounded-2xl flex items-center justify-center bg-palmkit-elements-item-backgroundAccent border border-palmkit-elements-borderColor">
-                  <div className="i-ph:browser text-2xl text-palmkit-elements-textTertiary" />
+                  {sandboxState === 'writing' || sandboxState === 'installing' || sandboxState === 'starting' ? (
+                    <div className="i-svg-spinners:ring-resize text-2xl text-palmkit-elements-textTertiary animate-spin" />
+                  ) : sandboxState === 'error' ? (
+                    <div className="i-ph:warning text-2xl text-red-400" />
+                  ) : (
+                    <div className="i-ph:browser text-2xl text-palmkit-elements-textTertiary" />
+                  )}
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-palmkit-elements-textPrimary mb-1.5">
-                    {buildStatusValue.jobStatus === 'failed_clean'
-                      ? 'Build failed'
-                      : buildStatusValue.jobStatus === 'incomplete_retrying'
-                        ? 'Still building…'
-                        : buildStatusValue.jobStatus === 'generating'
-                          ? 'Building your app…'
-                          : buildStatusValue.jobStatus === 'ready_for_preview' &&
-                              buildStatusValue.appType &&
-                              buildStatusValue.appType !== 'static'
-                            ? `${buildStatusValue.appType.charAt(0).toUpperCase() + buildStatusValue.appType.slice(1)} project ready`
-                            : 'No preview available'}
+                    {sandboxState === 'writing'
+                      ? 'Writing project files…'
+                      : sandboxState === 'installing'
+                        ? 'Installing dependencies…'
+                        : sandboxState === 'starting'
+                          ? usesMobileE2B
+                            ? 'Starting cloud preview…'
+                            : 'Starting dev server…'
+                          : sandboxState === 'error'
+                            ? 'Preview failed'
+                            : buildStatusValue.jobStatus === 'failed_clean'
+                              ? 'Build failed'
+                              : buildStatusValue.jobStatus === 'incomplete_retrying'
+                                ? 'Still building…'
+                                : buildStatusValue.jobStatus === 'generating'
+                                  ? 'Building your app…'
+                                  : buildStatusValue.jobStatus === 'ready_for_preview' &&
+                                      buildStatusValue.appType &&
+                                      buildStatusValue.appType !== 'static'
+                                    ? `${buildStatusValue.appType.charAt(0).toUpperCase() + buildStatusValue.appType.slice(1)} project ready`
+                                    : 'No preview available'}
                   </h3>
                   <p className="text-xs text-palmkit-elements-textTertiary leading-relaxed">
-                    {buildStatusMessageValue ||
-                      'Start a conversation or wait for the runtime to initialize. Preview will appear here once the app is running.'}
+                    {sandboxError ||
+                      (sandboxState === 'writing'
+                        ? 'Copying source files into the preview runtime…'
+                        : sandboxState === 'installing'
+                          ? 'Running npm install — this may take a moment…'
+                          : sandboxState === 'starting'
+                            ? 'Waiting for the dev server to respond…'
+                            : buildStatusMessageValue ||
+                              'Start a conversation or wait for the runtime to initialize. Preview will appear here once the app is running.')}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 mt-1">
+                  {/* Mobile cloud preview launch button — shown only for sandboxable apps on phones */}
+                  {canUseSandbox && usesMobileE2B && sandboxState === 'idle' && (
+                    <button
+                      onClick={launchSandbox}
+                      className={classNames(
+                        'flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium',
+                        'bg-palmkit-elements-item-backgroundAccent text-palmkit-elements-textSecondary border border-palmkit-elements-borderColor',
+                        'hover:bg-palmkit-elements-item-backgroundActive hover:border-palmkit-elements-borderColorActive',
+                        'active:scale-[0.97] transition-all duration-200',
+                      )}
+                    >
+                      <div className="i-ph:cloud-arrow-up text-sm" />
+                      Launch Cloud Preview
+                    </button>
+                  )}
+                  {/* Retry button shown after sandbox error */}
+                  {sandboxState === 'error' && canUseSandbox && (
+                    <button
+                      onClick={launchSandbox}
+                      className={classNames(
+                        'flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium',
+                        'bg-palmkit-elements-item-backgroundAccent text-palmkit-elements-textSecondary border border-palmkit-elements-borderColor',
+                        'hover:bg-palmkit-elements-item-backgroundActive hover:border-palmkit-elements-borderColorActive',
+                        'active:scale-[0.97] transition-all duration-200',
+                      )}
+                    >
+                      <div className="i-ph:arrow-clockwise text-sm" />
+                      Try Again
+                    </button>
+                  )}
                   <button
                     onClick={() => workbenchStore.currentView.set('code')}
                     className={classNames(
