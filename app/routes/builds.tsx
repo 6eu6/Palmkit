@@ -114,6 +114,14 @@ function BuildCard({ build, onOpen }: { build: BuildRow; onOpen: (id: string) =>
         >
           Open Preview
         </button>
+        <a
+          href={`/api/export?jobId=${build.id}`}
+          download
+          className="rounded-lg border border-palmkit-elements-borderColor px-2 py-1.5 text-xs text-palmkit-elements-textTertiary hover:border-palmkit-elements-borderColorActive hover:text-palmkit-elements-textSecondary transition"
+          title="Download ZIP"
+        >
+          <div className="i-ph:download-simple" />
+        </a>
         <button
           onClick={handleDelete}
           disabled={deleting}

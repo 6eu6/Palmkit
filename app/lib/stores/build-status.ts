@@ -79,6 +79,13 @@ export function resetPreviewFiles(): void {
   previewFilesStore.set({});
 }
 
+/** Phase 8 — current Oracle Worker job ID (for export). */
+export const currentJobIdStore = atom<string | null>(null);
+
+export function setCurrentJobId(jobId: string | null): void {
+  currentJobIdStore.set(jobId);
+}
+
 /** Phase 5 — real-time worker progress events shown in the chat panel. */
 export interface WorkerEvent {
   type: string;
