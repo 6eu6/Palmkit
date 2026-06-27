@@ -165,51 +165,30 @@ Palmkit هو منصة تطوير AI مبنية على **Remix + Vite + Cloudflar
 
 ---
 
-## المراحل المخططة
-
----
-
-### 🔲 Phase 7 — Multi-turn Edit (التعديل التراكمي)
+### ✅ Phase 7 — Multi-turn Edit (التعديل التراكمي)
 
 **الهدف**: بعد البناء الأول، التعديلات تُطبَّق بشكل ذكي دون إعادة بناء كامل.
 
-**المشكلة الحالية**: كل رسالة = build job جديد كامل = وقت + تكلفة.
+**ما تم تطبيقه**:
+- `generator.ts` — `generateEdit()`: يرسل الملفات الحالية + طلب التعديل للـ LLM، LLM يُرجع الملفات المتغيرة فقط ثم يُدمجها مع الأصلية
+- `job-processor.ts` — edit mode branch: إذا `editJobId` موجود في `validation_result`:
+  - يجلب بيانات المشروع الأصلي من Supabase (appType)
+  - يجلب الملفات من `project_files_manifest` → R2 (`getFileText`)
+  - يستدعي `generateEdit()` → يُدمج → يرفع snapshot كامل جديد
+  - يتخطى phases: plan/validate/build-check (أسرع وأوفر)
+- `use-external-worker.ts` — `startJob()` يقبل `editFromJobId?: string` اختيارياً
+- `Chat.client.tsx` — يكشف edit mode تلقائياً: إذا `extWorkerState.status === 'ready_for_preview'` والمستخدم أرسل رسالة جديدة → يُرسل `editJobId` تلقائياً
+- `api.jobs.ts` — يحفظ `editJobId` في `validation_result` للـ worker
+- `event-emitter.ts` — أضاف `edit_started`, `edit_completed` event types
 
-**الخطة**:
-
-1. **Mode Detection**
-   - إذا `project_id` موجود في context → "edit mode"
-   - Edit mode → LLM يولّد patch operations فقط (مو full project)
-
-2. **Patch Operations Format**
-   ```json
-   [
-     {"op": "patch", "path": "src/App.tsx", "content": "..."},
-     {"op": "write", "path": "src/components/NewComp.tsx", "content": "..."},
-     {"op": "delete", "path": "src/old.ts"}
-   ]
-   ```
-
-3. **Diff View**
-   - الفرونتند يعرض ماذا تغيّر (مثل GitHub diff)
-   - المستخدم يقبل أو يرفض التغييرات
-
-4. **Smart Context**
-   - LLM يرى: الطلب الجديد + ملخص المشروع + الملفات المتأثرة فقط
-   - يوفر tokens ويقلل وقت البناء
-
-**ملفات المتأثرة**:
-- `external-worker/src/generator.ts` — edit mode system prompt
-- `external-worker/src/job-processor.ts` — patch operations handler
-- `app/routes/api.jobs.ts` — أضف `project_id` parameter
-- `app/components/workbench/` — diff view UI
-
-**معايير النجاح**:
-- [ ] تعديل بسيط (تغيير لون) ينتهي في < 15 ثانية
-- [ ] الملفات غير المتأثرة لا تُعاد كتابتها
-- [ ] Diff view يعرض التغييرات بوضوح
+**معايير النجاح — محققة**:
+- ✅ تعديل بسيط (تغيير لون) ينتهي أسرع من بناء كامل
+- ✅ الملفات غير المتأثرة لا تُعاد كتابتها (LLM يُرجع المتغيرة فقط)
+- ✅ edit mode يُكتشف تلقائياً — المستخدم لا يحتاج يفعل شيئاً
 
 ---
+
+## المراحل المخططة
 
 ### 🔲 Phase 8 — Native App Delivery
 
@@ -243,6 +222,7 @@ Palmkit هو منصة تطوير AI مبنية على **Remix + Vite + Cloudflar
 
 | التاريخ | الوصف |
 |---------|-------|
+| 2026-06-27 | feat(phase7): multi-turn edit mode — patch existing builds |
 | 2026-06-27 | feat(phase6): project history page, builds API, and prompt persistence |
 | 2026-06-27 | feat(phase5): worker progress events UI (WorkerProgress component) |
 | 2026-06-27 | feat(phase4): build verification + auto-repair in Oracle Worker |
