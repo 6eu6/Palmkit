@@ -130,6 +130,7 @@ export async function action(args: ActionFunctionArgs) {
  *     jobId, status, currentStep, progress, retryCount,
  *     errorSummary, hasCompletionMarker, fileCount,
  *     files: [{ path, size, integrity }]  // from manifest
+ *     appType, runtimeMode  // from worker's validation_result
  *   }
  *   401 { error: 'Unauthorized' }
  *   404 { error: 'Job not found' }

@@ -13,25 +13,19 @@ export default class GoogleProvider extends BaseProvider {
   };
 
   staticModels: ModelInfo[] = [
-    /*
-     * Essential fallback models - only the most reliable/stable ones
-     * Gemini 1.5 Pro: 2M context, 8K output limit (verified from API docs)
-     */
     {
-      name: 'gemini-1.5-pro',
-      label: 'Gemini 1.5 Pro',
+      name: 'gemini-2.5-pro',
+      label: 'Gemini 2.5 Pro',
       provider: 'Google',
-      maxTokenAllowed: 2000000,
-      maxCompletionTokens: 8192,
+      maxTokenAllowed: 1048576,
+      maxCompletionTokens: 65536,
     },
-
-    // Gemini 1.5 Flash: 1M context, 8K output limit, fast and cost-effective
     {
-      name: 'gemini-1.5-flash',
-      label: 'Gemini 1.5 Flash',
+      name: 'gemini-2.5-flash',
+      label: 'Gemini 2.5 Flash',
       provider: 'Google',
-      maxTokenAllowed: 1000000,
-      maxCompletionTokens: 8192,
+      maxTokenAllowed: 1048576,
+      maxCompletionTokens: 65536,
     },
   ];
 
@@ -85,16 +79,20 @@ export default class GoogleProvider extends BaseProvider {
       if (m.inputTokenLimit && m.outputTokenLimit) {
         // Use the input limit as the primary context window (typically larger)
         contextWindow = m.inputTokenLimit;
-      } else if (modelName.includes('gemini-1.5-pro')) {
-        contextWindow = 2000000; // Gemini 1.5 Pro has 2M context
-      } else if (modelName.includes('gemini-1.5-flash')) {
-        contextWindow = 1000000; // Gemini 1.5 Flash has 1M context
+      } else if (modelName.includes('gemini-2.5-pro')) {
+        contextWindow = 1048576;
+      } else if (modelName.includes('gemini-2.5-flash')) {
+        contextWindow = 1048576;
       } else if (modelName.includes('gemini-2.0-flash')) {
-        contextWindow = 1000000; // Gemini 2.0 Flash has 1M context
+        contextWindow = 1000000;
+      } else if (modelName.includes('gemini-1.5-pro')) {
+        contextWindow = 2000000;
+      } else if (modelName.includes('gemini-1.5-flash')) {
+        contextWindow = 1000000;
       } else if (modelName.includes('gemini-pro')) {
-        contextWindow = 32000; // Gemini Pro has 32k context
+        contextWindow = 32000;
       } else if (modelName.includes('gemini-flash')) {
-        contextWindow = 32000; // Gemini Flash has 32k context
+        contextWindow = 32000;
       }
 
       // Cap at reasonable limits to prevent issues

@@ -1,7 +1,7 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { createDataStream, generateId } from 'ai';
 import { isReasoningModel, MAX_RESPONSE_SEGMENTS, type FileMap } from '~/lib/common/llm/constants';
-import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
+import { CLOSE_OUT_PROMPT, CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
 import type { IProviderSetting } from '~/types/model';
 import { createScopedLogger } from '~/utils/logger';
@@ -600,11 +600,20 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
           const lastUserMessage = processedMessages.filter((x) => x.role === 'user').slice(-1)[0];
           const { model, provider } = extractPropertiesFromMessage(lastUserMessage);
+
+          /*
+           * Use a targeted "close out" prompt when all files are done but only the
+           * completion marker is missing — avoids confusing the model into duplicating content.
+           */
+          const onlyMissingMarker =
+            validationResult.issues.length === 1 && validationResult.issues[0].code === 'MISSING_COMPLETION_MARKER';
+          const retryPrompt = onlyMissingMarker ? CLOSE_OUT_PROMPT : CONTINUE_PROMPT;
+
           currentMessages.push({ id: generateId(), role: 'assistant', content: text });
           currentMessages.push({
             id: generateId(),
             role: 'user',
-            content: `[Model: ${model}]\n\n[Provider: ${provider}]\n\n${CONTINUE_PROMPT}`,
+            content: `[Model: ${model}]\n\n[Provider: ${provider}]\n\n${retryPrompt}`,
           });
         }
       },
