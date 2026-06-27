@@ -1,0 +1,26 @@
+name: Deploy Oracle Worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'external-worker/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and update Oracle Worker
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ORACLE_HOST }}
+          username: ${{ secrets.ORACLE_USER }}
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/palmkit-worker
+            git pull origin main
+            bun install --frozen-lockfile
+            sudo systemctl restart palmkit-worker
+            echo "Worker updated and restarted ✅"
+            sudo systemctl status palmkit-worker --no-pager -l | tail -5
