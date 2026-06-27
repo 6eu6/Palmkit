@@ -24,7 +24,6 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createCohere } from '@ai-sdk/cohere';
 import { createMistral } from '@ai-sdk/mistral';
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import type { LanguageModelV1 } from 'ai';
 import { logger } from './logger';
 
@@ -120,16 +119,23 @@ const REGISTRY: Record<string, ProviderConfig> = {
   },
 
   // ─── Aggregator ──────────────────────────────────────────────────────────
+  // Use createOpenAI with OpenRouter's OpenAI-compatible endpoint instead of
+  // @openrouter/ai-sdk-provider which now requires ai ^5 (incompatible with
+  // our ai ^4 SDK). Strip the ~ tilde prefix that OpenRouter uses for "latest"
+  // model aliases (e.g. ~anthropic/claude-sonnet-latest → anthropic/claude-sonnet-latest).
   OpenRouter: {
     apiTokenKey: 'OPENROUTER_API_KEY',
-    createModel: (model, apiKey) =>
-      createOpenRouter({
+    createModel: (model, apiKey) => {
+      const normalizedModel = model.replace(/^~/, '');
+      return createOpenAI({
         apiKey,
+        baseURL: 'https://openrouter.ai/api/v1',
         headers: {
           'HTTP-Referer': 'https://palmkit.app',
           'X-Title': 'Palmkit Build Worker',
         },
-      })(model) as unknown as LanguageModelV1,
+      })(normalizedModel);
+    },
   },
 
   // ─── Z.ai ───────────────────────────────────────────────────────────────
