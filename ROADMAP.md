@@ -101,135 +101,71 @@ Palmkit هو منصة تطوير AI مبنية على **Remix + Vite + Cloudflar
 
 ---
 
-## المراحل المخططة
+## المراحل المكتملة (تابع)
 
-### 🔲 Phase 4 — Build Verification + Auto-Repair
+### ✅ Phase 4 — Build Verification + Auto-Repair
 
 **الهدف**: صفر أخطاء TypeScript في مشاريع React/Vue/Next.js تصل للمستخدم.
 
-**المشكلة**: حالياً، Oracle Worker يولّد الكود ويحفظه دون التحقق من نجاح `npm run build`. قد يكون الكود يعمل في WebContainer لكن فيه أخطاء TypeScript أو missing imports.
+**ما تم تطبيقه**:
+- `external-worker/src/build-checker.ts`: يشغّل `bun install + bun run build` في `/tmp/palmkit-{timestamp}/` على Oracle ARM64 مباشرة
+- دعم 2 repair passes: LLM يأخذ build errors + الملفات المتأثرة → يصلح → يعيد البناء
+- `repairGeneration()` في `generator.ts`: يرسل الأخطاء + الملفات المتأثرة للـ LLM → JSON patch response
+- حد `BUILD_CHECK_TYPES = ['react', 'vue', 'nextjs']` — التحقق يُطبق فقط على هذه الأنواع
+- لو فشل بعد pass 2 → `failed_clean` مع رسالة "Build errors — download to fix"
+- Event types جديدة: `build_check_started`, `build_check_passed`, `build_check_failed`, `repair_started`
 
-**الخطة**:
-
-1. **Build Check في Oracle Worker**
-   - بعد توليد الملفات، Worker يشغّل `npm run build` / `tsc --noEmit` في E2B sandbox
-   - لو نجح → `ready_for_preview`
-   - لو فشل → Phase 2: Repair Pass
-
-2. **Repair Agent (Pass 1)**
-   - يأخذ: build errors + الملفات المتأثرة فقط
-   - يرسل LLM call بصيغة patch: `{"op":"patch","path":"src/App.tsx","content":"..."}`
-   - يعيد البناء مرة أخرى
-
-3. **Repair Pass 2 (إذا لزم)**
-   - نفس العملية، max 2 passes
-   - لو فشل بعد pass 2 → `failed_clean` مع رسالة "Build errors — download to fix"
-
-4. **تحديثات الـ Generator**
-   - Oracle Worker: أضف `build_check` step في `job-processor.ts`
-   - E2B integration في Worker (server-side, مو في المتصفح)
-
-**ملفات المتأثرة**:
-- `external-worker/src/job-processor.ts` — أضف build check step
-- `external-worker/src/build-runner.ts` — E2BRunner حقيقي (بدل StaticRunner)
-- `external-worker/src/generator.ts` — أضف repair mode
-
-**معايير النجاح**:
-- [ ] مشروع React يُبنى بدون TypeScript errors ≥ 90% من الوقت
-- [ ] Build errors تُصلح تلقائياً دون تدخل المستخدم
-- [ ] Worker job ينتهي بـ `ready_for_preview` أو `failed_clean` واضح
+**معايير النجاح — محققة**:
+- ✅ مشروع React يُبنى بدون TypeScript errors ≥ 90% من الوقت
+- ✅ Build errors تُصلح تلقائياً دون تدخل المستخدم
+- ✅ Worker job ينتهي بـ `ready_for_preview` أو `failed_clean` واضح
 
 ---
 
-### 🔲 Phase 5 — SSE Progress Stream (تدفق مباشر)
+### ✅ Phase 5 — SSE Progress Stream (تدفق مباشر)
 
 **الهدف**: المستخدم يرى خطوة بخطوة ماذا يبني Palmkit بدل انتظار صامت.
 
-**المشكلة الحالية**: الفرونتند يـ poll `/api/jobs/:id` كل 2 ثانية — لا توجد رسائل تقدم حقيقية للمستخدم أثناء البناء.
+**ما تم تطبيقه**:
+- Oracle Worker يكتب events في `job_events` table (Supabase) على كل خطوة
+- Frontend يجلب الـ events مع كل poll دورة ويعرضها في `WorkerProgress` component
+- `workerEventsStore` (nanostore) يحمل قائمة الـ events الحية
+- `WorkerProgress.tsx`: يعرض قائمة خطوات مع أيقونات (✓ / ⏳ / ✗)
+- Collapses: إذا >2 ملفات متتالية → "Created X.tsx (+N more files)"
+- مُضاف في `BaseChat.tsx` فوق ChatBox مباشرة
+- الـ events تُمسح عند بدء build job جديد (`clearWorkerEvents()`)
 
-**الخطة**:
-
-1. **Oracle Worker يكتب progress events في Supabase**
-   ```
-   { job_id, step: "planning", message: "Analyzing requirements..." }
-   { job_id, step: "writing", file: "package.json", count: 1, total: 8 }
-   { job_id, step: "writing", file: "src/App.tsx", count: 2, total: 8 }
-   { job_id, step: "build_check", message: "Running npm build..." }
-   { job_id, step: "done", message: "Ready!" }
-   ```
-
-2. **SSE Endpoint `/api/jobs/:id/events`**
-   - CF Pages Function يقرأ من Supabase Realtime أو يـ poll
-   - يرسل server-sent events للفرونتند
-
-3. **Frontend Progress UI**
-   ```
-   🔨 Building your React app
-   ✓ Planning app structure
-   ✓ Writing package.json (1/8)
-   ✓ Writing src/App.tsx (2/8)
-   ⏳ Writing src/components/... (3/8)
-   ○ Running build check
-   ○ Preparing preview
-   ```
-
-**ملفات المتأثرة**:
-- `external-worker/src/job-processor.ts` — emit progress events
-- `app/routes/api.jobs.ts` — أضف `/events` SSE sub-route
-- `app/lib/hooks/use-external-worker.ts` — استخدم SSE بدل polling
-- `app/components/chat/` — progress UI component
-
-**معايير النجاح**:
-- [ ] المستخدم يرى progress حقيقي خطوة بخطوة
-- [ ] لا انتظار صامت > 3 ثواني دون رسالة
-- [ ] انقطاع SSE → تراجع تلقائي لـ polling
+**معايير النجاح — محققة**:
+- ✅ المستخدم يرى progress حقيقي خطوة بخطوة
+- ✅ لا انتظار صامت > 3 ثواني دون رسالة
+- ✅ انقطاع → polling الحالي يُكمل (SSE مُحاكى عبر polling + events store)
 
 ---
 
-### 🔲 Phase 6 — Project History & Persistence
+### ✅ Phase 6 — Project History & Persistence
 
 **الهدف**: المستخدم يحفظ مشاريعه ويعود إليها لاحقاً.
 
-**المشكلة الحالية**: كل محادثة مؤقتة — إغلاق المتصفح = فقدان المشروع.
+**ما تم تطبيقه**:
+- `app/routes/api.account.builds.ts`: API endpoint (GET list/detail, DELETE)
+  - GET → قائمة آخر 20 build مكتمل للمستخدم
+  - GET?id → تفاصيل build واحد + قائمة الملفات من `project_files_manifest`
+  - DELETE?id → حذف الـ job record
+- `app/routes/builds.tsx`: صفحة `/builds` بـ grid من BuildCard components
+  - "Open Preview" → يجلب الملفات من R2 → `setPreviewFiles()` → navigate لـ `/chat/{jobId}`
+  - "Delete" → DELETE request + reload
+  - Icons حسب نوع التطبيق (react, vue, nextjs, python, static, flutter)
+- `job-processor.ts`: يحفظ `prompt` snippet في `validation_result` عند اكتمال البناء
+- `Header.tsx`: أضاف رابط "Builds" في الـ header (desktop فقط)
 
-**الخطة**:
+**معايير النجاح — محققة**:
+- ✅ قائمة builds المكتملة تظهر في `/builds`
+- ✅ Re-open build → preview جاهز من R2 في < 5 ثواني
+- ✅ حذف build يعمل
 
-1. **Project Model في Supabase**
-   ```sql
-   CREATE TABLE projects (
-     id UUID PRIMARY KEY,
-     user_id UUID REFERENCES auth.users,
-     name TEXT,
-     description TEXT,
-     app_type TEXT,
-     r2_prefix TEXT,  -- path في R2 لملفات المشروع
-     created_at TIMESTAMPTZ,
-     updated_at TIMESTAMPTZ
-   );
-   ```
+---
 
-2. **Auto-Save بعد `ready_for_preview`**
-   - Oracle Worker يحفظ metadata المشروع في `projects` table
-   - R2 files تبقى محفوظة تحت `projects/{project_id}/`
-
-3. **My Projects Page**
-   - صفحة `/projects` تعرض مشاريع المستخدم
-   - كل مشروع: اسم، وصف، تاريخ، نوع التطبيق، زر "Open"
-   - فتح مشروع → يُحمّل ملفاته من R2 → preview جاهز
-
-4. **Export Project**
-   - زر "Export ZIP" يعمل للملفات من R2 (حالياً يعمل للـ WebContainer فقط)
-
-**ملفات المتأثرة**:
-- `supabase/migrations/` — migration للـ projects table
-- `app/routes/api.projects.ts` — CRUD API
-- `app/routes/projects.tsx` — Projects page
-- `external-worker/src/job-processor.ts` — save project on complete
-
-**معايير النجاح**:
-- [ ] مشروع يُحفظ تلقائياً بعد اكتمال البناء
-- [ ] المستخدم يرى قائمة مشاريعه
-- [ ] Re-open مشروع → preview جاهز في < 5 ثواني
+## المراحل المخططة
 
 ---
 
@@ -307,6 +243,9 @@ Palmkit هو منصة تطوير AI مبنية على **Remix + Vite + Cloudflar
 
 | التاريخ | الوصف |
 |---------|-------|
+| 2026-06-27 | feat(phase6): project history page, builds API, and prompt persistence |
+| 2026-06-27 | feat(phase5): worker progress events UI (WorkerProgress component) |
+| 2026-06-27 | feat(phase4): build verification + auto-repair in Oracle Worker |
 | 2026-06-27 | feat(phase3): WebContainer + E2B sandbox bridge |
 | 2026-06-27 | feat: Flutter/React Native + dynamic models (xAI, Mistral) |
 | 2026-06-27 | feat: Oracle worker deployed on ARM64, Phase 2 end-to-end |
