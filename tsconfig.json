@@ -35,5 +35,5 @@
     "**/.client/**/*.ts",
     "**/.client/**/*.tsx"
   ],
-  "exclude": ["node_modules", "build", "dist", "sandbox-server", "skills"]
+  "exclude": ["node_modules", "build", "dist", "sandbox-server", "skills", "external-worker"]
 }

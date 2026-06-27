@@ -383,6 +383,69 @@ export async function generateStaticFiles(
 }
 
 /**
+ * Phase 4 — Repair Agent
+ *
+ * Given build errors and the affected files, asks the LLM for targeted fixes.
+ * Returns the patched FileOperation array (unaffected files are passed through).
+ */
+export async function repairGeneration(
+  files: FileOperation[],
+  appType: string,
+  buildErrors: string,
+  providerName: string,
+  modelName: string,
+  apiKey: string,
+): Promise<FileOperation[]> {
+  const errorSnippet = buildErrors.slice(0, 3000);
+
+  const affectedPaths = files
+    .map((f) => f.path)
+    .filter((p) => buildErrors.includes(p));
+
+  /* Include the files that appear in error messages plus package.json */
+  const toFix = files.filter((f) => affectedPaths.includes(f.path) || f.path === 'package.json' || f.path.startsWith('src/') || f.path.startsWith('app/'));
+
+  const fileDump = toFix.map((f) => `=== ${f.path} ===\n${f.content}`).join('\n\n').slice(0, 8000);
+
+  const systemPrompt = `You are a code repair assistant. Fix the ${appType} build errors below.
+Return ONLY a JSON object: {"files":[{"op":"write_file","path":"...","content":"..."},...]}
+Include ONLY the files you are changing. Keep all other files identical. No markdown fences.`;
+
+  const repairPrompt = `BUILD ERRORS:\n${errorSnippet}\n\nCURRENT FILES:\n${fileDump}`;
+
+  const model = getModelInstance(providerName, modelName, apiKey);
+  const result = await generateText({ model, system: systemPrompt, prompt: repairPrompt, maxTokens: 16000, temperature: 0.3 });
+
+  const rawText = result.text ?? '';
+
+  let parsed: { files?: FileOperation[] };
+
+  try {
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    parsed = JSON.parse(jsonMatch?.[0] ?? rawText);
+  } catch {
+    const recovered = extractPartialFiles(rawText);
+    parsed = { files: recovered };
+  }
+
+  const patchedFiles = Array.isArray(parsed.files) ? parsed.files : [];
+
+  if (patchedFiles.length === 0) {
+    logger.warn('[repair] LLM returned no files — skipping patch');
+    return files;
+  }
+
+  const patchMap = new Map(patchedFiles.filter((f) => f.path && f.content).map((f) => {
+    if (!f.mime_type) f.mime_type = inferMimeType(f.path);
+    return [f.path, f];
+  }));
+
+  logger.info(`[repair] patching ${patchMap.size} file(s): ${[...patchMap.keys()].join(', ')}`);
+
+  return files.map((f) => patchMap.get(f.path) ?? f);
+}
+
+/**
  * Walk truncated JSON text with a state machine and extract all complete
  * file objects from the "files" array before the truncation point.
  * Used when the LLM hits its output-token limit mid-stream.

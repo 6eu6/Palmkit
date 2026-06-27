@@ -31,6 +31,10 @@ export type JobEventType =
   | 'file_uploaded'
   | 'snapshot_uploaded'
   | 'ready_for_preview'
+  | 'build_check_started'
+  | 'build_check_passed'
+  | 'build_check_failed'
+  | 'repair_started'
   | 'job_failed';
 
 export interface JobEventPayload {
