@@ -17,7 +17,6 @@
 
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@remix-run/cloudflare';
 import { json } from '@remix-run/cloudflare';
-import { generateId } from 'ai';
 import { getAuthedUser } from '~/lib/auth/supabase.server';
 import { createScopedLogger } from '~/utils/logger';
 
@@ -68,35 +67,31 @@ export async function action(args: ActionFunctionArgs) {
     return json({ error: 'model and provider are required' }, { status: 400 });
   }
 
-  const jobId = generateId();
-
   /*
    * Insert a new build_jobs row with status='pending'.
-   *
-   * The external worker polls for 'pending' jobs and claims them.
-   * We store the prompt + files in the job's metadata (NOT in the row —
-   * large payloads go to Supabase Storage under palmkit-files bucket).
-   *
-   * For Phase 2 MVP: store prompt inline (it's small). Files go to Storage.
+   * Let the DB generate the UUID primary key (gen_random_uuid()).
    */
-  const { error: insertError } = await authed.supabase.from('build_jobs').insert({
-    id: jobId,
-    project_id: projectId ?? null,
-    user_id: authed.user.id,
-    status: 'pending',
-    current_step: 'queued',
-    progress: 0,
-    retry_count: 0,
-    has_completion_marker: false,
-    validation_result: { prompt, model, provider, fileCount: Object.keys(files ?? {}).length },
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  });
+  const { data: newJob, error: insertError } = await authed.supabase
+    .from('build_jobs')
+    .insert({
+      project_id: projectId ?? null,
+      user_id: authed.user.id,
+      status: 'pending',
+      current_step: 'queued',
+      progress: 0,
+      retry_count: 0,
+      has_completion_marker: false,
+      validation_result: { prompt, model, provider, fileCount: Object.keys(files ?? {}).length },
+    })
+    .select('id')
+    .single();
 
-  if (insertError) {
-    logger.error('Failed to insert build job:', insertError.message);
+  if (insertError || !newJob) {
+    logger.error('Failed to insert build job:', insertError?.message ?? 'no data returned');
     return json({ error: 'Failed to enqueue job' }, { status: 500 });
   }
+
+  const jobId = newJob.id as string;
 
   /*
    * If files were provided (incremental edit), upload them to Storage
