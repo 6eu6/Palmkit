@@ -10,6 +10,8 @@ import { ExpoQrModal } from '~/components/workbench/ExpoQrModal';
 import { canShowPreview, buildStatusMessage, buildStatusStore, previewFilesStore } from '~/lib/stores/build-status';
 import { useWorkerSandbox } from '~/lib/hooks/use-worker-sandbox';
 import type { ElementInfo } from './Inspector';
+import { InspectorPanel } from './InspectorPanel';
+import { pendingEditPromptStore } from '~/lib/stores/inspector';
 import inspectorScript from '/public/inspector-script.js?raw';
 
 type ResizeSide = 'left' | 'right' | null;
@@ -150,6 +152,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
   const [iframeUrl, setIframeUrl] = useState<string | undefined>();
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [isInspectorMode, setIsInspectorMode] = useState(false);
+  const [selectedPanelElement, setSelectedPanelElement] = useState<ElementInfo | null>(null);
   const [isDeviceModeOn, setIsDeviceModeOn] = useState(false);
   const [widthPercent, setWidthPercent] = useState<number>(37.5);
   const [currentWidth, setCurrentWidth] = useState<number>(0);
@@ -726,11 +729,9 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
           );
         }
       } else if (event.data.type === 'INSPECTOR_CLICK') {
-        const element = event.data.elementInfo;
-
-        navigator.clipboard.writeText(element.displayText).then(() => {
-          setSelectedElement?.(element);
-        });
+        const element = event.data.elementInfo as ElementInfo;
+        setSelectedPanelElement(element);
+        setSelectedElement?.(element);
       }
     };
 
@@ -742,6 +743,12 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
   const toggleInspectorMode = () => {
     const newInspectorMode = !isInspectorMode;
     setIsInspectorMode(newInspectorMode);
+
+    if (!newInspectorMode) {
+      setSelectedPanelElement(null);
+      setSelectedElement?.(null);
+      iframeRef.current?.contentWindow?.postMessage({ type: 'INSPECTOR_CLEAR_SELECTION' }, '*');
+    }
 
     if (iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage(
@@ -1107,6 +1114,24 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                 setIsSelectionMode={setIsSelectionMode}
                 containerRef={iframeRef}
               />
+              {isInspectorMode && selectedPanelElement && (
+                <InspectorPanel
+                  selectedElement={selectedPanelElement}
+                  isVisible={true}
+                  onClose={() => {
+                    setSelectedPanelElement(null);
+                    setSelectedElement?.(null);
+                    iframeRef.current?.contentWindow?.postMessage({ type: 'INSPECTOR_CLEAR_SELECTION' }, '*');
+                  }}
+                  onApplyEdit={(prompt) => {
+                    pendingEditPromptStore.set(prompt);
+                    setIsInspectorMode(false);
+                    setSelectedPanelElement(null);
+                    setSelectedElement?.(null);
+                    iframeRef.current?.contentWindow?.postMessage({ type: 'INSPECTOR_ACTIVATE', active: false }, '*');
+                  }}
+                />
+              )}
             </>
           ) : (
             <div className="flex flex-col w-full h-full justify-center items-center bg-palmkit-elements-bg-depth-1 px-6">

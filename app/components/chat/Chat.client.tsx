@@ -44,6 +44,7 @@ import { RestoreOverlay } from '~/components/ui/RestoreOverlay';
 import { GenerationStatusBar } from '~/components/ui/GenerationStatusBar';
 import { ProjectList } from '~/components/ui/ProjectList';
 import { setGenerationStep, resetGenerationStatus, generationStatusStore } from '~/lib/stores/generationStatus';
+import { pendingEditPromptStore } from '~/lib/stores/inspector';
 
 const logger = createScopedLogger('Chat');
 
@@ -164,6 +165,7 @@ export const ChatImpl = memo(
     });
     const [chatMode, setChatMode] = useState<'discuss' | 'build'>('build');
     const [selectedElement, setSelectedElement] = useState<ElementInfo | null>(null);
+    const pendingEditPrompt = useStore(pendingEditPromptStore);
     const mcpSettings = useMCPStore((state) => state.settings);
 
     const {
@@ -235,6 +237,13 @@ export const ChatImpl = memo(
       initialMessages,
       initialInput: Cookies.get(PROMPT_COOKIE_KEY) || '',
     });
+    useEffect(() => {
+      if (pendingEditPrompt) {
+        setInput(pendingEditPrompt);
+        pendingEditPromptStore.set(null);
+      }
+    }, [pendingEditPrompt]);
+
     useEffect(() => {
       /*
        * Pick up a prompt stashed by the landing page (lovable-style flow) — a

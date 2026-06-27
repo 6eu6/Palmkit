@@ -12,7 +12,10 @@ export interface ElementInfo {
   className: string;
   id: string;
   textContent: string;
-  styles: Record<string, string>; // Changed from CSSStyleDeclaration
+  innerText: string;
+  selector: string;
+  elementPath: string;
+  styles: Record<string, string>;
   rect: {
     x: number;
     y: number;
@@ -20,6 +23,8 @@ export interface ElementInfo {
     height: number;
     top: number;
     left: number;
+    viewportTop: number;
+    viewportLeft: number;
   };
 }
 
