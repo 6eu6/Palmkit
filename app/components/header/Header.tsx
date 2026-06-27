@@ -57,6 +57,15 @@ export function Header() {
         </span>
       )}
       <div className={classNames('flex items-center gap-2', { 'ml-auto': !chat.started })}>
+        {/* Phase 6: Build history link */}
+        <a
+          href="/builds"
+          className="hidden sm:flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-palmkit-elements-textSecondary hover:bg-palmkit-elements-bg-depth-2 hover:text-palmkit-elements-textPrimary transition-colors"
+          aria-label="My Builds"
+        >
+          <div className="i-ph:clock-counter-clockwise text-base" />
+          <span>Builds</span>
+        </a>
         {chat.started && (
           <ClientOnly>
             {() => (

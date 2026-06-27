@@ -407,6 +407,8 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           completeness: 'complete',
           appType: result.appType,
           runtimeMode: runner.runtimeMode,
+          /* Phase 6: preserve prompt snippet for build history display */
+          prompt: (job.validation_result?.prompt ?? prompt).slice(0, 200),
         },
         updated_at: new Date().toISOString(),
       })
