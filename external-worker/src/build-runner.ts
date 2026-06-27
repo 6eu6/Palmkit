@@ -73,7 +73,9 @@ export class StaticRunner implements BuildRunner {
 /**
  * Choose the correct runner based on the app type.
  */
-export function createRunner(appType: 'static' | 'react' | 'nextjs' | 'vue' | 'python'): BuildRunner {
+export function createRunner(
+  appType: 'static' | 'react' | 'nextjs' | 'vue' | 'python' | 'flutter' | 'react-native',
+): BuildRunner {
   switch (appType) {
     case 'static':
       return new StaticRunner();
@@ -81,8 +83,10 @@ export function createRunner(appType: 'static' | 'react' | 'nextjs' | 'vue' | 'p
     case 'nextjs':
     case 'vue':
     case 'python':
-      // E2BRunner will be implemented in Phase 3.
-      // For now, fall back to StaticRunner so the pipeline doesn't break.
+    case 'flutter':
+    case 'react-native':
+      // Phase 3: E2BRunner for sandbox execution.
+      // Phase 4: FlutterRunner (flutter build web), ExpoRunner (expo export -p web).
       return new StaticRunner();
     default:
       return new StaticRunner();

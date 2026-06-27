@@ -13,24 +13,12 @@ export default class PerplexityProvider extends BaseProvider {
   };
 
   staticModels: ModelInfo[] = [
-    {
-      name: 'sonar',
-      label: 'Sonar',
-      provider: 'Perplexity',
-      maxTokenAllowed: 8192,
-    },
-    {
-      name: 'sonar-pro',
-      label: 'Sonar Pro',
-      provider: 'Perplexity',
-      maxTokenAllowed: 8192,
-    },
-    {
-      name: 'sonar-reasoning-pro',
-      label: 'Sonar Reasoning Pro',
-      provider: 'Perplexity',
-      maxTokenAllowed: 8192,
-    },
+    { name: 'sonar-deep-research', label: 'Sonar Deep Research', provider: 'Perplexity', maxTokenAllowed: 128000 },
+    { name: 'sonar-reasoning-pro', label: 'Sonar Reasoning Pro', provider: 'Perplexity', maxTokenAllowed: 128000 },
+    { name: 'sonar-reasoning', label: 'Sonar Reasoning', provider: 'Perplexity', maxTokenAllowed: 128000 },
+    { name: 'sonar-pro', label: 'Sonar Pro', provider: 'Perplexity', maxTokenAllowed: 200000 },
+    { name: 'sonar', label: 'Sonar', provider: 'Perplexity', maxTokenAllowed: 200000 },
+    { name: 'r1-1776', label: 'R1-1776 (offline)', provider: 'Perplexity', maxTokenAllowed: 128000 },
   ];
 
   getModelInstance(options: {

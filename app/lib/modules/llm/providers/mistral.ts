@@ -78,6 +78,52 @@ export default class MistralProvider extends BaseProvider {
     },
   ];
 
+  async getDynamicModels(
+    apiKeys?: Record<string, string>,
+    settings?: IProviderSetting,
+    serverEnv?: Record<string, string>,
+  ): Promise<ModelInfo[]> {
+    const { apiKey } = this.getProviderBaseUrlAndKey({
+      apiKeys,
+      providerSettings: settings,
+      serverEnv: serverEnv as any,
+      defaultBaseUrlKey: '',
+      defaultApiTokenKey: 'MISTRAL_API_KEY',
+    });
+
+    if (!apiKey) {
+      return [];
+    }
+
+    const response = await fetch('https://api.mistral.ai/v1/models', {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const data = (await response.json()) as { data: Array<{ id: string; max_context_length?: number }> };
+    const staticIds = this.staticModels.map((m) => m.name);
+
+    return data.data
+      .filter(
+        (m) =>
+          m.id.startsWith('mistral') ||
+          m.id.startsWith('codestral') ||
+          m.id.startsWith('open-') ||
+          m.id.startsWith('ministral'),
+      )
+      .filter((m) => !staticIds.includes(m.id))
+      .map((m) => ({
+        name: m.id,
+        label: m.id,
+        provider: this.name,
+        maxTokenAllowed: m.max_context_length ?? 32768,
+        maxCompletionTokens: 8192,
+      }));
+  }
+
   getModelInstance(options: {
     model: string;
     serverEnv: Env;

@@ -29,7 +29,7 @@ export interface GenerationResult {
 }
 
 export interface ProjectSpec {
-  appType: 'static' | 'react' | 'nextjs' | 'vue' | 'python';
+  appType: 'static' | 'react' | 'nextjs' | 'vue' | 'python' | 'flutter' | 'react-native';
   description: string;
   files: Array<{ path: string; purpose: string }>;
   designNotes: string;
@@ -44,14 +44,20 @@ export function planProject(prompt: string): ProjectSpec {
   const isPython = /python|flask|fastapi|django|pip\b/i.test(lower);
   const isNextjs = /next\.?js|nextjs|next app|app router|pages router/i.test(lower);
   const isVue = /\bvue\b|vuex|pinia|nuxt/i.test(lower);
+  const isFlutter = /\bflutter\b|\bdart\b|flutter.*app|material.*widget|stateful.*widget/i.test(lower);
+  const isReactNative = /react.?native|expo\b|expo.*app|\bnative.*app\b|mobile.*react|react.*mobile/i.test(lower);
   const isReact =
-    /\breact\b|vite.*react|react.*vite|tsx|jsx|shadcn|radix|hooks?|useState|useEffect|react native/i.test(lower);
+    /\breact\b|vite.*react|react.*vite|tsx|jsx|shadcn|radix|hooks?|useState|useEffect/i.test(lower);
   const isExplicitlyStatic =
     /\bhtml\b|\bvanilla\b|\bstatic\b|landing page|no framework|no react|without react|pure js|plain js/i.test(lower);
 
   let appType: ProjectSpec['appType'];
 
-  if (isPython && !isReact && !isVue) {
+  if (isFlutter) {
+    appType = 'flutter';
+  } else if (isReactNative) {
+    appType = 'react-native';
+  } else if (isPython && !isReact && !isVue) {
     appType = 'python';
   } else if (isNextjs) {
     appType = 'nextjs';
@@ -98,6 +104,22 @@ export function planProject(prompt: string): ProjectSpec {
       { path: 'app.py', purpose: 'Flask/FastAPI application with all routes' },
       { path: 'requirements.txt', purpose: 'Python dependencies' },
       { path: 'templates/index.html', purpose: 'Jinja2/HTML template' },
+    ],
+    flutter: [
+      { path: 'pubspec.yaml', purpose: 'Flutter dependencies and metadata' },
+      { path: 'lib/main.dart', purpose: 'App entry point, MaterialApp setup' },
+      { path: 'lib/app.dart', purpose: 'Root app widget with theme and routing' },
+      { path: 'lib/screens/home_screen.dart', purpose: 'Main home screen widget' },
+      { path: 'lib/widgets/app_widgets.dart', purpose: 'Reusable UI widgets' },
+      { path: 'lib/models/models.dart', purpose: 'Data models and state' },
+    ],
+    'react-native': [
+      { path: 'package.json', purpose: 'Expo + React Native dependencies' },
+      { path: 'app.json', purpose: 'Expo app configuration' },
+      { path: 'App.tsx', purpose: 'Root app component with navigation' },
+      { path: 'src/screens/HomeScreen.tsx', purpose: 'Main home screen' },
+      { path: 'src/components/ui.tsx', purpose: 'Reusable UI components' },
+      { path: 'src/types.ts', purpose: 'TypeScript type definitions' },
     ],
   };
 
@@ -206,6 +228,54 @@ PROJECT: ${spec.description}
 DESIGN: ${spec.designNotes}`;
   }
 
+  if (spec.appType === 'flutter') {
+    return `You are Palmkit's build worker. Generate a COMPLETE Flutter mobile app in Dart.
+
+OUTPUT FORMAT:
+{ "files": [
+    { "op": "write_file", "path": "pubspec.yaml",                    "content": "...", "mime_type": "text/yaml" },
+    { "op": "write_file", "path": "lib/main.dart",                   "content": "...", "mime_type": "text/x-dart" },
+    { "op": "write_file", "path": "lib/app.dart",                    "content": "...", "mime_type": "text/x-dart" },
+    { "op": "write_file", "path": "lib/screens/home_screen.dart",    "content": "...", "mime_type": "text/x-dart" },
+    { "op": "write_file", "path": "lib/widgets/app_widgets.dart",    "content": "...", "mime_type": "text/x-dart" },
+    { "op": "write_file", "path": "lib/models/models.dart",          "content": "...", "mime_type": "text/x-dart" }
+  ], "complete": true }
+
+${JSON_RULES}
+- pubspec.yaml: flutter sdk >=3.0.0 <4.0.0, use material3, include common packages (provider or riverpod for state).
+- lib/main.dart: void main() => runApp(MyApp()); ONLY. All logic in other files.
+- Use Material 3 widgets, proper theming, StatefulWidget / StatelessWidget correctly.
+- Complete Dart syntax — no omissions, no '// ...rest of code'.
+- Run with: flutter pub get && flutter run
+
+PROJECT: ${spec.description}
+DESIGN: Beautiful Material 3 UI, smooth animations, proper navigation.`;
+  }
+
+  if (spec.appType === 'react-native') {
+    return `You are Palmkit's build worker. Generate a COMPLETE React Native + Expo app with TypeScript.
+
+OUTPUT FORMAT:
+{ "files": [
+    { "op": "write_file", "path": "package.json",              "content": "...", "mime_type": "application/json" },
+    { "op": "write_file", "path": "app.json",                  "content": "...", "mime_type": "application/json" },
+    { "op": "write_file", "path": "App.tsx",                   "content": "...", "mime_type": "text/typescript" },
+    { "op": "write_file", "path": "src/screens/HomeScreen.tsx","content": "...", "mime_type": "text/typescript" },
+    { "op": "write_file", "path": "src/components/ui.tsx",     "content": "...", "mime_type": "text/typescript" },
+    { "op": "write_file", "path": "src/types.ts",              "content": "...", "mime_type": "text/typescript" }
+  ], "complete": true }
+
+${JSON_RULES}
+- package.json: expo ~51.0, react-native 0.74, react 18, typescript, @react-navigation/native, @react-navigation/stack.
+- app.json: valid Expo config with name, slug, version, platforms: ["ios", "android"].
+- Use StyleSheet.create() for all styles — NO Tailwind (not supported in RN).
+- Complete TypeScript — proper types, no 'any', no omissions.
+- Run with: npx expo start
+
+PROJECT: ${spec.description}
+DESIGN: Native-feeling UI with proper touch targets (44px+), platform-aware styling.`;
+  }
+
   // python
   return `You are Palmkit's build worker. Generate a COMPLETE Python web application.
 
@@ -239,7 +309,10 @@ export async function generateStaticFiles(
   const systemPrompt = buildSystemPrompt(spec);
   const model = getModelInstance(providerName, modelName, apiKey);
 
-  const maxTokens = spec.appType === 'static' || spec.appType === 'python' ? 16000 : 32000;
+  const maxTokens = spec.appType === 'static' ? 16000
+    : spec.appType === 'python' ? 16000
+    : spec.appType === 'flutter' || spec.appType === 'react-native' ? 32000
+    : 32000;
 
   const result = await generateText({
     model,
@@ -422,6 +495,14 @@ export function validateGeneration(result: GenerationResult): string[] {
   } else if (result.appType === 'python') {
     if (!paths.some((p) => p.endsWith('.py'))) issues.push('Missing Python file');
     if (!paths.includes('requirements.txt')) issues.push('Missing requirements.txt');
+  } else if (result.appType === 'flutter') {
+    if (!paths.includes('pubspec.yaml')) issues.push('Missing pubspec.yaml');
+    if (!paths.includes('lib/main.dart')) issues.push('Missing lib/main.dart');
+  } else if (result.appType === 'react-native') {
+    if (!paths.includes('package.json')) issues.push('Missing package.json');
+    if (!paths.some((p) => p === 'App.tsx' || p === 'App.js' || p === 'App.jsx')) {
+      issues.push('Missing App entry component');
+    }
   }
 
   for (const f of result.files) {

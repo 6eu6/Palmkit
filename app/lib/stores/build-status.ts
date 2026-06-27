@@ -138,12 +138,23 @@ export const buildStatusMessage = computed(buildStatusStore, (status) => {
       return `Still building… (attempt ${status.retryCount + 1})`;
     case 'failed_clean':
       return status.issues[0]?.message || 'Build incomplete — stream was interrupted. Please try again.';
-    case 'ready_for_preview':
-      if (status.appType && status.appType !== 'static') {
-        return `${status.appType} apps require a sandbox to run — download the files to run locally`;
+    case 'ready_for_preview': {
+      const appType = status.appType;
+
+      if (appType === 'flutter') {
+        return 'Flutter app ready — run: flutter pub get && flutter run';
+      }
+
+      if (appType === 'react-native') {
+        return 'React Native app ready — run: npx expo start';
+      }
+
+      if (appType && appType !== 'static') {
+        return `${appType} app ready — download files and run: npm install && npm run dev`;
       }
 
       return 'Build complete — ready for preview';
+    }
     default:
       return null;
   }

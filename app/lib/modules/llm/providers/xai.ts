@@ -20,6 +20,44 @@ export default class XAIProvider extends BaseProvider {
     { name: 'grok-code-fast-1', label: 'xAI Grok Code Fast 1', provider: 'xAI', maxTokenAllowed: 131000 },
   ];
 
+  async getDynamicModels(
+    apiKeys?: Record<string, string>,
+    settings?: IProviderSetting,
+    serverEnv?: Record<string, string>,
+  ): Promise<ModelInfo[]> {
+    const { apiKey } = this.getProviderBaseUrlAndKey({
+      apiKeys,
+      providerSettings: settings,
+      serverEnv: serverEnv as any,
+      defaultBaseUrlKey: '',
+      defaultApiTokenKey: 'XAI_API_KEY',
+    });
+
+    if (!apiKey) {
+      return [];
+    }
+
+    const response = await fetch('https://api.x.ai/v1/models', {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const data = (await response.json()) as { data: Array<{ id: string; context_length?: number }> };
+    const staticIds = this.staticModels.map((m) => m.name);
+
+    return data.data
+      .filter((m) => !staticIds.includes(m.id))
+      .map((m) => ({
+        name: m.id,
+        label: m.id,
+        provider: this.name,
+        maxTokenAllowed: m.context_length ?? 131072,
+      }));
+  }
+
   getModelInstance(options: {
     model: string;
     serverEnv: Env;
