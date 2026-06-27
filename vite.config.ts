@@ -18,6 +18,29 @@ export default defineConfig((config) => {
     },
     build: {
       target: 'esnext',
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            // These are client-only heavy packages — safe to split out of the
+            // main entry chunk. Server-side packages (supabase, ai-sdk) are
+            // intentionally NOT split — they're small in the server bundle and
+            // splitting can cause Cloudflare Worker import issues.
+
+            // Terminal emulator — very heavy (~800KB uncompressed).
+            if (id.includes('@xterm/')) return 'xterm';
+            // CodeMirror — editor + language parsers.
+            if (id.includes('@codemirror/') || (id.includes('node_modules') && id.includes('codemirror'))) {
+              return 'codemirror';
+            }
+            // WebContainer runtime (browser sandbox).
+            if (id.includes('@webcontainer/')) return 'webcontainer';
+            // Framer Motion — only imported client-side.
+            if (id.includes('framer-motion')) return 'framer-motion';
+            // Radix UI primitives — UI-only.
+            if (id.includes('@radix-ui/')) return 'radix-ui';
+          },
+        },
+      },
     },
     plugins: [
       nodePolyfills({
