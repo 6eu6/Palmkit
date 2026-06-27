@@ -2,9 +2,9 @@
 
 [![Palmkit](./public/social_preview_index.jpg)](https://palmkit.app)
 
-**Palmkit** is an open-source, AI-powered full-stack web development platform that runs in the browser. Users describe an app in natural language and Palmkit builds a working preview — static HTML/CSS/JS, Vite + React, Next.js, Express, or Python.
+**Palmkit** is an AI-powered full-stack development platform that turns natural-language prompts into running web apps. Describe what you want — Palmkit builds it, previews it, and lets you iterate.
 
-> Fork of [Bolt.diy](https://github.com/stackblitz-labs/bolt.diy) with significant prompt-engineering and infrastructure work on top. See [`ROADMAP.md`](./ROADMAP.md) for the full techniques ledger and phased plan.
+> Built on [Bolt.diy](https://github.com/stackblitz-labs/bolt.diy) with a completely redesigned execution pipeline: external Oracle worker, R2 file storage, WebContainer/E2B sandbox routing, and a phase-based roadmap to production quality.
 
 ---
 
@@ -24,15 +24,20 @@
 
 ## What is Palmkit
 
-Palmkit turns a natural-language prompt into a runnable web app:
+Palmkit turns a natural-language prompt into a runnable app in seconds:
 
 1. User describes an app ("Build a coffee shop landing page with hero, menu, contact form").
-2. Palmkit calls an LLM (via OpenRouter, Anthropic, OpenAI, etc.) with a tightly-engineered system prompt.
-3. The LLM returns code wrapped in `<palmkitArtifact>` / `<palmkitAction>` tags.
-4. Palmkit's parser writes each file to a WebContainer / E2B sandbox.
+2. Palmkit enqueues a build job to the Oracle ARM64 worker via Supabase.
+3. The Oracle worker calls an LLM with a structured generation prompt and writes files to Cloudflare R2.
+4. Palmkit routes the preview based on app type:
+   - **Static HTML/CSS/JS** → blob URL preview (instant, zero cost)
+   - **React / Vue / Next.js on desktop** → WebContainer (free, in-browser WASM)
+   - **React / Vue / Next.js on mobile** → E2B cloud sandbox (on-demand)
+   - **Python** → E2B sandbox (always — needs server runtime)
+   - **Flutter / React Native** → source download + run instructions
 5. The preview renders live in an iframe.
 
-**19+ LLM providers** supported: OpenAI, Anthropic, Google, Groq, xAI, DeepSeek, Mistral, Cohere, Together, Perplexity, HuggingFace, Ollama, LM Studio, OpenRouter, Moonshot, Hyperbolic, GitHub Models, Amazon Bedrock, OpenAI-like.
+**20+ LLM providers** supported: OpenAI, Anthropic, Google, Groq, xAI, DeepSeek, Mistral, Cohere, Together, Perplexity, HuggingFace, Ollama, LM Studio, OpenRouter, Moonshot, Hyperbolic, GitHub Models, Amazon Bedrock, OpenAI-like.
 
 ---
 
@@ -42,11 +47,14 @@ Palmkit turns a natural-language prompt into a runnable web app:
 |-------|-----------|
 | **Framework** | Remix + Vite |
 | **Runtime** | Cloudflare Pages (Workers runtime) |
-| **AI Providers** | OpenRouter + 18 others (via Vercel AI SDK) |
-| **Auth + DB** | Supabase (Postgres + Auth + Storage) |
-| **Code Sandbox** | WebContainer (desktop) / E2B (mobile) |
-| **Desktop** | Electron |
-| **Deploy Targets** | Netlify, Vercel, GitHub Pages, Palmkit internal hosting (`/p/{slug}`) |
+| **AI Providers** | OpenRouter + 19 others (via Vercel AI SDK) |
+| **Auth + DB** | Supabase (Postgres + Auth + RLS) |
+| **File Storage** | Cloudflare R2 (via S3-compatible API) |
+| **Build Worker** | Oracle ARM64 (Bun, external worker) |
+| **Desktop Preview** | WebContainer (`@webcontainer/api`) |
+| **Mobile Preview** | E2B cloud sandbox |
+| **Desktop App** | Electron |
+| **Deploy Targets** | Netlify, Vercel, GitHub Pages |
 
 ---
 
@@ -70,7 +78,7 @@ Palmkit turns a natural-language prompt into a runnable web app:
 ```bash
 pnpm install
 cp .env.example .env.local
-# Edit .env.local — at minimum set OPENROUTER_API_KEY and SUPABASE_* vars
+# Edit .env.local — set OPENROUTER_API_KEY and SUPABASE_* vars at minimum
 pnpm run dev
 ```
 
@@ -103,8 +111,10 @@ All configuration lives in `.env.local`. Key variables:
 | Variable | Purpose |
 |----------|---------|
 | `OPENROUTER_API_KEY` | Default LLM provider |
-| `SUPABASE_URL` / `SUPABASE_ANON_KEY` | Auth + project storage |
-| `E2B_ACCESS_TOKEN` | Mobile sandbox runtime |
+| `SUPABASE_URL` / `SUPABASE_ANON_KEY` | Auth + job queue + metadata |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | File storage for built projects |
+| `R2_BUCKET_NAME` | R2 bucket (default: `palmkit-files`) |
+| `E2B_API_KEY` | Cloud sandbox for mobile users / Python apps |
 | `VITE_DEPLOYMENT_PLATFORM_*` | Netlify / Vercel / GitHub deploy |
 
 Provider API keys can also be entered per-user via the in-app **Edit API Key** dialog (stored server-side, never in localStorage).
@@ -116,50 +126,53 @@ See [`.env.example`](./.env.example) for the full list.
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ Browser (Remix SPA)                                          │
-│  ├── Chat UI                                                 │
-│  ├── Workbench (Monaco editor + file tree)                   │
-│  ├── Preview iframe                                          │
-│  └── IndexedDB / OPFS  ← project file content (planned)      │
-└──────────────────────────┬──────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│ Browser (Remix SPA)                                              │
+│  ├── Chat UI (streaming annotations)                             │
+│  ├── Workbench (Monaco editor + file tree)                       │
+│  ├── Preview iframe (blob URL / WebContainer / E2B)              │
+│  └── Build status gate (prevents broken previews)                │
+└──────────────────────────┬──────────────────────────────────────┘
                            │ HTTPS
-┌──────────────────────────▼──────────────────────────────────┐
-│ Cloudflare Pages Function (Remix)                           │
-│  ├── /api/chat        ← streaming LLM call (Phase 1: gate)  │
-│  ├── /api/models      ← list available models               │
-│  ├── /api/deploy/*    ← internal hosting                    │
-│  └── /api/account/*   ← user project sync                   │
-└──────────────────────────┬──────────────────────────────────┘
+┌──────────────────────────▼──────────────────────────────────────┐
+│ Cloudflare Pages Function (Remix)                               │
+│  ├── /api/chat       ← streaming LLM + validation annotations   │
+│  ├── /api/jobs       ← enqueue / poll build jobs                │
+│  ├── /api/files      ← proxy R2 files to frontend               │
+│  └── /api/sb         ← E2B sandbox proxy (auth + rate-limit)    │
+└──────────────────────────┬──────────────────────────────────────┘
                            │
-        ┌──────────────────┼──────────────────┐
-        ▼                  ▼                  ▼
-   OpenRouter         Supabase            E2B / WebContainer
-   (LLM stream)       (auth + jobs +      (code execution)
-                       file manifest)
+        ┌──────────────────┼──────────────────────┐
+        ▼                  ▼                       ▼
+   Supabase           Oracle Worker           Cloudflare R2
+   (jobs queue +      (Bun, ARM64)            (built files,
+    auth + RLS)       LLM → files             10 GB free)
+                      → R2 → done signal
+                           │
+               ┌───────────┴──────────┐
+               ▼                      ▼
+          WebContainer              E2B Sandbox
+          (desktop, free)           (mobile / Python)
 ```
-
-**Current limitation** (driving the roadmap): `/api/chat` is a single long-lived Cloudflare Pages Function that streams the entire project in one response. For large projects this exceeds CF's CPU limits → stream cuts off → broken preview. **Phase 1** adds a Safety Gate to prevent broken previews; **Phase 2** moves generation to an external durable worker. See [`ROADMAP.md`](./ROADMAP.md).
 
 ---
 
 ## Project Status & Roadmap
 
-Palmkit is under active development. The full techniques ledger (applied ✓ and pending ○) and the phased plan live in:
-
-### ➡️ [`ROADMAP.md`](./ROADMAP.md)
+See [`ROADMAP.md`](./ROADMAP.md) for the full technical ledger and phase plan.
 
 **Quick summary**:
 
 | Phase | Status | Goal |
 |-------|--------|------|
-| **Phase 1 — Safety Gate** | 🚧 In progress | Prevent broken previews via completion marker + validator + retry-limited state machine |
-| **Phase 2 — Build Orchestrator** | ○ Planned | External durable worker (CF Workflows or Render/Railway), file-operations JSON, SSE progress |
-| **Phase 3 — Repair Loop + Patches** | ○ Planned | Real `npm run build` in sandbox, repair agent, patch-only edits, Ready-for-Preview Gate |
-
-Applied techniques (14 items, all ✓): file completeness rules, mobile-first, framework guidance, design standards, adaptive intelligence, CL4R1T4S patterns (tone/honesty/owns-mistakes), MANDATORY artifact enforcement, complete HTML/CSS/JS example, slim example, token budget (⚠️ to be removed in Phase 1).
-
-Pending techniques (21 items, all ○): `__PALMKIT_DONE__` marker, output validator, status state machine, retry-limited, `build_jobs` / `build_steps` / `project_files_manifest` tables, browser storage, `BuildRunner` interface, frontend status UI, external worker, file-ops JSON, build orchestrator loop, SSE endpoint, R2 snapshots, real build runner, repair agent, patch operations, Ready-for-Preview Gate, requirement extraction.
+| **Phase 1 — Safety Gate** | ✅ Complete | Prevent broken previews; completion marker + validator + retry state machine |
+| **Phase 2 — Build Orchestrator** | ✅ Complete | Oracle ARM64 worker + R2 storage; removes Cloudflare CPU limits |
+| **Phase 3 — Sandbox Execution** | ✅ Complete | WebContainer (desktop) + E2B (mobile) for React/Vue/Next.js/Python |
+| **Phase 4 — Build Verification** | 🔲 Planned | Real `npm run build` + auto-repair agent; zero broken React apps |
+| **Phase 5 — SSE Progress Stream** | 🔲 Planned | Real-time file-by-file build progress UI |
+| **Phase 6 — Project History** | 🔲 Planned | Save / re-open / export projects per user |
+| **Phase 7 — Multi-turn Edit** | 🔲 Planned | Smart patch mode for incremental changes |
+| **Phase 8 — Native App Delivery** | 🔲 Planned | Flutter web build, Expo QR, Python persistent backend |
 
 ---
 
