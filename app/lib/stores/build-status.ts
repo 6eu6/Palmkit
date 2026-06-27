@@ -44,6 +44,9 @@ export interface BuildStatusState {
 
   /** Timestamp of the last update (ms since epoch). */
   updatedAt: number;
+
+  /** Phase 2: app type from the external worker (static/react/nextjs/vue/python). */
+  appType: string | null;
 }
 
 const initial: BuildStatusState = {
@@ -56,6 +59,7 @@ const initial: BuildStatusState = {
   issues: [],
   retryCount: 0,
   updatedAt: 0,
+  appType: null,
 };
 
 export const buildStatusStore = atom<BuildStatusState>(initial);
@@ -135,6 +139,10 @@ export const buildStatusMessage = computed(buildStatusStore, (status) => {
     case 'failed_clean':
       return status.issues[0]?.message || 'Build incomplete — stream was interrupted. Please try again.';
     case 'ready_for_preview':
+      if (status.appType && status.appType !== 'static') {
+        return `${status.appType} apps require a sandbox to run — download the files to run locally`;
+      }
+
       return 'Build complete — ready for preview';
     default:
       return null;
