@@ -262,15 +262,25 @@ export async function generateStaticFiles(
   try {
     parsed = JSON.parse(rawText);
   } catch (parseError: any) {
+    // Try outer regex first (strips markdown fences etc.)
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
 
-    if (!jsonMatch) {
-      throw new Error(
-        `LLM did not return valid JSON: ${parseError.message}. First 200 chars: ${rawText.slice(0, 200)}`,
-      );
-    }
+    try {
+      parsed = JSON.parse(jsonMatch?.[0] ?? '');
+    } catch {
+      // JSON was truncated mid-stream (model hit token limit).
+      // Walk the text with a state machine and recover all complete file objects.
+      const recovered = extractPartialFiles(rawText);
 
-    parsed = JSON.parse(jsonMatch[0]);
+      if (recovered.length === 0) {
+        throw new Error(
+          `LLM did not return valid JSON: ${parseError.message}. First 200 chars: ${rawText.slice(0, 200)}`,
+        );
+      }
+
+      logger.warn(`JSON truncated — recovered ${recovered.length} file(s) from partial response`);
+      parsed = { files: recovered, complete: false };
+    }
   }
 
   const files = Array.isArray(parsed.files) ? parsed.files : [];
@@ -297,6 +307,76 @@ export async function generateStaticFiles(
   logger.info(`Generation complete: ${files.length} files, appType=${spec.appType}, complete=${complete}`);
 
   return { files, complete, rawText, appType: spec.appType };
+}
+
+/**
+ * Walk truncated JSON text with a state machine and extract all complete
+ * file objects from the "files" array before the truncation point.
+ * Used when the LLM hits its output-token limit mid-stream.
+ */
+function extractPartialFiles(text: string): FileOperation[] {
+  const filesIdx = text.indexOf('"files"');
+  if (filesIdx === -1) return [];
+
+  const arrayStart = text.indexOf('[', filesIdx);
+  if (arrayStart === -1) return [];
+
+  const files: FileOperation[] = [];
+  let i = arrayStart + 1;
+
+  while (i < text.length) {
+    // Skip whitespace / commas between objects
+    while (i < text.length && (text[i] === ' ' || text[i] === '\n' || text[i] === '\r' || text[i] === '\t' || text[i] === ',')) i++;
+
+    if (text[i] !== '{') break;
+
+    // Found start of an object — find its end by tracking brace/string depth
+    const objStart = i;
+    let depth = 0;
+    let inString = false;
+
+    while (i < text.length) {
+      const ch = text[i];
+
+      if (inString) {
+        if (ch === '\\') {
+          i++; // skip escaped char
+        } else if (ch === '"') {
+          inString = false;
+        }
+      } else {
+        if (ch === '"') {
+          inString = true;
+        } else if (ch === '{') {
+          depth++;
+        } else if (ch === '}') {
+          depth--;
+          if (depth === 0) {
+            // Complete object found
+            const objText = text.slice(objStart, i + 1);
+
+            try {
+              const obj = JSON.parse(objText) as FileOperation;
+
+              if (obj.path && typeof obj.content === 'string' && obj.content.trim().length > 0) {
+                if (!obj.mime_type) obj.mime_type = inferMimeType(obj.path);
+                files.push(obj);
+              }
+            } catch {
+              // Malformed object — skip
+            }
+
+            i++;
+            break;
+          }
+        }
+      }
+
+      i++;
+    }
+  }
+
+  return files;
 }
 
 function inferMimeType(path: string): string {

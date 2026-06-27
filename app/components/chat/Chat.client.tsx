@@ -314,6 +314,7 @@ export const ChatImpl = memo(
         artifactTagsBalanced: extWorkerState.status === 'ready_for_preview',
         fileActionsBalanced: extWorkerState.status === 'ready_for_preview',
         fileCount: extWorkerState.files.length,
+        appType: extWorkerState.appType,
         issues: extWorkerState.error
           ? [{ code: 'WORKER_ERROR', message: extWorkerState.error, severity: 'error' }]
           : [],

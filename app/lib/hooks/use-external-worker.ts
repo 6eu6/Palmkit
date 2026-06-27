@@ -42,6 +42,13 @@ export interface ExternalWorkerState {
   files: Array<{ path: string; size_bytes: number; integrity: string; mime_type: string }>;
   previewFiles: Record<string, string>;
   events: JobEvent[];
+
+  /*
+   * App type determined by the worker (static/react/nextjs/vue/python).
+   * Runtime mode: static = blob URL preview; e2b/webcontainer = sandbox needed.
+   */
+  appType: string | null;
+  runtimeMode: string | null;
 }
 
 const initialState: ExternalWorkerState = {
@@ -53,6 +60,8 @@ const initialState: ExternalWorkerState = {
   files: [],
   previewFiles: {},
   events: [],
+  appType: null,
+  runtimeMode: null,
 };
 
 export function getExternalWorkerFlag(): boolean {
@@ -160,6 +169,9 @@ export function useExternalWorker() {
           uiStatus = 'generating';
         }
 
+        const appType = (data.appType as string | null) ?? null;
+        const runtimeMode = (data.runtimeMode as string | null) ?? null;
+
         setState((s) => ({
           ...s,
           jobId,
@@ -169,12 +181,18 @@ export function useExternalWorker() {
           error: (data.errorSummary as string | null) ?? null,
           files: Array.isArray(data.files) ? (data.files as ExternalWorkerState['files']) : [],
           events: Array.isArray(data.events) ? (data.events as JobEvent[]) : [],
+          appType,
+          runtimeMode,
         }));
 
         // Terminal states: stop polling.
         if (uiStatus === 'ready_for_preview') {
-          // Fetch all files for preview.
-          if (!fetchedPreview.current) {
+          /*
+           * Only build blob-URL preview for static projects.
+           * React/Next.js/Vue need a build step + sandbox (Phase 3) —
+           * showing raw source files as blob URL produces a broken page.
+           */
+          if (!fetchedPreview.current && appType === 'static') {
             fetchedPreview.current = true;
             await fetchPreviewFiles(jobId, data.files as ExternalWorkerState['files']);
           }

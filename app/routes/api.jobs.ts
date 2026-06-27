@@ -178,6 +178,8 @@ export async function loader(args: LoaderFunctionArgs) {
     .order('seq', { ascending: true })
     .limit(50);
 
+  const vr = (job.validation_result ?? {}) as Record<string, unknown>;
+
   return json({
     jobId: job.id,
     status: job.status,
@@ -190,5 +192,8 @@ export async function loader(args: LoaderFunctionArgs) {
     files,
     events: events ?? [],
     updatedAt: job.updated_at,
+    validationResult: job.validation_result,
+    appType: (vr.appType as string) ?? null,
+    runtimeMode: (vr.runtimeMode as string) ?? null,
   });
 }

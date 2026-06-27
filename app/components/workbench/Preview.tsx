@@ -1108,7 +1108,11 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                         ? 'Still building…'
                         : buildStatusValue.jobStatus === 'generating'
                           ? 'Building your app…'
-                          : 'No preview available'}
+                          : buildStatusValue.jobStatus === 'ready_for_preview' &&
+                              buildStatusValue.appType &&
+                              buildStatusValue.appType !== 'static'
+                            ? `${buildStatusValue.appType.charAt(0).toUpperCase() + buildStatusValue.appType.slice(1)} project ready`
+                            : 'No preview available'}
                   </h3>
                   <p className="text-xs text-palmkit-elements-textTertiary leading-relaxed">
                     {buildStatusMessageValue ||
