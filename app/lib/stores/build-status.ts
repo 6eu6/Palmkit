@@ -15,24 +15,33 @@
 import { atom, computed } from 'nanostores';
 
 export type BuildCompleteness = 'complete' | 'incomplete' | 'garbage' | 'invalid' | 'unknown';
+export type BuildJobStatus = 'generating' | 'incomplete_retrying' | 'failed_clean' | 'ready_for_preview' | 'idle';
 
 export interface BuildStatusState {
   /** Latest completeness verdict from the validator. */
   completeness: BuildCompleteness;
+
   /** Mapped job status from api.chat.ts. */
-  jobStatus: 'generating' | 'incomplete_retrying' | 'failed_clean' | 'ready_for_preview' | 'idle';
+  jobStatus: BuildJobStatus;
+
   /** Did the LLM emit __PALMKIT_DONE__? */
   hasCompletionMarker: boolean;
+
   /** Are all <palmkitArtifact> tags balanced? */
   artifactTagsBalanced: boolean;
+
   /** Are all <palmkitAction> tags balanced? */
   fileActionsBalanced: boolean;
+
   /** Number of file actions detected. */
   fileCount: number;
+
   /** Human-readable issues from the validator. */
   issues: Array<{ code: string; message: string; severity: 'error' | 'warning'; filePath?: string }>;
+
   /** Retry count so far. */
   retryCount: number;
+
   /** Timestamp of the last update (ms since epoch). */
   updatedAt: number;
 }
@@ -124,11 +133,10 @@ export const buildStatusMessage = computed(buildStatusStore, (status) => {
     case 'incomplete_retrying':
       return `Still building… (attempt ${status.retryCount + 1})`;
     case 'failed_clean':
-      return (
-        status.issues[0]?.message ||
-        'Build incomplete — stream was interrupted. Please try again.'
-      );
+      return status.issues[0]?.message || 'Build incomplete — stream was interrupted. Please try again.';
     case 'ready_for_preview':
       return 'Build complete — ready for preview';
+    default:
+      return null;
   }
 });

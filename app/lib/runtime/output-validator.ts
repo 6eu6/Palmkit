@@ -22,10 +22,10 @@ const logger = createScopedLogger('OutputValidator');
 export const PALMKIT_DONE_MARKER = '__PALMKIT_DONE__';
 
 export type BuildCompleteness =
-  | 'complete'      // marker present + tags balanced + no placeholders → show preview
-  | 'incomplete'    // stream cut mid-artifact → retry once
-  | 'garbage'       // no artifact tags at all → fail clean, no retry
-  | 'invalid';      // tags balanced but placeholders/empty files → fail clean
+  | 'complete' // marker present + tags balanced + no placeholders → show preview
+  | 'incomplete' // stream cut mid-artifact → retry once
+  | 'garbage' // no artifact tags at all → fail clean, no retry
+  | 'invalid'; // tags balanced but placeholders/empty files → fail clean
 
 export interface ValidationIssue {
   code: string;
@@ -41,6 +41,7 @@ export interface ValidationResult {
   fileActionsBalanced: boolean;
   fileCount: number;
   issues: ValidationIssue[];
+
   /** True if a bounded retry is worthwhile (incomplete only). */
   retryable: boolean;
 }
@@ -65,13 +66,17 @@ export function extractFileActions(text: string): ParsedFile[] {
   const closeTag = '</palmkitAction>';
 
   let i = 0;
+
   while (i < text.length) {
     const openIdx = text.indexOf(openTag, i);
 
-    if (openIdx === -1) break;
+    if (openIdx === -1) {
+      break;
+    }
 
     // Find the end of the opening tag (the closing >)
     const tagEnd = text.indexOf('>', openIdx);
+
     if (tagEnd === -1) {
       // Opening tag itself is truncated — stop.
       break;
@@ -85,6 +90,7 @@ export function extractFileActions(text: string): ParsedFile[] {
 
     // Find the closing tag
     const closeIdx = text.indexOf(closeTag, tagEnd + 1);
+
     if (closeIdx === -1) {
       // File action was opened but never closed — stream cut mid-file.
       const content = text.slice(tagEnd + 1);
@@ -228,9 +234,11 @@ export function validateBuildOutput(text: string): ValidationResult {
       severity: 'warning',
     });
 
-    // Marker missing on balanced output is suspicious — treat as incomplete
-    // so we retry once. If the retry still lacks the marker, the api.chat.ts
-    // hard-stop will catch it.
+    /*
+     * Marker missing on balanced output is suspicious — treat as incomplete
+     * so we retry once. If the retry still lacks the marker, the api.chat.ts
+     * hard-stop will catch it.
+     */
     return {
       completeness: 'incomplete',
       hasCompletionMarker: false,
@@ -259,7 +267,9 @@ export function validateBuildOutput(text: string): ValidationResult {
 /**
  * Map a ValidationResult to a build_jobs.status value (see migration 0006).
  */
-export function completenessToJobStatus(result: ValidationResult): 'generating' | 'incomplete_retrying' | 'failed_clean' | 'ready_for_preview' {
+export function completenessToJobStatus(
+  result: ValidationResult,
+): 'generating' | 'incomplete_retrying' | 'failed_clean' | 'ready_for_preview' {
   switch (result.completeness) {
     case 'complete':
       return 'ready_for_preview';
@@ -267,6 +277,8 @@ export function completenessToJobStatus(result: ValidationResult): 'generating' 
       return 'incomplete_retrying';
     case 'garbage':
     case 'invalid':
+      return 'failed_clean';
+    default:
       return 'failed_clean';
   }
 }

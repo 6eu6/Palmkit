@@ -28,7 +28,14 @@ export interface JobEvent {
 
 export interface ExternalWorkerState {
   jobId: string | null;
-  status: 'idle' | 'pending' | 'generating' | 'validating' | 'uploading_snapshot' | 'ready_for_preview' | 'failed_clean';
+  status:
+    | 'idle'
+    | 'pending'
+    | 'generating'
+    | 'validating'
+    | 'uploading_snapshot'
+    | 'ready_for_preview'
+    | 'failed_clean';
   progress: number;
   currentStep: string;
   error: string | null;
@@ -49,12 +56,18 @@ const initialState: ExternalWorkerState = {
 };
 
 export function getExternalWorkerFlag(): boolean {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
   return localStorage.getItem(FLAG_KEY) === 'true';
 }
 
 export function setExternalWorkerFlag(enabled: boolean): void {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined') {
+    return;
+  }
+
   localStorage.setItem(FLAG_KEY, enabled ? 'true' : 'false');
   window.dispatchEvent(new Event('palmkit-worker-flag-change'));
 }
@@ -66,6 +79,7 @@ export function useExternalWorkerFlag(): boolean {
     const handler = () => setEnabled(getExternalWorkerFlag());
     window.addEventListener('palmkit-worker-flag-change', handler);
     window.addEventListener('storage', handler);
+
     return () => {
       window.removeEventListener('palmkit-worker-flag-change', handler);
       window.removeEventListener('storage', handler);
@@ -96,16 +110,21 @@ export function useExternalWorker() {
       });
 
       if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ error: 'Failed to start job' }));
-        setState({ ...initialState, status: 'failed_clean', error: err.error ?? 'Failed to start job' });
+        const err = (await resp.json().catch(() => ({ error: 'Failed to start job' }))) as Record<string, unknown>;
+        setState({ ...initialState, status: 'failed_clean', error: (err.error as string) ?? 'Failed to start job' });
+
         return;
       }
 
-      const { jobId } = await resp.json();
-      setState((s) => ({ ...s, jobId }));
-      pollJob(jobId);
-    } catch (err: any) {
-      setState({ ...initialState, status: 'failed_clean', error: err.message });
+      const jobData = (await resp.json()) as { jobId: string };
+      setState((s) => ({ ...s, jobId: jobData.jobId }));
+      pollJob(jobData.jobId);
+    } catch (err: unknown) {
+      setState({
+        ...initialState,
+        status: 'failed_clean',
+        error: err instanceof Error ? err.message : 'Unknown error',
+      });
     }
   }, []);
 
@@ -113,30 +132,41 @@ export function useExternalWorker() {
     const poll = async () => {
       try {
         const resp = await fetch(`/api/jobs?id=${jobId}`);
-        if (!resp.ok) return;
 
-        const data = await resp.json();
+        if (!resp.ok) {
+          return;
+        }
+
+        const data = (await resp.json()) as Record<string, unknown>;
 
         // Map DB status to UI status.
         let uiStatus: ExternalWorkerState['status'] = 'pending';
 
-        if (data.status === 'ready_for_preview') uiStatus = 'ready_for_preview';
-        else if (data.status === 'failed_clean') uiStatus = 'failed_clean';
-        else if (data.currentStep?.includes('plan')) uiStatus = 'generating';
-        else if (data.currentStep?.includes('generate')) uiStatus = 'generating';
-        else if (data.currentStep?.includes('validate')) uiStatus = 'validating';
-        else if (data.currentStep?.includes('upload')) uiStatus = 'uploading_snapshot';
-        else if (data.status === 'generating') uiStatus = 'generating';
+        if (data.status === 'ready_for_preview') {
+          uiStatus = 'ready_for_preview';
+        } else if (data.status === 'failed_clean') {
+          uiStatus = 'failed_clean';
+        } else if (typeof data.currentStep === 'string' && data.currentStep.includes('plan')) {
+          uiStatus = 'generating';
+        } else if (typeof data.currentStep === 'string' && data.currentStep.includes('generate')) {
+          uiStatus = 'generating';
+        } else if (typeof data.currentStep === 'string' && data.currentStep.includes('validate')) {
+          uiStatus = 'validating';
+        } else if (typeof data.currentStep === 'string' && data.currentStep.includes('upload')) {
+          uiStatus = 'uploading_snapshot';
+        } else if (data.status === 'generating') {
+          uiStatus = 'generating';
+        }
 
         setState((s) => ({
           ...s,
           jobId,
           status: uiStatus,
-          progress: data.progress ?? 0,
-          currentStep: data.currentStep ?? '',
-          error: data.errorSummary ?? null,
-          files: data.files ?? [],
-          events: data.events ?? [],
+          progress: (data.progress as number) ?? 0,
+          currentStep: (data.currentStep as string) ?? '',
+          error: (data.errorSummary as string | null) ?? null,
+          files: Array.isArray(data.files) ? (data.files as ExternalWorkerState['files']) : [],
+          events: Array.isArray(data.events) ? (data.events as JobEvent[]) : [],
         }));
 
         // Terminal states: stop polling.
@@ -144,8 +174,9 @@ export function useExternalWorker() {
           // Fetch all files for preview.
           if (!fetchedPreview.current) {
             fetchedPreview.current = true;
-            await fetchPreviewFiles(jobId, data.files);
+            await fetchPreviewFiles(jobId, data.files as ExternalWorkerState['files']);
           }
+
           return; // stop polling
         }
 
@@ -155,7 +186,7 @@ export function useExternalWorker() {
 
         // Continue polling.
         pollTimer.current = setTimeout(poll, POLL_INTERVAL_MS);
-      } catch (err) {
+      } catch {
         // Network error — retry after delay.
         pollTimer.current = setTimeout(poll, POLL_INTERVAL_MS);
       }
@@ -170,6 +201,7 @@ export function useExternalWorker() {
     for (const f of files) {
       try {
         const resp = await fetch(`/api/files?jobId=${jobId}&path=${encodeURIComponent(f.path)}`);
+
         if (resp.ok) {
           previewFiles[f.path] = await resp.text();
         }
@@ -185,12 +217,17 @@ export function useExternalWorker() {
   // Cleanup on unmount.
   useEffect(() => {
     return () => {
-      if (pollTimer.current) clearTimeout(pollTimer.current);
+      if (pollTimer.current) {
+        clearTimeout(pollTimer.current);
+      }
     };
   }, []);
 
   const reset = useCallback(() => {
-    if (pollTimer.current) clearTimeout(pollTimer.current);
+    if (pollTimer.current) {
+      clearTimeout(pollTimer.current);
+    }
+
     fetchedPreview.current = false;
     setState(initialState);
   }, []);
@@ -205,13 +242,18 @@ export function useExternalWorker() {
 export function buildPreviewBlobUrl(files: Record<string, string>): string | null {
   const html = files['index.html'];
 
-  if (!html) return null;
+  if (!html) {
+    return null;
+  }
 
   // Create blob URLs for CSS and JS.
   const blobUrls: Record<string, string> = {};
 
   for (const [path, content] of Object.entries(files)) {
-    if (path === 'index.html') continue;
+    if (path === 'index.html') {
+      continue;
+    }
+
     const mime = path.endsWith('.css') ? 'text/css' : path.endsWith('.js') ? 'text/javascript' : 'text/plain';
     const blob = new Blob([content], { type: mime });
     blobUrls[path] = URL.createObjectURL(blob);
@@ -219,12 +261,15 @@ export function buildPreviewBlobUrl(files: Record<string, string>): string | nul
 
   // Rewrite href/src in HTML to use blob URLs.
   let rewritten = html;
+
   for (const [path, url] of Object.entries(blobUrls)) {
     const fileName = path.split('/').pop() ?? path;
+
     // Replace href="styles.css" and src="app.js" etc.
     rewritten = rewritten.replace(new RegExp(`(href|src)=["']${fileName}["']`, 'g'), `$1="${url}"`);
   }
 
   const htmlBlob = new Blob([rewritten], { type: 'text/html' });
+
   return URL.createObjectURL(htmlBlob);
 }

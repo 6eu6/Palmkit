@@ -83,9 +83,11 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
   // Effective preview: only render if (a) a preview exists AND (b) the gate is open.
   const effectiveActivePreview = canShowPreviewValue ? activePreview : undefined;
 
-  // Phase 2: External Worker preview from R2.
-  // When the worker completes a job, previewFilesStore has {path: content}.
-  // We build a blob URL (rewriting relative links) and use it as the iframe src.
+  /*
+   * Phase 2: External Worker preview from R2.
+   * When the worker completes a job, previewFilesStore has {path: content}.
+   * We build a blob URL (rewriting relative links) and use it as the iframe src.
+   */
   const previewFiles = useStore(previewFilesStore);
   const [extWorkerBlobUrl, setExtWorkerBlobUrl] = useState<string | undefined>();
 
@@ -94,7 +96,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
 
     if (!html) {
       setExtWorkerBlobUrl(undefined);
-      return;
+      return undefined;
     }
 
     // Create blob URLs for CSS and JS.
@@ -102,7 +104,10 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
     const urlMap: Record<string, string> = {};
 
     for (const [path, content] of Object.entries(previewFiles)) {
-      if (path === 'index.html') continue;
+      if (path === 'index.html') {
+        continue;
+      }
+
       const mime = path.endsWith('.css') ? 'text/css' : path.endsWith('.js') ? 'text/javascript' : 'text/plain';
       const blob = new Blob([content], { type: mime });
       const url = URL.createObjectURL(blob);
@@ -112,6 +117,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
 
     // Rewrite href/src in HTML.
     let rewritten = html;
+
     for (const [fileName, url] of Object.entries(urlMap)) {
       rewritten = rewritten.replace(new RegExp(`(href|src)=["']${fileName}["']`, 'g'), `$1="${url}"`);
     }
@@ -134,8 +140,10 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
   const [widthPercent, setWidthPercent] = useState<number>(37.5);
   const [currentWidth, setCurrentWidth] = useState<number>(0);
 
-  // If external worker preview is available, use it as the effective iframe URL.
-  // (Declared AFTER iframeUrl to avoid temporal dead zone.)
+  /*
+   * If external worker preview is available, use it as the effective iframe URL.
+   * (Declared AFTER iframeUrl to avoid temporal dead zone.)
+   */
   const finalIframeUrl = extWorkerBlobUrl ?? iframeUrl;
   const hasExtWorkerPreview = Boolean(extWorkerBlobUrl);
 

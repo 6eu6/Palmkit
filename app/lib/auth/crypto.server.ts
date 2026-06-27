@@ -45,7 +45,7 @@ async function importKey(masterKeyB64: string): Promise<CryptoKey> {
     throw new Error('API_KEY_ENCRYPTION_KEY must decode to 32 bytes (base64 of `openssl rand -base64 32`).');
   }
 
-  return crypto.subtle.importKey('raw', raw, { name: ALGO }, false, ['encrypt', 'decrypt']);
+  return crypto.subtle.importKey('raw', raw.buffer as ArrayBuffer, { name: ALGO }, false, ['encrypt', 'decrypt']);
 }
 
 /**
@@ -72,7 +72,11 @@ export async function decryptSecret(token: string, masterKeyB64: string): Promis
   const key = await importKey(masterKeyB64);
   const iv = base64ToBytes(ivB64);
   const cipher = base64ToBytes(cipherB64);
-  const plain = await crypto.subtle.decrypt({ name: ALGO, iv }, key, cipher);
+  const plain = await crypto.subtle.decrypt(
+    { name: ALGO, iv: iv.buffer as ArrayBuffer },
+    key,
+    cipher.buffer as ArrayBuffer,
+  );
 
   return new TextDecoder().decode(plain);
 }
