@@ -601,11 +601,12 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           const lastUserMessage = processedMessages.filter((x) => x.role === 'user').slice(-1)[0];
           const { model, provider } = extractPropertiesFromMessage(lastUserMessage);
 
-          // Use a targeted "close out" prompt when all files are done but only the
-          // completion marker is missing — avoids confusing the model into duplicating content.
+          /*
+           * Use a targeted "close out" prompt when all files are done but only the
+           * completion marker is missing — avoids confusing the model into duplicating content.
+           */
           const onlyMissingMarker =
-            validationResult.issues.length === 1 &&
-            validationResult.issues[0].code === 'MISSING_COMPLETION_MARKER';
+            validationResult.issues.length === 1 && validationResult.issues[0].code === 'MISSING_COMPLETION_MARKER';
           const retryPrompt = onlyMissingMarker ? CLOSE_OUT_PROMPT : CONTINUE_PROMPT;
 
           currentMessages.push({ id: generateId(), role: 'assistant', content: text });
