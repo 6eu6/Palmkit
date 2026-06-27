@@ -29,11 +29,26 @@ const logger = createScopedLogger('api.files');
 const BUCKET = 'palmkit-files';
 
 function inferMime(path: string): string {
-  if (path.endsWith('.html')) return 'text/html; charset=utf-8';
-  if (path.endsWith('.css')) return 'text/css; charset=utf-8';
-  if (path.endsWith('.js')) return 'text/javascript; charset=utf-8';
-  if (path.endsWith('.json')) return 'application/json; charset=utf-8';
-  if (path.endsWith('.svg')) return 'image/svg+xml';
+  if (path.endsWith('.html')) {
+    return 'text/html; charset=utf-8';
+  }
+
+  if (path.endsWith('.css')) {
+    return 'text/css; charset=utf-8';
+  }
+
+  if (path.endsWith('.js')) {
+    return 'text/javascript; charset=utf-8';
+  }
+
+  if (path.endsWith('.json')) {
+    return 'application/json; charset=utf-8';
+  }
+
+  if (path.endsWith('.svg')) {
+    return 'image/svg+xml';
+  }
+
   return 'text/plain; charset=utf-8';
 }
 
@@ -68,14 +83,14 @@ export async function loader(args: LoaderFunctionArgs) {
     return json({ error: 'File not found in manifest' }, { status: 404 });
   }
 
-  // Phase 2: fetch from Supabase Storage (worker mirrors R2 → Storage).
-  // The RLS policy requires the first path segment to be the user_id.
-  // The worker writes the mirror at: <user_id>/<r2Key>
+  /*
+   * Phase 2: fetch from Supabase Storage (worker mirrors R2 → Storage).
+   * The RLS policy requires the first path segment to be the user_id.
+   * The worker writes the mirror at: <user_id>/<r2Key>
+   */
   const storageKey = `${authed.user.id}/${manifest.storage_key}`;
 
-  const { data: fileData, error: downloadError } = await authed.supabase.storage
-    .from(BUCKET)
-    .download(storageKey);
+  const { data: fileData, error: downloadError } = await authed.supabase.storage.from(BUCKET).download(storageKey);
 
   if (downloadError || !fileData) {
     logger.error(`Failed to download ${storageKey}:`, downloadError?.message);

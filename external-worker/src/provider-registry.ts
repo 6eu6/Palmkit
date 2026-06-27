@@ -129,7 +129,7 @@ const REGISTRY: Record<string, ProviderConfig> = {
           'HTTP-Referer': 'https://palmkit.app',
           'X-Title': 'Palmkit Build Worker',
         },
-      })(model),
+      })(model) as unknown as LanguageModelV1,
   },
 
   // ─── Z.ai ───────────────────────────────────────────────────────────────

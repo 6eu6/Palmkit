@@ -418,6 +418,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
              * the error path too.
              */
             let salvagedText = '';
+
             try {
               salvagedText = await Promise.race([
                 result.text as Promise<string>,
@@ -442,8 +443,11 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
              */
             if (text) {
               logger.info(`Salvaged ${text.length} chars after ${finishReason}, running validation`);
-              // Fall through to the validation block below — don't break.
-              // The validation logic will decide: retry, fail clean, or ready.
+
+              /*
+               * Fall through to the validation block below — don't break.
+               * The validation logic will decide: retry, fail clean, or ready.
+               */
             } else {
               try {
                 dataStream.writeData({
@@ -492,13 +496,18 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
            * See ROADMAP.md → Phase 1 for the full design.
            */
 
-          // Aggregate the full assistant text from all segments so far.
-          // currentMessages already contains the assistant segments we pushed
-          // in previous iterations (line ~445 below), plus the current `text`.
-          const fullAssistantText = currentMessages
-            .filter((m) => m.role === 'assistant')
-            .map((m) => (typeof m.content === 'string' ? m.content : ''))
-            .join('\n') + '\n' + text;
+          /*
+           * Aggregate the full assistant text from all segments so far.
+           * currentMessages already contains the assistant segments we pushed
+           * in previous iterations (line ~445 below), plus the current `text`.
+           */
+          const fullAssistantText =
+            currentMessages
+              .filter((m) => m.role === 'assistant')
+              .map((m) => (typeof m.content === 'string' ? m.content : ''))
+              .join('\n') +
+            '\n' +
+            text;
 
           const validationResult = validateBuildOutput(fullAssistantText);
           const jobStatus = completenessToJobStatus(validationResult);
@@ -535,6 +544,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           if (!validationResult.retryable || continueSegmentCount >= MAX_VALIDATION_RETRIES) {
             // ❌ Not retryable, or we've exhausted retries — fail clean.
             streamRecovery?.stop();
+
             const failMessage =
               validationResult.completeness === 'garbage'
                 ? 'Build failed: model did not produce valid project structure. Try rephrasing your request.'

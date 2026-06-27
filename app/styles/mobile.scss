@@ -430,7 +430,11 @@
     width: 24px;
     pointer-events: none;
     z-index: 5;
-    background: linear-gradient(to right, transparent, var(--palmkit-elements-prompt-background, rgba(255, 255, 255, 0.95)));
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--palmkit-elements-prompt-background, rgba(255, 255, 255, 0.95))
+    );
     opacity: 1;
     transition: opacity 0.2s ease;
 

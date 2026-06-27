@@ -294,7 +294,9 @@ export const ChatImpl = memo(
 
     // Sync external worker status → build-status store (for Preview gate).
     useEffect(() => {
-      if (!externalWorkerEnabled || extWorkerState.status === 'idle') return;
+      if (!externalWorkerEnabled || extWorkerState.status === 'idle') {
+        return;
+      }
 
       const statusMap: Record<string, BuildJobStatus> = {
         pending: 'generating',
@@ -312,10 +314,13 @@ export const ChatImpl = memo(
         artifactTagsBalanced: extWorkerState.status === 'ready_for_preview',
         fileActionsBalanced: extWorkerState.status === 'ready_for_preview',
         fileCount: extWorkerState.files.length,
-        issues: extWorkerState.error ? [{ code: 'WORKER_ERROR', message: extWorkerState.error, severity: 'error' }] : [],
+        issues: extWorkerState.error
+          ? [{ code: 'WORKER_ERROR', message: extWorkerState.error, severity: 'error' }]
+          : [],
         retryCount: 0,
       });
     }, [externalWorkerEnabled, extWorkerState]);
+
     const { parsedMessages, parseMessages } = useMessageParser();
 
     const TEXTAREA_MAX_HEIGHT = chatStarted ? 400 : 200;
@@ -365,17 +370,14 @@ export const ChatImpl = memo(
 
       // Find the most recent validation annotation.
       const validationAnns = annotations.filter(
-        (a): a is { type: 'validation'; value: Record<string, unknown> } =>
-          typeof a === 'object' &&
-          a !== null &&
-          (a as { type?: string }).type === 'validation',
-      );
+        (a) => typeof a === 'object' && a !== null && (a as Record<string, unknown>).type === 'validation',
+      ) as Array<{ type: 'validation'; value: Record<string, unknown> }>;
 
       if (validationAnns.length === 0) {
         return;
       }
 
-      const latest = validationAnns[validationAnns.length - 1].value;
+      const latest = validationAnns[validationAnns.length - 1]?.value ?? {};
 
       setBuildStatus({
         completeness: (latest.completeness as BuildCompleteness) ?? 'unknown',
@@ -667,6 +669,7 @@ export const ChatImpl = memo(
         setInput('');
         Cookies.remove(PROMPT_COOKIE_KEY);
         await startExtJob(finalMessageContent, model, provider.name);
+
         return;
       }
 
