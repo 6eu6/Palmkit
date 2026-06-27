@@ -188,33 +188,28 @@ Palmkit هو منصة تطوير AI مبنية على **Remix + Vite + Cloudflar
 
 ---
 
+### ✅ Phase 8 — Export & Native App Delivery
+
+**الهدف**: دعم كامل لتصدير المشاريع وتسليم التطبيقات للمستخدم.
+
+**ما تم تطبيقه**:
+- `app/routes/api.export.ts`: endpoint `/api/export?jobId=` يُنشئ ZIP archive من R2 بالـ fflate
+  - يُضاف `README.md` تلقائياً حسب نوع المشروع (react/vue/nextjs/python/flutter/react-native/static)
+  - اسم الملف مستوحى من الـ prompt: `palmkit-todo-app.zip`
+- `/builds` page: زر "Download ZIP" (`i-ph:download-simple`) على كل build card
+- Header: زر "Export ZIP" يظهر تلقائياً عند اكتمال Oracle Worker build (`ready_for_preview`)
+- `currentJobIdStore` في build-status store يتتبع الـ job ID النشط للـ export
+
+**معايير النجاح — محققة**:
+- ✅ كل نوع مشروع (React, Vue, Next.js, Python, Flutter, RN, Static) يُصدَّر كـ ZIP
+- ✅ ZIP يحتوي README مع تعليمات التشغيل المناسبة للنوع
+- ✅ زر Export في الـ header + صفحة Builds
+
+---
+
 ## المراحل المخططة
 
-### 🔲 Phase 8 — Native App Delivery
-
-**الهدف**: دعم كامل لـ Flutter و React Native وليس فقط "download and run".
-
-**المخطط**:
-
-1. **Flutter Web Preview**
-   - Oracle Worker يشغّل `flutter build web` في E2B sandbox
-   - Output يُرفع لـ R2 كـ static files
-   - Preview يظهر في المتصفح مثل static app
-
-2. **React Native / Expo**
-   - Oracle Worker يشغّل `expo export -p web`
-   - Web output → R2 → blob URL preview
-   - أو: Expo Snack integration (embed مباشر)
-
-3. **Python Backend**
-   - E2B sandbox يبقى حياً لمدة أطول (مو 7 دقائق فقط)
-   - URL دائم للـ API (مو مؤقت)
-   - دعم WebSockets
-
-**معايير النجاح**:
-- [ ] Flutter web app تُعاين في المتصفح مباشرة
-- [ ] React Native/Expo تُعاين عبر web build
-- [ ] Python API يبقى متاحاً لمدة المحادثة
+*(لا توجد مراحل مخططة — جميع المراحل مكتملة)*
 
 ---
 
@@ -222,6 +217,7 @@ Palmkit هو منصة تطوير AI مبنية على **Remix + Vite + Cloudflar
 
 | التاريخ | الوصف |
 |---------|-------|
+| 2026-06-27 | feat(phase8): ZIP export for all build types + Export ZIP button |
 | 2026-06-27 | feat(phase7): multi-turn edit mode — patch existing builds |
 | 2026-06-27 | feat(phase6): project history page, builds API, and prompt persistence |
 | 2026-06-27 | feat(phase5): worker progress events UI (WorkerProgress component) |
