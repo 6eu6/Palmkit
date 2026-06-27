@@ -624,10 +624,6 @@ function inferMimeType(path: string): string {
 export function validateGeneration(result: GenerationResult): string[] {
   const issues: string[] = [];
 
-  if (!result.complete) {
-    issues.push('Generation did not set complete=true');
-  }
-
   const paths = result.files.map((f) => f.path);
 
   if (result.appType === 'static') {

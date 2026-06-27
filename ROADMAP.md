@@ -207,9 +207,149 @@ Palmkit هو منصة تطوير AI مبنية على **Remix + Vite + Cloudflar
 
 ---
 
-## المراحل المخططة
+## المراحل المخططة — الجيل الثاني
 
-*(لا توجد مراحل مخططة — جميع المراحل مكتملة)*
+> هذه مراحل التطوير القادمة بناءً على الاختبار الفعلي للمنصة.
+> الأولوية: UX > جودة التوليد > مزايا متقدمة.
+
+---
+
+### 🔲 Phase 9 — Visual Editor 2.0 (المحرر البصري الدقيق)
+
+**الهدف**: تحويل المحرر البصري من "قراءة فقط" إلى تعديل مباشر حقيقي.
+
+**المشاكل الحالية**:
+- الضغط على عنصر ينسخه للحافظة فقط — لا يوجد UI للتعديل
+- لا يعمل في وضع E2B (فقط blob URL + WebContainer)
+- انحراف الإحداثيات عند استخدام device frame
+- لا يوجد multi-select
+
+**ما يُبنى**:
+- لوحة تعديل مباشرة تظهر عند اختيار عنصر (نص، ألوان، padding، font-size)
+- Auto-generate edit prompt من العنصر المختار → تُرسل لـ Oracle Worker تلقائياً
+- Highlight ثابت للعنصر بعد الضغط (ليس فقط hover)
+- إصلاح انحراف الإحداثيات في device frame mode
+- Multi-element selection (shift+click)
+
+**التقنيات**: postMessage API + InspectorPanel.tsx + أنماط CSS parsing
+
+---
+
+### 🔲 Phase 10 — Streaming Generation Preview (معاينة أثناء التوليد)
+
+**الهدف**: المستخدم يرى الكود يُكتب مباشرة + معاينة تدريجية.
+
+**المشاكل الحالية**:
+- المستخدم ينتظر 30-90 ثانية بدون ملاحظات مرئية كافية
+- `WorkerProgress` يعرض خطوات نصية فقط
+
+**ما يُبنى**:
+- بث ملفات جزئية عبر `job_events` (`file_written` events) → عرضها في CodeMirror مباشرة
+- Skeleton preview يظهر بنية الملفات قبل اكتمال التوليد
+- شريط تقدم مرئي بنسبة مئوية حقيقية (بدل تخمين)
+- "Writing file X of Y" indicator
+
+**التقنيات**: Supabase Realtime → `job_events` subscription → `workerEventsStore` → CodeMirror streaming
+
+---
+
+### 🔲 Phase 11 — Smart Prompt Enhancement (تحسين ذكي للـ Prompt)
+
+**الهدف**: رفع جودة المشاريع المولّدة من 70% إلى 95%.
+
+**المشاكل الحالية**:
+- `static` projects تفشل في بعض الأحيان بسبب truncated JSON
+- المشاريع المعقدة تحتاج prompts دقيقة
+- لا يوجد template library
+
+**ما يُبنى**:
+- Pre-generation prompt enricher: يُضاف context تلقائياً (screen size, color scheme, industry)
+- Starter templates library (20+ template): e-commerce, portfolio, SaaS landing, dashboard, blog
+- Prompt validator: يكتشف طلبات غامضة ويطلب توضيحاً
+- Dynamic `maxTokens` حسب complexity المطلوبة
+
+**التقنيات**: `/api/enhancer` route (موجود) + template store + LLM classification
+
+---
+
+### 🔲 Phase 12 — One-Click Deploy (نشر بضغطة واحدة)
+
+**الهدف**: المستخدم ينشر مشروعه مباشرة من Palmkit.
+
+**الأنظمة المدعومة**:
+- **Vercel**: static + React/Vue/Next.js (Vercel API موجود في `/api/vercel-deploy.ts`)
+- **Netlify**: static (Netlify API موجود في `/api/netlify-deploy.ts`)
+- **Cloudflare Pages**: static + React (via Wrangler API)
+- **Custom domain**: CNAME + CDN عبر Cloudflare
+
+**ما يُبنى**:
+- Deploy button في صفحة `/builds` لكل مشروع مكتمل
+- Custom subdomain: `{project-name}.palmkit.app` (Cloudflare Worker proxy)
+- Deploy status webhook + notification
+
+**التقنيات**: Vercel API + Netlify API + Cloudflare Pages API + Supabase `deployments` table
+
+---
+
+### 🔲 Phase 13 — Multi-Stack Support + Backend Generation
+
+**الهدف**: دعم مشاريع full-stack حقيقية بقاعدة بيانات.
+
+**Stacks المدعومة القادمة**:
+| Stack | Frontend | Backend | DB |
+|-------|----------|---------|-----|
+| T3 Stack | Next.js | tRPC | PostgreSQL |
+| MERN | React | Express | MongoDB |
+| FastAPI + React | React | FastAPI | SQLite |
+| Supabase + Next.js | Next.js | Supabase | PostgreSQL |
+
+**ما يُبنى**:
+- `generator.ts`: أنماط جديدة لكل stack
+- Database schema generation (migrations SQL)
+- Environment variables template generation
+- Docker Compose generation للتطوير المحلي
+
+---
+
+### 🔲 Phase 14 — Collaborative Editing (التعديل التعاوني)
+
+**الهدف**: فريق يعمل على نفس المشروع في نفس الوقت.
+
+**ما يُبنى**:
+- Project sharing (link + permissions)
+- Supabase Realtime للتعديلات المتزامنة
+- Conflict resolution للملفات
+- Comments على الكود
+
+**التقنيات**: Supabase Realtime + CRDT (Yjs) + RLS policies
+
+---
+
+### 🔲 Phase 15 — AI Code Review + Suggestions
+
+**الهدف**: Palmkit يراجع الكود المولّد ويقترح تحسينات.
+
+**ما يُبنى**:
+- بعد كل build: تحليل تلقائي للكود (Security, Performance, Accessibility)
+- اقتراحات مُفصّلة بدل رسالة "ready for preview" الجامدة
+- "Improve" button → worker يحسّن تلقائياً
+
+---
+
+## خارطة طريق التقنيات المقترحة
+
+| المجال | التقنية الحالية | التقنية المقترحة | الفائدة |
+|--------|----------------|-----------------|---------|
+| LLM Generation | JSON text output | Tool calling (structured) | أموثوقية أعلى، لا parse errors |
+| Streaming | Polling every 2s | Supabase Realtime subscriptions | تحديث فوري بدون polling |
+| Preview (mobile) | E2B (cloud) | Stackblitz WebContainers on CDN | تكلفة أقل |
+| State Management | nanostores | Zustand (موجود جزئياً) | توحيد |
+| Testing | Vitest only | Playwright E2E + Vitest | اختبار UI فعلي |
+| Build Check | bun build local | Isolated Docker container | أأمان، لا تأثير على Worker |
+| File Storage | R2 (S3-compat) | R2 + Edge Cache | سرعة أكبر |
+| Auth | Supabase Auth | Supabase Auth + Passkeys | UX أسهل |
+| Monitoring | Logs only | Sentry + Worker metrics dashboard | رؤية أوضح |
+| CI/CD | GitHub Actions SSH | GitHub Actions + Docker | أسرع وأموثق |
 
 ---
 

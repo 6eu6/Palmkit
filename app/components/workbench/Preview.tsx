@@ -10,6 +10,7 @@ import { ExpoQrModal } from '~/components/workbench/ExpoQrModal';
 import { canShowPreview, buildStatusMessage, buildStatusStore, previewFilesStore } from '~/lib/stores/build-status';
 import { useWorkerSandbox } from '~/lib/hooks/use-worker-sandbox';
 import type { ElementInfo } from './Inspector';
+import inspectorScript from '/public/inspector-script.js?raw';
 
 type ResizeSide = 'left' | 'right' | null;
 
@@ -128,6 +129,12 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
     for (const [fileName, url] of Object.entries(urlMap)) {
       rewritten = rewritten.replace(new RegExp(`(href|src)=["']${fileName}["']`, 'g'), `$1="${url}"`);
     }
+
+    // Inject inspector script so the visual editor works in blob URL previews.
+    const scriptTag = `<script>${inspectorScript}</script>`;
+    rewritten = rewritten.includes('</body>')
+      ? rewritten.replace('</body>', `${scriptTag}</body>`)
+      : rewritten + scriptTag;
 
     const htmlBlob = new Blob([rewritten], { type: 'text/html' });
     const blobUrl = URL.createObjectURL(htmlBlob);
