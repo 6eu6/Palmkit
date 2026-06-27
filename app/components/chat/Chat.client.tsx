@@ -14,6 +14,8 @@ import {
   setWorkerEvents,
   clearWorkerEvents,
   setCurrentJobId,
+  setWorkerProgress,
+  resetWorkerProgress,
 } from '~/lib/stores/build-status';
 import type { BuildCompleteness, BuildJobStatus } from '~/lib/stores/build-status';
 import { useExternalWorker, useExternalWorkerFlag } from '~/lib/hooks/use-external-worker';
@@ -338,6 +340,9 @@ export const ChatImpl = memo(
 
       /* Phase 5: sync job events to workerEventsStore for the progress UI */
       setWorkerEvents(extWorkerState.events);
+
+      /* Phase 10: sync real progress percentage + current step */
+      setWorkerProgress(extWorkerState.progress, extWorkerState.currentStep);
 
       /* Phase 8: track job ID for ZIP export */
       if (extWorkerState.status === 'ready_for_preview' && extWorkerState.jobId) {
@@ -678,6 +683,7 @@ export const ChatImpl = memo(
       // Phase 1 Safety Gate: reset build status at the start of each new build.
       resetBuildStatus();
       clearWorkerEvents();
+      resetWorkerProgress();
 
       /*
        * Phase 2: External Worker path (experimental, feature-flagged).

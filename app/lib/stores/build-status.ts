@@ -105,6 +105,22 @@ export function clearWorkerEvents(): void {
   workerEventsStore.set([]);
 }
 
+/** Phase 10 — real progress percentage + step from the Oracle Worker. */
+export interface WorkerProgress {
+  progress: number;
+  currentStep: string;
+}
+
+export const workerProgressStore = atom<WorkerProgress>({ progress: 0, currentStep: '' });
+
+export function setWorkerProgress(progress: number, currentStep: string): void {
+  workerProgressStore.set({ progress, currentStep });
+}
+
+export function resetWorkerProgress(): void {
+  workerProgressStore.set({ progress: 0, currentStep: '' });
+}
+
 /**
  * Update the store from a validation annotation value.
  * Called by Chat.client.tsx when it sees a `type: 'validation'` annotation.
