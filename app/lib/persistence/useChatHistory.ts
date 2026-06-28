@@ -179,9 +179,30 @@ function createDebouncedSnapshotSaver(delay: number = 2000) {
     lastSavePromise = new Promise<void>((resolve) => {
       timeoutId = setTimeout(async () => {
         try {
+          let snapshotFiles = files;
+
+          /*
+           * If the current call has no files (e.g. WebContainer didn't boot so
+           * workbenchStore.files is empty), preserve whatever files were stored
+           * in the last snapshot so we don't erase a previously-captured state.
+           * We always update chatIndex so the restore point advances to the
+           * latest turn even in environments where the preview sandbox isn't running.
+           */
+          if (Object.keys(snapshotFiles).length === 0) {
+            try {
+              const existing = await getSnapshot(dbInstance, chatIdVal);
+
+              if (existing?.files && Object.keys(existing.files).length > 0) {
+                snapshotFiles = existing.files;
+              }
+            } catch {
+              // ignore — just use empty files
+            }
+          }
+
           const snapshot: Snapshot = {
             chatIndex: chatIdx,
-            files,
+            files: snapshotFiles,
             summary: chatSummary,
           };
           await setSnapshot(dbInstance, chatIdVal, snapshot);
@@ -306,6 +327,25 @@ export function useChatHistory() {
               archivedMsgs = storedMessages.messages.slice(0, startingIdx + 1);
             }
 
+            /*
+             * When the snapshot points to the LAST assistant message and there
+             * are no messages after it, archiving everything leaves the user
+             * staring at a blank chat (only the 2-message restore pair visible).
+             * Instead, keep the full pre-snapshot history visible and only
+             * prepend the hidden restore trigger; the "Palmkit Restored" status
+             * banner will still be injected at the end.
+             */
+            const snapshotIsLastMessage = filteredMessages.length === 0 && archivedMsgs.length > 1;
+
+            if (snapshotIsLastMessage) {
+              /*
+               * Show all messages (including the snapshot message) + append
+               * the restore pair at the end so the AI knows the project state.
+               */
+              filteredMessages = [...archivedMsgs];
+              archivedMsgs = [];
+            }
+
             setArchivedMessages(archivedMsgs);
 
             if (startingIdx > 0) {
@@ -336,15 +376,26 @@ export function useChatHistory() {
                     !snapshotMessage.content.includes('</palmkitArtifact')
                   : false;
 
-              filteredMessages = [
+              /*
+               * When the snapshot is the last message we re-use all archived
+               * messages as visible ones (full history shown to the user).
+               * In that case the restore assistant must NOT reuse the snapshot
+               * message's id — that id already appears in filteredMessages —
+               * so we give it a fresh id to avoid React key collisions.
+               */
+              const restoreAssistantId = snapshotIsLastMessage
+                ? generateId()
+                : storedMessages.messages[snapshotIndex].id;
+
+              const restorePair: Message[] = [
                 {
                   id: generateId(),
                   role: 'user',
                   content: `Restore project from snapshot`,
                   annotations: ['no-store', 'hidden'],
-                },
+                } as Message,
                 {
-                  id: storedMessages.messages[snapshotIndex].id,
+                  id: restoreAssistantId,
                   role: 'assistant',
                   content: `Palmkit Restored your chat from a snapshot. You can revert this message to load the full chat history.
                   <palmkitArtifact id="restored-project-setup" title="Restored Project & Setup" type="bundled">
@@ -361,7 +412,7 @@ ${value.content}
                       }
                     })
                     .join('\n')}
-                  ${commandActionsString} 
+                  ${commandActionsString}
                   </palmkitArtifact>
                   `,
                   annotations: [
@@ -376,15 +427,42 @@ ${value.content}
                         ]
                       : []),
                   ],
-                },
-                ...filteredMessages,
+                } as Message,
               ];
+
+              /*
+               * When the snapshot was the last message, `filteredMessages` already
+               * holds the FULL conversation (all archived msgs). Append the
+               * restore pair at the end so the user sees their complete history.
+               * Otherwise (snapshot in the middle) prepend so context comes first.
+               */
+              filteredMessages = snapshotIsLastMessage
+                ? [...filteredMessages, ...restorePair]
+                : [...restorePair, ...filteredMessages];
 
               // A) Restore UX: Step - restoring WebContainer
               setRestoreStep('restoring-webcontainer', wasInterrupted);
 
               workbenchStore.files.set(validSnapshot.files);
-              await restoreSnapshot(mixedId, validSnapshot);
+
+              /*
+               * WebContainer boot can stall in some environments.
+               * Files are already written to workbenchStore above; the WC write
+               * is only needed for terminal execution (npm run dev), not preview.
+               * After 10 s we proceed without blocking the UI.
+               */
+              try {
+                await Promise.race([
+                  restoreSnapshot(mixedId, validSnapshot),
+                  new Promise<void>((_, reject) => setTimeout(() => reject(new Error('wc-timeout')), 10000)),
+                ]);
+              } catch (wcErr) {
+                if (wcErr instanceof Error && wcErr.message !== 'wc-timeout') {
+                  throw wcErr;
+                }
+
+                console.warn('[Palmkit] WebContainer restore timed out — continuing without it');
+              }
 
               // A) Restore UX: Done
               setRestoreStep('done', wasInterrupted);
@@ -471,7 +549,19 @@ ${value.content}
             setRestoreStep('restoring-webcontainer', true);
 
             workbenchStore.files.set(validSnapshot.files);
-            await restoreSnapshot(mixedId, validSnapshot);
+
+            try {
+              await Promise.race([
+                restoreSnapshot(mixedId, validSnapshot),
+                new Promise<void>((_, reject) => setTimeout(() => reject(new Error('wc-timeout')), 10000)),
+              ]);
+            } catch (wcErr) {
+              if (wcErr instanceof Error && wcErr.message !== 'wc-timeout') {
+                throw wcErr;
+              }
+
+              console.warn('[Palmkit] WebContainer restore timed out — continuing without it');
+            }
 
             setRestoreStep('done', true);
 

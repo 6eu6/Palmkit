@@ -555,7 +555,13 @@ export const ChatImpl = memo(
         const finalFiles = workbenchStore.files.get();
         const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : '';
 
-        if (lastMessageId && Object.keys(finalFiles).length > 0) {
+        /*
+         * Always advance the snapshot's chatIndex to the latest assistant message,
+         * even when the workbench has no files (e.g. WebContainer didn't boot).
+         * The debounced saver will preserve any previously-stored files so we
+         * don't lose earlier snapshot data.
+         */
+        if (lastMessageId) {
           takeDebouncedSnapshot(lastMessageId, finalFiles).catch((err) => {
             console.error('Final snapshot save failed:', err);
           });
