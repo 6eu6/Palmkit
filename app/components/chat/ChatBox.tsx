@@ -366,7 +366,12 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
 
           {/* Self-contained dialog / action triggers */}
           <ClientOnly>
-            {() => <WebSearch onSearchResult={props.onWebSearchResult || (() => {})} disabled={props.isStreaming} />}
+            {() => (
+              <WebSearch
+                onSearchResult={props.onWebSearchResult ?? ((_r: string) => undefined)}
+                disabled={props.isStreaming}
+              />
+            )}
           </ClientOnly>
           <ColorSchemeDialog designScheme={props.designScheme} setDesignScheme={props.setDesignScheme} />
           <McpTools />
