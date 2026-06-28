@@ -22,6 +22,8 @@ export type JobEventType =
   | 'planning_started'
   | 'planning_completed'
   | 'file_generation_started'
+  | 'file_stream_started'
+  | 'file_chunk'
   | 'file_written'
   | 'file_generation_completed'
   | 'validation_started'

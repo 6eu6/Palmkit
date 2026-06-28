@@ -882,7 +882,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
             alignItems: 'center',
           }}
         >
-          {effectiveActivePreview || hasExtWorkerPreview || hasSandboxPreview ? (
+          {canShowPreviewValue && (effectiveActivePreview || hasExtWorkerPreview || hasSandboxPreview) ? (
             <>
               {isDeviceModeOn && showDeviceFrameInPreview ? (
                 <div

@@ -68,6 +68,27 @@ export async function action(args: ActionFunctionArgs) {
   }
 
   /*
+   * Look up the model's maxCompletionTokens from the LLM manager so the
+   * Oracle worker can use the model's actual output limit instead of a
+   * hardcoded 16000-token cap (which caused JSON truncation on big projects).
+   */
+  let maxCompletionTokens: number | undefined;
+
+  try {
+    const llmManagerModule = await import('~/lib/modules/llm/manager');
+    const { PROVIDER_LIST } = await import('~/utils/constants');
+    const providerObj = PROVIDER_LIST.find((p) => p.name === provider);
+
+    if (providerObj) {
+      const staticModels = llmManagerModule.LLMManager.getInstance().getStaticModelListFromProvider(providerObj);
+      const modelDetails = staticModels.find((m) => m.name === model);
+      maxCompletionTokens = modelDetails?.maxCompletionTokens;
+    }
+  } catch (e) {
+    logger.warn(`Could not look up maxCompletionTokens for ${provider}/${model}:`, (e as Error).message);
+  }
+
+  /*
    * Insert a new build_jobs row with status='pending'.
    * Let the DB generate the UUID primary key (gen_random_uuid()).
    */
@@ -86,6 +107,7 @@ export async function action(args: ActionFunctionArgs) {
         model,
         provider,
         fileCount: Object.keys(files ?? {}).length,
+        ...(maxCompletionTokens ? { maxCompletionTokens } : {}),
         ...(editJobId ? { editJobId } : {}),
       },
     })

@@ -167,7 +167,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url!, `http://${req.headers.host}`);
-    const response = await app.fetch(new Request(url.toString(), { method: req.method, headers: req.headers as HeadersInit }));
+    const response = await app.fetch(new Request(url.toString(), { method: req.method, headers: req.headers as Record<string, string> }));
     const body = await response.text();
     res.writeHead(response.status, Object.fromEntries(response.headers));
     res.end(body);

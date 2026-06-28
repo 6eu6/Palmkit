@@ -10,9 +10,53 @@
  * generates the correct structure without guessing.
  */
 
-import { generateText } from 'ai';
+import { generateText, streamText } from 'ai';
 import { getModelInstance } from './provider-registry';
 import { logger } from './logger';
+
+/**
+ * Per-provider and per-model completion token limits.
+ *
+ * BUG FIX (2026-06-29): Previously maxTokens was hardcoded to 16000/32000. When
+ * the LLM generated a large project (many files, long content), the response
+ * hit the token cap mid-JSON → truncated output → "JSON truncated — recovered
+ * N file(s) from partial response" → missing files → validation failure.
+ *
+ * Now we:
+ *   1. Look up the model's actual maxCompletionTokens (passed in via spec).
+ *   2. Fall back to a generous default (128000) — never the old 16000 cap.
+ *   3. If the response is still truncated (finishReason === 'length'),
+ *      auto-continue with a follow-up prompt asking for the remaining files.
+ */
+
+/** Default per-app-type token budgets when model limit is unknown. */
+const DEFAULT_MAX_TOKENS: Record<ProjectSpec['appType'], number> = {
+  static: 64000,
+  python: 64000,
+  react: 128000,
+  nextjs: 128000,
+  vue: 128000,
+  flutter: 128000,
+  'react-native': 128000,
+};
+
+/** Hard floor so we never go below this even if the model reports a tiny limit. */
+const MIN_MAX_TOKENS = 32000;
+
+/**
+ * Resolve the maxTokens to send to the LLM.
+ * Prefers spec.maxCompletionTokens (from /api/models lookup), else default per app type.
+ */
+function resolveMaxTokens(spec: ProjectSpec, maxCompletionTokens?: number): number {
+  if (maxCompletionTokens && maxCompletionTokens > 0) {
+    return Math.max(maxCompletionTokens, MIN_MAX_TOKENS);
+  }
+
+  return DEFAULT_MAX_TOKENS[spec.appType] ?? MIN_MAX_TOKENS;
+}
+
+/** Optional callback for streaming progress to the UI (via Supabase job_events). */
+export type ProgressEmitter = (event: { type: string; message: string; payload?: Record<string, unknown> }) => Promise<void> | void;
 
 export interface FileOperation {
   op: 'write_file';
@@ -33,6 +77,8 @@ export interface ProjectSpec {
   description: string;
   files: Array<{ path: string; purpose: string }>;
   designNotes: string;
+  /** Optional: model's actual maxCompletionTokens (looked up from /api/models). */
+  maxCompletionTokens?: number;
 }
 
 /**
@@ -303,18 +349,27 @@ export async function generateStaticFiles(
   providerName: string,
   modelName: string,
   apiKey: string,
+  onProgress?: ProgressEmitter,
 ): Promise<GenerationResult> {
   logger.info(`Generating ${spec.appType} with provider=${providerName}, model=${modelName}`);
 
   const systemPrompt = buildSystemPrompt(spec);
   const model = getModelInstance(providerName, modelName, apiKey);
+  const maxTokens = resolveMaxTokens(spec, spec.maxCompletionTokens);
 
-  const maxTokens = spec.appType === 'static' ? 16000
-    : spec.appType === 'python' ? 16000
-    : spec.appType === 'flutter' || spec.appType === 'react-native' ? 32000
-    : 32000;
+  logger.info(`Token budget for ${modelName}: maxTokens=${maxTokens} (model reported: ${spec.maxCompletionTokens ?? 'n/a'})`);
 
-  const result = await generateText({
+  // ── STREAMING GENERATION ────────────────────────────────────────────────
+  // Use streamText so the user sees real-time progress (file_chunk events)
+  // instead of staring at a static "Generating files..." for 2-5 minutes.
+  let rawText = '';
+  let finishReason: string | undefined;
+  let usage: any = undefined;
+  let lastProgressEmit = 0;
+
+  await onProgress?.({ type: 'file_stream_started', message: `Streaming response from ${modelName}...` });
+
+  const result = await streamText({
     model,
     system: systemPrompt,
     prompt,
@@ -322,14 +377,127 @@ export async function generateStaticFiles(
     temperature: 0.7,
   });
 
-  const rawText: string = result.text ?? '';
+  for await (const part of result.fullStream) {
+    if (part.type === 'text-delta') {
+      rawText += part.textDelta;
 
-  if (!rawText) {
-    throw new Error(`${providerName} returned empty content (finishReason: ${result.finishReason})`);
+      // Emit progress every ~500ms so we don't spam Supabase.
+      const now = Date.now();
+
+      if (now - lastProgressEmit > 500) {
+        lastProgressEmit = now;
+        await onProgress?.({
+          type: 'file_chunk',
+          message: `Generating… ${rawText.length.toLocaleString()} chars received`,
+          payload: { charsReceived: rawText.length },
+        });
+      }
+    } else if (part.type === 'error') {
+      const errMsg = (part.error as Error)?.message ?? JSON.stringify(part.error) ?? 'unknown';
+      logger.error(`Stream error part: ${errMsg}`);
+      throw new Error(`Stream error: ${errMsg}`);
+    } else if (part.type === 'finish') {
+      finishReason = part.finishReason;
+      usage = part.usage;
+    }
   }
 
-  logger.info(`Received ${rawText.length} chars from ${providerName} (usage: ${JSON.stringify(result.usage)})`);
+  if (!rawText) {
+    throw new Error(`${providerName} returned empty content (finishReason: ${finishReason})`);
+  }
 
+  logger.info(`Received ${rawText.length} chars from ${providerName} (finishReason: ${finishReason}, usage: ${JSON.stringify(usage)})`);
+
+  // ── AUTO-CONTINUE IF TRUNCATED ───────────────────────────────────────────
+  // If the model hit the token limit (finishReason === 'length'), the JSON is
+  // almost certainly truncated mid-file. Send a follow-up prompt asking for
+  // ONLY the remaining files, then merge.
+  let attempts = 0;
+  const MAX_CONTINUATIONS = 3;
+
+  while (finishReason === 'length' && attempts < MAX_CONTINUATIONS) {
+    attempts++;
+    logger.warn(`Response truncated (finishReason=length). Auto-continuing attempt ${attempts}/${MAX_CONTINUATIONS}`);
+
+    await onProgress?.({
+      type: 'file_chunk',
+      message: `Response was truncated — requesting remaining files (attempt ${attempts}/${MAX_CONTINUATIONS})...`,
+      payload: { attempt: attempts, charsSoFar: rawText.length },
+    });
+
+    // Parse what we have so far to know which files are complete.
+    const partialFiles = extractPartialFiles(rawText);
+    const havePaths = new Set(partialFiles.map((f) => f.path));
+    const needPaths = spec.files.map((f) => f.path).filter((p) => !havePaths.has(p));
+
+    if (needPaths.length === 0) {
+      // All planned files are present — just the JSON wrapper got cut.
+      logger.info('All planned files already recovered; no continuation needed');
+      break;
+    }
+
+    const continuePrompt = `You were generating a JSON project but hit your output token limit. Continue from where you left off.
+
+You already completed these files: ${[...havePaths].join(', ') || '(none)'}
+
+STILL NEEDED: ${needPaths.join(', ')}
+
+Return ONLY a JSON object with the REMAINING files (do NOT repeat files already generated):
+{"files":[{"op":"write_file","path":"...","content":"..."},...], "complete": true}
+
+Start directly with { — no markdown fences, no preamble.`;
+
+    let continueText = '';
+    const continueResult = await streamText({
+      model,
+      system: 'You are a JSON-only code generator. Continue the previous response with the remaining files only.',
+      prompt: continuePrompt,
+      maxTokens,
+      temperature: 0.5,
+    });
+
+    let contFinishReason: string | undefined;
+
+    for await (const part of continueResult.fullStream) {
+      if (part.type === 'text-delta') {
+        continueText += part.textDelta;
+
+        const now = Date.now();
+
+        if (now - lastProgressEmit > 500) {
+          lastProgressEmit = now;
+          await onProgress?.({
+            type: 'file_chunk',
+            message: `Continuing… ${continueText.length.toLocaleString()} chars in attempt ${attempts}`,
+            payload: { attempt: attempts, charsInAttempt: continueText.length },
+          });
+        }
+      } else if (part.type === 'finish') {
+        contFinishReason = part.finishReason;
+      } else if (part.type === 'error') {
+        logger.error(`Continuation stream error: ${JSON.stringify(part.error)}`);
+        break;
+      }
+    }
+
+    logger.info(`Continuation ${attempts}: ${continueText.length} chars (finishReason: ${contFinishReason})`);
+
+    // Merge: append continuation text to rawText so the parser can find new files.
+    rawText += '\n' + continueText;
+    finishReason = contFinishReason;
+
+    // If we got the remaining files, we're done.
+    const allFilesNow = extractPartialFiles(rawText);
+    const allHavePaths = new Set(allFilesNow.map((f) => f.path));
+    const stillMissing = spec.files.map((f) => f.path).filter((p) => !allHavePaths.has(p));
+
+    if (stillMissing.length === 0) {
+      logger.info(`All ${spec.files.length} planned files recovered after ${attempts} continuation(s)`);
+      break;
+    }
+  }
+
+  // ── PARSE THE (POSSIBLY MERGED) RESPONSE ─────────────────────────────────
   let parsed: { files?: FileOperation[]; complete?: boolean };
 
   try {
@@ -351,7 +519,7 @@ export async function generateStaticFiles(
         );
       }
 
-      logger.warn(`JSON truncated — recovered ${recovered.length} file(s) from partial response`);
+      logger.warn(`JSON truncated — recovered ${recovered.length} file(s) from partial response after ${attempts} continuation(s)`);
       parsed = { files: recovered, complete: false };
     }
   }
@@ -363,23 +531,44 @@ export async function generateStaticFiles(
     throw new Error('LLM returned no files in the JSON response');
   }
 
+  // Deduplicate by path (continuation may have produced overlapping files; keep the longer content).
+  const deduped = new Map<string, FileOperation>();
+
   for (const f of files) {
     if (!f.path || typeof f.content !== 'string') {
-      throw new Error('Invalid file operation: missing path or content');
+      continue;
     }
 
     if (f.content.trim().length === 0) {
-      throw new Error(`File ${f.path} has empty content`);
+      continue;
     }
 
     if (!f.mime_type) {
       f.mime_type = inferMimeType(f.path);
     }
+
+    const existing = deduped.get(f.path);
+
+    if (!existing || f.content.length > existing.content.length) {
+      deduped.set(f.path, f);
+    }
   }
 
-  logger.info(`Generation complete: ${files.length} files, appType=${spec.appType}, complete=${complete}`);
+  const finalFiles = [...deduped.values()];
 
-  return { files, complete, rawText, appType: spec.appType };
+  if (finalFiles.length === 0) {
+    throw new Error('All files had empty content or missing paths');
+  }
+
+  logger.info(`Generation complete: ${finalFiles.length} files, appType=${spec.appType}, complete=${complete}`);
+
+  await onProgress?.({
+    type: 'file_generation_completed',
+    message: `Generated ${finalFiles.length} files (${rawText.length.toLocaleString()} chars total)`,
+    payload: { fileCount: finalFiles.length, totalChars: rawText.length, continuations: attempts },
+  });
+
+  return { files: finalFiles, complete: complete || finalFiles.length >= spec.files.length, rawText, appType: spec.appType };
 }
 
 /**
@@ -423,7 +612,7 @@ STRICT RULES:
     model,
     system: systemPrompt,
     prompt: editPrompt,
-    maxTokens: 16000,
+    maxTokens: 64000,
     temperature: 0.5,
   });
 
@@ -505,7 +694,7 @@ Include ONLY the files you are changing. Keep all other files identical. No mark
   const repairPrompt = `BUILD ERRORS:\n${errorSnippet}\n\nCURRENT FILES:\n${fileDump}`;
 
   const model = getModelInstance(providerName, modelName, apiKey);
-  const result = await generateText({ model, system: systemPrompt, prompt: repairPrompt, maxTokens: 16000, temperature: 0.3 });
+  const result = await generateText({ model, system: systemPrompt, prompt: repairPrompt, maxTokens: 64000, temperature: 0.3 });
 
   const rawText = result.text ?? '';
 

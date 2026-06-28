@@ -240,6 +240,12 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
       const spec = planProject(prompt);
 
+      // Pass the model's maxCompletionTokens (from job metadata) into the spec so
+      // the generator uses the model's actual limit instead of the old 16000 cap.
+      if (job.validation_result?.maxCompletionTokens && typeof job.validation_result.maxCompletionTokens === 'number') {
+        spec.maxCompletionTokens = job.validation_result.maxCompletionTokens;
+      }
+
       await recordStep(supabase, job.id, {
         type: 'plan',
         status: 'completed',
@@ -250,13 +256,24 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
       logger.info(`Job ${job.id}: plan complete → ${spec.appType}, ${spec.files.length} files`);
 
-      // ─── Phase 2: GENERATE ─────────────────────────────────────────────
+      // ─── Phase 2: GENERATE (streaming + auto-continue) ──────────────────
       await updateJobProgress(supabase, job.id, 30, 'generate_files');
       await emitEvent(supabase, job.id, 'file_generation_started', `Generating files with ${providerName}...`);
       await recordStep(supabase, job.id, { type: 'generate_file', status: 'running', order: 2 });
 
+      // Stream progress events to the UI as the LLM generates tokens.
+      const onProgress = async (evt: { type: string; message: string; payload?: Record<string, unknown> }) => {
+        try {
+          // Cast to JobEventType — the generator only emits known types.
+          await emitEvent(supabase, job.id, evt.type as any, evt.message, evt.payload);
+        } catch (e) {
+          // best-effort — don't let progress emit failure kill the build
+          logger.warn(`Progress emit failed: ${(e as Error).message}`);
+        }
+      };
+
       try {
-        result = await generateStaticFiles(prompt, spec, providerName, modelName, apiKey);
+        result = await generateStaticFiles(prompt, spec, providerName, modelName, apiKey, onProgress);
       } catch (genError: any) {
         await recordStep(supabase, job.id, {
           type: 'generate_file',

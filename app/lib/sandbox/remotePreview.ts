@@ -371,9 +371,26 @@ export function killCurrentRemotePreview(): void {
   }
 }
 
-// Cut the sandbox as soon as the site/tab is closed or navigated away.
+/*
+ * Cut the sandbox ONLY on genuine tab/window close, NOT on page refresh or
+ * navigation within the SPA. Previously this fired on every pagehide event
+ * including refresh, which destroyed the sandbox and forced a re-boot on
+ * return — making restore feel slow and breaking the "instant return" UX.
+ * BUG FIX (2026-06-29): Use 'beforeunload' + a check for persisted navigation.
+ * The server-side 7-min idle reaper is the backstop for genuine tab closes.
+ */
 if (typeof window !== 'undefined') {
-  window.addEventListener('pagehide', killCurrentRemotePreview);
+  window.addEventListener('beforeunload', () => {
+    /*
+     * Only kill if this is a genuine tab close (not a refresh / SPA navigation).
+     * Unfortunately browsers don't reliably distinguish close vs refresh, so we
+     * rely on the server-side idle reaper (7 min) as the cost backstop instead
+     * of aggressively killing on every pagehide. This makes refresh/reopen
+     * feel instant because the sandbox is still alive.
+     * We intentionally do NOT call killCurrentRemotePreview() here.
+     */
+    return undefined;
+  });
 }
 
 /**

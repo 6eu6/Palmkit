@@ -254,9 +254,31 @@ export function useChatHistory() {
     }
 
     if (mixedId) {
-      // A) Restore UX: Show restore overlay with progress steps
-      isRestoring.set(true);
-      setRestoreStep('loading-messages');
+      /*
+       * A) Restore UX: Show restore overlay ONLY if restore takes longer than 250ms.
+       * BUG FIX (2026-06-29): Previously isRestoring.set(true) was called
+       * unconditionally on every chat load, causing the RestoreOverlay to flash
+       * even for sub-100ms IndexedDB reads. The user perceived this as "files
+       * loading / conversation loading" on every navigation. Now we use a
+       * 250ms grace timer: fast restores never show the overlay at all.
+       */
+      let restoreStarted = false;
+      const restoreGraceTimer = setTimeout(() => {
+        if (!restoreStarted) {
+          restoreStarted = true;
+          isRestoring.set(true);
+          setRestoreStep('loading-messages');
+        }
+      }, 250);
+
+      const suppressOverlayIfFast = () => {
+        clearTimeout(restoreGraceTimer);
+
+        if (!restoreStarted) {
+          // Fast path: restore already completed, never showed the overlay.
+          isRestoring.set(false);
+        }
+      };
 
       seedChatFromAccount(db, mixedId)
         .catch(() => false)
@@ -573,6 +595,12 @@ ${value.content}
           }
 
           setReady(true);
+
+          /*
+           * Fast-restore path: if the restore completed within the 250ms grace
+           * window, the overlay never showed — make sure isRestoring is false.
+           */
+          suppressOverlayIfFast();
         })
         .catch((error) => {
           console.error(error);
@@ -581,6 +609,7 @@ ${value.content}
           toast.error('Failed to load chat: ' + error.message);
           setRestoreStep('error');
           setReady(true);
+          suppressOverlayIfFast();
         });
     } else {
       setReady(true);
