@@ -348,6 +348,31 @@ export const ChatImpl = memo(
       if (extWorkerState.status === 'ready_for_preview' && extWorkerState.jobId) {
         setCurrentJobId(extWorkerState.jobId);
       }
+
+      /* Update the placeholder assistant message once the build finishes */
+      if (extWorkerState.status === 'ready_for_preview' || extWorkerState.status === 'failed_clean') {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+
+          if (last?.role !== 'assistant') {
+            return prev;
+          }
+
+          const isPlaceholder = last.content === '⚡ Building project…' || last.content === '⚡ Editing project…';
+
+          if (!isPlaceholder) {
+            return prev;
+          }
+
+          const fileCount = extWorkerState.files.length;
+          const newContent =
+            extWorkerState.status === 'ready_for_preview'
+              ? `✅ Build complete — ${fileCount} file${fileCount !== 1 ? 's' : ''} generated. Switch to the **Preview** tab to see your project.`
+              : `❌ Build failed: ${extWorkerState.error ?? 'Unknown error'}`;
+
+          return [...prev.slice(0, -1), { ...last, content: newContent }];
+        });
+      }
     }, [externalWorkerEnabled, extWorkerState]);
 
     const { parsedMessages, parseMessages } = useMessageParser();
@@ -697,8 +722,33 @@ export const ChatImpl = memo(
       if (externalWorkerEnabled) {
         chatStore.setKey('started', true);
         chatStore.setKey('aborted', false);
+
+        // Add user message to chat so the conversation is visible and persisted
+        const extUserText = finalMessageContent;
+        const isEditJob = extWorkerState.status === 'ready_for_preview' && Boolean(extWorkerState.jobId);
+        setMessages([
+          ...messages,
+          {
+            id: `${Date.now()}`,
+            role: 'user',
+            content: extUserText,
+            parts: createMessageParts(extUserText, imageDataList),
+          },
+
+          // Placeholder assistant message — shows progress until build completes
+          {
+            id: `${Date.now()}-assistant`,
+            role: 'assistant',
+            content: isEditJob ? '⚡ Editing project…' : '⚡ Building project…',
+          },
+        ]);
+
         setInput('');
         Cookies.remove(PROMPT_COOKIE_KEY);
+        setUploadedFiles([]);
+        setImageDataList([]);
+        resetEnhancer();
+        textareaRef.current?.blur();
 
         /* Phase 7: if there's a completed build in this session, treat as edit */
         const editFromJobId =
