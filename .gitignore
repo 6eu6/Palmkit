@@ -70,3 +70,4 @@ skills/
 __pycache__/
 *.pyc
 *.pyo
+.playwright-mcp/
