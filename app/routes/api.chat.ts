@@ -1,5 +1,5 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
-import { createDataStream, generateId } from 'ai';
+import { createDataStream, generateId, formatDataStreamPart } from 'ai';
 import { isReasoningModel, MAX_RESPONSE_SEGMENTS, type FileMap } from '~/lib/common/llm/constants';
 import { CLOSE_OUT_PROMPT, CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { PROVIDER_LIST } from '~/utils/constants';
@@ -418,23 +418,38 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
                */
               if (orchestratorResult.artifactText && orchestratorResult.artifactText.length > 50) {
                 /*
-                 * Write the assembled artifact as text-delta chunks.
-                 * The Vercel AI SDK protocol writes text-delta as "0: text\n"
-                 * which the frontend's message parser processes as assistant
-                 * message text. The parser then extracts <palmkitArtifact>
-                 * tags and creates file actions.
+                 * Write the artifact as TEXT (protocol type 0:) not DATA (type 2:).
                  *
-                 * We split into chunks to avoid writing one massive string.
+                 * KEY: dataStream.writeData() writes as type 2: (data), which
+                 * the frontend does NOT process as message text. To write text,
+                 * we must use the raw protocol format: 0:"text chunk"\n
+                 *
+                 * We create a ReadableStream that emits properly formatted
+                 * text-delta chunks and merge it into the data stream.
+                 * This is the same mechanism streamText.mergeIntoDataStream uses.
                  */
-                const chunkSize = 4000;
-                const text = orchestratorResult.artifactText;
+                const artifactText = orchestratorResult.artifactText;
+                const encoder = new TextEncoder();
 
-                for (let i = 0; i < text.length; i += chunkSize) {
-                  dataStream.writeData({
-                    type: 'text-delta',
-                    textDelta: text.slice(i, i + chunkSize),
-                  });
-                }
+                const textStream = new ReadableStream<Uint8Array>({
+                  start(controller) {
+                    const chunkSize = 4000;
+
+                    for (let i = 0; i < artifactText.length; i += chunkSize) {
+                      const chunk = artifactText.slice(i, i + chunkSize);
+                      const formatted = formatDataStreamPart('text', chunk);
+                      controller.enqueue(encoder.encode(formatted));
+                    }
+
+                    controller.close();
+                  },
+                });
+
+                /*
+                 * Cast to any — the merge method expects a specific stream type
+                 * but our manually created stream produces the correct protocol format.
+                 */
+                dataStream.merge(textStream as any);
 
                 dataStream.writeData({
                   type: 'progress',
