@@ -857,6 +857,18 @@ export const ChatImpl = memo(
 
         await startExtJob(finalMessageContent, model, provider.name, editFromJobId);
 
+        /*
+         * Save the chat to IndexedDB IMMEDIATELY so it persists across refreshes.
+         * The user message + assistant placeholder are already in `messages`.
+         * This ensures the chat appears in the sidebar and survives page reloads,
+         * even while the worker is still building.
+         */
+        if (messages.length > 0) {
+          storeMessageHistory(messages).catch((err) => {
+            console.warn('[Palmkit] Failed to save worker chat on send:', err);
+          });
+        }
+
         return;
       }
 
