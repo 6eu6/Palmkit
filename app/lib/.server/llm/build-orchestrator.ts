@@ -8,7 +8,7 @@
  * with a small LLM call, and streams progress to the browser.
  */
 
-import { generateText, type LanguageModelV1 } from 'ai';
+import { streamText, type LanguageModelV1 } from 'ai';
 import { logger } from '~/utils/logger';
 
 export interface OrchestratorTask {
@@ -107,7 +107,11 @@ RULES:
 OUTPUT FORMAT (strict JSON, no markdown):
 {"reasoning":"1-2 sentences","tasks":[{"id":1,"name":"Short name","file":"index.html","description":"What to generate"}]}`;
 
-  const result = await generateText({
+  /*
+   * Use streamText (not generateText) to avoid CF Pages 30s wall-clock limit.
+   * streamText is exempt from the timeout because it's a streaming response.
+   */
+  const result = await streamText({
     model,
     system: systemPrompt,
     prompt: `Break this into tasks:\n\n${prompt}`,
@@ -115,9 +119,18 @@ OUTPUT FORMAT (strict JSON, no markdown):
     temperature: 0.3,
   });
 
+  // Collect the full text from the stream
+  let fullText = '';
+
+  for await (const part of result.fullStream) {
+    if (part.type === 'text-delta') {
+      fullText += part.textDelta;
+    }
+  }
+
   try {
-    const jsonMatch = result.text?.match(/\{[\s\S]*\}/);
-    const plan = JSON.parse(jsonMatch?.[0] ?? result.text ?? '{}') as OrchestratorPlan;
+    const jsonMatch = fullText.match(/\{[\s\S]*\}/);
+    const plan = JSON.parse(jsonMatch?.[0] ?? fullText ?? '{}') as OrchestratorPlan;
 
     if (!plan.tasks?.length) {
       throw new Error('No tasks in plan');
@@ -180,7 +193,8 @@ ${task.description}
 
 Generate the ${currentContent ? 'updated' : 'complete'} ${task.file} file now. Output ONLY the palmkitArtifact.`;
 
-  const result = await generateText({
+  // Use streamText to avoid CF Pages wall-clock limit on non-streaming calls.
+  const result = await streamText({
     model,
     system: systemPrompt,
     prompt: userPrompt,
@@ -188,7 +202,16 @@ Generate the ${currentContent ? 'updated' : 'complete'} ${task.file} file now. O
     temperature: 0.7,
   });
 
-  return result.text ?? '';
+  // Collect full text from stream
+  let fullText = '';
+
+  for await (const part of result.fullStream) {
+    if (part.type === 'text-delta') {
+      fullText += part.textDelta;
+    }
+  }
+
+  return fullText;
 }
 
 /**
