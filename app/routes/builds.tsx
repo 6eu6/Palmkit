@@ -160,6 +160,18 @@ export default function BuildsPage() {
       );
 
       setPreviewFiles(previewFiles);
+
+      /*
+       * Store in sessionStorage as a bridge — useChatHistory reads this
+       * on the next page load. This prevents race conditions where the
+       * nanostore isn't updated before the navigation completes.
+       */
+      try {
+        sessionStorage.setItem('palmkit_restore_files', JSON.stringify({ jobId, files: previewFiles }));
+      } catch {
+        // best-effort
+      }
+
       navigate(`/chat/${jobId}`);
     } catch {
       setLoading(null);

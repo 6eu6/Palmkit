@@ -300,17 +300,42 @@ export function useChatHistory() {
 
           if (!hasMessages && !hasSnapshot) {
             /*
-             * BUG FIX: Worker builds don't create IndexedDB records.
-             * When a user opens a worker build from "My Builds" page,
-             * the openBuild() function fetches files from R2 and sets
-             * them in previewFilesStore, then navigates here.
+             * SILENT INSTANT RESTORE for worker builds.
              *
-             * Check if previewFilesStore has files (set by openBuild).
-             * If so, don't redirect — show the preview directly.
+             * When a user opens a worker build from "My Builds" page,
+             * openBuild() fetches files from R2 and stores them in:
+             * 1. previewFilesStore (nanostore — may have race condition)
+             * 2. sessionStorage (reliable bridge across navigation)
+             *
+             * Check both sources. If files found, restore SILENTLY:
+             * - Populate workbenchStore.files
+             * - Set buildStatusStore to ready_for_preview
+             * - No messages, no "Restoring..." overlay, no sandbox launch
+             * - User sees their files + Preview tab instantly
              */
             try {
-              const { previewFilesStore } = await import('~/lib/stores/build-status');
-              const previewFiles = previewFilesStore.get();
+              // Check sessionStorage first (most reliable)
+              const sessionData = sessionStorage.getItem('palmkit_restore_files');
+              let previewFiles: Record<string, string> = {};
+
+              if (sessionData) {
+                try {
+                  const parsed = JSON.parse(sessionData);
+                  previewFiles = parsed.files || {};
+
+                  // Clean up — don't restore the same files twice
+                  sessionStorage.removeItem('palmkit_restore_files');
+                } catch {
+                  /* invalid JSON */
+                }
+              }
+
+              // Fall back to nanostore if sessionStorage was empty
+              if (Object.keys(previewFiles).length === 0) {
+                const { previewFilesStore } = await import('~/lib/stores/build-status');
+                previewFiles = previewFilesStore.get();
+              }
+
               const hasPreviewFiles = Object.keys(previewFiles).length > 0;
 
               if (hasPreviewFiles) {
@@ -325,8 +350,15 @@ export function useChatHistory() {
                 }
                 workbenchStore.files.set(fileMap as any);
 
-                // Set build status so preview knows it can show
-                const { buildStatusStore } = await import('~/lib/stores/build-status');
+                /*
+                 * Set BOTH previewFilesStore AND buildStatusStore
+                 * so Preview component can find files and show blob preview
+                 */
+                const { buildStatusStore, setPreviewFiles: setPreviewFilesStore } = await import(
+                  '~/lib/stores/build-status'
+                );
+                setPreviewFilesStore(previewFiles);
+
                 const current = buildStatusStore.get();
                 buildStatusStore.set({
                   ...current,
