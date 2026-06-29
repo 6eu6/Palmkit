@@ -420,6 +420,19 @@ export const ChatImpl = memo(
             palmkitJobId: extWorkerState.jobId,
             palmkitAppType: extWorkerState.appType ?? undefined,
           });
+
+          /*
+           * CRITICAL: Save the chat to IndexedDB so it persists across refreshes.
+           * Without this, refreshing the page loses the entire conversation because
+           * worker builds don't create IndexedDB records by default.
+           *
+           * This also makes the chat appear in the sidebar (Projects list).
+           */
+          if (messages.length > 0) {
+            storeMessageHistory(messages).catch((err) => {
+              console.warn('[Palmkit] Failed to save worker chat to IndexedDB:', err);
+            });
+          }
         }
       }
 
