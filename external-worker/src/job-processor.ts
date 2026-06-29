@@ -324,7 +324,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
             result = {
               files,
               complete: true,
-              rawText: JSON.stringify(Object.keys(orchResult.files)),
+              rawText: 'orchestrated-build: ' + JSON.stringify(Object.keys(orchResult.files)),
               appType: spec.appType,
             };
 
