@@ -184,7 +184,7 @@ function createDynamicFallback(prompt: string): OrchestratorPlan {
     id: taskId++,
     name: 'HTML shell + CDN scripts + base styles',
     file,
-    description: `Create ${file} with: DOCTYPE, head section with ALL CDN scripts mentioned in the prompt (Tailwind, React, ReactDOM, Babel, Framer Motion, etc), Google Fonts links, title. Add a style block with ALL custom CSS mentioned (liquid-glass, backdrop-filter, gradient borders, etc). Body background color as specified. ${file === 'index.html' ? 'Add #root div and empty script type=text/babel.' : 'Set up Vite React entry.'} PROMPT: ${prompt.substring(0, 800)}`,
+    description: `Create ${file} with: DOCTYPE, head section with ALL CDN scripts mentioned in the prompt (Tailwind, React, ReactDOM, Babel, Framer Motion, etc), Google Fonts links, title. Add a style block with ALL custom CSS mentioned (liquid-glass, backdrop-filter, gradient borders, etc). Body background color as specified. ${file === 'index.html' ? 'Add #root div and empty script type=text/babel.' : 'Set up Vite React entry.'} PROMPT: ${prompt}`,
   });
 
   // Task 2: Custom components (video, animations, etc)
@@ -198,7 +198,7 @@ function createDynamicFallback(prompt: string): OrchestratorPlan {
       id: taskId++,
       name: 'Custom components & effects',
       file,
-      description: `Add these React components: ${components.join(', ')}. Each component must be fully functional with all event handlers, animations, and styles as specified in the prompt. PROMPT: ${prompt.substring(0, 800)}`,
+      description: `Add these React components: ${components.join(', ')}. Each component must be fully functional with all event handlers, animations, and styles as specified in the prompt. PROMPT: ${prompt}`,
     });
   }
 
@@ -208,7 +208,7 @@ function createDynamicFallback(prompt: string): OrchestratorPlan {
       id: taskId++,
       name: 'Navbar / Navigation',
       file,
-      description: `Add Navbar component with all elements specified: logo, navigation links, buttons, liquid-glass styling, etc. Include all text content exactly as specified in the prompt. PROMPT: ${prompt.substring(0, 800)}`,
+      description: `Add Navbar component with all elements specified: logo, navigation links, buttons, liquid-glass styling, etc. Include all text content exactly as specified in the prompt. PROMPT: ${prompt}`,
     });
   }
 
@@ -218,7 +218,7 @@ function createDynamicFallback(prompt: string): OrchestratorPlan {
       id: taskId++,
       name: 'Hero section',
       file,
-      description: `Add Hero section with ALL elements from the prompt: badge, headline (exact text), subheading (exact text), CTAs (exact button text), stats cards (exact numbers and labels), background video, animations. Include ALL specific content mentioned. PROMPT: ${prompt.substring(0, 800)}`,
+      description: `Add Hero section with ALL elements from the prompt: badge, headline (exact text), subheading (exact text), CTAs (exact button text), stats cards (exact numbers and labels), background video, animations. Include ALL specific content mentioned. PROMPT: ${prompt}`,
     });
   }
 
@@ -233,7 +233,7 @@ function createDynamicFallback(prompt: string): OrchestratorPlan {
       id: taskId++,
       name: 'Additional sections & content',
       file,
-      description: `Add these sections: ${sections.join(', ')}. Include ALL specific content, text, numbers, names, and elements exactly as specified in the prompt. Do not skip or summarize any content. PROMPT: ${prompt.substring(0, 800)}`,
+      description: `Add these sections: ${sections.join(', ')}. Include ALL specific content, text, numbers, names, and elements exactly as specified in the prompt. Do not skip or summarize any content. PROMPT: ${prompt}`,
     });
   }
 
@@ -242,7 +242,7 @@ function createDynamicFallback(prompt: string): OrchestratorPlan {
     id: taskId++,
     name: 'App assembly & render',
     file,
-    description: `Add App component that renders ALL sections in the correct order. Then mount with ${file === 'index.html' ? 'ReactDOM.render(<App/>, document.getElementById("root"))' : 'createRoot(document.getElementById("root")).render(<App/>)'}. Ensure all components are properly defined and connected. PROMPT: ${prompt.substring(0, 800)}`,
+    description: `Add App component that renders ALL sections in the correct order. Then mount with ${file === 'index.html' ? 'ReactDOM.render(<App/>, document.getElementById("root"))' : 'createRoot(document.getElementById("root")).render(<App/>)'}. Ensure all components are properly defined and connected. PROMPT: ${prompt}`,
   });
 
   return {
@@ -286,10 +286,10 @@ FORMAT:
 </palmkitArtifact>
 __PALMKIT_DONE__`;
 
-  const userPrompt = `Original request: ${originalPrompt.substring(0, 2000)}
+  const userPrompt = `Original request: ${originalPrompt}
 
 ${existingContent ? `Current ${task.file} (already generated, MERGE your additions into this):` : 'This is a new file.'}
-${existingContent ? existingContent.substring(0, 3000) : ''}
+${existingContent ? existingContent : ''}
 
 YOUR TASK: ${task.name}
 ${task.description}
