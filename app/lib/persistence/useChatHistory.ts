@@ -611,15 +611,52 @@ ${value.content}
            *
            * Now: if chat metadata has palmkitJobId, fetch files from R2 via /api/files
            * and populate previewFilesStore + workbenchStore so the preview renders.
+           * Also restore appType to buildStatusStore so the sandbox hook knows whether
+           * to use blob URL (static), WebContainer (React desktop), or show a launch
+           * button (mobile/Python).
            */
-          const storedMeta = storedMessages?.metadata as { palmkitJobId?: string } | undefined;
+          const storedMeta = storedMessages?.metadata as
+            | {
+                palmkitJobId?: string;
+                palmkitAppType?: string;
+              }
+            | undefined;
           const jobId = storedMeta?.palmkitJobId;
+          const savedAppType = storedMeta?.palmkitAppType;
 
           if (jobId) {
             try {
-              // Fetch the file manifest from /api/jobs (gives us the file list)
+              // Fetch the file manifest from /api/jobs (gives us the file list + status + appType)
               const jobResp = await fetch(`/api/jobs?id=${jobId}`);
-              const jobData = (await jobResp.json()) as { files?: Array<{ path: string }>; status?: string };
+              const jobData = (await jobResp.json()) as {
+                files?: Array<{ path: string }>;
+                status?: string;
+                appType?: string;
+              };
+
+              // Use the appType from the job response (most reliable), fall back to metadata.
+              const restoredAppType = jobData.appType ?? savedAppType ?? null;
+
+              /*
+               * Restore appType to buildStatusStore so the sandbox hook can decide
+               * blob URL (static) vs WebContainer (React desktop) vs E2B (mobile/Python).
+               * Without this, canUseSandbox = false and the user sees "No preview available"
+               * with no launch button — even for projects that COULD run in a sandbox.
+               */
+              if (restoredAppType) {
+                const { buildStatusStore } = await import('~/lib/stores/build-status');
+                const current = buildStatusStore.get();
+                buildStatusStore.set({
+                  ...current,
+                  appType: restoredAppType,
+                  jobStatus: 'ready_for_preview',
+                  completeness: 'complete',
+                  hasCompletionMarker: true,
+                  artifactTagsBalanced: true,
+                  fileActionsBalanced: true,
+                  fileCount: jobData.files?.length ?? current.fileCount,
+                });
+              }
 
               if (jobData.status === 'ready_for_preview' && Array.isArray(jobData.files) && jobData.files.length > 0) {
                 const previewFiles: Record<string, string> = {};
@@ -650,13 +687,30 @@ ${value.content}
                   workbenchStore.files.set(fileMap as any);
 
                   console.log(
-                    `[Palmkit] Restored ${Object.keys(previewFiles).length} file(s) from R2 for job ${jobId}`,
+                    `[Palmkit] Restored ${Object.keys(previewFiles).length} file(s) from R2 for job ${jobId} (appType: ${restoredAppType})`,
                   );
                 }
               }
             } catch (e) {
               console.warn('[Palmkit] Failed to restore worker files from R2:', e);
             }
+          } else if (savedAppType) {
+            /*
+             * No jobId (e.g. project built via streaming path, not worker) but we have
+             * the saved appType. Restore it to buildStatusStore so the sandbox hook can
+             * still decide the correct preview method.
+             */
+            const { buildStatusStore } = await import('~/lib/stores/build-status');
+            const current = buildStatusStore.get();
+            buildStatusStore.set({
+              ...current,
+              appType: savedAppType,
+              jobStatus: 'ready_for_preview',
+              completeness: 'complete',
+              hasCompletionMarker: true,
+              artifactTagsBalanced: true,
+              fileActionsBalanced: true,
+            });
           }
         })
         .catch((error) => {

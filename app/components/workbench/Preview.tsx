@@ -1084,8 +1084,15 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                   </p>
                 </div>
                 <div className="flex items-center gap-2 mt-1">
-                  {/* Mobile cloud preview launch button — shown only for sandboxable apps on phones */}
-                  {canUseSandbox && usesMobileE2B && sandboxState === 'idle' && (
+                  {/*
+                    Launch preview button — shown when:
+                    - Mobile + sandboxable app (E2B): "Launch Cloud Preview"
+                    - Desktop + sandboxable app + sandbox not auto-launched (e.g. after
+                      page reload when WebContainer timed out): "Launch Preview"
+                    This lets the user manually start the preview on demand, saving
+                    resources (sandbox closes after 7 min idle, reopens only when clicked).
+                  */}
+                  {canUseSandbox && sandboxState === 'idle' && (
                     <button
                       onClick={launchSandbox}
                       className={classNames(
@@ -1096,7 +1103,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                       )}
                     >
                       <div className="i-ph:cloud-arrow-up text-sm" />
-                      Launch Cloud Preview
+                      {usesMobileE2B ? 'Launch Cloud Preview' : 'Launch Preview'}
                     </button>
                   )}
                   {/* Retry button shown after sandbox error */}

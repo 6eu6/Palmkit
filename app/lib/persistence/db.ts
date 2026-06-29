@@ -10,6 +10,12 @@ export interface IChatMetadata {
 
   /** Palmkit worker job ID (for restoring external-worker builds on reload). */
   palmkitJobId?: string;
+
+  /**
+   * App type detected by the worker (static | react | vue | nextjs | python | flutter | react-native).
+   * Persisted so the preview can decide iframe-blob vs WebContainer vs E2B on reload.
+   */
+  palmkitAppType?: string;
 }
 
 const logger = createScopedLogger('ChatHistory');

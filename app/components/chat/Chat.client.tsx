@@ -406,8 +406,10 @@ export const ChatImpl = memo(
         setCurrentJobId(extWorkerState.jobId);
 
         /*
-         * Persist jobId to chat metadata so preview can be restored on page reload.
-         * Without this, reload loses the job reference and the user sees "No preview available".
+         * Persist jobId + appType to chat metadata so preview can be restored on page reload.
+         * Without this, reload loses the job reference AND the app type, so the preview
+         * can't decide whether to use blob URL (static), WebContainer (React desktop),
+         * or E2B (mobile/Python) — the user sees "No preview available".
          */
         const currentMetadata = chatMetadata.get();
 
@@ -416,6 +418,7 @@ export const ChatImpl = memo(
             ...currentMetadata,
             gitUrl: currentMetadata?.gitUrl ?? '',
             palmkitJobId: extWorkerState.jobId,
+            palmkitAppType: extWorkerState.appType ?? undefined,
           });
         }
       }
