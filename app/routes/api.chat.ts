@@ -512,6 +512,42 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           }
 
           /*
+           * Tool-call handling — when the LLM calls tools (read_file, web_search,
+           * etc.), finishReason='tool-calls' and `text` is just the intro
+           * (no <palmkitArtifact> yet). The Vercel AI SDK executes the tools
+           * internally and feeds results back to the LLM in the next step.
+           *
+           * CRITICAL: Do NOT validate on tool-call steps. The validator would
+           * see "no artifact" → "garbage" → build fails. Instead, skip
+           * validation and let the loop continue to the next step where the
+           * LLM produces the actual artifact.
+           *
+           * The maxSteps limit (15) ensures this can't loop forever.
+           */
+          if (finishReason === 'tool-calls' || finishReason === 'tool_calls') {
+            logger.info(
+              `Step ${continueSegmentCount + 1}: LLM called tools (finishReason=${finishReason}). Continuing to next step.`,
+            );
+
+            /*
+             * Push the current text (intro) as an assistant message so the
+             * next iteration has context, then continue the loop.
+             */
+            if (text && text.trim().length > 0) {
+              currentMessages.push({ id: generateId(), role: 'assistant', content: text });
+            }
+
+            continueSegmentCount++;
+
+            if (continueSegmentCount > MAX_RESPONSE_SEGMENTS) {
+              logger.warn(`Auto-continue limit reached after tool calls (${MAX_RESPONSE_SEGMENTS}). Stopping.`);
+              break;
+            }
+
+            continue; // ← skip validation, let LLM produce artifact in next step
+          }
+
+          /*
            * Phase 1 Safety Gate — Output Validation
            * ========================================
            * After each segment completes normally (finishReason !== 'length'),
