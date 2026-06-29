@@ -412,11 +412,24 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
                 } satisfies ProgressAnnotation);
               });
 
+              // Diagnostic: log orchestrator result
+              const artifactLen = orchestratorResult.artifactText?.length ?? 0;
+              const sCount = orchestratorResult.taskResults?.filter((r) => r.success).length ?? 0;
+              const tCount = orchestratorResult.taskResults?.length ?? 0;
+
+              dataStream.writeData({
+                type: 'progress',
+                label: 'orchestrator',
+                status: 'in-progress',
+                order: progressCounter++,
+                message: `🔍 Orchestrator done: ${sCount}/${tCount} tasks, artifact=${artifactLen} chars`,
+              } satisfies ProgressAnnotation);
+
               /*
                * Always write the artifact if we have any content, even if some tasks failed.
                * Partial results are better than no results.
                */
-              if (orchestratorResult.artifactText && orchestratorResult.artifactText.length > 50) {
+              if (orchestratorResult.artifactText && artifactLen > 50) {
                 /*
                  * Write the artifact as TEXT (protocol type 0:) not DATA (type 2:).
                  *
