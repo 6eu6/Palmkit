@@ -414,13 +414,23 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
               if (orchestratorResult.success && orchestratorResult.artifactText) {
                 /*
-                 * Feed the assembled artifact directly into the data stream
-                 * The message parser will extract files from it
+                 * Write the assembled artifact as text-delta chunks.
+                 * The Vercel AI SDK protocol writes text-delta as "0: text\n"
+                 * which the frontend's message parser processes as assistant
+                 * message text. The parser then extracts <palmkitArtifact>
+                 * tags and creates file actions.
+                 *
+                 * We split into chunks to avoid writing one massive string.
                  */
-                dataStream.writeData({
-                  type: 'assistantMessage' as any,
-                  content: orchestratorResult.artifactText,
-                });
+                const chunkSize = 4000;
+                const text = orchestratorResult.artifactText;
+
+                for (let i = 0; i < text.length; i += chunkSize) {
+                  dataStream.writeData({
+                    type: 'text-delta',
+                    textDelta: text.slice(i, i + chunkSize),
+                  });
+                }
 
                 dataStream.writeData({
                   type: 'progress',
