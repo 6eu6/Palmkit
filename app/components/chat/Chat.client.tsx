@@ -6,7 +6,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import { useMessageParser, usePromptEnhancer, useShortcuts, finalizeMessageParser } from '~/lib/hooks';
 import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
-import { description, useChatHistory, chatMetadata } from '~/lib/persistence';
+import { description as descriptionAtom, useChatHistory, chatMetadata, chatId } from '~/lib/persistence';
 import { chatStore } from '~/lib/stores/chat';
 import { workbenchStore } from '~/lib/stores/workbench';
 import {
@@ -56,7 +56,7 @@ export function Chat() {
 
   const { ready, initialMessages, storeMessageHistory, importChat, exportChat, takeDebouncedSnapshot } =
     useChatHistory();
-  const title = useStore(description);
+  const title = useStore(descriptionAtom);
   const [projectListOpen, setProjectListOpen] = useState(false);
   useEffect(() => {
     workbenchStore.setReloadedMessages(initialMessages.map((m) => m.id));
@@ -823,6 +823,16 @@ export const ChatImpl = memo(
       if (externalWorkerEnabled) {
         chatStore.setKey('started', true);
         chatStore.setKey('aborted', false);
+
+        /*
+         * Set chat ID and description IMMEDIATELY so the URL is correct
+         * and the chat can be saved to IndexedDB.
+         * Without this, the URL shows /chat/NaN and the chat is lost on refresh.
+         */
+        const workerChatId = `${Date.now()}`;
+        const workerDescription = finalMessageContent.slice(0, 50);
+        chatId.set(workerChatId);
+        descriptionAtom.set(workerDescription);
 
         // Add user message to chat so the conversation is visible and persisted
         const extUserText = finalMessageContent;
