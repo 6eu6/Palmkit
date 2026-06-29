@@ -553,6 +553,40 @@ export function useChatHistory() {
                   : false;
 
               /*
+               * BUG FIX (2026-06-29): If the snapshot has NO files (e.g. the
+               * 2s debounced snapshot saver hadn't fired when the page was
+               * refreshed), DON'T create a fake "restored-project-setup"
+               * artifact. Doing so would queue empty file actions and the
+               * Artifact component would stay stuck on "Restoring Project..."
+               * forever (because allActionFinished never flips to true).
+               *
+               * Instead, fall through to the else branch (line ~651) which
+               * just sets restoreStep to 'done' without inventing files.
+               */
+              const snapshotHasFiles = !!(snapshot?.files && Object.keys(snapshot.files).length > 0);
+
+              if (wasInterrupted && !snapshotHasFiles) {
+                /*
+                 * Skip the fake restore artifact — show the partial assistant
+                 * message as-is and let the user retry the build manually.
+                 */
+                setRestoreStep('done', true);
+                toast.info(
+                  'Build was interrupted before any files were saved. Please re-send your prompt to restart the build.',
+                  { autoClose: 8000 },
+                );
+                setInitialMessages(filteredMessages);
+                setUrlId(storedMessages.urlId);
+                description.set(storedMessages.description);
+                chatId.set(storedMessages.id);
+                chatMetadata.set(storedMessages.metadata);
+                setReady(true);
+                suppressOverlayIfFast();
+
+                return;
+              }
+
+              /*
                * When the snapshot is the last message we re-use all archived
                * messages as visible ones (full history shown to the user).
                * In that case the restore assistant must NOT reuse the snapshot
@@ -1107,6 +1141,7 @@ ${value.content}
       }
     },
     takeDebouncedSnapshot,
+    takeSnapshot,
     duplicateCurrentChat: async (listItemId: string) => {
       if (!db || (!mixedId && !listItemId)) {
         return;

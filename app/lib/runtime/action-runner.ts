@@ -437,34 +437,65 @@ export class ActionRunner {
       unreachable('Expected file action');
     }
 
-    const webcontainer = await this.#webcontainer;
-    const relativePath = nodePath.relative(webcontainer.workdir, action.filePath);
-
-    let folder = nodePath.dirname(relativePath);
-
-    // remove trailing slashes
-    folder = folder.replace(/\/+$/g, '');
-
-    if (folder !== '.') {
-      try {
-        await webcontainer.fs.mkdir(folder, { recursive: true });
-        logger.debug('Created folder', folder);
-      } catch (error) {
-        logger.error('Failed to create folder\n\n', error);
-      }
-    }
+    /*
+     * BUG FIX (2026-06-29): WebContainer boot can stall indefinitely on page
+     * reload (especially after refresh-during-build). The previous code did
+     * `await this.#webcontainer` with NO timeout, so file actions hung
+     * forever and the Artifact stayed on "Restoring Project...".
+     *
+     * Now: race the WebContainer promise against a 10s timeout. If the
+     * timeout wins, skip the WC write — the file is still registered with
+     * the workbench via onFileWritten below, which is what the preview
+     * actually reads from.
+     */
+    const FILE_ACTION_TIMEOUT_MS = 10_000;
+    let webcontainer: WebContainer | null = null;
 
     try {
-      await webcontainer.fs.writeFile(relativePath, action.content);
-      logger.debug(`File written ${relativePath}`);
-    } catch {
-      /*
-       * On memory-constrained devices the WebContainer often can't write files
-       * (insufficient memory / boot failure).  We still need to register the
-       * file in the workbench so the remote-preview trigger can see it and
-       * push it to the E2B cloud sandbox.
-       */
-      logger.warn(`WebContainer writeFile failed (${relativePath}), registering anyway for remote sandbox`);
+      webcontainer = await Promise.race([
+        this.#webcontainer.then((wc) => wc),
+        new Promise<null>((resolve) =>
+          setTimeout(() => {
+            logger.warn(
+              `[runFileAction] WebContainer not ready within ${FILE_ACTION_TIMEOUT_MS / 1000}s — proceeding without it (file: ${action.filePath})`,
+            );
+            resolve(null);
+          }, FILE_ACTION_TIMEOUT_MS),
+        ),
+      ]);
+    } catch (e) {
+      logger.warn(`[runFileAction] WebContainer promise rejected, proceeding without it:`, e);
+    }
+
+    if (webcontainer) {
+      const relativePath = nodePath.relative(webcontainer.workdir, action.filePath);
+
+      let folder = nodePath.dirname(relativePath);
+
+      // remove trailing slashes
+      folder = folder.replace(/\/+$/g, '');
+
+      if (folder !== '.') {
+        try {
+          await webcontainer.fs.mkdir(folder, { recursive: true });
+          logger.debug('Created folder', folder);
+        } catch (error) {
+          logger.error('Failed to create folder\n\n', error);
+        }
+      }
+
+      try {
+        await webcontainer.fs.writeFile(relativePath, action.content);
+        logger.debug(`File written ${relativePath}`);
+      } catch {
+        /*
+         * On memory-constrained devices the WebContainer often can't write files
+         * (insufficient memory / boot failure).  We still need to register the
+         * file in the workbench so the remote-preview trigger can see it and
+         * push it to the E2B cloud sandbox.
+         */
+        logger.warn(`WebContainer writeFile failed (${relativePath}), registering anyway for remote sandbox`);
+      }
     }
 
     /*

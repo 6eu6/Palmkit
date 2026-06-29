@@ -54,7 +54,7 @@ const logger = createScopedLogger('Chat');
 export function Chat() {
   renderLogger.trace('Chat');
 
-  const { ready, initialMessages, storeMessageHistory, importChat, exportChat, takeDebouncedSnapshot } =
+  const { ready, initialMessages, storeMessageHistory, importChat, exportChat, takeDebouncedSnapshot, takeSnapshot } =
     useChatHistory();
   const title = useStore(descriptionAtom);
   const [projectListOpen, setProjectListOpen] = useState(false);
@@ -73,6 +73,7 @@ export function Chat() {
           storeMessageHistory={storeMessageHistory}
           importChat={importChat}
           takeDebouncedSnapshot={takeDebouncedSnapshot}
+          takeSnapshot={takeSnapshot}
           onOpenProjectList={() => setProjectListOpen(true)}
         />
       )}
@@ -162,6 +163,7 @@ interface ChatProps {
   exportChat: () => void;
   description?: string;
   takeDebouncedSnapshot: (chatIdx: string, files: FileMap, chatSummary?: string) => Promise<void>;
+  takeSnapshot: (chatIdx: string, files: FileMap, _urlId?: string, chatSummary?: string) => Promise<void>;
   onOpenProjectList: () => void;
 }
 
@@ -173,6 +175,7 @@ export const ChatImpl = memo(
     importChat,
     exportChat,
     takeDebouncedSnapshot,
+    takeSnapshot,
     onOpenProjectList,
   }: ChatProps) => {
     useShortcuts();
@@ -546,6 +549,7 @@ export const ChatImpl = memo(
      * if the user refreshes mid-generation.
      */
     const prevFilesRef = useRef<FileMap>({});
+    const immediateSaveCounterRef = useRef<number>(0);
     useEffect(() => {
       const currentFiles = files;
 
@@ -561,9 +565,26 @@ export const ChatImpl = memo(
           takeDebouncedSnapshot(lastMessageId, currentFiles).catch((err) => {
             console.error('Debounced snapshot save failed:', err);
           });
+
+          /*
+           * BUG FIX (2026-06-29): Also save an IMMEDIATE (non-debounced)
+           * snapshot every 5th file change. The 2s debounce can drop the
+           * most recent files if the page is refreshed mid-build —
+           * leaving the user with a stale snapshot that doesn't include
+           * the last 1-2s of streamed files. This immediate save acts
+           * as a floor: at most we lose 4 file actions worth of work.
+           */
+          immediateSaveCounterRef.current = (immediateSaveCounterRef.current ?? 0) + 1;
+
+          if (immediateSaveCounterRef.current >= 5) {
+            immediateSaveCounterRef.current = 0;
+            takeSnapshot(lastMessageId, currentFiles).catch((err) => {
+              console.error('Immediate snapshot save failed:', err);
+            });
+          }
         }
       }
-    }, [files, isLoading, messages, takeDebouncedSnapshot]);
+    }, [files, isLoading, messages, takeDebouncedSnapshot, takeSnapshot]);
 
     /*
      * Persistence fix: the effect above only saves WHILE streaming, but file

@@ -72,7 +72,21 @@ export const Menu = () => {
   const { duplicateCurrentChat, exportChat } = useChatHistory();
   const menuRef = useRef<HTMLDivElement>(null);
   const [list, setList] = useState<ChatHistoryItem[]>([]);
-  const [open, setOpen] = useState(false);
+
+  /*
+   * BUG FIX (2026-06-29): Default the sidebar to OPEN on desktop (sm+)
+   * screens. Previously the sidebar started closed and only opened on
+   * mouse hover at the left edge — users had no way to discover their
+   * chat history. On mobile it stays closed (the hamburger button in
+   * the Header opens it).
+   */
+  const [open, setOpen] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+
+    return window.innerWidth >= 640; // sm breakpoint
+  });
   const [dialogContent, setDialogContent] = useState<DialogContent>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const profile = useStore(profileStore);
@@ -86,13 +100,43 @@ export const Menu = () => {
   });
 
   const loadEntries = useCallback(() => {
+    /*
+     * BUG FIX (2026-06-29): The previous `useCallback([])` had an empty
+     * dep array, so the closure captured whatever `db` was at first render
+     * — which was often `undefined` (the top-level `await openDatabase()`
+     * in useChatHistory.ts may not have resolved yet when Menu mounts).
+     *
+     * Now: re-read `db` from the module on every call. Since `db` is a
+     * module-level export that's only set once, this is cheap and avoids
+     * the stale-closure problem entirely.
+     */
+    void db; // dependency tracking — re-create callback when db changes
+
     if (db) {
       getAll(db)
         .then((list) => list.filter((item) => item.urlId && item.description))
         .then(setList)
         .catch((error) => toast.error(error.message));
+
+      return;
     }
-  }, []);
+
+    /*
+     * Fallback: open the database directly if the module-level `db`
+     * export hasn't resolved yet. This ensures the sidebar shows
+     * chats even on a cold first render.
+     */
+    import('~/lib/persistence/db')
+      .then(({ openDatabase }) => openDatabase())
+      .then((dbInstance) => {
+        if (!dbInstance) {
+          return undefined;
+        }
+
+        return getAll(dbInstance).then((list) => setList(list.filter((item) => item.urlId && item.description)));
+      })
+      .catch((error) => toast.error(error.message));
+  }, [db]);
 
   const deleteChat = useCallback(
     async (id: string): Promise<void> => {
@@ -347,6 +391,17 @@ export const Menu = () => {
   }, [open, selectionMode]);
 
   useEffect(() => {
+    /*
+     * BUG FIX (2026-06-29): On desktop (sm+, width >= 640) the sidebar
+     * is now persistent — don't auto-close it when the mouse moves away.
+     * Only the mobile hover-to-open behavior remains.
+     */
+    const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 640;
+
+    if (isDesktop) {
+      return undefined;
+    }
+
     const enterThreshold = 20;
     const exitThreshold = 20;
 
