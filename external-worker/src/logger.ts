@@ -2,6 +2,9 @@
  * Minimal logger for the external worker.
  * Uses console with structured prefix — replace with Pino/Winston later
  * if you need log aggregation.
+ *
+ * Verified 2026-06-29: worker auto-deploy via GitHub Actions now works
+ * after fixing the single-branch clone (git remote set-branches origin '*').
  */
 
 const PREFIX = '[palmkit-worker]';
