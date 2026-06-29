@@ -323,7 +323,11 @@ ${currentContent || '(empty — this is a new file)'}
 
 Generate the COMPLETE updated ${task.file}. Include ALL existing content plus your new additions. Do not skip anything.`;
 
-  const result = await generateText({
+  // Use Promise.race with a timeout to prevent tasks from hanging forever
+  // 3 minutes max per task (180s) — enough for 16000 tokens
+  const TASK_TIMEOUT_MS = 180_000;
+
+  const resultPromise = generateText({
     model,
     system: systemPrompt,
     prompt: userPrompt,
@@ -331,7 +335,17 @@ Generate the COMPLETE updated ${task.file}. Include ALL existing content plus yo
     temperature: 0.7,
   });
 
-  return result.text ?? '';
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error(`Task timed out after ${TASK_TIMEOUT_MS / 1000}s`)), TASK_TIMEOUT_MS),
+  );
+
+  try {
+    const result = await Promise.race([resultPromise, timeoutPromise]);
+    return result.text ?? '';
+  } catch (err) {
+    logger.warn(`[orchestrator] Task execution error: ${err instanceof Error ? err.message : String(err)}`);
+    throw err;
+  }
 }
 
 /**
@@ -417,7 +431,10 @@ Add the missing elements. Output the COMPLETE updated file in <palmkitArtifact> 
 Original request for reference:
 ${fullPrompt}`;
 
-  const result = await generateText({
+  // Timeout: 2 minutes for fix requests (shorter than full task)
+  const FIX_TIMEOUT_MS = 120_000;
+
+  const resultPromise = generateText({
     model,
     system: 'You are fixing incomplete code output. Add the missing elements and output the COMPLETE file.',
     prompt: fixPrompt,
@@ -425,9 +442,17 @@ ${fullPrompt}`;
     temperature: 0.5,
   });
 
-  const fixed = extractFileContent(result.text ?? '');
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('Fix timed out')), FIX_TIMEOUT_MS),
+  );
 
-  return fixed ?? content; // return original if fix failed
+  try {
+    const result = await Promise.race([resultPromise, timeoutPromise]);
+    const fixed = extractFileContent(result.text ?? '');
+    return fixed ?? content;
+  } catch {
+    return content; // return original if fix failed
+  }
 }
 
 // ─── Main Orchestrator ──────────────────────────────────────────────────────

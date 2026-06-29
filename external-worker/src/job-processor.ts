@@ -306,7 +306,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
               await updateJobProgress(
                 supabase,
                 job.id,
-                30 + Math.round((update.taskId ?? 0) / (update.totalTasks ?? 1) * 40),
+                Math.min(95, 30 + Math.round((update.taskId ?? 0) / (update.totalTasks ?? 1) * 40)),
                 `orchestrator_task_${update.taskId ?? 0}`,
               );
             },
