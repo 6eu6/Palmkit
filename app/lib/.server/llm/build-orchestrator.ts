@@ -166,6 +166,9 @@ async function executeTask(
   originalPrompt: string,
   currentContent: string,
   model: LanguageModelV1,
+  onProgress?: ProgressCallback,
+  taskId?: number,
+  totalTasks?: number,
 ): Promise<string> {
   const systemPrompt = `You are an expert web developer. Generate code for the requested task.
 
@@ -193,7 +196,7 @@ ${task.description}
 
 Generate the ${currentContent ? 'updated' : 'complete'} ${task.file} file now. Output ONLY the palmkitArtifact.`;
 
-  // Use streamText to avoid CF Pages wall-clock limit on non-streaming calls.
+  // Use streamText with a timeout to prevent hanging.
   const result = await streamText({
     model,
     system: systemPrompt,
@@ -202,12 +205,35 @@ Generate the ${currentContent ? 'updated' : 'complete'} ${task.file} file now. O
     temperature: 0.7,
   });
 
-  // Collect full text from stream
+  // Collect full text from stream with a 90s timeout
   let fullText = '';
+  const TIMEOUT_MS = 90_000;
+  const startTime = Date.now();
 
   for await (const part of result.fullStream) {
     if (part.type === 'text-delta') {
       fullText += part.textDelta;
+
+      // Send keep-alive progress every 5 seconds
+      if (onProgress && taskId && totalTasks) {
+        const elapsed = Date.now() - startTime;
+
+        if (elapsed % 5000 < 1000) {
+          onProgress({
+            type: 'task_start',
+            message: `▶ Task ${taskId}/${totalTasks}: ${task.name} — generating (${fullText.length} chars)...`,
+            taskId,
+            totalTasks,
+            taskName: task.name,
+          });
+        }
+      }
+    }
+
+    // Check timeout
+    if (Date.now() - startTime > TIMEOUT_MS) {
+      logger.warn(`[orchestrator] Task ${task.id} timed out after ${TIMEOUT_MS}ms (${fullText.length} chars received)`);
+      break;
     }
   }
 
@@ -255,7 +281,15 @@ export async function orchestrateBuild(
       });
 
       try {
-        const resultText = await executeTask(task, prompt, currentContent, model);
+        const resultText = await executeTask(
+          task,
+          prompt,
+          currentContent,
+          model,
+          onProgress,
+          task.id,
+          plan.tasks.length,
+        );
         const fileContent = extractFileContent(resultText);
 
         if (!fileContent || fileContent.length < 20) {
