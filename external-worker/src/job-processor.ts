@@ -19,8 +19,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { logger } from './logger';
 import { planProject, generateStaticFiles, validateGeneration, repairGeneration, generateEdit, type GenerationResult } from './generator';
-import { shouldDecompose } from './task-decomposer';
-import { orchestrateBuild } from './build-orchestrator';
+import { runAgentBuild } from './agent-builder';
 import { checkBuild, BUILD_CHECK_TYPES } from './build-checker';
 import { createRunner } from './build-runner';
 import { putFile, getFileText, buildKey } from './r2-client';
@@ -258,107 +257,76 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
       logger.info(`Job ${job.id}: plan complete → ${spec.appType}, ${spec.files.length} files`);
 
-      // ─── Phase 2: GENERATE (streaming + auto-continue) ──────────────────
+      // ─── Phase 2: AGENTIC BUILD (streamText + tools) ───────────────────
       await updateJobProgress(supabase, job.id, 30, 'generate_files');
-      await emitEvent(supabase, job.id, 'file_generation_started', `Generating files with ${providerName}...`);
+      await emitEvent(supabase, job.id, 'file_generation_started', `Building with ${providerName}...`);
       await recordStep(supabase, job.id, { type: 'generate_file', status: 'running', order: 2 });
 
-      // Stream progress events to the UI as the LLM generates tokens.
-      const onProgress = async (evt: { type: string; message: string; payload?: Record<string, unknown> }) => {
-        try {
-          await emitEvent(supabase, job.id, evt.type as any, evt.message, evt.payload);
-        } catch (e) {
-          logger.warn(`Progress emit failed: ${(e as Error).message}`);
-        }
-      };
-
       /*
-       * PHASE 3: BUILD ORCHESTRATOR — for complex prompts, decompose into
-       * sequential tasks instead of one massive LLM call.
+       * AGENTIC BUILD — gives the LLM tools and lets it work freely.
        *
-       * This runs INSIDE the worker (not in the HTTP request), so there's
-       * no timeout. Progress is written to job_events (the "worklog"),
-       * and the browser polls /api/jobs to read it.
+       * This replaces the orchestrator/decomposer with a simpler, more
+       * powerful approach: the LLM gets tools (write_file, read_file,
+       * list_files, run_shell, done) and decides everything itself.
        *
-       * This is the same pattern as my worklog.md:
-       * - Worker writes progress to DB (like I write to worklog.md)
-       * - Browser reads progress via polling (like I read worklog.md)
-       * - If the worker crashes, the DB state shows where it stopped
+       * This is EXACTLY how Super Z works:
+       * - Gets the full prompt
+       * - Uses Write, Read, Bash tools
+       * - Decides what to do
+       * - Works until done
+       *
+       * No JSON parsing, no XML format, no format constraints.
+       * The LLM writes files directly and calls done() when finished.
        */
-      if (shouldDecompose(prompt)) {
-        logger.info(`Job ${job.id}: Complex prompt detected, using orchestrator`);
+      try {
+        const { getModelInstance } = await import('./provider-registry');
+        const model = getModelInstance(providerName, modelName, apiKey);
+        const projectId = job.project_id ?? job.id;
+        const r2Prefix = buildKey(job.id, '', projectId).replace(/\/$/, '');
 
-        try {
-          const { getModelInstance } = await import('./provider-registry');
-          const model = getModelInstance(providerName, modelName, apiKey);
+        const agentResult = await runAgentBuild(
+          prompt,
+          model,
+          job.id,
+          supabase,
+          r2Prefix,
+        );
 
-          const orchResult = await orchestrateBuild(
-            prompt,
-            model,
-            {}, // no existing files for fresh build
-            async (update: any) => {
-              // Write progress to job_events — the "worklog"
-              await emitEvent(supabase, job.id, 'file_chunk' as any, update.message, {
-                orchestratorPhase: update.type,
-                taskId: update.taskId,
-                totalTasks: update.totalTasks,
-              });
-              await updateJobProgress(
-                supabase,
-                job.id,
-                Math.min(95, 30 + Math.round((update.taskId ?? 0) / (update.totalTasks ?? 1) * 40)),
-                `orchestrator_task_${update.taskId ?? 0}`,
-              );
-            },
-          );
+        if (agentResult.success && agentResult.files.length > 0) {
+          result = {
+            files: agentResult.files,
+            complete: true,
+            rawText: agentResult.rawText,
+            appType: spec.appType,
+          };
 
-          if (orchResult.success && Object.keys(orchResult.files).length > 0) {
-            // Convert orchestrator files to FileOperation[]
-            const files = Object.entries(orchResult.files).map(([path, f]: [string, any]) => ({
-              op: 'write_file' as const,
-              path,
-              content: f.content,
-              mime_type: undefined as string | undefined,
-            }));
+          logger.info(`Job ${job.id}: agent build complete → ${agentResult.files.length} files (${agentResult.totalDuration}ms)`);
+        } else {
+          // Agent build produced no files — fall back to generator
+          logger.warn(`Job ${job.id}: Agent build produced no files, falling back to generator`);
 
-            result = {
-              files,
-              complete: true,
-              rawText: 'orchestrated-build: ' + JSON.stringify(Object.keys(orchResult.files)),
-              appType: spec.appType,
-            };
+          const onProgress = async (evt: { type: string; message: string; payload?: Record<string, unknown> }) => {
+            try {
+              await emitEvent(supabase, job.id, evt.type as any, evt.message, evt.payload);
+            } catch (e) {
+              logger.warn(`Progress emit failed: ${(e as Error).message}`);
+            }
+          };
 
-            await emitEvent(supabase, job.id, 'file_generation_completed',
-              `🚀 Orchestrator complete: ${orchResult.taskResults.filter((r: any) => r.success).length}/${orchResult.taskResults.length} tasks succeeded`,
-              { orchestrator: true, taskResults: orchResult.taskResults },
-            );
+          result = await generateStaticFiles(prompt, spec, providerName, modelName, apiKey, onProgress);
+        }
+      } catch (agentErr: any) {
+        logger.warn(`Job ${job.id}: Agent build failed (${agentErr.message}), falling back to generator`);
 
-            logger.info(`Job ${job.id}: orchestrator complete → ${files.length} files`);
-          } else {
-            throw new Error(`Orchestrator failed: ${orchResult.taskResults.filter((r: any) => !r.success).length} tasks failed`);
+        const onProgress = async (evt: { type: string; message: string; payload?: Record<string, unknown> }) => {
+          try {
+            await emitEvent(supabase, job.id, evt.type as any, evt.message, evt.payload);
+          } catch (e) {
+            logger.warn(`Progress emit failed: ${(e as Error).message}`);
           }
-        } catch (orchErr: any) {
-          logger.warn(`Job ${job.id}: Orchestrator failed (${orchErr.message}), falling back to normal generation`);
-          await emitEvent(supabase, job.id, 'file_chunk' as any,
-            `⚠ Orchestrator failed, falling back to direct generation...`);
+        };
 
-          result = await generateStaticFiles(prompt, spec, providerName, modelName, apiKey, onProgress);
-        }
-      } else {
-        // Normal generation for simple prompts
-        try {
-          result = await generateStaticFiles(prompt, spec, providerName, modelName, apiKey, onProgress);
-        } catch (genError: any) {
-          await recordStep(supabase, job.id, {
-            type: 'generate_file',
-            status: 'failed',
-            order: 2,
-            error: genError.message,
-          });
-          await emitEvent(supabase, job.id, 'job_failed', `Generation failed: ${genError.message}`, { error: genError.message });
-          await failJob(supabase, job.id, `Generation failed (${providerName}/${modelName}): ${genError.message}`);
-          return;
-        }
+        result = await generateStaticFiles(prompt, spec, providerName, modelName, apiKey, onProgress);
       }
 
       await emitEvent(supabase, job.id, 'file_generation_completed', `Generated ${result.files.length} files (${result.appType})`);
