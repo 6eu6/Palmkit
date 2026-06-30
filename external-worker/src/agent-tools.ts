@@ -86,9 +86,9 @@ export function createAgentTools(
           .string()
           .describe('The file path, e.g. "index.html", "src/App.tsx", "styles.css"'),
         content: z
-          .string()
+          .any()
           .describe(
-            'The COMPLETE file content as a string. For JSON files like package.json, pass the JSON as a string (e.g. \'{"name":"my-app",...}\'). Write the full file — no placeholders, no truncation.',
+            'The COMPLETE file content. Pass as a STRING for code files (HTML, CSS, JS, JSX). For JSON files (package.json), you can pass either a string or a JSON object. Write the full file — no placeholders, no truncation.',
           ),
       }),
       execute: async ({ path, content }) => {
