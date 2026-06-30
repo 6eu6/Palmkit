@@ -79,44 +79,51 @@ export function createAgentTools(
       description:
         'Write a file to the project. Use this to create or update any file — HTML, CSS, JS, JSON, etc. ' +
         'The file is saved instantly and can be read back with read_file to verify. ' +
-        'If the file already exists, it will be overwritten with the new content.',
+        'If the file already exists, it will be overwritten with the new content. ' +
+        'For JSON files (package.json, tsconfig.json), you can pass either a string or a JSON object.',
       parameters: z.object({
         path: z
           .string()
           .describe('The file path, e.g. "index.html", "src/App.tsx", "styles.css"'),
         content: z
           .string()
-          .describe('The COMPLETE file content. Write the full file — no placeholders, no truncation.'),
+          .describe(
+            'The COMPLETE file content as a string. For JSON files like package.json, pass the JSON as a string (e.g. \'{"name":"my-app",...}\'). Write the full file — no placeholders, no truncation.',
+          ),
       }),
       execute: async ({ path, content }) => {
+        // Convert object/array content to string (for JSON files)
+        const fileContent =
+          typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+
         // Store in memory
-        projectFiles.set(path, content);
+        projectFiles.set(path, fileContent);
 
         // Also store to R2 workspace for persistence
         try {
           const r2Key = buildWorkspaceKey(projectId, path);
-          await putFile(r2Key, content);
+          await putFile(r2Key, fileContent);
         } catch (e) {
           logger.warn(`[agent] R2 write failed for ${path}: ${e}`);
           // Non-fatal — memory copy is enough for the build
         }
 
         // Emit progress event
-        const lines = content.split('\n').length;
-        await emitEvent(supabase, jobId, 'file_written' as any, `📝 ${path} (${lines} lines, ${content.length} chars)`, {
+        const lines = fileContent.split('\n').length;
+        await emitEvent(supabase, jobId, 'file_written' as any, `📝 ${path} (${lines} lines, ${fileContent.length} chars)`, {
           path,
           lines,
-          size: content.length,
+          size: fileContent.length,
         });
 
-        logger.info(`[agent] write_file: ${path} (${content.length} chars, ${lines} lines)`);
+        logger.info(`[agent] write_file: ${path} (${fileContent.length} chars, ${lines} lines)`);
 
         return {
           success: true,
           path,
-          size: content.length,
+          size: fileContent.length,
           lines,
-          message: `File ${path} written successfully (${content.length} chars, ${lines} lines). Use read_file to verify if needed.`,
+          message: `File ${path} written successfully (${fileContent.length} chars, ${lines} lines). Use read_file to verify if needed.`,
         };
       },
     }),
