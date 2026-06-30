@@ -102,6 +102,24 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
   const [extWorkerBlobUrl, setExtWorkerBlobUrl] = useState<string | undefined>();
 
   useEffect(() => {
+    /*
+     * Only use blob URL preview for static apps.
+     * React/Vue/Nextjs apps need a dev server (E2B sandbox) — the blob URL
+     * would just show an empty shell because Vite needs to compile JSX.
+     *
+     * For non-static apps, the Launch Preview button (from useWorkerSandbox)
+     * handles the preview via E2B sandbox.
+     */
+    const buildStatus = buildStatusStore.get();
+    const appType = buildStatus.appType;
+
+    // Static apps: use blob URL preview
+    // React/Vue/Nextjs/Python: use E2B sandbox (Launch Preview button)
+    if (appType && appType !== 'static') {
+      setExtWorkerBlobUrl(undefined);
+      return undefined;
+    }
+
     const html = previewFiles['index.html'];
 
     if (!html) {
