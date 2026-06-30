@@ -22,7 +22,7 @@ import { planProject, generateStaticFiles, validateGeneration, repairGeneration,
 import { runAgentBuild } from './agent-builder';
 import { checkBuild, BUILD_CHECK_TYPES } from './build-checker';
 import { createRunner } from './build-runner';
-import { putFile, getFileText, buildKey } from './r2-client';
+import { putFile, getFileText, buildKey, buildWorkspaceKey } from './r2-client';
 import { getUserApiKey } from './key-fetcher';
 import { emitEvent, emitFileWritten } from './event-emitter';
 import { createHash } from 'crypto';
@@ -282,14 +282,13 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         const { getModelInstance } = await import('./provider-registry');
         const model = getModelInstance(providerName, modelName, apiKey);
         const projectId = job.project_id ?? job.id;
-        const r2Prefix = buildKey(job.id, '', projectId).replace(/\/$/, '');
 
         const agentResult = await runAgentBuild(
           prompt,
           model,
           job.id,
           supabase,
-          r2Prefix,
+          projectId, // Pass projectId (not r2Prefix) — the new workspace key structure
         );
 
         if (agentResult.success && agentResult.files.length > 0) {
@@ -459,16 +458,30 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
     const manifestEntries: Array<Record<string, unknown>> = [];
 
     for (const file of result.files) {
-      const r2Key = buildKey(job.id, file.path, job.project_id ?? undefined);
+      // Write to BOTH the workspace key (new unified location) AND the
+      // job-scoped key (backward compat for /api/files that still reads it).
+      // Once /api/files is migrated to read from workspace, the job-scoped
+      // write can be removed.
+      const workspaceKey = buildWorkspaceKey(projectId, file.path);
+      const legacyKey = buildKey(job.id, file.path, job.project_id ?? undefined);
       const content = file.content;
       const hash = createHash('sha256').update(content).digest('hex');
       const sizeBytes = new TextEncoder().encode(content).length;
       const lineCount = content.split('\n').length;
 
-      // Upload to R2 (primary storage).
+      // Upload to R2 workspace (primary storage — new).
       try {
-        await putFile(r2Key, content);
-        logger.debug(`R2 upload OK: ${r2Key} (${sizeBytes} bytes)`);
+        await putFile(workspaceKey, content);
+        logger.debug(`R2 workspace upload OK: ${workspaceKey} (${sizeBytes} bytes)`);
+      } catch (uploadError: any) {
+        logger.warn(`R2 workspace upload failed for ${workspaceKey}: ${uploadError?.message || uploadError}`);
+        // Non-fatal — the legacy upload below may still succeed
+      }
+
+      // Upload to R2 job-scoped (legacy — for backward compat with /api/files).
+      try {
+        await putFile(legacyKey, content);
+        logger.debug(`R2 legacy upload OK: ${legacyKey} (${sizeBytes} bytes)`);
       } catch (uploadError: any) {
         await recordStep(supabase, job.id, {
           type: 'finalize',
@@ -485,7 +498,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       await emitFileWritten(supabase, job.id, file.path, lineCount, sizeBytes);
 
       // Mirror to Supabase Storage (read-through cache for the browser).
-      const sbKey = `${job.user_id}/${r2Key}`;
+      const sbKey = `${job.user_id}/${legacyKey}`;
 
       try {
         const { error: sbUploadError } = await supabase.storage
@@ -513,7 +526,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         size_bytes: sizeBytes,
         mime_type: file.mime_type ?? 'text/plain',
         storage_provider: 'r2',
-        storage_key: r2Key,
+        storage_key: workspaceKey,
         integrity: 'complete',
       });
     }

@@ -108,11 +108,103 @@ export async function getFileText(key: string): Promise<string | null> {
  * Build the R2 key for a project file.
  *   buildKey('def-456', 'src/pages/Checkout.tsx', 'abc-123')
  *   → 'projects/abc-123/jobs/def-456/files/src/pages/Checkout.tsx'
+ *
+ * @deprecated Use buildWorkspaceKey for new code. This is kept for backward
+ * compatibility with existing /api/files and /api/jobs endpoints that still
+ * read from the job-scoped layout.
  */
 export function buildKey(jobId: string, filePath: string, projectId?: string): string {
   const pid = projectId ?? jobId;
   const normalized = filePath.replace(/^\/+/, '').replace(/\.\./g, '');
   return `projects/${pid}/jobs/${jobId}/files/${normalized}`;
+}
+
+/**
+ * Build the R2 key for a file in the unified workspace.
+ *
+ * The workspace is a single source of truth per project. All files live under
+ * `projects/{projectId}/workspace/{path}` — no job-scoping, no scattering.
+ *
+ * Examples:
+ *   buildWorkspaceKey('abc-123', 'src/App.tsx')
+ *     → 'projects/abc-123/workspace/src/App.tsx'
+ *   buildWorkspaceKey('abc-123', 'worklog.md')
+ *     → 'projects/abc-123/workspace/worklog.md'
+ *   buildWorkspaceKey('abc-123', 'uploads/photo.png')
+ *     → 'projects/abc-123/workspace/uploads/photo.png'
+ */
+export function buildWorkspaceKey(projectId: string, filePath: string): string {
+  const normalized = filePath.replace(/^\/+/, '').replace(/\.\./g, '');
+  return `projects/${projectId}/workspace/${normalized}`;
+}
+
+/**
+ * Build the R2 key for the project worklog (memory file).
+ */
+export function buildWorklogKey(projectId: string): string {
+  return `projects/${projectId}/workspace/worklog.md`;
+}
+
+/**
+ * Build the R2 key for the project manifest (metadata).
+ */
+export function buildManifestKey(projectId: string): string {
+  return `projects/${projectId}/workspace/manifest.json`;
+}
+
+/**
+ * List all objects in R2 under a given prefix.
+ * Uses the S3 ListObjectsV2 API with pagination.
+ */
+export async function listObjects(prefix: string, maxKeys: number = 1000): Promise<string[]> {
+  if (!r2) throw new Error('R2 client not initialized — missing env vars');
+
+  const { ListObjectsV2Command } = await import('@aws-sdk/client-s3');
+  const keys: string[] = [];
+  let continuationToken: string | undefined;
+
+  do {
+    const response = await r2.send(
+      new ListObjectsV2Command({
+        Bucket: R2_BUCKET,
+        Prefix: prefix,
+        MaxKeys: maxKeys,
+        ContinuationToken: continuationToken,
+      }),
+    );
+
+    for (const obj of response.Contents || []) {
+      if (obj.Key) keys.push(obj.Key);
+    }
+
+    continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return keys;
+}
+
+/**
+ * Delete an object from R2. Returns true if deleted, false if not found.
+ */
+export async function deleteFile(key: string): Promise<boolean> {
+  if (!r2) throw new Error('R2 client not initialized — missing env vars');
+
+  const { DeleteObjectCommand } = await import('@aws-sdk/client-s3');
+
+  try {
+    await r2.send(
+      new DeleteObjectCommand({
+        Bucket: R2_BUCKET,
+        Key: key,
+      }),
+    );
+    return true;
+  } catch (err: any) {
+    if (err?.name === 'NoSuchKey' || err?.$metadata?.httpStatusCode === 404) {
+      return false;
+    }
+    throw err;
+  }
 }
 
 /**

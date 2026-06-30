@@ -22,6 +22,7 @@ import { logger } from './logger';
 import { emitEvent } from './event-emitter';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { FileOperation } from './generator';
+import { readWorklog, appendToWorklog, readManifest, writeManifest, generateWorklogEntry } from './workspace-manager';
 
 export interface AgentBuildResult {
   success: boolean;
@@ -35,6 +36,7 @@ export interface AgentBuildResult {
  *
  * The LLM receives:
  * - The FULL original prompt (no truncation, ever)
+ * - The project's worklog (memory from previous builds) — if it exists
  * - A system prompt explaining the tools
  * - Tools: write_file, read_file, list_files, run_shell, done
  *
@@ -45,6 +47,10 @@ export interface AgentBuildResult {
  * - When to test (run_shell for npm build)
  * - When it's done (calls done() tool)
  *
+ * After the build:
+ * - The worklog is updated with a summary of what was built
+ * - The manifest is updated with the new file count and timestamps
+ *
  * We track progress via emitEvent — the user sees real-time updates.
  */
 export async function runAgentBuild(
@@ -52,19 +58,27 @@ export async function runAgentBuild(
   model: LanguageModelV1,
   jobId: string,
   supabase: SupabaseClient,
-  r2Prefix: string,
+  projectId: string,
 ): Promise<AgentBuildResult> {
   const startTime = Date.now();
   resetProjectFiles();
 
-  logger.info(`[agent] Starting agentic build for job ${jobId}`);
+  logger.info(`[agent] Starting agentic build for job ${jobId} (project ${projectId})`);
+
+  // Read the worklog (project memory) — this gives the agent context from
+  // previous builds on the same project.
+  const worklog = await readWorklog(projectId);
+  const hasWorklog = !!worklog;
+
+  if (hasWorklog) {
+    logger.info(`[agent] Found worklog for ${projectId} (${worklog!.length} chars) — injecting into context`);
+  }
 
   // Create the tools for this job
-  const tools = createAgentTools(jobId, supabase, r2Prefix);
+  const tools = createAgentTools(jobId, supabase, projectId);
 
-  // System prompt — explains the tools and sets expectations
-  // This is the ONLY constraint: tell the LLM what tools it has.
-  // Everything else is up to the LLM.
+  // System prompt — explains the tools and sets expectations.
+  // If a worklog exists, include it so the agent has context.
   const systemPrompt = `You are an expert web developer building a project from scratch.
 
 You have these tools available:
@@ -93,7 +107,27 @@ You are free to decide:
 - Whether to verify after each file
 - Whether to run build tests
 
-Work methodically and include every detail from the user's request.`;
+Work methodically and include every detail from the user's request.${
+    hasWorklog
+      ? `
+
+═══════════════════════════════════════════════════════════════════
+PROJECT MEMORY (worklog.md)
+═══════════════════════════════════════════════════════════════════
+This project has been built before. Here is the worklog from previous builds.
+Use this to understand the project's history and avoid repeating work.
+
+${worklog}
+
+═══════════════════════════════════════════════════════════════════
+END OF PROJECT MEMORY
+═══════════════════════════════════════════════════════════════════
+
+If the user's request is an edit or continuation, read the existing files
+with read_file before modifying them. If it's a new build, you can ignore
+the memory above.`
+      : ''
+  }`;
 
   // Keep-alive timer
   const keepAlive = setInterval(async () => {
@@ -168,6 +202,35 @@ Work methodically and include every detail from the user's request.`;
         `🚀 Agent build complete: ${fileCount} files, ${totalSize} chars total`,
         { fileCount, finishReason },
       );
+
+      // ─── Write worklog + manifest (the project's memory) ───
+      // This is what makes Palmkit a "workspace" instead of just a "file generator".
+      // The worklog is read at the start of the NEXT build, giving the agent context.
+      try {
+        const duration = Date.now() - startTime;
+        const summary = fullText.slice(-500).trim() || undefined;
+
+        const worklogEntry = generateWorklogEntry({
+          prompt,
+          fileCount,
+          totalSize,
+          summary,
+          duration,
+        });
+        await appendToWorklog(projectId, worklogEntry);
+
+        // Update the manifest with the new build info
+        const manifest = await readManifest(projectId);
+        manifest.lastBuildAt = new Date().toISOString();
+        manifest.lastBuildSummary = summary?.slice(0, 200) || null;
+        manifest.fileCount = fileCount;
+        await writeManifest(manifest);
+
+        logger.info(`[agent] Worklog + manifest updated for ${projectId}`);
+      } catch (e) {
+        logger.warn(`[agent] Failed to update worklog/manifest: ${e}`);
+        // Non-fatal — the build itself succeeded
+      }
     } else {
       await emitEvent(supabase, jobId, 'job_failed' as any,
         `Agent build produced no files (finishReason: ${finishReason})`,

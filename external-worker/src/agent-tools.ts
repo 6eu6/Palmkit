@@ -30,13 +30,13 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
-import { putFile, getFileText } from './r2-client';
+import { putFile, getFileText, buildWorkspaceKey } from './r2-client';
 import { logger } from './logger';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { emitEvent } from './event-emitter';
 
 // In-memory file store for the current job
-// Files are also written to R2 for persistence
+// Files are also written to R2 (workspace) for persistence
 const projectFiles = new Map<string, string>();
 
 export function resetProjectFiles(): void {
@@ -60,15 +60,19 @@ export function getProjectFile(path: string): string | undefined {
  * 3. Returns the result to the LLM so it can decide what to do next
  *
  * The LLM controls the entire flow — we just provide the tools.
+ *
+ * @param jobId - The build job ID (used for event tracking)
+ * @param supabase - Supabase client for event emission
+ * @param projectId - The project ID (used for R2 workspace key)
  */
 export function createAgentTools(
   jobId: string,
   supabase: SupabaseClient,
-  r2Prefix: string,
+  projectId: string,
 ) {
   return {
     // ═══════════════════════════════════════════════════════════════════
-    // write_file — Write a file to the project (like Super Z's Write tool)
+    // write_file — Write a file to the project workspace (like Super Z's Write tool)
     // ═══════════════════════════════════════════════════════════════════
     write_file: tool({
       description:
@@ -87,9 +91,9 @@ export function createAgentTools(
         // Store in memory
         projectFiles.set(path, content);
 
-        // Also store to R2 for persistence
+        // Also store to R2 workspace for persistence
         try {
-          const r2Key = `${r2Prefix}/${path}`;
+          const r2Key = buildWorkspaceKey(projectId, path);
           await putFile(r2Key, content);
         } catch (e) {
           logger.warn(`[agent] R2 write failed for ${path}: ${e}`);
@@ -129,7 +133,23 @@ export function createAgentTools(
           .describe('The file path to read, e.g. "index.html"'),
       }),
       execute: async ({ path }) => {
-        const content = projectFiles.get(path);
+        // Try memory first (faster, includes current build's changes)
+        let content = projectFiles.get(path);
+
+        // If not in memory, try R2 workspace (existing files from previous builds)
+        if (!content) {
+          try {
+            const r2Key = buildWorkspaceKey(projectId, path);
+            const r2Content = await getFileText(r2Key);
+
+            if (r2Content) {
+              content = r2Content;
+              projectFiles.set(path, content); // Cache in memory
+            }
+          } catch (e) {
+            logger.warn(`[agent] R2 read failed for ${path}: ${e}`);
+          }
+        }
 
         if (!content) {
           return {
