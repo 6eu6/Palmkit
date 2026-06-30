@@ -1,384 +1,329 @@
-# Palmkit — Roadmap
+# Palmkit — Roadmap الكامل
 
-> تاريخ آخر تحديث: 2026-06-27
->
-> الفروع المكتملة موضّحة بـ ✅ والمخططة بـ 🔲
-
----
-
-## الحالة الراهنة (2026-06-27)
-
-Palmkit هو منصة تطوير AI مبنية على **Remix + Vite + Cloudflare Pages**، مع **Oracle ARM64 worker** خارجي للتوليد، و**Cloudflare R2** لتخزين الملفات، و**WebContainer / E2B** للمعاينة.
-
-**الموقع المنشور**: https://palmkit.app  
-**المستودع**: https://github.com/6eu6/Palmkit
+> آخر تحديث: 2026-06-30
+> الحالة: منتج يعمل بنظام وكلاء متعددين + ورك سبيس ذكي
 
 ---
 
-## المراحل المكتملة
+## الحالة الحالية (أين نحن الآن)
 
-### ✅ Phase 1 — Safety Gate (بوابة الأمان)
+### ✅ مكتمل ويعمل في الإنتاج
 
-**الهدف**: منع preview المكسور يظهر للمستخدم أبداً.
+#### 1. البناء (Build System)
+- [x] External Worker (Oracle VM + Bun) — يعمل
+- [x] Agent Builder (generateText + 11 أداة) — يعمل
+- [x] Multi-Agent Orchestrator (Researcher → Builder → Tester) — يعمل
+- [x] E2B Sandbox لأوامر shell — يعمل
+- [x] نظام الصلاحيات (كل وكيل يأخذ subset من الأدوات) — يعمل
+- [x] dynamic maxTokens حسب النموذج — يعمل
+- [x] maxSteps: 50 (Builder), 15 (Tester), 10 (Researcher) — يعمل
 
-**ما تم تطبيقه**:
-- `__PALMKIT_DONE__` completion marker في system prompt
-- Output Validator (tags balanced + required files + no placeholders)
-- State machine: `generating` → `incomplete_retrying` → `failed_clean` / `ready_for_preview`
-- Retry محدود (1-2x فقط) ثم `failed_clean` برسالة واضحة
-- `buildStatusStore` + `canShowPreview` computed gate
-- Frontend يعرض حالة واضحة في كل وقت
+#### 2. الورك سبيس (Workspace)
+- [x] R2 موحد: `projects/{chatId}/workspace/` — يعمل
+- [x] worklog.md (ذاكرة المشروع) — يعمل
+- [x] manifest.json ذكي (stack, entrypoints, commands, apiRoutes, qualityGates) — يعمل
+- [x] `.palmkit/` memory layer (6 ملفات: project.md, decisions.md, agent-instructions.md, api-map.json, file-map.json, test-results.json, errors.json) — يعمل
+- [x] uploads/ folder + POST /api/workspace — يعمل
+- [x] downloads/ folder + GET ?action=download — يعمل
+- [x] data/schema.prisma + Prisma + SQLite — يعمل
 
-**معايير النجاح — محققة**:
-- ✅ preview المكسور لا يظهر أبداً
-- ✅ incomplete → retry → `failed_clean` برسالة
-- ✅ Frontend يعرض حالة واضحة (مو "Generating Response" فقط)
+#### 3. الأدوات (11 أداة)
+- [x] write_file — كتابة ملف
+- [x] edit_file — تعديل جزء محدد
+- [x] read_file — قراءة ملف (ذاكرة + R2)
+- [x] list_files — عرض كل الملفات
+- [x] delete_file — حذف ملف
+- [x] search_code — بحث بنمط regex
+- [x] list_uploads — عرض ملفات المستخدم
+- [x] run_shell — تنفيذ أمر في E2B
+- [x] run_tests — تشغيل الاختبارات
+- [x] take_screenshot — لقطة شاشة (Playwright في E2B)
+- [x] done — إنهاء البناء
 
----
+#### 4. المعاينة (Preview)
+- [x] E2B sandbox للمعاينة (للجوال + الديسكتوب) — يعمل
+- [x] Launch Preview button — يظهر للتطبيقات غير static
+- [x] blob URL للتطبيقات static — يعمل
+- [x] استرجاع الملفات بعد التحديث (/api/workspace) — يعمل
+- [x] appType detection (React/Vue/Nextjs/Python/Static) — يعمل
 
-### ✅ Phase 2 — Build Orchestrator (منسق البناء)
+#### 5. الواجهة (Frontend)
+- [x] Sidebar يظهر افتراضياً على desktop — يعمل
+- [x] chatStarted fix (المحادثة تفتح عند الضغط) — يعمل
+- [x] Code tab يعرض شجرة الملفات — يعمل
+- [x] Mobile viewport (390x844) — يعمل
+- [x] تبديل النماذج (model selector) — يعمل
 
-**الهدف**: نقل التوليد خارج Cloudflare Pages Function لتجاوز حدود CPU.
-
-**ما تم تطبيقه**:
-- External Oracle ARM64 Worker (Bun, `/opt/palmkit-worker`)
-- Supabase job queue (`build_jobs` table + `claim_next_build_job()` RPC)
-- `generator.ts`: LLM يولّد structured JSON file operations
-- Cloudflare R2 لحفظ الملفات المولّدة (S3-compatible API)
-- `/api/jobs` CF Pages Function (enqueue + poll + get files)
-- `/api/files` endpoint لجلب الملفات من R2
-- `previewFilesStore` + `buildStatusStore` في الفرونتند
-- Detection ذكي لنوع التطبيق: `static`, `react`, `vue`, `nextjs`, `python`, `flutter`, `react-native`
-- `use-external-worker` hook: polling + annotation handling
-- Preview gate: static → blob URL مباشرة، غير static → Phase 3
-
-**أنواع التطبيقات المدعومة في Worker**:
-| النوع | System Prompt | ملفات مولّدة |
-|-------|--------------|-------------|
-| `static` | HTML/CSS/JS خالص | index.html, style.css, script.js |
-| `react` | Vite + React + TypeScript | package.json, src/App.tsx, ... |
-| `vue` | Vite + Vue 3 + TypeScript | package.json, src/App.vue, ... |
-| `nextjs` | Next.js 14 App Router | package.json, app/page.tsx, ... |
-| `python` | FastAPI / Flask | main.py, requirements.txt, ... |
-| `flutter` | Flutter + Dart Material 3 | pubspec.yaml, lib/main.dart, ... |
-| `react-native` | Expo + TypeScript | package.json, App.tsx, ... |
-
-**معايير النجاح — محققة**:
-- ✅ مشروع كامل يُبنى على Oracle Worker في < 90 ثانية
-- ✅ انقطاع المتصفح لا يكسر الـ job (Worker مستقل)
-- ✅ CF Pages Function = API خفيف فقط (لا توليد)
-- ✅ الملفات في R2 + manifest في Supabase
-
----
-
-### ✅ Phase 3 — Sandbox Execution (تشغيل في Sandbox)
-
-**الهدف**: تشغيل مشاريع React/Vue/Next.js/Python في بيئة فعلية بدون تكلفة E2B على الديسكتوب.
-
-**التوجيه الذكي (Smart Routing)**:
-
-| النوع + الجهاز | المعاينة | التكلفة |
-|---------------|---------|---------|
-| `static` (أي جهاز) | Blob URL مباشر | مجاني |
-| `react/vue/nextjs` + ديسكتوب | WebContainer (in-browser WASM) | مجاني |
-| `react/vue/nextjs` + جوال | E2B cloud sandbox | ~$0.0002/CPU-ثانية |
-| `python` (أي جهاز) | E2B cloud sandbox | ~$0.0002/CPU-ثانية |
-| `flutter/react-native` | تعليمات تشغيل محلي | مجاني |
-
-**ما تم تطبيقه**:
-- `app/lib/hooks/use-worker-sandbox.ts`: bridge hook يربط R2 files بـ WebContainer/E2B
-- WebContainer: يكتب الملفات إلى `/home/project/preview/`، يشغّل `npm install`، ثم `npm run dev`
-- Auto-launch على الديسكتوب (WebContainer مجاني)
-- زر "Launch Cloud Preview" على الجوال (E2B — يحتاج موافقة المستخدم لتجنب تكاليف عشوائية)
-- Progress states في الفرونتند: Writing → Installing → Starting → Ready
-- "Try Again" عند الخطأ
-
-**معايير النجاح — محققة**:
-- ✅ مشاريع React تعمل في WebContainer على الديسكتوب (مجاني)
-- ✅ الجوال يحتاج موافقة صريحة للـ E2B
-- ✅ Python/Flask يعمل عبر E2B
-- ✅ Flutter/React Native تعرض تعليمات واضحة
+#### 6. MCP Integration (موجود جزئياً)
+- [x] MCP Service (app/lib/services/mcpService.ts) — 457 سطر
+- [x] MCP Store (app/lib/stores/mcp.ts) — إعدادات + maxLLMSteps
+- [x] MCP Tab في الإعدادات (إضافة/حذف MCP servers)
+- [x] يدعم: stdio, SSE, StreamableHTTP
+- [x] تكامل مع api.chat.ts (processToolInvocations)
+- [ ] غير متصل بالـ Worker agents (MCP للواجهة فقط، ليس للوركر)
 
 ---
 
-## المراحل المكتملة (تابع)
+### ❌ غير مكتمل / يحتاج عمل
 
-### ✅ Phase 4 — Build Verification + Auto-Repair
+#### Playwright كامل
+- **الحالة الحالي**: `take_screenshot` يستخدم Playwright داخل E2B لكن بشكل بدائي (node -e script)
+- **المشكلة**: 
+  - الـ script صغير جداً (title + bodyText فقط)
+  - لا يدعم click, type, scroll, inspect console, inspect network
+  - يحتاج dev server يعمل أولاً (وكل خطوة تختصر sandbox)
+- **المطلوب**:
+  - `browser_open(url)` — فتح صفحة
+  - `browser_click(selector)` — نقر عنصر
+  - `browser_type(selector, text)` — كتابة نص
+  - `browser_screenshot()` — لقطة شاشة كاملة
+  - `browser_console_logs()` — قراءة console errors
+  - `browser_network_logs()` — قراءة network requests
+  - `browser_wait_for(selector)` — انتظار عنصر
+- **التحدي**: E2B sandbox مؤقت (يُدمر بعد كل أمر). لا يمكن إبقاء المتصفح مفتوحاً بين الأوامر. الحل: أمر واحد ينفذ كل خطوات Playwright في script واحد.
 
-**الهدف**: صفر أخطاء TypeScript في مشاريع React/Vue/Next.js تصل للمستخدم.
+#### Git Layer
+- **الحالة الحالي**: غير موجود تماماً في الـ worker
+- **المشكلة**: لا يوجد تتبع للتغييرات، لا rollback، لا branches
+- **المطلوب**:
+  - `git_init()` — تهيئة git في الـ workspace
+  - `git_status()` — عرض الملفات المتغيرة
+  - `git_diff()` — عرض التغييرات
+  - `git_commit(message)` — حفظ التغييرات
+  - `git_revert()` — التراجع عن آخر commit
+  - `git_log()` — عرض التاريخ
+- **التحدي**: الـ workspace في R2 (مش filesystem محلي). الحل: تنفيذ git في E2B sandbox.
 
-**ما تم تطبيقه**:
-- `external-worker/src/build-checker.ts`: يشغّل `bun install + bun run build` في `/tmp/palmkit-{timestamp}/` على Oracle ARM64 مباشرة
-- دعم 2 repair passes: LLM يأخذ build errors + الملفات المتأثرة → يصلح → يعيد البناء
-- `repairGeneration()` في `generator.ts`: يرسل الأخطاء + الملفات المتأثرة للـ LLM → JSON patch response
-- حد `BUILD_CHECK_TYPES = ['react', 'vue', 'nextjs']` — التحقق يُطبق فقط على هذه الأنواع
-- لو فشل بعد pass 2 → `failed_clean` مع رسالة "Build errors — download to fix"
-- Event types جديدة: `build_check_started`, `build_check_passed`, `build_check_failed`, `repair_started`
+#### MCP للـ Worker Agents
+- **الحالة الحالي**: MCP يعمل في الواجهة (api.chat.ts) لكن ليس في الـ worker
+- **المشكلة**: الـ worker agents (Researcher, Builder, Tester) لا يستطيعون استخدام MCP tools
+- **المطلوب**: ربط MCP service بالـ orchestrator بحيث:
+  - الـ Orchestrator يقرأ MCP config من Supabase
+  - يمرر MCP tools للوكلاء كأدوات إضافية
+  - كل وكيل يستطيع استخدام MCP tools المسموحة له
 
-**معايير النجاح — محققة**:
-- ✅ مشروع React يُبنى بدون TypeScript errors ≥ 90% من الوقت
-- ✅ Build errors تُصلح تلقائياً دون تدخل المستخدم
-- ✅ Worker job ينتهي بـ `ready_for_preview` أو `failed_clean` واضح
+#### وكلاء جدد (الجلسة القادمة)
+- [ ] Security Agent — فحص أمني (secrets, vulnerabilities, RLS)
+- [ ] Marketing Agent — محتوى تسويقي (landing pages, copy, SEO)
+- [ ] Design Agent — تحسين تصميم (colors, spacing, typography, UX)
+- [ ] Git Agent — إدارة Git (branch, commit, PR)
+- [ ] Debug Agent — تشخيص وإصلاح الأخطاء
 
----
-
-### ✅ Phase 5 — SSE Progress Stream (تدفق مباشر)
-
-**الهدف**: المستخدم يرى خطوة بخطوة ماذا يبني Palmkit بدل انتظار صامت.
-
-**ما تم تطبيقه**:
-- Oracle Worker يكتب events في `job_events` table (Supabase) على كل خطوة
-- Frontend يجلب الـ events مع كل poll دورة ويعرضها في `WorkerProgress` component
-- `workerEventsStore` (nanostore) يحمل قائمة الـ events الحية
-- `WorkerProgress.tsx`: يعرض قائمة خطوات مع أيقونات (✓ / ⏳ / ✗)
-- Collapses: إذا >2 ملفات متتالية → "Created X.tsx (+N more files)"
-- مُضاف في `BaseChat.tsx` فوق ChatBox مباشرة
-- الـ events تُمسح عند بدء build job جديد (`clearWorkerEvents()`)
-
-**معايير النجاح — محققة**:
-- ✅ المستخدم يرى progress حقيقي خطوة بخطوة
-- ✅ لا انتظار صامت > 3 ثواني دون رسالة
-- ✅ انقطاع → polling الحالي يُكمل (SSE مُحاكى عبر polling + events store)
-
----
-
-### ✅ Phase 6 — Project History & Persistence
-
-**الهدف**: المستخدم يحفظ مشاريعه ويعود إليها لاحقاً.
-
-**ما تم تطبيقه**:
-- `app/routes/api.account.builds.ts`: API endpoint (GET list/detail, DELETE)
-  - GET → قائمة آخر 20 build مكتمل للمستخدم
-  - GET?id → تفاصيل build واحد + قائمة الملفات من `project_files_manifest`
-  - DELETE?id → حذف الـ job record
-- `app/routes/builds.tsx`: صفحة `/builds` بـ grid من BuildCard components
-  - "Open Preview" → يجلب الملفات من R2 → `setPreviewFiles()` → navigate لـ `/chat/{jobId}`
-  - "Delete" → DELETE request + reload
-  - Icons حسب نوع التطبيق (react, vue, nextjs, python, static, flutter)
-- `job-processor.ts`: يحفظ `prompt` snippet في `validation_result` عند اكتمال البناء
-- `Header.tsx`: أضاف رابط "Builds" في الـ header (desktop فقط)
-
-**معايير النجاح — محققة**:
-- ✅ قائمة builds المكتملة تظهر في `/builds`
-- ✅ Re-open build → preview جاهز من R2 في < 5 ثواني
-- ✅ حذف build يعمل
+#### التوسع (Scaling)
+- [ ] نشر 10 وركرات (Oracle Cloud)
+- [ ] Cloudflare Queues لتوزيع العمل
+- [ ] E2B snapshots (palmkit-cache-react, palmkit-cache-vue)
+- [ ] Supabase Realtime (بدل polling)
+- [ ] Auto-scaling (scale up/down حسب الطلب)
 
 ---
 
-### ✅ Phase 7 — Multi-turn Edit (التعديل التراكمي)
+## Roadmap المراحل
 
-**الهدف**: بعد البناء الأول، التعديلات تُطبَّق بشكل ذكي دون إعادة بناء كامل.
+### المرحلة 1: استقرار (مكتملة ✅)
+**المدة**: مكتملة
+**الحالة**: يعمل في الإنتاج
 
-**ما تم تطبيقه**:
-- `generator.ts` — `generateEdit()`: يرسل الملفات الحالية + طلب التعديل للـ LLM، LLM يُرجع الملفات المتغيرة فقط ثم يُدمجها مع الأصلية
-- `job-processor.ts` — edit mode branch: إذا `editJobId` موجود في `validation_result`:
-  - يجلب بيانات المشروع الأصلي من Supabase (appType)
-  - يجلب الملفات من `project_files_manifest` → R2 (`getFileText`)
-  - يستدعي `generateEdit()` → يُدمج → يرفع snapshot كامل جديد
-  - يتخطى phases: plan/validate/build-check (أسرع وأوفر)
-- `use-external-worker.ts` — `startJob()` يقبل `editFromJobId?: string` اختيارياً
-- `Chat.client.tsx` — يكشف edit mode تلقائياً: إذا `extWorkerState.status === 'ready_for_preview'` والمستخدم أرسل رسالة جديدة → يُرسل `editJobId` تلقائياً
-- `api.jobs.ts` — يحفظ `editJobId` في `validation_result` للـ worker
-- `event-emitter.ts` — أضاف `edit_started`, `edit_completed` event types
+- [x] نظام البناء (agent-builder + generateText)
+- [x] E2B sandbox لأوامر shell
+- [x] workspace موحد في R2
+- [x] worklog + manifest
+- [x] معاينة E2B للجوال والديسكتوب
+- [x] استرجاع الملفات بعد التحديث
+- [x] نظام الصلاحيات للوكلاء
 
-**معايير النجاح — محققة**:
-- ✅ تعديل بسيط (تغيير لون) ينتهي أسرع من بناء كامل
-- ✅ الملفات غير المتأثرة لا تُعاد كتابتها (LLM يُرجع المتغيرة فقط)
-- ✅ edit mode يُكتشف تلقائياً — المستخدم لا يحتاج يفعل شيئاً
+### المرحلة 2: ورك سبيس ذكي (مكتملة ✅)
+**المدة**: مكتملة
+**الحالة**: يعمل في الإنتاج
 
----
+- [x] `.palmkit/` memory layer (6 ملفات)
+- [x] smart manifest (stack, entrypoints, commands, apiRoutes)
+- [x] search_code tool
+- [x] edit_file tool
+- [x] delete_file tool
+- [x] run_tests tool
+- [x] take_screenshot tool
+- [x] uploads/downloads support
+- [x] Prisma + SQLite support
 
-### ✅ Phase 8 — Export & Native App Delivery
+### المرحلة 3: وكلاء متعددين (مكتملة ✅)
+**المدة**: مكتملة
+**الحالة**: يعمل في الإنتاج
 
-**الهدف**: دعم كامل لتصدير المشاريع وتسليم التطبيقات للمستخدم.
+- [x] Orchestrator (منسق)
+- [x] Researcher (قراءة فقط)
+- [x] Builder (كتابة + shell)
+- [x] Tester (تحقق + screenshot)
+- [x] نظام صلاحيات (permission model)
 
-**ما تم تطبيقه**:
-- `app/routes/api.export.ts`: endpoint `/api/export?jobId=` يُنشئ ZIP archive من R2 بالـ fflate
-  - يُضاف `README.md` تلقائياً حسب نوع المشروع (react/vue/nextjs/python/flutter/react-native/static)
-  - اسم الملف مستوحى من الـ prompt: `palmkit-todo-app.zip`
-- `/builds` page: زر "Download ZIP" (`i-ph:download-simple`) على كل build card
-- Header: زر "Export ZIP" يظهر تلقائياً عند اكتمال Oracle Worker build (`ready_for_preview`)
-- `currentJobIdStore` في build-status store يتتبع الـ job ID النشط للـ export
+### المرحلة 4: Playwright كامل (التالية)
+**المدة**: 1-2 جلسة
+**الحالة**: غير مبدوءة
 
-**معايير النجاح — محققة**:
-- ✅ كل نوع مشروع (React, Vue, Next.js, Python, Flutter, RN, Static) يُصدَّر كـ ZIP
-- ✅ ZIP يحتوي README مع تعليمات التشغيل المناسبة للنوع
-- ✅ زر Export في الـ header + صفحة Builds
+- [ ] `browser_open(url)` — فتح صفحة في E2B
+- [ ] `browser_click(selector)` — نقر عنصر
+- [ ] `browser_type(selector, text)` — كتابة نص
+- [ ] `browser_screenshot()` — لقطة شاشة كاملة
+- [ ] `browser_console_logs()` — قراءة console
+- [ ] `browser_network_logs()` — قراءة network
+- [ ] `browser_wait_for(selector)` — انتظار عنصر
+- [ ] دمج Playwright script كأمر واحد في E2B (لأن sandbox مؤقت)
 
----
+**التحدي الرئيسي**: E2B sandbox يُدمر بعد كل أمر. لا يمكن إبقاء المتصفح مفتوحاً. الحل: إنشاء script كامل ينفذ كل خطوات الاختبار في أمر واحد:
+```javascript
+// مثال: browser_test script
+const { chromium } = require('playwright');
+(async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  await page.goto('http://localhost:3000');
+  await page.click('button.increment');
+  await page.screenshot({ path: '/tmp/screenshot.png' });
+  const logs = await page.evaluate(() => console.logs);
+  console.log(JSON.stringify({ screenshot: '...', logs }));
+  await browser.close();
+})();
+```
 
-## المراحل المخططة — الجيل الثاني
+### المرحلة 5: Git Layer (التالية)
+**المدة**: 1 جلسة
+**الحالة**: غير مبدوءة
 
-> هذه مراحل التطوير القادمة بناءً على الاختبار الفعلي للمنصة.
-> الأولوية: UX > جودة التوليد > مزايا متقدمة.
+- [ ] `git_init()` — تهيئة git repo في workspace
+- [ ] `git_status()` — عرض الملفات المتغيرة
+- [ ] `git_diff()` — عرض التغييرات
+- [ ] `git_commit(message)` — حفظ التغييرات
+- [ ] `git_revert()` — التراجع
+- [ ] `git_log()` — عرض التاريخ
+- [ ] ربط Git مع .palmkit/last-diff.patch
 
----
+**التحدي**: الـ workspace في R2. الحل: تنفيذ git في E2B sandbox:
+1. اكتب الملفات من R2 إلى sandbox
+2. نفذ git commands
+3. اقرأ النتائج
+4. دمر الـ sandbox
 
-### 🔲 Phase 9 — Visual Editor 2.0 (المحرر البصري الدقيق)
+### المرحلة 6: MCP للـ Worker (التالية)
+**المدة**: 1 جلسة
+**الحالة**: MCP موجود في الواجهة فقط
 
-**الهدف**: تحويل المحرر البصري من "قراءة فقط" إلى تعديل مباشر حقيقي.
+- [ ] قراءة MCP config من Supabase في الـ worker
+- [ ] إنشاء MCP client في الـ worker
+- [ ] تمرير MCP tools كأدوات إضافية للوكلاء
+- [ ] نظام صلاحيات لـ MCP tools (كل وكيل يأخذ subset)
+- [ ] دعم stdio, SSE, StreamableHTTP
 
-**المشاكل الحالية**:
-- الضغط على عنصر ينسخه للحافظة فقط — لا يوجد UI للتعديل
-- لا يعمل في وضع E2B (فقط blob URL + WebContainer)
-- انحراف الإحداثيات عند استخدام device frame
-- لا يوجد multi-select
+**المتطلبات**:
+- تثبيت `@modelcontextprotocol/sdk` في الـ worker
+- إنشاء MCP client في الـ worker (مش الواجهة)
+- تخزين MCP config في Supabase (مش localStorage)
 
-**ما يُبنى**:
-- لوحة تعديل مباشرة تظهر عند اختيار عنصر (نص، ألوان، padding، font-size)
-- Auto-generate edit prompt من العنصر المختار → تُرسل لـ Oracle Worker تلقائياً
-- Highlight ثابت للعنصر بعد الضغط (ليس فقط hover)
-- إصلاح انحراف الإحداثيات في device frame mode
-- Multi-element selection (shift+click)
+### المرحلة 7: وكلاء متخصصين (الجلسة القادمة)
+**المدة**: 2-3 جلسات
+**الحالة**: غير مبدوءة
 
-**التقنيات**: postMessage API + InspectorPanel.tsx + أنماط CSS parsing
+#### 7A. Security Agent
+- [ ] فحص secrets في الكود
+- [ ] فحص dependency vulnerabilities (npm audit)
+- [ ] فحص RLS policies (Supabase)
+- [ ] فحص auth bypass
+- [ ] فحص CORS
+- [ ] فحص unsafe eval
+- [ ] فحص file upload risks
+- [ ] أدوات: secret_scan, dependency_audit, static_analysis
 
----
+#### 7B. Design Agent
+- [ ] تحسين الألوان (contrast, palette)
+- [ ] تحسين spacing (padding, margin)
+- [ ] تحسين typography (font sizes, line heights)
+- [ ] تحسين responsive design
+- [ ] تحسين animations
+- [ ] أدوات: take_screenshot, read_file, edit_file, search_code
 
-### 🔲 Phase 10 — Streaming Generation Preview (معاينة أثناء التوليد)
+#### 7C. Marketing Agent
+- [ ] كتابة landing page copy
+- [ ] تحسين SEO (meta tags, headings)
+- [ ] كتابة README.md
+- [ ] كتابة CHANGELOG.md
+- [ ] أدوات: write_file, edit_file, read_file, search_code
 
-**الهدف**: المستخدم يرى الكود يُكتب مباشرة + معاينة تدريجية.
+#### 7D. Debug Agent
+- [ ] قراءة error logs
+- [ ] تشخيص السبب الجذري
+- [ ] اقتراح patch صغير (لا يعيد كتابة المشروع)
+- [ ] أدوات: read_file, search_code, run_shell, edit_file
 
-**المشاكل الحالية**:
-- المستخدم ينتظر 30-90 ثانية بدون ملاحظات مرئية كافية
-- `WorkerProgress` يعرض خطوات نصية فقط
+#### 7E. Git Agent
+- [ ] إنشاء branch
+- [ ] تلخيص diff
+- [ ] كتابة commit message
+- [ ] فتح PR (لو مربوط بـ GitHub)
+- [ ] أدوات: git_status, git_diff, git_commit, git_log
 
-**ما يُبنى**:
-- بث ملفات جزئية عبر `job_events` (`file_written` events) → عرضها في CodeMirror مباشرة
-- Skeleton preview يظهر بنية الملفات قبل اكتمال التوليد
-- شريط تقدم مرئي بنسبة مئوية حقيقية (بدل تخمين)
-- "Writing file X of Y" indicator
+### المرحلة 8: التوسع لـ 1000 مستخدم
+**المدة**: 2-3 جلسات
+**الحالة**: وركر واحد (10 وظائف متزامنة)
 
-**التقنيات**: Supabase Realtime → `job_events` subscription → `workerEventsStore` → CodeMirror streaming
-
----
-
-### 🔲 Phase 11 — Smart Prompt Enhancement (تحسين ذكي للـ Prompt)
-
-**الهدف**: رفع جودة المشاريع المولّدة من 70% إلى 95%.
-
-**المشاكل الحالية**:
-- `static` projects تفشل في بعض الأحيان بسبب truncated JSON
-- المشاريع المعقدة تحتاج prompts دقيقة
-- لا يوجد template library
-
-**ما يُبنى**:
-- Pre-generation prompt enricher: يُضاف context تلقائياً (screen size, color scheme, industry)
-- Starter templates library (20+ template): e-commerce, portfolio, SaaS landing, dashboard, blog
-- Prompt validator: يكتشف طلبات غامضة ويطلب توضيحاً
-- Dynamic `maxTokens` حسب complexity المطلوبة
-
-**التقنيات**: `/api/enhancer` route (موجود) + template store + LLM classification
-
----
-
-### 🔲 Phase 12 — One-Click Deploy (نشر بضغطة واحدة)
-
-**الهدف**: المستخدم ينشر مشروعه مباشرة من Palmkit.
-
-**الأنظمة المدعومة**:
-- **Vercel**: static + React/Vue/Next.js (Vercel API موجود في `/api/vercel-deploy.ts`)
-- **Netlify**: static (Netlify API موجود في `/api/netlify-deploy.ts`)
-- **Cloudflare Pages**: static + React (via Wrangler API)
-- **Custom domain**: CNAME + CDN عبر Cloudflare
-
-**ما يُبنى**:
-- Deploy button في صفحة `/builds` لكل مشروع مكتمل
-- Custom subdomain: `{project-name}.palmkit.app` (Cloudflare Worker proxy)
-- Deploy status webhook + notification
-
-**التقنيات**: Vercel API + Netlify API + Cloudflare Pages API + Supabase `deployments` table
-
----
-
-### 🔲 Phase 13 — Multi-Stack Support + Backend Generation
-
-**الهدف**: دعم مشاريع full-stack حقيقية بقاعدة بيانات.
-
-**Stacks المدعومة القادمة**:
-| Stack | Frontend | Backend | DB |
-|-------|----------|---------|-----|
-| T3 Stack | Next.js | tRPC | PostgreSQL |
-| MERN | React | Express | MongoDB |
-| FastAPI + React | React | FastAPI | SQLite |
-| Supabase + Next.js | Next.js | Supabase | PostgreSQL |
-
-**ما يُبنى**:
-- `generator.ts`: أنماط جديدة لكل stack
-- Database schema generation (migrations SQL)
-- Environment variables template generation
-- Docker Compose generation للتطوير المحلي
-
----
-
-### 🔲 Phase 14 — Collaborative Editing (التعديل التعاوني)
-
-**الهدف**: فريق يعمل على نفس المشروع في نفس الوقت.
-
-**ما يُبنى**:
-- Project sharing (link + permissions)
-- Supabase Realtime للتعديلات المتزامنة
-- Conflict resolution للملفات
-- Comments على الكود
-
-**التقنيات**: Supabase Realtime + CRDT (Yjs) + RLS policies
+- [ ] نشر 10 وركرات على Oracle Cloud
+- [ ] Cloudflare Queues لتوزيع العمل
+- [ ] E2B snapshots (palmkit-cache-react, palmkit-cache-vue)
+- [ ] Supabase Realtime (بدل polling كل 1.5s)
+- [ ] Auto-scaling (scale up عند > 20 وظيفة منتظرة)
+- [ ] مراقبة (dashboard للـ worker pool health)
 
 ---
 
-### 🔲 Phase 15 — AI Code Review + Suggestions
+## إحصائيات المشروع الحالية
 
-**الهدف**: Palmkit يراجع الكود المولّد ويقترح تحسينات.
+| المقياس | القيمة |
+|---------|--------|
+| إجمالي commits | 1927 |
+| ملفات TypeScript | 445 |
+| أدوات الوكلاء | 11 |
+| عدد الوكلاء | 4 (Orchestrator + Researcher + Builder + Tester) |
+| ملفات .palmkit/ | 7 |
+| API endpoints | 8 (list, file, worklog, manifest, download, uploads, POST upload, health) |
+| Worker deployments | 34 |
+| CF Pages deployments | 30+ |
 
-**ما يُبنى**:
-- بعد كل build: تحليل تلقائي للكود (Security, Performance, Accessibility)
-- اقتراحات مُفصّلة بدل رسالة "ready for preview" الجامدة
-- "Improve" button → worker يحسّن تلقائياً
+## المعمارية الحالية (مخطط)
 
----
+```
+المستخدم (جوال/ديسكتوب)
+    ↓
+palmkit.app (Cloudflare Pages)
+    ├── /chat/{id} — واجهة المحادثة
+    ├── /api/jobs — إضافة/فحص البناء
+    ├── /api/workspace — قراءة/كتابة الملفات
+    ├── /api/sb — E2B sandbox proxy
+    └── /api/files — legacy file access
+    ↓
+Supabase (PostgreSQL + Storage + Auth)
+    ├── build_jobs (queue)
+    ├── job_events (progress)
+    ├── project_files_manifest
+    └── Storage: palmkit-files bucket
+    ↓
+Worker Pool (Oracle VM — 1 worker حالياً)
+    ├── Orchestrator
+    │   ├── Researcher (read-only: 5 tools)
+    │   ├── Builder (write: 7 tools)
+    │   └── Tester (verify: 6 tools)
+    ├── E2B Sandbox (run_shell, run_tests, take_screenshot)
+    └── R2 (projects/{chatId}/workspace/)
+        ├── .palmkit/ (7 memory files)
+        ├── src/ (code)
+        ├── data/ (schema.prisma, db.sqlite)
+        ├── uploads/ (user files)
+        ├── downloads/ (generated outputs)
+        ├── worklog.md
+        └── manifest.json
+```
 
-## خارطة طريق التقنيات المقترحة
+## الأولويات القادمة (بالترتيب)
 
-| المجال | التقنية الحالية | التقنية المقترحة | الفائدة |
-|--------|----------------|-----------------|---------|
-| LLM Generation | JSON text output | Tool calling (structured) | أموثوقية أعلى، لا parse errors |
-| Streaming | Polling every 2s | Supabase Realtime subscriptions | تحديث فوري بدون polling |
-| Preview (mobile) | E2B (cloud) | Stackblitz WebContainers on CDN | تكلفة أقل |
-| State Management | nanostores | Zustand (موجود جزئياً) | توحيد |
-| Testing | Vitest only | Playwright E2E + Vitest | اختبار UI فعلي |
-| Build Check | bun build local | Isolated Docker container | أأمان، لا تأثير على Worker |
-| File Storage | R2 (S3-compat) | R2 + Edge Cache | سرعة أكبر |
-| Auth | Supabase Auth | Supabase Auth + Passkeys | UX أسهل |
-| Monitoring | Logs only | Sentry + Worker metrics dashboard | رؤية أوضح |
-| CI/CD | GitHub Actions SSH | GitHub Actions + Docker | أسرع وأموثق |
-
----
-
-## سجل الـ Commits
-
-| التاريخ | الوصف |
-|---------|-------|
-| 2026-06-27 | feat(phase8): ZIP export for all build types + Export ZIP button |
-| 2026-06-27 | feat(phase7): multi-turn edit mode — patch existing builds |
-| 2026-06-27 | feat(phase6): project history page, builds API, and prompt persistence |
-| 2026-06-27 | feat(phase5): worker progress events UI (WorkerProgress component) |
-| 2026-06-27 | feat(phase4): build verification + auto-repair in Oracle Worker |
-| 2026-06-27 | feat(phase3): WebContainer + E2B sandbox bridge |
-| 2026-06-27 | feat: Flutter/React Native + dynamic models (xAI, Mistral) |
-| 2026-06-27 | feat: Oracle worker deployed on ARM64, Phase 2 end-to-end |
-| 2026-06-26 | fix: Phase 2 appType gate, blob preview, truncated JSON |
-| 2026-06-26 | feat: External worker + R2 + Supabase job queue |
-| 2026-06-25 | feat: Phase 1 Safety Gate (completion marker + validator) |
-| 2026-06-23 | feat: initial Oracle worker scaffold |
-
----
-
-## القيود والملاحظات التقنية
-
-| المورد | الحد | ملاحظة |
-|--------|------|--------|
-| Cloudflare Pages (Free) | 10ms CPU/invocation | الـ I/O لا يُحسب، streaming مسموح |
-| Oracle Worker | 4 ARM cores, 24 GB RAM | لا حدود CPU، اللجنة بحجم الـ LLM response |
-| Cloudflare R2 | 10 GB storage, egress مجاني | مثالي لتخزين الملفات المولّدة |
-| WebContainer | مجاني للجميع | يحتاج COOP/COEP headers (مُضافة في `entry.server.tsx`) |
-| E2B | ~$0.000225/CPU-ثانية | يُستخدم فقط للجوال أو Python |
-| Supabase (Free) | 500 MB DB, 1 GB storage | كافٍ للـ metadata والـ jobs queue |
+1. **Playwright كامل** — يحتاج script موحد في E2B (ليس أوامر منفصلة)
+2. **Git layer** — يحتاج git في E2B sandbox
+3. **MCP للـ worker** — يحتاج MCP client في الـ worker
+4. **وكلاء جدد** — Security, Design, Marketing, Debug, Git
+5. **التوسع** — 10 وركرات + Queues + snapshots + Realtime
