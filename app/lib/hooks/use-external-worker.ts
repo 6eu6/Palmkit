@@ -13,8 +13,8 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouteLoaderData } from '@remix-run/react';
 import { setPreviewFiles, resetPreviewFiles } from '~/lib/stores/build-status';
-import { createClient } from '@supabase/supabase-js';
 
 const FLAG_KEY = 'palmkit_use_external_worker';
 const POLL_INTERVAL_MS = 1500;
@@ -123,9 +123,15 @@ export function useExternalWorker() {
   const [state, setState] = useState<ExternalWorkerState>(initialState);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fetchedPreview = useRef(false);
-  const realtimeChannel = useRef<ReturnType<typeof createClient> | null>(null);
+  const realtimeChannel = useRef<any>(null);
   const lastEventSeq = useRef(0);
   const liveEvents = useRef<JobEvent[]>([]);
+
+  // Get Supabase URL and anon key from root loader
+  const rootData = useRouteLoaderData('root') as {
+    supabaseUrl?: string | null;
+    supabaseAnonKey?: string | null;
+  } | undefined;
 
   /**
    * Subscribe to Supabase Realtime for live job events.
@@ -136,111 +142,116 @@ export function useExternalWorker() {
    */
   const subscribeRealtime = useCallback((jobId: string) => {
     try {
-      const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-      const supabaseKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+      const supabaseUrl = rootData?.supabaseUrl;
+      const supabaseKey = rootData?.supabaseAnonKey;
 
       if (!supabaseUrl || !supabaseKey) {
+        console.warn('[Palmkit] Realtime: Supabase URL/key not available, falling back to polling');
         return; // No Supabase config — fall back to polling
       }
 
-      const client = createClient(supabaseUrl, supabaseKey);
+      // Dynamic import to avoid bundling supabase if not needed
+      import('@supabase/supabase-js').then(({ createClient }) => {
+        const client = createClient(supabaseUrl, supabaseKey);
 
-      const channel = client
-        .channel(`job:${jobId}`)
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'job_events', filter: `job_id=eq.${jobId}` },
-          (payload: any) => {
-            const event: JobEvent = {
-              type: payload.new.type,
-              seq: payload.new.seq,
-              message: payload.new.message,
-              payload: payload.new.payload,
-              created_at: payload.new.created_at,
-            };
+        const channel = client
+          .channel(`job:${jobId}`)
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'job_events', filter: `job_id=eq.${jobId}` },
+            (payload: any) => {
+              const event: JobEvent = {
+                type: payload.new.type,
+                seq: payload.new.seq,
+                message: payload.new.message,
+                payload: payload.new.payload,
+                created_at: payload.new.created_at,
+              };
 
-            // Add to live events
-            if (event.seq > lastEventSeq.current) {
-              lastEventSeq.current = event.seq;
-              liveEvents.current = [...liveEvents.current, event];
+              // Add to live events
+              if (event.seq > lastEventSeq.current) {
+                lastEventSeq.current = event.seq;
+                liveEvents.current = [...liveEvents.current, event];
 
-              // Update state with new event immediately
+                // Update state with new event immediately
+                setState((s) => ({
+                  ...s,
+                  events: [...s.events, event],
+                  currentStep: event.message,
+                }));
+
+                /*
+                 * LIVE FILE FETCH: When a file_written event arrives,
+                 * immediately fetch that file from /api/workspace and
+                 * populate workbenchStore.files so the Code tab shows it
+                 * in real-time (not waiting for ready_for_preview).
+                 */
+                if (event.type === 'file_written' && event.payload?.filePath) {
+                  const filePath = event.payload.filePath as string;
+
+                  // Fetch the file content from the workspace API
+                  fetch(
+                    `/api/workspace?action=file&projectId=${jobId}&path=${encodeURIComponent(filePath)}`,
+                  )
+                    .then((r) => (r.ok ? r.text() : null))
+                    .then(async (content) => {
+                      if (!content) {
+                        return;
+                      }
+
+                      // Update previewFilesStore
+                      setPreviewFiles({ [filePath]: content });
+
+                      // Update workbenchStore.files so Code tab shows it
+                      try {
+                        const { workbenchStore } = await import('~/lib/stores/workbench');
+                        const currentFiles = workbenchStore.files.get();
+                        workbenchStore.files.set({
+                          ...currentFiles,
+                          [filePath]: { type: 'file', content },
+                        });
+                      } catch {
+                        // best-effort
+                      }
+                    })
+                    .catch(() => {
+                      // File not in workspace yet (R2 write may lag)
+                    });
+                }
+              }
+            },
+          )
+          .on(
+            'postgres_changes',
+            { event: 'UPDATE', schema: 'public', table: 'build_jobs', filter: `id=eq.${jobId}` },
+            (payload: any) => {
+              const job = payload.new;
+
+              let uiStatus: ExternalWorkerState['status'] = 'generating';
+
+              if (job.status === 'ready_for_preview') {
+                uiStatus = 'ready_for_preview';
+              } else if (job.status === 'failed_clean') {
+                uiStatus = 'failed_clean';
+              }
+
               setState((s) => ({
                 ...s,
-                events: [...s.events, event],
-                currentStep: event.message,
+                status: uiStatus,
+                progress: job.progress ?? s.progress,
+                error: job.error_summary ?? s.error,
               }));
+            },
+          )
+          .subscribe();
 
-              /*
-               * LIVE FILE FETCH: When a file_written event arrives,
-               * immediately fetch that file from /api/workspace and
-               * populate workbenchStore.files so the Code tab shows it
-               * in real-time (not waiting for ready_for_preview).
-               */
-              if (event.type === 'file_written' && event.payload?.filePath) {
-                const filePath = event.payload.filePath as string;
-
-                // Fetch the file content from the workspace API
-                fetch(
-                  `/api/workspace?action=file&projectId=${jobId}&path=${encodeURIComponent(filePath)}`,
-                )
-                  .then((r) => (r.ok ? r.text() : null))
-                  .then(async (content) => {
-                    if (!content) {
-                      return;
-                    }
-
-                    // Update previewFilesStore
-                    setPreviewFiles({ [filePath]: content });
-
-                    // Update workbenchStore.files so Code tab shows it
-                    try {
-                      const { workbenchStore } = await import('~/lib/stores/workbench');
-                      const currentFiles = workbenchStore.files.get();
-                      workbenchStore.files.set({
-                        ...currentFiles,
-                        [filePath]: { type: 'file', content },
-                      });
-                    } catch {
-                      // best-effort
-                    }
-                  })
-                  .catch(() => {
-                    // File not in workspace yet (R2 write may lag) — will be fetched on ready_for_preview
-                  });
-              }
-            }
-          },
-        )
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'build_jobs', filter: `id=eq.${jobId}` },
-          (payload: any) => {
-            const job = payload.new;
-
-            let uiStatus: ExternalWorkerState['status'] = 'generating';
-
-            if (job.status === 'ready_for_preview') {
-              uiStatus = 'ready_for_preview';
-            } else if (job.status === 'failed_clean') {
-              uiStatus = 'failed_clean';
-            }
-
-            setState((s) => ({
-              ...s,
-              status: uiStatus,
-              progress: job.progress ?? s.progress,
-              error: job.error_summary ?? s.error,
-            }));
-          },
-        )
-        .subscribe();
-
-      realtimeChannel.current = client;
+        realtimeChannel.current = client;
+        console.log('[Palmkit] Realtime subscribed for job:', jobId);
+      });
     } catch {
       // Realtime failed — polling will handle it
     }
-  }, []);
+  }, [rootData?.supabaseUrl, rootData?.supabaseAnonKey]);
 
   const startJob = useCallback(
     async (prompt: string, model: string, provider: string, editFromJobId?: string, projectId?: string) => {
