@@ -457,14 +457,15 @@ export const ChatImpl = memo(
           });
 
           /*
-           * CRITICAL: Save the chat to IndexedDB so it persists across refreshes.
-           * Without this, refreshing the page loses the entire conversation because
-           * worker builds don't create IndexedDB records by default.
-           *
-           * This also makes the chat appear in the sidebar (Projects list).
+           * CRITICAL: Save the chat to IndexedDB with the LATEST messages.
+           * The `messages` state should be updated by now (the useEffect
+           * runs after render, and setMessages was called in sendMessage).
+           * But to be safe, we also filter out hidden messages.
            */
-          if (messages.length > 0) {
-            storeMessageHistory(messages).catch((err) => {
+          const visibleMessages = messages.filter((m) => !m.annotations?.includes('hidden'));
+
+          if (visibleMessages.length > 0) {
+            storeMessageHistory(visibleMessages).catch((err) => {
               console.warn('[Palmkit] Failed to save worker chat to IndexedDB:', err);
             });
           }
@@ -890,22 +891,29 @@ export const ChatImpl = memo(
         // Add user message to chat so the conversation is visible and persisted
         const extUserText = finalMessageContent;
         const isEditJob = extWorkerState.status === 'ready_for_preview' && Boolean(extWorkerState.jobId);
-        setMessages([
-          ...messages,
-          {
-            id: `${Date.now()}`,
-            role: 'user',
-            content: extUserText,
-            parts: createMessageParts(extUserText, imageDataList),
-          },
 
-          // Placeholder assistant message — shows progress until build completes
-          {
-            id: `${Date.now()}-assistant`,
-            role: 'assistant',
-            content: isEditJob ? '⚡ Editing project…' : '⚡ Building project…',
-          },
-        ]);
+        /*
+         * Build the new messages array BEFORE calling setMessages.
+         * We need the array to pass to storeMessageHistory immediately —
+         * setMessages is async so `messages` state won't update until next render.
+         * Previously, storeMessageHistory(messages) was called with the STALE
+         * messages array (before the user message was added), so the chat
+         * was never saved to IndexedDB.
+         */
+        const userMessage = {
+          id: `${Date.now()}`,
+          role: 'user' as const,
+          content: extUserText,
+          parts: createMessageParts(extUserText, imageDataList),
+        };
+        const assistantPlaceholder = {
+          id: `${Date.now()}-assistant`,
+          role: 'assistant' as const,
+          content: isEditJob ? '⚡ Editing project…' : '⚡ Building project…',
+        };
+        const newMessages = [...messages, userMessage, assistantPlaceholder];
+
+        setMessages(newMessages);
 
         setInput('');
         Cookies.remove(PROMPT_COOKIE_KEY);
@@ -926,15 +934,26 @@ export const ChatImpl = memo(
         await startExtJob(finalMessageContent, model, provider.name, editFromJobId, workerChatId);
 
         /*
-         * Save the chat to IndexedDB IMMEDIATELY so it persists across refreshes.
-         * The user message + assistant placeholder are already in `messages`.
-         * This ensures the chat appears in the sidebar and survives page reloads,
-         * even while the worker is still building.
+         * Save the chat to IndexedDB IMMEDIATELY with the NEW messages array.
+         * Previously this used the stale `messages` variable which didn't
+         * include the user message + assistant placeholder.
+         *
+         * chatId was already set above (line 887: chatId.set(workerChatId)),
+         * so storeMessageHistory will use the correct chat ID.
          */
-        if (messages.length > 0) {
-          storeMessageHistory(messages).catch((err) => {
-            console.warn('[Palmkit] Failed to save worker chat on send:', err);
-          });
+        storeMessageHistory(newMessages).catch((err) => {
+          console.warn('[Palmkit] Failed to save worker chat on send:', err);
+        });
+
+        /*
+         * Also update the URL to /chat/{workerChatId} so the browser
+         * address bar reflects the current chat. This helps with:
+         * - Page refresh (URL already points to the chat)
+         * - Browser history (back button works)
+         * - Bookmarking
+         */
+        if (window.location.pathname !== `/chat/${workerChatId}`) {
+          window.history.replaceState({}, '', `/chat/${workerChatId}`);
         }
 
         return;
