@@ -61,6 +61,7 @@ export async function runAgentBuild(
   projectId: string,
   userId: string,
   maxCompletionTokens?: number,
+  appType?: string,
 ): Promise<AgentBuildResult> {
   const startTime = Date.now();
   resetProjectFiles();
@@ -257,6 +258,7 @@ the memory above.`
         manifest.lastBuildAt = new Date().toISOString();
         manifest.lastBuildSummary = summary?.slice(0, 200) || null;
         manifest.fileCount = fileCount;
+        manifest.appType = appType ?? manifest.appType;
         await writeManifest(manifest, supabase, userId);
 
         logger.info(`[agent] Worklog + manifest updated for ${projectId}`);
