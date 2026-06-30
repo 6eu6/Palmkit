@@ -143,8 +143,8 @@ YOUR TASK:
 
 Output a clear summary that the Builder can use to create or modify files.`,
   allowedTools: ['read_file', 'list_files', 'list_uploads', 'search_code', 'done'],
-  maxSteps: 10,
-  maxTokens: 8000,
+  maxSteps: 5,  // Reduced from 10 — Researcher just reads, doesn't need many steps
+  maxTokens: 4000,  // Reduced from 8000 — Researcher output is just a summary
 };
 
 /**
@@ -202,8 +202,8 @@ If the project needs a database:
     'run_shell',
     'done',
   ],
-  maxSteps: 40,
-  maxTokens: 16000,
+  maxSteps: 30,  // Reduced from 40 — enough for 15 files + verification
+  maxTokens: 12000,  // Reduced from 16000 — cap per step to save tokens
 };
 
 /**
@@ -255,8 +255,8 @@ Call done() with your verification report.`,
     'search_code',
     'done',
   ],
-  maxSteps: 15,
-  maxTokens: 8000,
+  maxSteps: 8,  // Reduced from 15 — just run build + test + screenshot
+  maxTokens: 4000,  // Reduced from 8000 — Tester output is just results
 };
 
 /**

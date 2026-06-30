@@ -70,7 +70,7 @@ export async function runOrchestratedBuild(
   // Create all tools (shared across agents, filtered per agent)
   const allTools = createAgentTools(jobId, supabase, projectId);
 
-  // Keep-alive timer
+  // Keep-alive timer (every 10s instead of 5s to reduce Realtime events)
   const keepAlive = setInterval(async () => {
     try {
       await emitEvent(
@@ -82,7 +82,7 @@ export async function runOrchestratedBuild(
     } catch {
       /* best-effort */
     }
-  }, 5000);
+  }, 10000);
 
   const agentResults: OrchestratorResult['agentResults'] = [];
   let researcherContext = '';
@@ -93,6 +93,24 @@ export async function runOrchestratedBuild(
   try {
     for (const role of DEFAULT_AGENT_FLOW) {
       const config = getAgentConfig(role);
+
+      /*
+       * TOKEN OPTIMIZATION: Skip Researcher for new projects (no worklog).
+       * Researcher is only useful when editing existing projects — it reads
+       * files and searches code. For a new project, there's nothing to read.
+       * Skipping it saves ~5 LLM calls (5 maxSteps × 4000 tokens = 20K tokens).
+       */
+      if (role === 'researcher' && !hasWorklog) {
+        logger.info('[orchestrator] Skipping Researcher (new project, nothing to read)');
+        await emitEvent(
+          supabase,
+          jobId,
+          'file_chunk' as any,
+          '⏭️ Skipping Researcher (new project)',
+        );
+        continue;
+      }
+
       const agentTools = filterTools(allTools as unknown as ToolSet, config.allowedTools);
 
       // Build the agent's prompt (includes context from previous agents)

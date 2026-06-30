@@ -139,12 +139,23 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
   logger.info(`Processing job ${job.id} (user=${job.user_id})`);
 
   // Extract prompt + provider + model from validation_result (stored by /api/jobs on enqueue).
+  // NO defaults — the worker must use exactly what the user selected.
+  // If model or provider is missing, fail with a clear error.
   const prompt: string = job.validation_result?.prompt ?? '';
-  const providerName: string = job.validation_result?.provider ?? 'OpenRouter';
-  const modelName: string = job.validation_result?.model ?? 'deepseek/deepseek-chat-v3.1';
+  const providerName: string = job.validation_result?.provider ?? '';
+  const modelName: string = job.validation_result?.model ?? '';
 
   if (!prompt) {
     await failJob(supabase, job.id, 'No prompt found in job metadata');
+    return;
+  }
+
+  if (!modelName || !providerName) {
+    await failJob(
+      supabase,
+      job.id,
+      `No model or provider specified. Model="${modelName}", Provider="${providerName}". The user must select a model and provider before building.`,
+    );
     return;
   }
 
