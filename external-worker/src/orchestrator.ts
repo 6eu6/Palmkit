@@ -204,19 +204,74 @@ export async function runOrchestratedBuild(
            * calls. Renders as a collapsible "Thought Process" panel in the
            * client UI (matching chat.z.ai / Claude Code).
            *
-           * We emit it as a dedicated `reasoning` event type (not file_chunk
-           * with kind=reasoning) so the client can filter cleanly without
-           * string-matching on message prefixes. Capped at 600 chars/event
-           * to keep Realtime payloads reasonable.
+           * Tool-using models (like GLM-4.7 in tool mode) often don't emit
+           * any text — they jump straight to tool calls. In that case we
+           * synthesize a one-line reasoning snippet from the first tool call
+           * so the user always sees SOMETHING in the Thought Process panel.
+           *
+           * Capped at 600 chars/event to keep Realtime payloads reasonable.
            */
-          if (text && text.trim().length > 0) {
-            const snippet = text.trim().slice(0, 600);
+          let reasoningText = (text || '').trim();
+
+          if (!reasoningText && toolCalls.length > 0) {
+            /*
+             * Synthesize reasoning from the first tool call. This gives the
+             * user visibility into what the agent is doing even when the LLM
+             * doesn't emit narration text.
+             */
+            const firstCall = toolCalls[0];
+            const args = (firstCall.args as any) || {};
+
+            switch (firstCall.toolName) {
+              case 'write_file':
+                reasoningText = `Writing ${args.path}…`;
+                break;
+              case 'edit_file':
+                reasoningText = `Editing ${args.path}…`;
+                break;
+              case 'read_file':
+                reasoningText = `Reading ${args.path} to understand its current state…`;
+                break;
+              case 'delete_file':
+                reasoningText = `Removing ${args.path}…`;
+                break;
+              case 'search_code':
+                reasoningText = `Searching the codebase for "${args.pattern}"…`;
+                break;
+              case 'list_files':
+                reasoningText = 'Reviewing the current project structure…';
+                break;
+              case 'list_uploads':
+                reasoningText = 'Checking for user-uploaded files…';
+                break;
+              case 'run_shell':
+                reasoningText = `Running shell command: ${String(args.command || '').slice(0, 80)}…`;
+                break;
+              case 'run_tests':
+                reasoningText = 'Running the test suite to verify nothing broke…';
+                break;
+              case 'take_screenshot':
+                reasoningText = 'Taking a screenshot to visually verify the app…';
+                break;
+              case 'update_todos':
+                reasoningText = 'Updating the task list…';
+                break;
+              case 'done':
+                reasoningText = `Wrapping up: ${String(args.summary || '').slice(0, 100)}`;
+                break;
+              default:
+                reasoningText = `Calling tool: ${firstCall.toolName}`;
+            }
+          }
+
+          if (reasoningText) {
+            const snippet = reasoningText.slice(0, 600);
             try {
               await emitEvent(
                 supabase,
                 jobId,
                 'reasoning',
-                `💭 ${config.name}: ${snippet}${text.length > 600 ? '…' : ''}`,
+                `💭 ${config.name}: ${snippet}${reasoningText.length > 600 ? '…' : ''}`,
                 { agent: config.name, role, text: snippet, stepType },
               );
             } catch {

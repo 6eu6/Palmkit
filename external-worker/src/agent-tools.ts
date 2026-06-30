@@ -599,53 +599,97 @@ export function createAgentTools(
     // The frontend renders these as a checklist with green ✓ for done,
     // spinner for in_progress, and empty ○ for pending — exactly like
     // chat.z.ai / Claude Code / Cursor todos panel.
+    //
+    // IMPORTANT: many LLMs (notably GLM-4.x) serialize the `todos` array
+    // as a JSON STRING instead of a JSON array, even when the schema says
+    // array. We accept both forms and parse the string if needed — without
+    // this, the tool call fails with "Type validation failed" and the
+    // whole build aborts.
     // ═══════════════════════════════════════════════════════════════════
     update_todos: tool({
       description:
         'Publish your current task list so the user can see what you are working on. ' +
         'Call this AT THE START to share your plan, and AGAIN whenever a task completes ' +
         'so the user sees live progress. Each task has a status: "pending", "in_progress", or "done". ' +
-        'Only ONE task should be "in_progress" at a time. Keep task text short (max 80 chars).',
+        'Only ONE task should be "in_progress" at a time. Keep task text short (max 80 chars). ' +
+        'Pass the `todos` parameter as a JSON ARRAY (not a string), e.g. ' +
+        '[{"text":"Create App.tsx","status":"in_progress"},{"text":"Add styles","status":"pending"}].',
       parameters: z.object({
         todos: z
-          .array(
-            z.object({
-              text: z
-                .string()
-                .max(120)
-                .describe('Short imperative description, e.g. "Create src/App.tsx with hero section"'),
-              status: z
-                .enum(['pending', 'in_progress', 'done'])
-                .describe('"pending" = not started, "in_progress" = working on now, "done" = completed'),
-            }),
-          )
-          .max(20)
-          .describe('The complete current task list. Send the FULL list every time, not just changes.'),
+          .any()
+          .describe(
+            'The complete current task list as a JSON array. ' +
+              'Each item must have: { "text": string (max 120 chars), "status": "pending" | "in_progress" | "done" }. ' +
+              'Send the FULL list every time, not just changes. Max 20 items.',
+          ),
       }),
-      execute: async ({ todos }) => {
-        const done = todos.filter((t) => t.status === 'done').length;
-        const inProgress = todos.filter((t) => t.status === 'in_progress').length;
-        const pending = todos.filter((t) => t.status === 'pending').length;
+      execute: async ({ todos: rawTodos }) => {
+        // Coerce: if the LLM passed a JSON string, parse it. If it passed
+        // an array directly, use it as-is. If anything else, fail gracefully.
+        let todos: Array<{ text: string; status: 'pending' | 'in_progress' | 'done' }>;
+
+        if (typeof rawTodos === 'string') {
+          try {
+            const parsed = JSON.parse(rawTodos);
+            todos = Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return {
+              success: false,
+              error:
+                'Could not parse `todos` — pass a JSON array, not a string. ' +
+                  'Example: [{"text":"Create App.tsx","status":"in_progress"}]',
+            };
+          }
+        } else if (Array.isArray(rawTodos)) {
+          todos = rawTodos;
+        } else {
+          return {
+            success: false,
+            error: '`todos` must be a JSON array. Got: ' + typeof rawTodos,
+          };
+        }
+
+        // Validate + sanitize each item
+        const validStatuses = new Set(['pending', 'in_progress', 'done']);
+        const sanitized = todos
+          .filter((t) => t && typeof t === 'object')
+          .map((t) => ({
+            text: String(t.text ?? '').slice(0, 120),
+            status: validStatuses.has(t.status) ? t.status : 'pending',
+          }))
+          .filter((t) => t.text.length > 0)
+          .slice(0, 20);
+
+        if (sanitized.length === 0) {
+          return {
+            success: false,
+            error: 'No valid todos found. Each item needs {text, status}.',
+          };
+        }
+
+        const done = sanitized.filter((t) => t.status === 'done').length;
+        const inProgress = sanitized.filter((t) => t.status === 'in_progress').length;
+        const pending = sanitized.filter((t) => t.status === 'pending').length;
 
         logger.info(
-          `[agent] update_todos: ${todos.length} items (${done} done, ${inProgress} in_progress, ${pending} pending)`,
+          `[agent] update_todos: ${sanitized.length} items (${done} done, ${inProgress} in_progress, ${pending} pending)`,
         );
 
         await emitEvent(
           supabase,
           jobId,
           'todos_updated',
-          `📋 Todos: ${done}/${todos.length} done`,
+          `📋 Todos: ${done}/${sanitized.length} done`,
           {
-            todos,
-            counts: { total: todos.length, done, inProgress, pending },
+            todos: sanitized,
+            counts: { total: sanitized.length, done, inProgress, pending },
           },
         );
 
         return {
           success: true,
-          counts: { total: todos.length, done, inProgress, pending },
-          message: `Todos updated: ${done}/${todos.length} done, ${inProgress} in progress`,
+          counts: { total: sanitized.length, done, inProgress, pending },
+          message: `Todos updated: ${done}/${sanitized.length} done, ${inProgress} in progress`,
         };
       },
     }),
