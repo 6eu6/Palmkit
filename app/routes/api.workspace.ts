@@ -22,7 +22,7 @@
  * the build_jobs table (the user must own at least one job for the project).
  */
 
-import type { LoaderFunctionArgs } from '@remix-run/cloudflare';
+import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/cloudflare';
 import { json } from '@remix-run/cloudflare';
 import { getAuthedUser } from '~/lib/auth/supabase.server';
 import { createScopedLogger } from '~/utils/logger';
@@ -149,6 +149,77 @@ export async function loader(args: LoaderFunctionArgs) {
     });
   }
 
+  // ─── GET /api/workspace?action=download&projectId=xxx&path=downloads/file.zip ───
+  // Serves a file as an attachment (forces download in the browser).
+  // Used for generated outputs in the downloads/ folder.
+  if (action === 'download') {
+    const path = url.searchParams.get('path');
+
+    if (!path) {
+      return json({ error: 'path is required' }, { status: 400 });
+    }
+
+    const normalized = path.replace(/^\/+/, '').replace(/\.\./g, '');
+    const workspaceKey = `projects/${projectId}/workspace/${normalized}`;
+    const storageKey = `${authed.user.id}/${workspaceKey}`;
+
+    const { data: fileData, error: downloadError } = await authed.supabase.storage
+      .from(BUCKET)
+      .download(storageKey);
+
+    if (downloadError || !fileData) {
+      return json({ error: 'File not found', path: normalized }, { status: 404 });
+    }
+
+    const content = await fileData.text();
+    const mimeType = inferMime(normalized);
+    const filename = normalized.split('/').pop() || 'download';
+
+    return new Response(content, {
+      status: 200,
+      headers: {
+        'Content-Type': mimeType,
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Cache-Control': 'no-cache',
+        'X-File-Size': String(content.length),
+      },
+    });
+  }
+
+  // ─── GET /api/workspace?action=uploads&projectId=xxx ───
+  // Lists files in the uploads/ folder specifically.
+  if (action === 'uploads') {
+    const prefix = `${authed.user.id}/projects/${projectId}/workspace/uploads/`;
+    const supabase = authed.supabase;
+    const files: string[] = [];
+
+    async function listUploads(currentPrefix: string) {
+      const { data, error } = await supabase.storage.from(BUCKET).list(currentPrefix, {
+        limit: 1000,
+        offset: 0,
+      });
+
+      if (error || !data) {
+        return;
+      }
+
+      for (const item of data) {
+        const fullPath = `${currentPrefix}${item.name}`;
+
+        if (item.metadata === null) {
+          await listUploads(`${fullPath}/`);
+        } else {
+          const relative = fullPath.slice(prefix.length);
+          files.push(relative);
+        }
+      }
+    }
+
+    await listUploads(prefix);
+
+    return json({ uploads: files, count: files.length }, { status: 200 });
+  }
+
   // ─── GET /api/workspace/worklog?projectId=xxx ───
   if (action === 'worklog') {
     const workspaceKey = `projects/${projectId}/workspace/worklog.md`;
@@ -245,7 +316,79 @@ export async function loader(args: LoaderFunctionArgs) {
   }
 
   return json(
-    { error: 'Unknown action. Use action=list, action=file, action=worklog, or action=manifest' },
+    { error: 'Unknown action. Use action=list, action=file, action=worklog, action=manifest, or action=download' },
     { status: 400 },
+  );
+}
+
+/*
+ * POST /api/workspace — Upload files to the workspace
+ *
+ * Body: multipart/form-data with:
+ *   - projectId: string (the chat ID)
+ *   - path: string (relative path in workspace, e.g. "uploads/photo.png")
+ *   - file: File (the uploaded file)
+ *
+ * The file is stored in Supabase Storage at:
+ *   {userId}/projects/{projectId}/workspace/{path}
+ *
+ * This allows users to upload images, CSVs, PDFs, etc. that the agent
+ * can then read with read_file and use in the project.
+ */
+export async function action(args: ActionFunctionArgs) {
+  const { request, context } = args;
+
+  const authed = await getAuthedUser(request, context);
+
+  if (!authed?.user) {
+    return json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const formData = await request.formData();
+  const projectId = formData.get('projectId') as string | null;
+  const filePath = formData.get('path') as string | null;
+  const file = formData.get('file') as File | null;
+
+  if (!projectId || !filePath || !file) {
+    return json({ error: 'projectId, path, and file are required' }, { status: 400 });
+  }
+
+  // Verify ownership
+  const owns = await verifyProjectOwnership(authed.supabase, authed.user.id, projectId);
+
+  if (!owns) {
+    return json({ error: 'Project not found or access denied' }, { status: 403 });
+  }
+
+  // Normalize the path — strip leading slashes, prevent directory traversal
+  const normalized = filePath.replace(/^\/+/, '').replace(/\.\./g, '');
+
+  // Read file content
+  const arrayBuffer = await file.arrayBuffer();
+  const content = new Uint8Array(arrayBuffer);
+
+  // Upload to Supabase Storage
+  const storageKey = `${authed.user.id}/projects/${projectId}/workspace/${normalized}`;
+
+  const { error: uploadError } = await authed.supabase.storage
+    .from(BUCKET)
+    .upload(storageKey, content, {
+      contentType: file.type || 'application/octet-stream',
+      upsert: true,
+    });
+
+  if (uploadError) {
+    logger.error(`Upload failed for ${normalized}:`, uploadError.message);
+    return json({ error: 'Upload failed: ' + uploadError.message }, { status: 500 });
+  }
+
+  return json(
+    {
+      success: true,
+      path: normalized,
+      size: content.byteLength,
+      contentType: file.type || 'application/octet-stream',
+    },
+    { status: 201 },
   );
 }

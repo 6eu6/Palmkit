@@ -204,6 +204,36 @@ export function createAgentTools(
     }),
 
     // ═══════════════════════════════════════════════════════════════════
+    // list_uploads — List files uploaded by the user (in uploads/ folder)
+    // ═══════════════════════════════════════════════════════════════════
+    list_uploads: tool({
+      description:
+        'List files that the user has uploaded to the project (in the uploads/ folder). ' +
+        'Use this to see what files the user has provided — images, CSVs, PDFs, etc. ' +
+        'You can then read these files with read_file to use them in the project.',
+      parameters: z.object({}),
+      execute: async () => {
+        // List files from R2 under uploads/ prefix
+        try {
+          const { listObjects } = await import('./r2-client');
+          const prefix = `projects/${projectId}/workspace/uploads/`;
+          const keys = await listObjects(prefix);
+          const uploadFiles = keys.map((k) => k.slice(prefix.length)).filter((f) => f.length > 0);
+
+          logger.info(`[agent] list_uploads: ${uploadFiles.length} files`);
+
+          return {
+            totalUploads: uploadFiles.length,
+            files: uploadFiles,
+          };
+        } catch (e) {
+          logger.warn(`[agent] list_uploads failed: ${e}`);
+          return { totalUploads: 0, files: [] };
+        }
+      },
+    }),
+
+    // ═══════════════════════════════════════════════════════════════════
     // run_shell — Run a shell command in E2B sandbox (like Super Z's Bash)
     // ═══════════════════════════════════════════════════════════════════
     run_shell: tool({
