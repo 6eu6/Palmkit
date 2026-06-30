@@ -98,7 +98,7 @@ export async function loader(args: LoaderFunctionArgs) {
   }
 
   const url = new URL(request.url);
-  const action = url.pathname.split('/').pop() || '';
+  const action = url.searchParams.get('action') || 'list';
   const projectId = url.searchParams.get('projectId');
 
   if (!projectId) {
@@ -239,5 +239,8 @@ export async function loader(args: LoaderFunctionArgs) {
     return json({ files, count: files.length }, { status: 200 });
   }
 
-  return json({ error: 'Unknown action. Use /list, /file, /worklog, or /manifest' }, { status: 400 });
+  return json(
+    { error: 'Unknown action. Use action=list, action=file, action=worklog, or action=manifest' },
+    { status: 400 },
+  );
 }
