@@ -538,7 +538,16 @@ export function useChatHistory() {
              */
             const snapshotHasFilesForRestore = !!(validSnapshot?.files && Object.keys(validSnapshot.files).length > 0);
 
-            if (startingIdx > 0 && snapshotHasFilesForRestore) {
+            /*
+             * BUG FIX (2026-06-30): Disable the restorePair (palmkitArtifact
+             * with file actions). WebContainer was removed — we use E2B now.
+             * The restorePair creates file actions that the action runner
+             * tries to execute via WebContainer, which hangs forever.
+             *
+             * Instead: just load the messages as-is. Files are populated
+             * from /api/workspace (the workspace restore after setReady).
+             */
+            if (false && startingIdx > 0 && snapshotHasFilesForRestore) {
               // A) Restore UX: Step - restoring files
               setRestoreStep('restoring-files');
 
