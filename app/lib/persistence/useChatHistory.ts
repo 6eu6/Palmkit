@@ -946,14 +946,25 @@ ${value.content}
 
                 /*
                  * Match by prompt: the build's validation_result.prompt should
-                 * contain the same text as the chat's first user message
-                 * (which is also stored in storedMessages.description).
+                 * match the chat's first user message. We use the first user
+                 * message content (not the description, which is truncated
+                 * and may have "a" stripped). We extract the first 30 chars
+                 * of the user message and check if the build prompt starts
+                 * with the same text (after normalizing "Build" vs "Build a").
                  */
-                const chatPrompt = storedMessages.description || '';
-                const matchingBuild = (buildsData.builds || []).find((b) => {
-                  const buildPrompt = b.validation_result?.prompt || '';
+                const firstUserMsg = storedMessages.messages.find((m) => m.role === 'user');
+                const chatPromptRaw = (typeof firstUserMsg?.content === 'string' ? firstUserMsg.content : '') || '';
 
-                  return buildPrompt && chatPrompt && buildPrompt.includes(chatPrompt.slice(0, 30));
+                // Strip "[Model:...]\n\n[Provider:...]\n\n" prefix that gets added to user messages
+                const chatPrompt = chatPromptRaw.replace(/^\[Model:[^\]]*\]\s*\[Provider:[^\]]*\]\s*/, '').trim();
+                const chatPromptStart = chatPrompt.slice(0, 30).toLowerCase();
+
+                const matchingBuild = (buildsData.builds || []).find((b) => {
+                  const buildPrompt = (b.validation_result?.prompt || '').toLowerCase();
+                  const buildPromptStart = buildPrompt.slice(0, 30);
+
+                  // Check if the first 30 chars match (case-insensitive)
+                  return buildPromptStart === chatPromptStart;
                 });
 
                 if (matchingBuild && matchingBuild.status === 'ready_for_preview') {
