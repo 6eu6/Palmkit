@@ -281,14 +281,19 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       try {
         const { getModelInstance } = await import('./provider-registry');
         const model = getModelInstance(providerName, modelName, apiKey);
-        const projectId = job.project_id ?? job.id;
+        /*
+         * Use the chatId from validation_result as the projectId for the
+         * agent-builder. This ensures the agent writes files to the SAME
+         * workspace key that /api/workspace reads from.
+         */
+        const projectId = (job.validation_result as any)?.chatId ?? job.project_id ?? job.id;
 
         const agentResult = await runAgentBuild(
           prompt,
           model,
           job.id,
           supabase,
-          projectId, // Pass projectId (not r2Prefix) — the new workspace key structure
+          projectId, // chatId — links workspace to the IndexedDB chat
         );
 
         if (agentResult.success && agentResult.files.length > 0) {
@@ -454,7 +459,15 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
     await emitEvent(supabase, job.id, 'upload_started', 'Uploading files to R2...');
     await recordStep(supabase, job.id, { type: 'finalize', status: 'running', order: 4 });
 
-    const projectId = job.project_id ?? job.id; // use jobId as projectId if no project yet
+    /*
+     * Use the chatId from validation_result as the project ID for workspace
+     * keying. This links the R2 workspace to the IndexedDB chat, so
+     * /api/workspace can find files by chatId.
+     *
+     * Fall back to job.id if chatId is not set (older jobs).
+     */
+    const chatId = (job.validation_result as any)?.chatId as string | undefined;
+    const projectId = chatId ?? job.project_id ?? job.id;
     const manifestEntries: Array<Record<string, unknown>> = [];
 
     for (const file of result.files) {
