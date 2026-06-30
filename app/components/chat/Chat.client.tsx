@@ -182,6 +182,23 @@ export const ChatImpl = memo(
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [chatStarted, setChatStarted] = useState(initialMessages.length > 0);
+
+    /*
+     * BUG FIX (2026-06-30): When navigating from home (/) to /chat/<id>, the
+     * Chat component reuses the same instance (both _index and chat.$id routes
+     * render <Chat/>). The component mounts with initialMessages=[] (chatStarted=false),
+     * then useChatHistory's async effect loads messages and calls setInitialMessages.
+     * But chatStarted was NEVER updated — it only got set to true when the user
+     * sent a NEW message. So the home page kept showing instead of the chat.
+     *
+     * Now: sync chatStarted with initialMessages.length whenever it changes.
+     */
+    useEffect(() => {
+      if (initialMessages.length > 0) {
+        setChatStarted(true);
+      }
+    }, [initialMessages]);
+
     const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
     const [imageDataList, setImageDataList] = useState<string[]>([]);
     const [searchParams, setSearchParams] = useSearchParams();

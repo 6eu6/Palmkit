@@ -913,6 +913,129 @@ ${value.content}
               artifactTagsBalanced: true,
               fileActionsBalanced: true,
             });
+          } else if (storedMessages && storedMessages.messages.length > 0) {
+            /*
+             * BUG FIX (2026-06-30): Fallback for worker builds where metadata
+             * wasn't saved (e.g. older builds before the metadata-save fix,
+             * or builds where the page was closed before the second
+             * storeMessageHistory call completed).
+             *
+             * If the last assistant message looks like a worker build summary
+             * (contains "Build complete" and "files generated"), try to find
+             * the job from the Supabase builds table using the chat's urlId.
+             * This allows files to be restored from R2 on reload.
+             */
+            const lastMsg = storedMessages.messages[storedMessages.messages.length - 1];
+            const isWorkerBuild =
+              lastMsg?.role === 'assistant' &&
+              typeof lastMsg.content === 'string' &&
+              lastMsg.content.includes('Build complete') &&
+              lastMsg.content.includes('files generated');
+
+            if (isWorkerBuild && storedMessages.urlId) {
+              try {
+                // Try to find the job by urlId via the account builds API
+                const buildsResp = await fetch('/api/account/builds');
+                const buildsData = (await buildsResp.json()) as {
+                  builds?: Array<{ id: string; prompt?: string; status?: string; appType?: string }>;
+                };
+
+                const matchingBuild = (buildsData.builds || []).find(
+                  (b) =>
+                    b.prompt &&
+                    storedMessages.description &&
+                    b.prompt.includes(storedMessages.description.slice(0, 30)),
+                );
+
+                if (matchingBuild && matchingBuild.status === 'ready_for_preview') {
+                  // Fetch files from R2 using the discovered jobId
+                  const jobResp = await fetch(`/api/jobs?id=${matchingBuild.id}`);
+                  const jobData = (await jobResp.json()) as {
+                    files?: Array<{ path: string }>;
+                    status?: string;
+                    appType?: string;
+                  };
+
+                  const restoredAppType = jobData.appType ?? matchingBuild.appType ?? 'react';
+
+                  if (restoredAppType) {
+                    const { buildStatusStore } = await import('~/lib/stores/build-status');
+                    const current = buildStatusStore.get();
+                    buildStatusStore.set({
+                      ...current,
+                      appType: restoredAppType,
+                      jobStatus: 'ready_for_preview',
+                      completeness: 'complete',
+                      hasCompletionMarker: true,
+                      artifactTagsBalanced: true,
+                      fileActionsBalanced: true,
+                      fileCount: jobData.files?.length ?? current.fileCount,
+                    });
+                  }
+
+                  if (
+                    jobData.status === 'ready_for_preview' &&
+                    Array.isArray(jobData.files) &&
+                    jobData.files.length > 0
+                  ) {
+                    const previewFiles: Record<string, string> = {};
+
+                    for (const f of jobData.files) {
+                      try {
+                        const fileResp = await fetch(
+                          `/api/files?jobId=${matchingBuild.id}&path=${encodeURIComponent(f.path)}`,
+                        );
+
+                        if (fileResp.ok) {
+                          previewFiles[f.path] = await fileResp.text();
+                        }
+                      } catch {
+                        // skip individual file errors
+                      }
+                    }
+
+                    if (Object.keys(previewFiles).length > 0) {
+                      const { setPreviewFiles } = await import('~/lib/stores/build-status');
+                      setPreviewFiles(previewFiles);
+
+                      const fileMap: Record<string, { type: 'file'; content: string; isBinary?: boolean }> = {};
+
+                      for (const [path, content] of Object.entries(previewFiles)) {
+                        fileMap[path] = { type: 'file', content };
+                      }
+                      workbenchStore.files.set(fileMap as any);
+
+                      console.log(
+                        `[Palmkit] Fallback restore: ${Object.keys(previewFiles).length} file(s) from R2 for job ${matchingBuild.id}`,
+                      );
+
+                      // Save the jobId to metadata so future reloads don't need this fallback
+                      const newMetadata = {
+                        gitUrl: '',
+                        palmkitJobId: matchingBuild.id,
+                        palmkitAppType: restoredAppType ?? undefined,
+                      };
+                      chatMetadata.set(newMetadata);
+
+                      // Re-save the chat with the discovered metadata
+                      if (storedMessages.id) {
+                        await setMessages(
+                          db,
+                          storedMessages.id,
+                          storedMessages.messages,
+                          storedMessages.urlId,
+                          storedMessages.description,
+                          storedMessages.timestamp,
+                          newMetadata,
+                        );
+                      }
+                    }
+                  }
+                }
+              } catch (e) {
+                console.warn('[Palmkit] Fallback job lookup failed:', e);
+              }
+            }
           }
         })
         .catch((error) => {
