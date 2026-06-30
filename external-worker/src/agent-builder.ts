@@ -181,7 +181,7 @@ the memory above.`
       tools,
       maxSteps: 50, // enough for: plan → write files → verify → fix → done
       temperature: 0.7,
-      maxTokens: 8000, // per step
+      maxTokens: 16000, // per step — large enough for big files with SVGs
       onStepFinish: async ({ toolCalls, text }) => {
         fullText += text + '\n';
 
