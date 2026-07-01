@@ -25,10 +25,7 @@ import DeployChatAlert from '~/components/deploy/DeployAlert';
 import ChatAlert from './ChatAlert';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import ProgressCompilation from './ProgressCompilation';
-import { WorkerProgress } from './WorkerProgress';
-import { MultiAgentTodos } from './TodosPanel';
-import { ThoughtProcessPanel } from './ThoughtProcessPanel';
-import { ActivityStream } from './ActivityStream';
+import { BuildStream } from './BuildStream';
 import type { ProgressAnnotation } from '~/types/context';
 import { SupabaseChatAlert } from '~/components/chat/SupabaseAlert';
 import { expoUrlAtom } from '~/lib/stores/qrCodeStore';
@@ -363,10 +360,12 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       >
         <ClientOnly>{() => <Menu />}</ClientOnly>
         <div className="flex flex-col lg:flex-row overflow-y-auto w-full h-full">
-          <div className={classNames(styles.Chat, 'flex flex-col h-full', {
-            'flex-grow lg:min-w-[var(--chat-min-width)]': !showWorkbench,
-            'lg:w-[var(--chat-min-width)] lg:flex-shrink-0': showWorkbench,
-          })}>
+          <div
+            className={classNames(styles.Chat, 'flex flex-col h-full', {
+              'flex-grow lg:min-w-[var(--chat-min-width)]': !showWorkbench,
+              'lg:w-[var(--chat-min-width)] lg:flex-shrink-0': showWorkbench,
+            })}
+          >
             {!chatStarted && (
               <div
                 id="intro"
@@ -460,29 +459,16 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   {llmErrorAlert && <LlmErrorAlert alert={llmErrorAlert} clearAlert={() => clearLlmErrorAlert?.()} />}
                 </div>
                 {progressAnnotations && <ProgressCompilation data={progressAnnotations} />}
-                <WorkerProgress />
                 {/*
-                  * Three new real-time progress panels (matching the
-                  * chat.z.ai / Cursor UI the user requested):
-                  *
-                  * 1. ThoughtProcessPanel — the LLM's reasoning text in a
-                  *    collapsible gray block (💭 events from orchestrator).
-                  *
-                  * 2. MultiAgentTodos — a checklist per agent showing pending /
-                  *    in_progress / done items (📋 todos_updated events from
-                  *    the update_todos agent tool).
-                  *
-                  * 3. ActivityStream — grouped activity log per agent with
-                  *    summary like "Wrote 5 files, Ran 3 commands" and
-                  *    expandable detail (file_written / file_chunk events
-                  *    with agent field).
-                  *
-                  * Each panel hides itself when there's no data, so the chat
-                  * stays clean before/after a build.
-                  */}
-                <ThoughtProcessPanel />
-                <MultiAgentTodos />
-                <ActivityStream />
+                 * BuildStream — the unified, chronological build timeline
+                 * (Phase C). Replaces the four separate panels (WorkerProgress,
+                 * ThoughtProcessPanel, MultiAgentTodos, ActivityStream) with a
+                 * single CLI-style stream: reasoning, files, commands, and the
+                 * plan interleaved in the order they happened, grouped per
+                 * agent. Reads workerEventsStore + workerProgressStore (already
+                 * populated by Chat.client). Hides itself when there's no data.
+                 */}
+                <BuildStream />
                 {isInterruptedGeneration && (
                   <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm">
                     <div className="flex items-center gap-2">
