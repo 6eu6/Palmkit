@@ -628,7 +628,52 @@ export async function runOrchestratedBuild(
     // Check final result
     const files = getProjectFiles() as Record<string, string>;
     const fileCount = Object.keys(files).length;
-    overallSuccess = fileCount > 0;
+
+    /*
+     * MINIMUM FILE COUNT CHECK — prevent "successful" builds with incomplete files.
+     *
+     * The user reported that builds produce only 2 files (package.json +
+     * vite.config.js) without index.html, src/App.jsx, etc. The LLM calls
+     * done() too early. Without this check, fileCount > 0 is treated as
+     * success, and the user sees a broken preview (no index.html = Vite 404).
+     *
+     * Minimum files per app type:
+     *   static:     3 (index.html + css + js)
+     *   react:      5 (package.json + index.html + vite.config + main + App)
+     *   nextjs:     4 (package.json + next.config + layout + page)
+     *   vue:        5 (package.json + index.html + vite.config + main + App)
+     *   python:     2 (app.py + requirements.txt)
+     *   flutter:    3 (pubspec + main.dart + app.dart)
+     *   react-native: 4 (package.json + app.json + App.tsx + screens)
+     */
+    const MIN_FILES: Record<string, number> = {
+      static: 3,
+      react: 5,
+      nextjs: 4,
+      vue: 5,
+      python: 2,
+      flutter: 3,
+      'react-native': 4,
+    };
+
+    const minRequired = (appType && MIN_FILES[appType]) || 3;
+
+    if (fileCount > 0 && fileCount < minRequired) {
+      logger.error(
+        `[orchestrator] Build produced only ${fileCount} files (minimum ${minRequired} required for ${appType} app). Failing.`,
+      );
+
+      const fileNames = Object.keys(files).join(', ');
+      const errorMsg =
+        `Build produced only ${fileCount} file${fileCount !== 1 ? 's' : ''} (${fileNames}). ` +
+        `A ${appType} app needs at least ${minRequired} files (including index.html and source files). ` +
+        `The LLM called done() too early. Please try again.`;
+
+      await emitEvent(supabase, jobId, 'job_failed', errorMsg);
+      overallSuccess = false;
+    } else {
+      overallSuccess = fileCount > 0;
+    }
 
     logger.info(
       `[orchestrator] Build finished: ${fileCount} files, ${agentResults.length} agents ran`,

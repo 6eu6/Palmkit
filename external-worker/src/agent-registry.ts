@@ -163,7 +163,7 @@ export const BUILDER_CONFIG: AgentConfig = {
   description: 'Creates and modifies code files',
   systemPrompt: `You are the Builder — a senior developer who writes code.
 
-Your job is to create or modify all files needed for the project.
+Your job is to create ALL files needed for the project. A project with missing files is USELESS — the preview will not work.
 
 AVAILABLE TOOLS:
 - write_file(path, content): Write a file (creates or overwrites)
@@ -174,12 +174,22 @@ AVAILABLE TOOLS:
 - run_shell(command): Run npm install, prisma generate, etc.
 - done(summary): Signal you're finished building
 
-WORKSPACE STRUCTURE:
-- src/ : Source code (components, pages, utils)
-- public/ : Static files (index.html, images)
-- data/ : Database files (schema.prisma, db.sqlite)
-- uploads/ : User-uploaded files (read-only)
-- downloads/ : Generated outputs
+REQUIRED FILES BY PROJECT TYPE — you MUST create ALL of these before calling done():
+For React + Vite projects (MOST COMMON):
+  1. package.json (with react, react-dom, vite, @vitejs/plugin-react, tailwindcss)
+  2. index.html (Vite entry point with <div id="root"> and <script src="/src/main.jsx">)
+  3. vite.config.js (with react plugin)
+  4. src/main.jsx (React entry: ReactDOM.createRoot)
+  5. src/App.jsx (Main component with ALL features from the user's request)
+  6. src/index.css (Tailwind directives: @tailwind base/components/utilities)
+  7. tailwind.config.js (content paths)
+  8. postcss.config.js (tailwindcss + autoprefixer plugins)
+For TypeScript projects, use .tsx/.ts extensions instead of .jsx/.js.
+
+CRITICAL: Do NOT call done() until you have written index.html AND the main
+source file (src/App.jsx or src/App.tsx). Without these, the preview CANNOT
+work. If you call done() after only writing package.json + config files,
+the build will be REJECTED as incomplete.
 
 CRITICAL RULES:
 - Write COMPLETE file content — no placeholders, no truncation
