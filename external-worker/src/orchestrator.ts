@@ -630,44 +630,51 @@ export async function runOrchestratedBuild(
     const fileCount = Object.keys(files).length;
 
     /*
-     * MINIMUM FILE COUNT CHECK — prevent "successful" builds with incomplete files.
+     * ENTRY POINT CHECK — prevent "successful" builds with no entry point.
      *
-     * The user reported that builds produce only 2 files (package.json +
-     * vite.config.js) without index.html, src/App.jsx, etc. The LLM calls
-     * done() too early. Without this check, fileCount > 0 is treated as
-     * success, and the user sees a broken preview (no index.html = Vite 404).
+     * The previous MIN_FILES check forced a minimum file count per app type
+     * (react: 5, static: 3, etc.). This was WRONG — it constrained the model
+     * to an arbitrary number. A real project might have 3 files or 30 files
+     * depending on complexity. The model should decide how many files to
+     * create.
      *
-     * Minimum files per app type:
-     *   static:     3 (index.html + css + js)
-     *   react:      5 (package.json + index.html + vite.config + main + App)
-     *   nextjs:     4 (package.json + next.config + layout + page)
-     *   vue:        5 (package.json + index.html + vite.config + main + App)
-     *   python:     2 (app.py + requirements.txt)
-     *   flutter:    3 (pubspec + main.dart + app.dart)
-     *   react-native: 4 (package.json + app.json + App.tsx + screens)
+     * The REAL problem was builds producing ONLY config files (package.json
+     * + vite.config.js) without an entry point (index.html / src/App.jsx).
+     * Vite returns 404 → blank preview.
+     *
+     * Fix: check for the PRESENCE of an entry point, not a file count.
+     *   - Web apps (react/vue/nextjs/static): need index.html or src/App.* or src/main.* or src/index.*
+     *   - Python: need app.py or main.py or server.py
+     *   - Flutter: need lib/main.dart
+     *   - React Native: need App.tsx or App.js or app/_layout.tsx
+     *
+     * If the entry point is missing → fail with a clear message.
+     * If the entry point exists → accept regardless of file count.
      */
-    const MIN_FILES: Record<string, number> = {
-      static: 3,
-      react: 5,
-      nextjs: 4,
-      vue: 5,
-      python: 2,
-      flutter: 3,
-      'react-native': 4,
+    const ENTRY_POINT_PATTERNS: Record<string, RegExp[]> = {
+      static: [/^index\.html$/i, /^src\/.*\.(js|ts)$/i],
+      react: [/^index\.html$/i, /^src\/(App|Main|main|app)\.(jsx|tsx|js|ts)$/i],
+      nextjs: [/^(app|pages)\/(page|index)\.(jsx|tsx|js|ts)$/i, /^src\/(app|pages)\//i],
+      vue: [/^index\.html$/i, /^src\/(App|main)\.(vue|js|ts)$/i],
+      python: [/^(app|main|server|run)\.py$/i],
+      flutter: [/^lib\/(main|app)\.dart$/i],
+      'react-native': [/^(App|app)\.(tsx|jsx|ts|js)$/i, /^app\/(app|_layout)\.(tsx|ts)$/i],
     };
 
-    const minRequired = (appType && MIN_FILES[appType]) || 3;
+    const patterns = (appType && ENTRY_POINT_PATTERNS[appType]) || [];
+    const filePaths = Object.keys(files);
+    const hasEntryPoint = patterns.length === 0 || filePaths.some((p) => patterns.some((re) => re.test(p)));
 
-    if (fileCount > 0 && fileCount < minRequired) {
+    if (fileCount > 0 && !hasEntryPoint) {
       logger.error(
-        `[orchestrator] Build produced only ${fileCount} files (minimum ${minRequired} required for ${appType} app). Failing.`,
+        `[orchestrator] Build produced ${fileCount} files but NO entry point for ${appType} app. Files: ${filePaths.join(', ')}. Failing.`,
       );
 
-      const fileNames = Object.keys(files).join(', ');
       const errorMsg =
-        `Build produced only ${fileCount} file${fileCount !== 1 ? 's' : ''} (${fileNames}). ` +
-        `A ${appType} app needs at least ${minRequired} files (including index.html and source files). ` +
-        `The LLM called done() too early. Please try again.`;
+        `Build produced ${fileCount} file${fileCount !== 1 ? 's' : ''} but is missing a required entry point. ` +
+        `Files written: ${filePaths.join(', ')}. ` +
+        `For a ${appType} app, you need an entry point (e.g. index.html + src/App.jsx for React, app.py for Python). ` +
+        `Please try again — the model called done() before writing the main application files.`;
 
       await emitEvent(supabase, jobId, 'job_failed', errorMsg);
       overallSuccess = false;
