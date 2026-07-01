@@ -7,6 +7,7 @@ import React, { type RefCallback, lazy, Suspense, useEffect, useState } from 're
 import { ClientOnly } from 'remix-utils/client-only';
 import { Menu } from '~/components/sidebar/Menu.client';
 import { Workbench } from '~/components/workbench/Workbench.client';
+import { workbenchStore } from '~/lib/stores/workbench';
 import { classNames } from '~/utils/classNames';
 import { PROVIDER_LIST } from '~/utils/constants';
 import { Messages } from './Messages.client';
@@ -162,6 +163,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const [progressAnnotations, setProgressAnnotations] = useState<ProgressAnnotation[]>([]);
     const expoUrl = useStore(expoUrlAtom);
     const authUser = useStore(authUserStore);
+    const showWorkbench = useStore(workbenchStore.showWorkbench);
     const [qrModalOpen, setQrModalOpen] = useState(false);
 
     useEffect(() => {
@@ -361,7 +363,10 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       >
         <ClientOnly>{() => <Menu />}</ClientOnly>
         <div className="flex flex-col lg:flex-row overflow-y-auto w-full h-full">
-          <div className={classNames(styles.Chat, 'flex flex-col flex-grow lg:min-w-[var(--chat-min-width)] h-full')}>
+          <div className={classNames(styles.Chat, 'flex flex-col h-full', {
+            'flex-grow lg:min-w-[var(--chat-min-width)]': !showWorkbench,
+            'lg:w-[var(--chat-min-width)] lg:flex-shrink-0': showWorkbench,
+          })}>
             {!chatStarted && (
               <div
                 id="intro"
