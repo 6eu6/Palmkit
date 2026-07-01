@@ -722,6 +722,13 @@ export function createAgentTools(
           {
             todos: sanitized,
             counts: { total: sanitized.length, done, inProgress, pending },
+            /*
+             * Include the agent name so the client can route the event to
+             * the correct agent's todo snapshot in agentTodosStore.
+             * Without this, dispatchJobEvent falls back to 'Worker' and
+             * the TodosPanel (which looks for 'Builder') never finds the data.
+             */
+            agent: 'Builder',
           },
         );
 

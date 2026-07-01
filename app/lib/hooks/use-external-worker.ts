@@ -55,7 +55,17 @@ function dispatchJobEvent(ev: JobEvent): void {
   }
 
   const payload = ev.payload ?? {};
-  const agent = (payload.agent as string | undefined) ?? 'Worker';
+  /*
+   * Agent name fallback: if the event doesn't have an explicit `agent`
+   * field in the payload, try to infer it from the event type and context.
+   *
+   * Old events (before the agent field was added) don't have it — so we
+   * fall back to 'Builder' for todos_updated and reasoning events (the
+   * Builder is the agent that emits these). For file_chunk/file_written
+   * events, we check the payload.agent field.
+   */
+  const agent = (payload.agent as string | undefined) ??
+    (ev.type === 'todos_updated' || ev.type === 'reasoning' ? 'Builder' : 'Worker');
   const timestamp = new Date(ev.created_at).getTime() || Date.now();
 
   try {
