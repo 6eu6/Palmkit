@@ -166,7 +166,12 @@ function foldEvents(events: WorkerEvent[]): Section[] {
       case 'file_chunk': {
         const m = ev.message ?? '';
 
-        if (p.command || /Run:/.test(m) || /^⚡/.test(m)) {
+        if (/^🔧/.test(m) || /repair attempt/i.test(m)) {
+          // Build-verification repair round kicking off.
+          current.rows.push({ kind: 'system', text: m.replace(/^🔧\s*/, '') });
+        } else if (/^⚠️/.test(m) || /Build still has errors/i.test(m)) {
+          current.rows.push({ kind: 'error', text: m.replace(/^⚠️\s*/, '') });
+        } else if (p.command || /Run:/.test(m) || /^⚡/.test(m)) {
           current.rows.push({
             kind: 'command',
             text: (p.command as string) ?? m.replace(/^.*?Run:\s*/, '').replace(/^⚡\s*/, ''),
@@ -427,6 +432,19 @@ export const BuildStream = memo(() => {
 
   const done = currentStep === 'done' || events.some((e) => e.type === 'ready_for_preview');
   const failed = events.some((e) => e.type === 'job_failed');
+
+  // Did `npm run build` actually pass? Read the last completion event's flag.
+  const buildVerified = (() => {
+    for (let i = events.length - 1; i >= 0; i--) {
+      const pl = events[i].payload as Record<string, unknown> | undefined;
+
+      if (events[i].type === 'file_generation_completed' && pl && 'buildVerified' in pl) {
+        return pl.buildVerified as boolean | null;
+      }
+    }
+    return null;
+  })();
+  const hasBuildErrors = buildVerified === false;
   const fileCount = new Set(
     events
       .filter((e) => e.type === 'file_written')
@@ -444,13 +462,23 @@ export const BuildStream = memo(() => {
               'shrink-0',
               failed
                 ? 'i-ph:x-circle-fill text-red-400'
-                : done
-                  ? 'i-ph:check-circle-fill text-green-400'
-                  : 'i-svg-spinners:90-ring-with-bg text-blue-400',
+                : done && hasBuildErrors
+                  ? 'i-ph:warning-fill text-amber-400'
+                  : done
+                    ? 'i-ph:check-circle-fill text-green-400'
+                    : 'i-svg-spinners:90-ring-with-bg text-blue-400',
             )}
           />
           <span className="text-sm font-medium text-palmkit-elements-textPrimary">
-            {failed ? 'Build failed' : done ? 'Build complete' : 'Building…'}
+            {failed
+              ? 'Build failed'
+              : done && hasBuildErrors
+                ? 'Build has errors'
+                : done && buildVerified === true
+                  ? 'Build verified'
+                  : done
+                    ? 'Build complete'
+                    : 'Building…'}
           </span>
           {fileCount > 0 && (
             <span className="ml-auto text-xs text-palmkit-elements-textTertiary tabular-nums">{fileCount} files</span>
