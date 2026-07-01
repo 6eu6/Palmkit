@@ -301,9 +301,22 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         const projectId = (job.validation_result as any)?.chatId ?? job.project_id ?? job.id;
 
         /*
-         * Use the Orchestrator (multi-agent system) instead of single agent.
+         * Use the Orchestrator (multi-agent system).
          * The Orchestrator runs: Researcher → Builder → Tester
          * Each agent gets only the tools it needs (permission model).
+         *
+         * NO LEGACY FALLBACK — the old generateStaticFiles (XML <palmkitArtifact>
+         * parsing) was removed because:
+         *   1. It doesn't emit reasoning / todos / agent_started events, so
+         *      the new structured UI panels (Thought Process, Todos, Activity
+         *      Stream) never render when it's used.
+         *   2. It uses brittle XML parsing that truncates large files.
+         *   3. It hides orchestrator bugs instead of surfacing them — the
+         *      user sees "Generating... X chars" forever without knowing the
+         *      orchestrator actually failed.
+         *
+         * Now if the orchestrator fails or produces 0 files, we fail the job
+         * with a clear error message instead of silently falling back.
          */
         const agentResult = await runOrchestratedBuild(
           prompt,
@@ -326,31 +339,46 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
           logger.info(`Job ${job.id}: agent build complete → ${agentResult.files.length} files (${agentResult.totalDuration}ms)`);
         } else {
-          // Agent build produced no files — fall back to generator
-          logger.warn(`Job ${job.id}: Agent build produced no files, falling back to generator`);
+          /*
+           * Orchestrator produced 0 files — fail cleanly with an actionable
+           * error message instead of silently falling back to the legacy
+           * generator.
+           *
+           * Common causes:
+           *   - Builder hit maxSteps without calling done() (need higher limit
+           *     or better prompt)
+           *   - edit_file/write_file type validation failed (model sent wrong
+           *     arg types — should be handled by the runtime coercion in the
+           *     tool's execute() function)
+           *   - LLM provider returned an error (rate limit, model unavailable)
+           *
+           * The user sees this error in the UI and can retry. Much better
+           * than the silent fallback that produced broken legacy output.
+           */
+          const agentSummaries = agentResult.agentResults
+            .map((a) => `${a.role}: ${a.success ? 'ok' : 'failed'} (${a.text.length} chars, ${Math.round(a.duration / 1000)}s)`)
+            .join('; ');
 
-          const onProgress = async (evt: { type: string; message: string; payload?: Record<string, unknown> }) => {
-            try {
-              await emitEvent(supabase, job.id, evt.type as any, evt.message, evt.payload);
-            } catch (e) {
-              logger.warn(`Progress emit failed: ${(e as Error).message}`);
-            }
-          };
+          const errorMsg =
+            `Build did not produce any files. Agent results: ${agentSummaries}. ` +
+            `This usually means the LLM hit the step limit without calling done(), or a tool call failed validation. ` +
+            `Please try again — the model may succeed on retry.`;
 
-          result = await generateStaticFiles(prompt, spec, providerName, modelName, apiKey, onProgress);
+          logger.error(`Job ${job.id}: orchestrator produced 0 files. ${agentSummaries}`);
+          await emitEvent(supabase, job.id, 'job_failed', errorMsg);
+          await failJob(supabase, job.id, errorMsg);
+          return;
         }
       } catch (agentErr: any) {
-        logger.warn(`Job ${job.id}: Agent build failed (${agentErr.message}), falling back to generator`);
-
-        const onProgress = async (evt: { type: string; message: string; payload?: Record<string, unknown> }) => {
-          try {
-            await emitEvent(supabase, job.id, evt.type as any, evt.message, evt.payload);
-          } catch (e) {
-            logger.warn(`Progress emit failed: ${(e as Error).message}`);
-          }
-        };
-
-        result = await generateStaticFiles(prompt, spec, providerName, modelName, apiKey, onProgress);
+        /*
+         * Orchestrator threw an exception — fail cleanly with the actual error
+         * message. No legacy fallback.
+         */
+        const errMsg = agentErr.message ?? String(agentErr);
+        logger.error(`Job ${job.id}: orchestrator failed: ${errMsg}`);
+        await emitEvent(supabase, job.id, 'job_failed', `Build failed: ${errMsg}`);
+        await failJob(supabase, job.id, `Build failed: ${errMsg}`);
+        return;
       }
 
       await emitEvent(supabase, job.id, 'file_generation_completed', `Generated ${result.files.length} files (${result.appType})`);

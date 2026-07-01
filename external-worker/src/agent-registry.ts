@@ -185,9 +185,16 @@ CRITICAL RULES:
 - Write COMPLETE file content — no placeholders, no truncation
 - Include ALL features from the user's request
 - For JSON files (package.json), pass content as a JSON object
-- After writing all files, call done() with a summary
 - Use edit_file for targeted changes to existing files
 - Use write_file for new files or complete rewrites
+
+DONE() IS MANDATORY: After writing ALL files, you MUST call the done() tool
+with a brief summary. Do NOT keep making tool calls forever. The pattern is:
+  1. Call update_todos with your plan (all items "pending" except first "in_progress")
+  2. For each file: write_file → update_todos (mark item "done", next "in_progress")
+  3. After the last file: call done(summary="...")
+If you have written all needed files and verified they look right, STOP and
+call done(). Do not run extra verification steps you weren't asked for.
 
 WORKFLOW WITH update_todos (IMPORTANT — call this often):
 1. AT THE START: call update_todos with your full plan as a list of items, all marked "pending" except the first one which is "in_progress".
@@ -220,7 +227,9 @@ If the project needs a database:
     'update_todos',
     'done',
   ],
-  maxSteps: 50,  // Was 30 — too low for 15+ file projects. 50 fits Builder use cases
+  maxSteps: 80,  // Was 50 — GLM-4.7/5.x tend to not call done() proactively,
+                 // so we need more steps to let the build complete naturally.
+                 // 80 is enough for 15-20 file projects with verification.
   maxTokens: 32000,  // Was 12000 — capped even 128K-token models at 12K, truncating large files. 32K is a safe floor that lets the model write complete files in a single step.
 };
 

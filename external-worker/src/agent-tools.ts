@@ -227,19 +227,58 @@ export function createAgentTools(
     }),
 
     // ═══════════════════════════════════════════════════════════════════
-    // edit_file — Edit a specific part of a file (like Super Z's Edit)
+    // edit_file — Edit a specific part of a file by replacing old text with new text.
+    //
+    // IMPORTANT: many LLMs (GLM-4.x/5.x included) sometimes pass `oldText` and
+    // `newText` as JSON objects/arrays instead of strings — even when the
+    // schema says string. This causes "Type validation failed" which aborts
+    // the entire build. We accept `z.any()` and coerce at runtime:
+    //   - string → use as-is
+    //   - object/array → JSON.stringify with 2-space indent
+    //   - number/boolean → String()
+    //   - null/undefined → empty string
     // ═══════════════════════════════════════════════════════════════════
     edit_file: tool({
       description:
         'Edit a specific part of a file by replacing old text with new text. ' +
         'Use this for targeted changes instead of rewriting the whole file with write_file. ' +
-        'The oldText must match EXACTLY (including whitespace and indentation).',
+        'The oldText must match EXACTLY (including whitespace and indentation). ' +
+        'Pass oldText and newText as STRINGS (not objects).',
       parameters: z.object({
         path: z.string().describe('The file path to edit'),
-        oldText: z.string().describe('The exact text to find and replace (must match exactly)'),
-        newText: z.string().describe('The new text to replace it with'),
+        oldText: z
+          .any()
+          .describe('The exact text to find and replace (must match exactly). Pass as a STRING.'),
+        newText: z
+          .any()
+          .describe('The new text to replace it with. Pass as a STRING.'),
       }),
-      execute: async ({ path, oldText, newText }) => {
+      execute: async ({ path, oldText: rawOld, newText: rawNew }) => {
+        // Coerce to string — handles LLMs that pass objects/arrays/numbers
+        const coerce = (v: any): string => {
+          if (v === null || v === undefined) {
+            return '';
+          }
+
+          if (typeof v === 'string') {
+            return v;
+          }
+
+          if (typeof v === 'number' || typeof v === 'boolean') {
+            return String(v);
+          }
+
+          // object or array — stringify with indentation
+          try {
+            return JSON.stringify(v, null, 2);
+          } catch {
+            return String(v);
+          }
+        };
+
+        const oldText = coerce(rawOld);
+        const newText = coerce(rawNew);
+
         let content = projectFiles.get(path);
 
         if (!content) {

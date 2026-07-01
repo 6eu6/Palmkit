@@ -84,20 +84,22 @@ export async function runOrchestratedBuild(
     }
   }, 10000);
 
-  // Hard-cap the whole orchestrator at 15 minutes.
+  // Hard-cap the whole orchestrator at 20 minutes.
   //
-  // 8 minutes was too tight — npm install + npm run build + screenshot capture
-  // on a cold E2B sandbox can take 5-7 min just for the Tester pass. Real-world
-  // projects (15+ files with full React+TS+Tailwind setup) need more headroom.
+  // 8 minutes was too tight (real projects need Builder + Tester + npm install
+  // + npm run build which alone can take 5-7 min on cold E2B sandboxes).
+  // 15 minutes still wasn't enough for complex 15+ file React projects with
+  // GLM-5.x (which tends to not call done() proactively and burns steps).
   //
-  // Without this cap, a hung LLM provider could spin the keep-alive timer
-  // forever. The cleanup in finally() cancels both timers.
+  // 20 minutes gives enough headroom for the largest reasonable projects
+  // while still bounding hung LLM providers.
   //
   // Note: the throw here crashes the worker process. systemd's Restart=always
   // brings it back up in ~5s, but the in-flight job is lost. The job_processor
-  // catch block marks the job as failed_clean. Future improvement: use AbortController
-  // instead of throw so we can mark the job as failed without crashing the worker.
-  const HARD_TIMEOUT_MS = 15 * 60 * 1000;
+  // catch block marks the job as failed_clean. Future improvement: use
+  // AbortController.signal passed to streamText so we can cancel the LLM
+  // request without crashing the worker.
+  const HARD_TIMEOUT_MS = 20 * 60 * 1000;
   const hardTimeout = setTimeout(() => {
     logger.error(`[orchestrator] Hard timeout (${HARD_TIMEOUT_MS}ms) reached for job ${jobId}`);
     throw new Error(`Build exceeded ${HARD_TIMEOUT_MS / 1000}s timeout`);

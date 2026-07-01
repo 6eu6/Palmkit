@@ -44,6 +44,29 @@ export const chatId = atom<string | undefined>(undefined);
 export const description = atom<string | undefined>(undefined);
 export const chatMetadata = atom<IChatMetadata | undefined>(undefined);
 
+/*
+ * safeGetStore — read the current value of a nanostore atom by module path
+ * + export name. Used during snapshot save to capture the live progress data
+ * (todos, reasoning, activity groups) without creating a circular import.
+ *
+ * Returns undefined if the module/export isn't found (best-effort — snapshot
+ * save should never crash the chat).
+ */
+async function safeGetStore<T = any>(modulePath: string, exportName: string): Promise<T | undefined> {
+  try {
+    const mod: any = await import(/* @vite-ignore */ modulePath);
+    const atom = mod?.[exportName];
+
+    if (atom && typeof atom.get === 'function') {
+      return atom.get() as T;
+    }
+  } catch {
+    // best-effort
+  }
+
+  return undefined;
+}
+
 /**
  * Generate a smart, short title from the user's first message.
  * Strips model/provider tags, extracts the core intent, and produces
@@ -204,6 +227,17 @@ function createDebouncedSnapshotSaver(delay: number = 2000) {
             chatIndex: chatIdx,
             files: snapshotFiles,
             summary: chatSummary,
+            /*
+             * Persist structured progress data so the user can refresh the
+             * page mid-build and still see the Todos / Thought Process /
+             * Activity Stream panels populated.
+             *
+             * We import the stores lazily to avoid a circular dependency
+             * (build-status.ts imports from persistence/types.ts via re-exports).
+             */
+            agentTodos: await safeGetStore('~/lib/stores/build-status', 'agentTodosStore'),
+            reasoning: await safeGetStore('~/lib/stores/build-status', 'reasoningStore'),
+            activityGroups: await safeGetStore('~/lib/stores/build-status', 'activityGroupsStore'),
           };
           await setSnapshot(dbInstance, chatIdVal, snapshot);
         } catch (error) {
@@ -473,6 +507,34 @@ export function useChatHistory() {
               workbenchStore.files.set(snapshot.files);
             } catch (e) {
               console.error('Failed to restore snapshot files into workbench:', e);
+            }
+
+            /*
+             * Restore structured progress data (Todos, Thought Process,
+             * Activity Stream) so the panels stay populated after a page
+             * refresh. Without this, the stores are empty on reload and the
+             * panels disappear — which made the user think the build was
+             * broken.
+             *
+             * We lazy-import the stores to avoid a circular dependency
+             * (build-status.ts imports from persistence/types.ts).
+             */
+            try {
+              const buildStatus: any = await import('~/lib/stores/build-status');
+
+              if (snapshot.agentTodos && typeof buildStatus.agentTodosStore?.set === 'function') {
+                buildStatus.agentTodosStore.set(snapshot.agentTodos);
+              }
+
+              if (snapshot.reasoning && typeof buildStatus.reasoningStore?.set === 'function') {
+                buildStatus.reasoningStore.set(snapshot.reasoning);
+              }
+
+              if (snapshot.activityGroups && typeof buildStatus.activityGroupsStore?.set === 'function') {
+                buildStatus.activityGroupsStore.set(snapshot.activityGroups);
+              }
+            } catch (e) {
+              console.warn('Failed to restore structured progress stores:', e);
             }
           }
 

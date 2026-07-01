@@ -230,6 +230,28 @@ export function WorkerProgress() {
                 );
               }
 
+              if (item.type === 'generating_summary') {
+                const summary = item as { type: 'generating_summary'; message: string; count: number; totalChars: number };
+                return (
+                  <li
+                    key={`gs-${i}`}
+                    className="flex items-center gap-2 text-palmkit-elements-textSecondary"
+                    title={`${summary.count} streaming updates collapsed`}
+                  >
+                    <div
+                      className={classNames(
+                        'shrink-0 text-[13px]',
+                        isLast ? ICON_RUNNING : 'i-ph:spinner text-palmkit-elements-textTertiary',
+                      )}
+                    />
+                    <span className="text-xs opacity-70">
+                      {summary.message}{' '}
+                      <span className="opacity-50">({summary.count} updates)</span>
+                    </span>
+                  </li>
+                );
+              }
+
               const icon = eventIcon(item as WorkerEvent, isLast);
 
               return (
@@ -259,7 +281,25 @@ export function WorkerProgress() {
   );
 }
 
-type DisplayItem = WorkerEvent | { type: 'file_summary'; message: string };
+type DisplayItem = WorkerEvent | { type: 'file_summary'; message: string } | { type: 'generating_summary'; message: string; count: number; totalChars: number };
+
+/*
+ * Collapse consecutive "Generating... X chars received" events into a single
+ * summary entry. Without this, the log gets flooded with 20+ identical-looking
+ * lines during the streaming phase.
+ *
+ * The pattern we look for: messages matching /^Generating\.\.\.\s*[\d,]+\s*chars?\s*received$/i
+ * We collapse consecutive matches into one entry showing the latest count +
+ * how many updates we skipped.
+ */
+function isGeneratingCharsEvent(ev: WorkerEvent): boolean {
+  return /^Generating\.\.\.\s*[\d,]+\s*chars?\s*received/i.test(ev.message || '');
+}
+
+function extractCharsCount(ev: WorkerEvent): number {
+  const match = ev.message?.match(/([\d,]+)\s*chars?\s*received/i);
+  return match ? parseInt(match[1].replace(/,/g, ''), 10) : 0;
+}
 
 function collapseFileEvents(events: WorkerEvent[]): DisplayItem[] {
   const result: DisplayItem[] = [];
@@ -268,6 +308,35 @@ function collapseFileEvents(events: WorkerEvent[]): DisplayItem[] {
 
   for (let i = 0; i < events.length; i++) {
     const ev = events[i];
+
+    // Collapse consecutive "Generating... X chars received" events
+    if (isGeneratingCharsEvent(ev)) {
+      const collapsedEvents: WorkerEvent[] = [ev];
+      let j = i + 1;
+
+      while (j < events.length && isGeneratingCharsEvent(events[j])) {
+        collapsedEvents.push(events[j]);
+        j++;
+      }
+
+      if (collapsedEvents.length > 2) {
+        const lastEv = collapsedEvents[collapsedEvents.length - 1];
+        const totalChars = extractCharsCount(lastEv);
+        result.push({
+          type: 'generating_summary',
+          message: `Generating… ${totalChars.toLocaleString()} chars received`,
+          count: collapsedEvents.length,
+          totalChars,
+        });
+      } else {
+        for (const e of collapsedEvents) {
+          result.push(e);
+        }
+      }
+
+      i = j - 1; // skip the consumed events
+      continue;
+    }
 
     if (isFileWritten(ev)) {
       fileCount++;
