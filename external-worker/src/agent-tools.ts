@@ -36,20 +36,46 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { emitEvent } from './event-emitter';
 import { runInE2B } from './e2b-runner';
 
-// In-memory file store for the current job
-// Files are also written to R2 (workspace) for persistence
-const projectFiles = new Map<string, string>();
+/*
+ * Per-JOB in-memory file stores. Files are also written to R2 (workspace) for
+ * persistence.
+ *
+ * CRITICAL: this MUST be keyed by jobId. It used to be a single module-level
+ * Map shared by every build the long-running worker processed. When two builds
+ * ran concurrently they wrote into the SAME map, so one user's files leaked
+ * into another user's project (observed: a "restaurant website" build's pages
+ * appearing inside an unrelated Lithos hero-section build) and produced broken
+ * output with duplicate entry points (App.jsx + App.tsx, main.jsx + main.tsx).
+ * Scoping the map per job fully isolates concurrent builds.
+ */
+const jobFileMaps = new Map<string, Map<string, string>>();
 
-export function resetProjectFiles(): void {
-  projectFiles.clear();
+function getJobFiles(jobId: string): Map<string, string> {
+  let m = jobFileMaps.get(jobId);
+
+  if (!m) {
+    m = new Map<string, string>();
+    jobFileMaps.set(jobId, m);
+  }
+
+  return m;
 }
 
-export function getProjectFiles(): Record<string, string> {
-  return Object.fromEntries(projectFiles);
+export function resetProjectFiles(jobId: string): void {
+  getJobFiles(jobId).clear();
 }
 
-export function getProjectFile(path: string): string | undefined {
-  return projectFiles.get(path);
+export function getProjectFiles(jobId: string): Record<string, string> {
+  return Object.fromEntries(getJobFiles(jobId));
+}
+
+export function getProjectFile(jobId: string, path: string): string | undefined {
+  return getJobFiles(jobId).get(path);
+}
+
+/** Release a job's file map once its build is finished (prevents unbounded growth). */
+export function disposeProjectFiles(jobId: string): void {
+  jobFileMaps.delete(jobId);
 }
 
 /**
@@ -71,6 +97,9 @@ export function createAgentTools(
   supabase: SupabaseClient,
   projectId: string,
 ) {
+  // Per-job file map — isolated from any other build running concurrently.
+  const projectFiles = getJobFiles(jobId);
+
   return {
     // ═══════════════════════════════════════════════════════════════════
     // write_file — Write a file to the project workspace (like Super Z's Write tool)
@@ -395,7 +424,7 @@ export function createAgentTools(
         'Use this after making changes to verify nothing broke.',
       parameters: z.object({}),
       execute: async () => {
-        const files = getProjectFiles();
+        const files = Object.fromEntries(projectFiles);
 
         if (Object.keys(files).length === 0) {
           return { exitCode: 0, stdout: 'No files to test.', stderr: '', success: true, passed: 0, failed: 0 };
@@ -429,7 +458,7 @@ export function createAgentTools(
         'Use this to check if the UI renders correctly after building.',
       parameters: z.object({}),
       execute: async () => {
-        const files = getProjectFiles();
+        const files = Object.fromEntries(projectFiles);
 
         if (Object.keys(files).length === 0) {
           return { error: 'No files written yet. Build the project first.' };
@@ -568,7 +597,7 @@ export function createAgentTools(
       }),
       execute: async ({ command }) => {
         // Run in E2B sandbox — isolated, secure, with project files
-        const files = getProjectFiles();
+        const files = Object.fromEntries(projectFiles);
 
         if (Object.keys(files).length === 0) {
           logger.warn(`[agent] run_shell called with 0 files — skipping E2B sandbox`);

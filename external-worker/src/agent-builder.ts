@@ -17,7 +17,7 @@
  */
 
 import { generateText, type LanguageModelV1 } from 'ai';
-import { createAgentTools, resetProjectFiles, getProjectFiles } from './agent-tools';
+import { createAgentTools, resetProjectFiles, getProjectFiles, disposeProjectFiles } from './agent-tools';
 import { logger } from './logger';
 import { emitEvent } from './event-emitter';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -73,7 +73,7 @@ export async function runAgentBuild(
   appType?: string,
 ): Promise<AgentBuildResult> {
   const startTime = Date.now();
-  resetProjectFiles();
+  resetProjectFiles(jobId);
 
   logger.info(`[agent] Starting agentic build for job ${jobId} (project ${projectId})`);
 
@@ -275,7 +275,7 @@ the memory above.`
     finishReason = result.finishReason || 'stop';
 
     // Check if the LLM called done() or ran out of steps
-    const files = getProjectFiles() as Record<string, string>;
+    const files = getProjectFiles(jobId) as Record<string, string>;
     const fileCount = Object.keys(files).length;
     const success = fileCount > 0;
 
@@ -371,7 +371,7 @@ the memory above.`
     logger.error(`[agent] Build failed: ${err instanceof Error ? err.message : String(err)}`);
 
     // Return whatever files were written before the error
-    const errFiles = getProjectFiles() as Record<string, string>;
+    const errFiles = getProjectFiles(jobId) as Record<string, string>;
     const errFileOps: FileOperation[] = Object.entries(errFiles).map(([path, content]) => ({
       op: 'write_file' as const,
       path,
@@ -386,5 +386,6 @@ the memory above.`
     };
   } finally {
     clearInterval(keepAlive);
+    disposeProjectFiles(jobId);
   }
 }

@@ -17,7 +17,7 @@
  */
 
 import { streamText, type LanguageModelV1, type ToolSet } from 'ai';
-import { createAgentTools, resetProjectFiles, getProjectFiles } from './agent-tools';
+import { createAgentTools, resetProjectFiles, getProjectFiles, disposeProjectFiles } from './agent-tools';
 import { filterTools, getAgentConfig, DEFAULT_AGENT_FLOW, type AgentRole } from './agent-registry';
 import { logger } from './logger';
 import { emitEvent } from './event-emitter';
@@ -59,7 +59,7 @@ export async function runOrchestratedBuild(
   appType?: string,
 ): Promise<OrchestratorResult> {
   const startTime = Date.now();
-  resetProjectFiles();
+  resetProjectFiles(jobId);
 
   logger.info(`[orchestrator] Starting orchestrated build for job ${jobId} (project ${projectId})`);
 
@@ -626,7 +626,7 @@ export async function runOrchestratedBuild(
     }
 
     // Check final result
-    const files = getProjectFiles() as Record<string, string>;
+    const files = getProjectFiles(jobId) as Record<string, string>;
     const fileCount = Object.keys(files).length;
 
     /*
@@ -774,7 +774,7 @@ export async function runOrchestratedBuild(
     }
 
     // Convert files to FileOperation[] format
-    const fileOps: FileOperation[] = Object.entries(getProjectFiles()).map(([path, content]) => ({
+    const fileOps: FileOperation[] = Object.entries(getProjectFiles(jobId)).map(([path, content]) => ({
       op: 'write_file' as const,
       path,
       content,
@@ -790,7 +790,7 @@ export async function runOrchestratedBuild(
   } catch (err) {
     logger.error(`[orchestrator] Build failed: ${err instanceof Error ? err.message : String(err)}`);
 
-    const errFiles = getProjectFiles() as Record<string, string>;
+    const errFiles = getProjectFiles(jobId) as Record<string, string>;
     const errFileOps: FileOperation[] = Object.entries(errFiles).map(([path, content]) => ({
       op: 'write_file' as const,
       path,
@@ -807,5 +807,9 @@ export async function runOrchestratedBuild(
   } finally {
     clearInterval(keepAlive);
     clearTimeout(hardTimeout);
+    // Release this job's isolated file map (the result already holds a
+    // detached copy of the files, so this is safe and prevents the registry
+    // from growing without bound on the long-running worker).
+    disposeProjectFiles(jobId);
   }
 }
