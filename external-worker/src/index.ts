@@ -151,10 +151,71 @@ async function pollLoop() {
 
 const pollTimer = setInterval(pollLoop, POLL_INTERVAL_MS);
 
+/*
+ * Stuck-job reaper.
+ *
+ * A job goes pending → generating when a worker claims it. If that worker then
+ * restarts (deploy) or crashes mid-build, the job is orphaned: it stays
+ * 'generating' forever and the user sees "generating…" indefinitely — nothing
+ * ever re-processes or fails it.
+ *
+ * This reaper periodically finds jobs stuck in 'generating' with no update for
+ * well past the orchestrator's 15-min hard timeout (so it never touches a
+ * healthy, actively-running job) and recovers them: re-queue (back to pending)
+ * up to a cap, then fail cleanly so the user isn't left hanging.
+ */
+const STUCK_THRESHOLD_MS = 25 * 60 * 1000; // 25 min — safely past the 15-min hard timeout
+const MAX_STUCK_REQUEUE = 2;
+
+async function reapStuckJobs() {
+  try {
+    const cutoff = new Date(Date.now() - STUCK_THRESHOLD_MS).toISOString();
+    const { data: stuck, error } = await supabase
+      .from('build_jobs')
+      .select('id, retry_count')
+      .eq('status', 'generating')
+      .lt('updated_at', cutoff)
+      .limit(20);
+
+    if (error || !stuck || stuck.length === 0) {
+      return;
+    }
+
+    for (const job of stuck) {
+      const retries = (job.retry_count as number) ?? 0;
+
+      if (retries < MAX_STUCK_REQUEUE) {
+        await supabase
+          .from('build_jobs')
+          .update({ status: 'pending', current_step: 'queued', progress: 0, retry_count: retries + 1 })
+          .eq('id', job.id);
+        logger.warn(`[reaper] Re-queued orphaned job ${job.id} (attempt ${retries + 1}/${MAX_STUCK_REQUEUE})`);
+      } else {
+        await supabase
+          .from('build_jobs')
+          .update({
+            status: 'failed_clean',
+            error_summary: 'Build was interrupted (worker restart or timeout) and could not be recovered. Please try again.',
+          })
+          .eq('id', job.id);
+        logger.error(`[reaper] Failed unrecoverable orphaned job ${job.id} after ${retries} requeues`);
+      }
+    }
+  } catch (err) {
+    logger.error('[reaper] error:', err);
+  }
+}
+
+// Run shortly after startup (catch jobs orphaned by the restart we just did),
+// then on a slow interval.
+setTimeout(reapStuckJobs, 15_000);
+const reaperTimer = setInterval(reapStuckJobs, 60_000);
+
 // Graceful shutdown
 const shutdown = (signal: string) => {
   logger.info(`Received ${signal}, shutting down gracefully...`);
   clearInterval(pollTimer);
+  clearInterval(reaperTimer);
   server.close(() => {
     logger.info('Worker stopped.');
     process.exit(0);
