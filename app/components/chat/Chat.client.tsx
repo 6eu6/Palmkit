@@ -386,7 +386,35 @@ export const ChatImpl = memo(
 
     // Phase 2: External Worker feature flag + hook.
     const externalWorkerEnabled = useExternalWorkerFlag();
-    const { state: extWorkerState, startJob: startExtJob } = useExternalWorker();
+    const { state: extWorkerState, startJob: startExtJob, restoreJob: restoreExtJob } = useExternalWorker();
+
+    /*
+     * RESTORE JOB ON PAGE LOAD / REFRESH
+     *
+     * When the user opens an existing chat (via refresh, My Builds, or URL),
+     * the chat metadata contains `palmkitJobId` — the ID of the build job.
+     * Without restoring it, the polling never starts and all progress panels
+     * (Thought Process, Todos, Activity Stream) stay empty.
+     *
+     * This matches Super Z's architecture: when I re-enter a conversation,
+     * my workspace is already there with all files and history. Palmkit
+     * should do the same — restore the full job state on chat open so the
+     * user sees the same UI they had before refresh.
+     */
+    useEffect(() => {
+      if (!externalWorkerEnabled) {
+        return;
+      }
+
+      // Read palmkitJobId from chat metadata (persisted in IndexedDB)
+      const metadata = chatMetadata.get();
+
+      if (metadata?.palmkitJobId && extWorkerState.status === 'idle' && !extWorkerState.jobId) {
+        // Restore the job — this starts polling which processes ALL events
+        // through dispatchJobEvent, populating the progress stores.
+        restoreExtJob(metadata.palmkitJobId);
+      }
+    }, [externalWorkerEnabled, extWorkerState.status, extWorkerState.jobId, restoreExtJob]);
 
     // Sync external worker status → build-status store (for Preview gate).
     useEffect(() => {

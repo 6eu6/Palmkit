@@ -825,7 +825,43 @@ export function useExternalWorker() {
     setState(initialState);
   }, []);
 
-  return { state, startJob, reset };
+  /*
+   * restoreJob — called when a user opens an EXISTING chat (e.g. after page
+   * refresh or navigating from My Builds). Without this, the polling never
+   * starts and the progress panels (Thought Process, Todos, Activity Stream)
+   * stay empty — the user sees a blank workspace with no context.
+   *
+   * This matches how Super Z works: when I (the model) re-enter a conversation,
+   * the workspace is already there with all files, worklog, and history.
+   * Palmkit should do the same — restore the full job state on chat open.
+   */
+  const restoreJob = useCallback(
+    (jobId: string) => {
+      if (!jobId) {
+        return;
+      }
+
+      // Reset state for the restored job
+      fetchedPreview.current = false;
+      lastEventSeq.current = 0;
+      liveEvents.current = [];
+
+      // Set the jobId in state so the UI knows we have an active job
+      setState((s) => ({ ...s, jobId }));
+
+      // Subscribe to Realtime (same as startJob)
+      subscribeRealtime(jobId);
+
+      // Start polling — the poll will see the terminal status (ready_for_preview
+      // or failed_clean) and process ALL events through dispatchJobEvent before
+      // stopping. This populates the reasoningStore, agentTodosStore, and
+      // activityGroupsStore so the panels render correctly.
+      pollJob(jobId);
+    },
+    [subscribeRealtime, pollJob],
+  );
+
+  return { state, startJob, reset, restoreJob };
 }
 
 /**
