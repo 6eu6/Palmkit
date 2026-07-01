@@ -266,35 +266,33 @@ AVAILABLE TOOLS:
 - search_code(pattern): Search for bugs or issues
 - done(summary): Report your findings
 
-YOUR TASK:
-1. Run "npm install" to install dependencies
-2. Run "npm run build" to verify the project compiles
-3. Run run_tests() to check for test failures
-4. If build succeeds, run take_screenshot() to visually verify
-5. Report:
-   - Did the build pass? (yes/no)
-   - Did tests pass? (yes/no + counts)
-   - Screenshot result (title + body text)
-   - Any errors found
+⚠️ CRITICAL — THE SANDBOX DOES NOT PERSIST BETWEEN run_shell CALLS.
+Each run_shell starts a FRESH sandbox with your project files but WITHOUT the
+node_modules from any previous call. If you run "npm install" and then
+"npm run build" as TWO separate run_shell calls, the second runs in a brand-new
+sandbox with no node_modules and fails with "vite: not found". You MUST chain
+everything into ONE command with &&.
 
-If the build FAILS:
-- Read the error message
-- Search for the problematic code
-- Report EXACTLY what's wrong and which file/line has the issue
-- Do NOT try to fix it — that's the Builder's job
+YOUR TASK (do it in as few steps as possible — this saves tokens):
+1. Run ONE combined command to install and build:
+   run_shell("cd /home/user/project && npm install && npm run build")
+   If it exits 0, the build PASSES — that is your primary verification.
+2. Only if the build FAILS: read the failing file to identify the exact
+   error and which file/line is wrong. Do NOT retry the build more than once.
+   Do NOT try to fix it — that's the Builder's job.
+3. Call done() with: build pass/fail, the error (if any), and a one-line summary.
 
-Call done() with your verification report.
+DO NOT run "npm install" and "npm run build" as separate run_shell calls.
+DO NOT run exploratory commands like "ls node_modules" — they run in throwaway
+sandboxes and tell you nothing. One combined build command is all you need.
 
 WORKFLOW WITH update_todos:
 1. AT THE START: call update_todos with your verification plan as items, all "pending" except the first which is "in_progress".
 2. AFTER completing each verification step: call update_todos with that item "done" and next item "in_progress".
 3. AT THE END: call update_todos with all items "done".
 
-Example Tester todos:
-- "Run npm install"
-- "Run npm run build to verify compilation"
-- "Run npm test to check for test failures"
-- "Take screenshot to verify visual rendering"
+Example Tester todos (keep it short — one combined build command):
+- "Run combined install+build to verify compilation"
 - "Report verification results"`,
   allowedTools: [
     'run_shell',
@@ -305,8 +303,15 @@ Example Tester todos:
     'update_todos',
     'done',
   ],
-  maxSteps: 15,  // Was 8 — too low for debugging failed builds. 15 lets the Tester actually investigate.
-  maxTokens: 8000,  // Was 4000 — Tester reports need more space for error logs.
+  /*
+   * Capped at 6 (was 15). With the single combined install+build command the
+   * Tester needs only: update_todos → run combined build → (optional read on
+   * failure) → done. The old value of 15 let a confused Tester flail through a
+   * dozen throwaway-sandbox commands (npm install, vite build, ls node_modules…)
+   * burning ~125s and thousands of tokens before hitting the step limit.
+   */
+  maxSteps: 6,
+  maxTokens: 8000, // Tester reports need space for error logs.
 };
 
 /**

@@ -556,9 +556,11 @@ export function createAgentTools(
     // ═══════════════════════════════════════════════════════════════════
     run_shell: tool({
       description:
-        'Run a shell command in an isolated sandbox to verify the build. Common uses: "npm install", "npm run build", ' +
-        '"ls -la", "cat package.json". Returns stdout, stderr, and exit code. ' +
-        'Use this to catch build errors before finishing. The sandbox has all your project files.',
+        'Run a shell command in an isolated sandbox to verify the build. Returns stdout, stderr, and exit code. ' +
+        'IMPORTANT: the sandbox is EPHEMERAL — a brand-new sandbox is created for EVERY call and it does NOT keep ' +
+        'node_modules or any state from previous calls. So NEVER split dependent steps across calls: run ' +
+        '"cd /home/user/project && npm install && npm run build" as ONE command, not "npm install" then ' +
+        '"npm run build" (the second would fail with "vite: not found"). Your project files are always present.',
       parameters: z.object({
         command: z
           .string()
