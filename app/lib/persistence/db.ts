@@ -28,7 +28,7 @@ export async function openDatabase(): Promise<IDBDatabase | undefined> {
   }
 
   return new Promise((resolve) => {
-    const request = indexedDB.open('palmkitHistory', 2);
+    const request = indexedDB.open('palmkitHistory', 3);
 
     request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
       const db = (event.target as IDBOpenDBRequest).result;
@@ -38,13 +38,46 @@ export async function openDatabase(): Promise<IDBDatabase | undefined> {
         if (!db.objectStoreNames.contains('chats')) {
           const store = db.createObjectStore('chats', { keyPath: 'id' });
           store.createIndex('id', 'id', { unique: true });
-          store.createIndex('urlId', 'urlId', { unique: true });
+          // urlId is NOT unique — the external worker path sometimes saves
+          // chats without a urlId (undefined), and multiple undefined values
+          // violate the unique constraint. This caused "Failed to save chat:
+          // Unable to add key to index 'urlId'" which blocked the UI from
+          // updating from 'generating' to 'ready_for_preview'.
+          store.createIndex('urlId', 'urlId', { unique: false });
         }
       }
 
       if (oldVersion < 2) {
         if (!db.objectStoreNames.contains('snapshots')) {
           db.createObjectStore('snapshots', { keyPath: 'chatId' });
+        }
+      }
+
+      if (oldVersion < 3) {
+        /*
+         * Version 3: recreate the urlId index as non-unique.
+         *
+         * Version 1-2 had urlId as unique: true. The external worker path
+         * sometimes saves chats without a urlId (undefined), and multiple
+         * undefined values violate the unique constraint → "Failed to save
+         * chat: Unable to add key to index 'urlId'" → the chat save fails
+         * → the UI never updates from 'generating' to 'ready_for_preview'
+         * → the user sees the build "stuck" at 30% forever.
+         *
+         * Fix: delete the old unique index and create a new non-unique one.
+         */
+        if (db.objectStoreNames.contains('chats')) {
+          const store = (event.target as IDBOpenDBRequest).transaction?.objectStore('chats');
+
+          if (store) {
+            try {
+              store.deleteIndex('urlId');
+            } catch {
+              // index might not exist — ignore
+            }
+
+            store.createIndex('urlId', 'urlId', { unique: false });
+          }
         }
       }
     };
