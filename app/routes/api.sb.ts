@@ -30,7 +30,9 @@ const DEFAULT_PORT = 3000;
  * returning users get instant resume (~2s) from the paused state.
  * This cuts sandbox runtime cost by ~57% with minimal UX impact.
  */
-const SANDBOX_TIMEOUT_MS = 1000 * 60 * 3; // auto-pause after 3 min idle
+const SANDBOX_TIMEOUT_MS = 1000 * 60 * 30; // auto-pause after 30 min idle
+// Was 3 min — too short. npm install alone can take 60-90s on cold E2B,
+// and the sandbox would die before the dev server even started.
 const MAX_SANDBOXES_PER_USER = 3;
 
 // ─── helpers ───────────────────────────────────────────────────────────────
