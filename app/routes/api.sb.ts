@@ -416,7 +416,20 @@ export default { base: '/preview/', server: serverOpts, plugins };
         const host = sandbox.getHost(port);
         audit('start', userId, body.id, `preview=https://${host}`);
 
-        return respond({ url: `https://${host}`, port });
+        /*
+         * The Vite dev server runs with --base=/preview/ (set in the dev
+         * command above). This means all routes are under /preview/, not /.
+         * If we return just https://${host}, the iframe loads the root
+         * which returns 404 (Vite only serves /preview/*). The user sees
+         * a blank preview.
+         *
+         * Fix: append /preview/ to the URL so the iframe hits the actual
+         * Vite-served path.
+         */
+        const isVite = dev.includes('vite') || dev.includes('--base=/preview/');
+        const baseUrl = isVite ? `https://${host}/preview/` : `https://${host}/`;
+
+        return respond({ url: baseUrl, port });
       }
 
       // ── LOGS (read dev server output) ──────────────────────────────────
