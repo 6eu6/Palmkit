@@ -161,30 +161,42 @@ async function _runInE2B(
   setState('writing');
 
   const sandbox = await createRemoteSandbox(appType);
+  console.log('[worker-sandbox] sandbox created:', sandbox.id, 'cached:', sandbox.cached);
   await pushFiles(sandbox.id, files);
 
   setState('installing');
 
-  const previewUrl = await startRemoteSandbox(sandbox.id, { port: 3000 });
+  // Start the dev server in the background. This returns quickly because
+  // the server runs `npm install && npm run dev` as a background process.
+  // We DON'T await the full install — we poll for readiness below.
+  console.log('[worker-sandbox] starting dev server...');
+  startRemoteSandbox(sandbox.id, { port: 3000 }).then((url) => {
+    console.log('[worker-sandbox] dev server started:', url);
+  }).catch((err) => {
+    console.error('[worker-sandbox] start failed:', err);
+  });
 
   setState('starting');
 
-  // Poll until the cloud dev server responds (up to ~90s).
-  for (let i = 0; i < 30; i++) {
-    if (await checkRemoteStatus(sandbox.id, 3000)) {
-      break;
-    }
-
-    await new Promise((r) => setTimeout(r, 3000));
-  }
-
-  // Set the pf_preview cookie for the same-origin proxy.
+  // Set the cookie immediately so the proxy can forward to this sandbox.
   if (typeof document !== 'undefined') {
     document.cookie = `pf_preview=${sandbox.id}:3000; path=/; samesite=lax`;
+  }
+
+  // Poll until the cloud dev server responds (up to ~120s).
+  // The dev server needs time for: npm install (~10s) + vite start (~2s).
+  for (let i = 0; i < 40; i++) {
+    const ready = await checkRemoteStatus(sandbox.id, 3000);
+    console.log(`[worker-sandbox] poll ${i + 1}/40: ready=${ready}`);
+    if (ready) {
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 3000));
   }
 
   const proxyUrl = typeof window !== 'undefined' ? `${window.location.origin}/preview/` : '/preview/';
 
   setUrl(proxyUrl);
   setState('ready');
+  console.log('[worker-sandbox] sandbox ready, preview URL:', proxyUrl);
 }
