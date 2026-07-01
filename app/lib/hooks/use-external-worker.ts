@@ -683,12 +683,19 @@ export function useExternalWorker() {
                       /*
                        * Also populate workbenchStore.files so the Code tab
                        * shows the file tree and the editor can open files.
+                       *
+                       * IMPORTANT: workbenchStore.files keys must be FULL paths
+                       * with the WORK_DIR prefix (/home/project/...). The
+                       * FileTree component strips the prefix when rendering.
+                       * Without the prefix, files don't appear in the tree.
                        */
                       const { workbenchStore } = await import('~/lib/stores/workbench');
+                      const { WORK_DIR } = await import('~/utils/constants');
                       const fileMap: Record<string, { type: 'file'; content: string; isBinary?: boolean }> = {};
 
                       for (const [path, content] of Object.entries(previewFiles)) {
-                        fileMap[path] = { type: 'file', content };
+                        const fullPath = path.startsWith(WORK_DIR) ? path : `${WORK_DIR}/${path}`;
+                        fileMap[fullPath] = { type: 'file', content, isBinary: false };
                       }
                       workbenchStore.files.set(fileMap as any);
 
