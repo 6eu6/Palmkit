@@ -77,94 +77,34 @@ export const RemotePreviewTrigger = memo(() => {
   }, []);
 
   useEffect(() => {
+    /*
+     * NO AUTO-TRIGGER for the cloud sandbox.
+     *
+     * The model is the brain. It decides when to write files, when to run
+     * shell commands, and when the build is done. The sandbox is a TOOL
+     * under the model's control — not something that auto-starts when
+     * streaming pauses.
+     *
+     * The previous auto-trigger fired whenever `isStreaming` flipped to
+     * false (between model steps) AND there were files in the workbench.
+     * This caused:
+     *   - "Installing & launching preview" appearing MID-BUILD while the
+     *     model was still writing files
+     *   - The sandbox starting with an incomplete file set
+     *   - A progress bar that blocked the user's view of the workspace
+     *   - Files appearing to "stop" because the sandbox startup consumed
+     *     the UI's attention
+     *
+     * Now: this effect only tracks state for the UI bar (showing the
+     * "Launch Preview" button). The actual sandbox launch happens via
+     * the user clicking that button, which calls ensureRemotePreview()
+     * directly.
+     */
     const justFinished = prevStreaming.current && !isStreaming;
     prevStreaming.current = isStreaming;
 
-    if (isStreaming) {
-      return;
-    }
-
-    const hasFiles = Object.values(files).some((d) => d && d.type === 'file');
-
-    if (!hasFiles) {
-      if (isMemoryConstrainedDevice()) {
-        logger.warn('no files to preview — WebContainer file writes may have all failed');
-      }
-
-      return;
-    }
-
-    if (!justFinished && sandbox.state !== 'idle') {
-      return;
-    }
-
-    void (async () => {
-      /*
-       * PROJECT ANALYZER — check if this is a static HTML/CSS/JS project.
-       * If so, render it instantly via iframe blob URL (zero E2B cost).
-       * Only fall through to E2B if the project needs a real server.
-       *
-       * RUNTIME TRANSITION HANDLING:
-       * The project type can change mid-conversation:
-       *   static → vite  (user adds React)
-       *   vite → static  (user removes package.json)
-       *   static → node  (user adds express backend)
-       *
-       * When transitioning:
-       *   static → E2B/WC: kill the old blob URL, start E2B/WC
-       *   E2B/WC → static: kill the old sandbox, show blob URL
-       *   E2B → E2B (same type): just push new files (existing behavior)
-       */
-      const analysis = analyzeProject(files);
-      logger.info(`project analysis: ${analysis.type} — ${analysis.reason}`);
-
-      if (analysis.type === 'static') {
-        /*
-         * Project is static — render in iframe.
-         * BUT: if an E2B sandbox is currently running (project was previously
-         * non-static), kill it first — we don't need it anymore and it costs
-         * money for nothing.
-         */
-        if (sandbox.state !== 'idle') {
-          logger.info('transitioning from E2B → static: killing sandbox');
-          resetRemotePreview();
-        }
-
-        clearStaticPreview(); // clean up any previous static blob URL
-
-        const ok = showStaticPreview(files, analysis.entryHtmlPath);
-
-        if (ok) {
-          // Skip E2B entirely — preview is already showing
-          return;
-        }
-
-        // If static preview failed (e.g., no HTML file), fall through to E2B
-        logger.warn('static preview failed, falling back to E2B');
-      } else {
-        /*
-         * Project needs a real server (vite/nextjs/node).
-         * If a static blob URL preview is currently showing (project was
-         * previously static), clear it — it's stale and will be replaced
-         * by the E2B/WebContainer preview.
-         */
-        clearStaticPreview();
-      }
-
-      // Non-static project — use E2B (mobile) or WebContainer (desktop)
-      const useRemote = await shouldUseRemotePreview();
-      logger.debug(
-        `trigger: justFinished=${justFinished}, sandboxState=${sandbox.state}, hasFiles=${hasFiles}, useRemote=${useRemote}, projectType=${analysis.type}`,
-      );
-
-      if (useRemote) {
-        await ensureRemotePreview({
-          install: analysis.installCommand,
-          dev: analysis.devCommand,
-          framework: analysis.type !== 'static' && analysis.type !== 'unknown' ? analysis.type : undefined,
-        });
-      }
-    })();
+    // No action — just track state. The UI bar renders based on
+    // sandbox.state and gen.step, not on this effect's side effects.
   }, [isStreaming, files, sandbox.state]);
 
   // Phase detection
