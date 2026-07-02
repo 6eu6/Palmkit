@@ -227,8 +227,18 @@ export async function getNextId(db: IDBDatabase): Promise<string> {
     const request = store.getAllKeys();
 
     request.onsuccess = () => {
-      const highestId = request.result.reduce((cur, acc) => Math.max(+cur, +acc), 0);
-      resolve(String(+highestId + 1));
+      /*
+       * Ignore any non-numeric keys. The old reduce did Math.max(+cur, +acc),
+       * so a single non-numeric chat id (e.g. an imported/forked project keyed
+       * by something other than a timestamp) turned the result into NaN — which
+       * then became the id "NaN" for EVERY new chat, breaking chat creation and
+       * navigation. Coerce defensively and skip anything that isn't finite.
+       */
+      const highestId = request.result.reduce<number>((max, key) => {
+        const n = Number(key);
+        return Number.isFinite(n) && n > max ? n : max;
+      }, 0);
+      resolve(String(highestId + 1));
     };
 
     request.onerror = () => reject(request.error);

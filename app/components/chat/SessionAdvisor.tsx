@@ -21,9 +21,31 @@
 import { useState } from 'react';
 import { useStore } from '@nanostores/react';
 import { contextPressureStore, previewFilesStore } from '~/lib/stores/build-status';
+import { workbenchStore } from '~/lib/stores/workbench';
 import { chatId, description, db } from '~/lib/persistence/useChatHistory';
 import { continueInFreshChat } from '~/lib/chat/continueInFreshChat';
 import { classNames } from '~/utils/classNames';
+
+/*
+ * Gather the project's files from every place they might live, so the fork
+ * never fails with "No files to carry over". previewFilesStore is populated
+ * during/after a build, but on a RESTORED chat (page reload) it can be empty
+ * before the async workspace fetch finishes — while the workbench file tree is
+ * already hydrated from the snapshot. Merge both (text files only).
+ */
+function collectProjectFiles(preview: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = { ...(preview ?? {}) };
+
+  const tree = workbenchStore.files.get() ?? {};
+
+  for (const [path, dirent] of Object.entries(tree)) {
+    if (dirent?.type === 'file' && !dirent.isBinary && typeof dirent.content === 'string' && !(path in out)) {
+      out[path] = dirent.content;
+    }
+  }
+
+  return out;
+}
 
 /*
  * The single line grounded in the real tradeoff: once the model's most
@@ -97,6 +119,13 @@ export function SessionAdvisor() {
       return;
     }
 
+    const projectFiles = collectProjectFiles(files);
+
+    if (Object.keys(projectFiles).length === 0) {
+      setError('The project files are still loading — give it a second and try again.');
+      return;
+    }
+
     setBusy(true);
 
     try {
@@ -104,7 +133,7 @@ export function SessionAdvisor() {
         db,
         sourceProjectId,
         projectName: description.get() || 'your project',
-        files: files ?? {},
+        files: projectFiles,
       });
 
       // Full navigation so the fresh chat boots with a clean store/context.
