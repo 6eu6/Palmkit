@@ -473,8 +473,9 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   )}
                   {llmErrorAlert && <LlmErrorAlert alert={llmErrorAlert} clearAlert={() => clearLlmErrorAlert?.()} />}
                 </div>
-                {/* Honest, transparent nudge to start a fresh chat once the
-                    project is genuinely large (based on real workspace size). */}
+                {/* Honest nudge to start a fresh chat once the context is
+                    genuinely full — driven by the worker's real peak-token
+                    measurement, not a file count. */}
                 {chatStarted && <SessionAdvisor />}
                 {chatStarted && <ContinuationSuggestion sendMessage={sendMessage} />}
                 {progressAnnotations && <ProgressCompilation data={progressAnnotations} />}

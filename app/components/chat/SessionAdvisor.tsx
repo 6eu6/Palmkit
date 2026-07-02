@@ -2,37 +2,38 @@
  * SessionAdvisor — an inline, in-thread nudge to CONTINUE the project in a
  * fresh chat once its context gets genuinely large.
  *
- * This is deliberately NOT an arbitrary "you've sent N messages" rule, and it
- * is NOT a warning banner. It renders as an assistant-style message inside the
- * conversation, tied to a real, explainable tradeoff:
+ * This is deliberately NOT a file-count rule and NOT a "you've sent N messages"
+ * rule. Context length is about the amount of chat + operations the model has
+ * to carry — NOT how many files a project happens to contain. A freshly
+ * imported 100–300 file repo where the model only reads the few files it needs
+ * should NOT be nagged; a long, edit-heavy chat that is genuinely filling the
+ * model's context window should.
  *
- *   On every edit, the worker sends the project's EXISTING files to the model
- *   as context (so it can modify them). The bigger the project, the larger a
- *   share of the model's context window each edit consumes — which genuinely
- *   makes edits slower, costlier, and less precise.
- *
- * So it measures the ACTUAL workspace size (files + bytes) and, only once that
- * crosses a meaningful fraction of a typical context window, offers a single
+ * So the trigger is a REAL, server-measured signal: on every build/edit the
+ * worker records the PEAK input (prompt) tokens the model actually consumed on
+ * its most demanding request, relative to that model's context window
+ * (`contextPressureStore`). Only once that fraction crosses a meaningful line —
+ * or the model literally ran out of room (truncated) — do we offer a single
  * minimalist action: fork this project into a fresh chat that keeps the full
  * project + its memory but starts with a clean, fast context. The old chat
  * stays exactly as it is — nothing is lost. It is dismissible per-chat.
  */
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useStore } from '@nanostores/react';
-import { previewFilesStore } from '~/lib/stores/build-status';
+import { contextPressureStore, previewFilesStore } from '~/lib/stores/build-status';
 import { chatId, description, db } from '~/lib/persistence/useChatHistory';
 import { continueInFreshChat } from '~/lib/chat/continueInFreshChat';
 import { classNames } from '~/utils/classNames';
 
 /*
- * Thresholds grounded in the real tradeoff, not plucked from thin air:
- * ~120 KB of code is roughly ~30K tokens — a large fraction of a typical
- * model's context window once the worklog + prompt + tool overhead are added.
- * Past that (or a high file count), edits meaningfully degrade. We only advise;
- * we never block.
+ * The single line grounded in the real tradeoff: once the model's most
+ * demanding request on this project consumed ~60% of its context window, each
+ * further edit sends an ever-larger share of that window, which measurably
+ * slows the model down and dulls its focus. At that point a fresh chat (compact
+ * handoff instead of a long history) is a genuine win. We only advise — never
+ * block — and a hard truncation (the model ran OUT of room) always qualifies.
  */
-const SIZE_THRESHOLD_BYTES = 120 * 1024;
-const FILE_THRESHOLD = 35;
+const RATIO_THRESHOLD = 0.6;
 
 function dismissKey(): string {
   if (typeof window === 'undefined') {
@@ -45,6 +46,7 @@ function dismissKey(): string {
 }
 
 export function SessionAdvisor() {
+  const pressure = useStore(contextPressureStore);
   const files = useStore(previewFilesStore);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,22 +63,15 @@ export function SessionAdvisor() {
     }
   });
 
-  const { fileCount, totalBytes } = useMemo(() => {
-    const entries = Object.entries(files ?? {});
+  const ratio = pressure?.ratio ?? 0;
+  const truncated = pressure?.truncated ?? false;
+  const over = truncated || ratio >= RATIO_THRESHOLD;
 
-    return {
-      fileCount: entries.length,
-      totalBytes: entries.reduce((sum, [, content]) => sum + (content?.length ?? 0), 0),
-    };
-  }, [files]);
-
-  const over = totalBytes > SIZE_THRESHOLD_BYTES || fileCount > FILE_THRESHOLD;
-
-  if (dismissed || fileCount === 0 || !over) {
+  if (dismissed || !pressure || !over) {
     return null;
   }
 
-  const kb = Math.round(totalBytes / 1024);
+  const pct = Math.min(100, Math.round(ratio * 100));
 
   const dismiss = () => {
     try {
@@ -129,13 +124,22 @@ export function SessionAdvisor() {
 
       <div className="min-w-0 flex-1 rounded-2xl rounded-tl-sm border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-2 px-4 py-3 text-sm">
         <p className="leading-relaxed text-palmkit-elements-textSecondary">
-          This chat is getting long — the project is now{' '}
-          <span className="font-medium text-palmkit-elements-textPrimary tabular-nums">
-            {fileCount} files (~{kb} KB)
-          </span>
-          . Each edit sends all of that to the model, which slows it down and dulls its focus. Continue in a fresh chat
-          with a <span className="font-medium">full copy of the project and its memory</span> — clean, fast context,
-          nothing lost.
+          {truncated ? (
+            <>
+              The last change{' '}
+              <span className="font-medium text-palmkit-elements-textPrimary">ran out of context room</span> — the model
+              hit its window and had to cut the response short.
+            </>
+          ) : (
+            <>
+              This chat is getting long — the last change already used{' '}
+              <span className="font-medium text-palmkit-elements-textPrimary tabular-nums">~{pct}%</span> of the
+              model&apos;s context window.
+            </>
+          )}{' '}
+          Each further edit sends more of that window, which slows the model down and dulls its focus. Continue in a
+          fresh chat with a <span className="font-medium">full copy of the project and its memory</span> — clean, fast
+          context, nothing lost.
         </p>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">

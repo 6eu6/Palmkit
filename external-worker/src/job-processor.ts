@@ -185,6 +185,18 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
     // ─── Phase 7: EDIT MODE ────────────────────────────────────────────
     const editJobId: string | null = job.validation_result?.editJobId ?? null;
 
+    /*
+     * Context window for this model, captured at enqueue time by /api/jobs from
+     * the model registry (maxTokenAllowed). Used to compute how full the context
+     * actually got during this build — the honest signal behind the "continue in
+     * a fresh chat" nudge (replaces the old file-count guess).
+     */
+    const contextWindow: number | undefined =
+      typeof job.validation_result?.contextWindow === 'number' ? job.validation_result.contextWindow : undefined;
+
+    // Server-measured context pressure for this build (both edit + new-build paths).
+    let contextPressure: { tokens: number; window: number; ratio: number; truncated: boolean } | null = null;
+
     let result: GenerationResult;
 
     /*
@@ -254,7 +266,16 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       let mergedFiles: typeof existingFiles;
 
       try {
-        mergedFiles = await generateEdit(existingFiles, editAppType, prompt, providerName, modelName, apiKey);
+        const editResult = await generateEdit(existingFiles, editAppType, prompt, providerName, modelName, apiKey);
+        mergedFiles = editResult.files as typeof existingFiles;
+
+        const win = contextWindow && contextWindow > 0 ? contextWindow : 128_000;
+        contextPressure = {
+          tokens: editResult.contextTokens,
+          window: win,
+          ratio: win > 0 ? editResult.contextTokens / win : 0,
+          truncated: editResult.truncated,
+        };
       } catch (editErr: any) {
         await recordStep(supabase, job.id, { type: 'generate_file', status: 'failed', order: 2, error: editErr.message });
         await emitEvent(supabase, job.id, 'job_failed', `Edit failed: ${editErr.message}`, { error: editErr.message });
@@ -373,7 +394,16 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           job.user_id, // userId — for Supabase Storage mirroring
           spec.maxCompletionTokens, // dynamic maxTokens based on model limits
           spec.appType, // appType for manifest (so restore knows how to preview)
+          contextWindow, // model context window → context-pressure measurement
         );
+
+        // Capture the server-measured context pressure for the fork nudge.
+        contextPressure = {
+          tokens: agentResult.contextTokens,
+          window: agentResult.contextWindow,
+          ratio: agentResult.contextRatio,
+          truncated: agentResult.truncated,
+        };
 
         if (agentResult.success && agentResult.files.length > 0) {
           result = {
@@ -726,6 +756,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           runtimeMode: runner.runtimeMode,
           prompt: (job.validation_result?.prompt ?? prompt).slice(0, 200),
           ...(editJobId ? { editJobId } : {}),
+          ...(contextPressure ? { contextPressure } : {}),
         },
         updated_at: new Date().toISOString(),
       })

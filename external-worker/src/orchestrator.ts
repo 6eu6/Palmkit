@@ -48,7 +48,21 @@ export interface OrchestratorResult {
   rawText: string;
   totalDuration: number;
   agentResults: Array<{ role: AgentRole; success: boolean; text: string; duration: number }>;
+  /**
+   * Context-pressure telemetry — the peak input (prompt) tokens the model
+   * consumed on its single most demanding request during this build, and the
+   * model's context window. Drives the "continue in a fresh chat" nudge on the
+   * client, replacing the old file-count heuristic with a real measurement of
+   * how full the context actually got.
+   */
+  contextTokens: number;
+  contextWindow: number;
+  contextRatio: number;
+  truncated: boolean;
 }
+
+/** Fallback context window when the model's real limit isn't known. */
+const DEFAULT_CONTEXT_WINDOW = 128_000;
 
 /**
  * Run the full agent pipeline: Researcher → Builder → Tester
@@ -66,9 +80,23 @@ export async function runOrchestratedBuild(
   userId: string,
   maxCompletionTokens?: number,
   appType?: string,
+  contextWindow?: number,
 ): Promise<OrchestratorResult> {
   const startTime = Date.now();
   resetProjectFiles(jobId);
+
+  /*
+   * Context-pressure tracking. We measure the PEAK single-request prompt-token
+   * count across every agent step (not the sum — the sum over-counts, since each
+   * step re-sends the growing conversation). The largest single request is what
+   * actually approaches the model's context window, so it's the honest "how full
+   * did the context get" number. `truncated` flips if any agent finishReason was
+   * 'length' — the model literally ran out of room, the strongest possible fork
+   * signal.
+   */
+  const effectiveContextWindow = contextWindow && contextWindow > 0 ? contextWindow : DEFAULT_CONTEXT_WINDOW;
+  let peakPromptTokens = 0;
+  let truncated = false;
 
   logger.info(`[orchestrator] Starting orchestrated build for job ${jobId} (project ${projectId})`);
 
@@ -630,6 +658,33 @@ export async function runOrchestratedBuild(
       const finishReason = await streamResult.finishReason;
       const steps = await streamResult.steps;
 
+      /*
+       * Context-pressure sampling. Each step carries its own usage; the LAST
+       * step of a multi-step agent has the largest input (accumulated tool
+       * results), so the per-step max is the true peak this agent pushed toward
+       * the context window. Fall back to the aggregate usage when there are no
+       * discrete steps (a single-shot response).
+       */
+      try {
+        const stepPromptTokens = (steps ?? [])
+          .map((s: any) => s?.usage?.promptTokens ?? 0)
+          .filter((n: number) => Number.isFinite(n) && n > 0);
+        const aggUsage = await streamResult.usage;
+        const agentPeak = stepPromptTokens.length
+          ? Math.max(...stepPromptTokens)
+          : aggUsage?.promptTokens ?? 0;
+
+        if (agentPeak > peakPromptTokens) {
+          peakPromptTokens = agentPeak;
+        }
+      } catch {
+        /* usage is best-effort telemetry — never fail a build over it */
+      }
+
+      if (finishReason === 'length') {
+        truncated = true;
+      }
+
       const agentDuration = Date.now() - agentStart;
       /*
        * Success criteria — only true when the LLM finished cleanly AND made at
@@ -914,6 +969,10 @@ export async function runOrchestratedBuild(
       rawText: agentResults.map((a) => `[${a.role}]: ${a.text.slice(0, 200)}`).join('\n\n'),
       totalDuration: Date.now() - startTime,
       agentResults,
+      contextTokens: peakPromptTokens,
+      contextWindow: effectiveContextWindow,
+      contextRatio: effectiveContextWindow > 0 ? peakPromptTokens / effectiveContextWindow : 0,
+      truncated,
     };
   } catch (err) {
     logger.error(`[orchestrator] Build failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -931,6 +990,10 @@ export async function runOrchestratedBuild(
       rawText: `orchestrator-error: ${err instanceof Error ? err.message : String(err)}`,
       totalDuration: Date.now() - startTime,
       agentResults,
+      contextTokens: peakPromptTokens,
+      contextWindow: effectiveContextWindow,
+      contextRatio: effectiveContextWindow > 0 ? peakPromptTokens / effectiveContextWindow : 0,
+      truncated,
     };
   } finally {
     clearInterval(keepAlive);

@@ -79,6 +79,31 @@ export function resetPreviewFiles(): void {
   previewFilesStore.set({});
 }
 
+/**
+ * Context pressure — the REAL, server-measured signal for when a chat's
+ * context is getting genuinely long. The worker measures the peak input
+ * (prompt) tokens the model actually consumed on its most demanding request
+ * during the build, relative to that model's context window. This reflects
+ * accumulated chat + operations + files-the-model-actually-read — NOT a naive
+ * file count. A freshly-imported 300-file repo that the model only reads a
+ * few files from stays LOW; a long, edit-heavy chat climbs toward 1.0.
+ *
+ *   ratio     = peakPromptTokens / contextWindow  (0..1+)
+ *   truncated = the model hit its context/output limit (finishReason=length)
+ */
+export interface ContextPressure {
+  tokens: number;
+  window: number;
+  ratio: number;
+  truncated: boolean;
+}
+
+export const contextPressureStore = atom<ContextPressure | null>(null);
+
+export function setContextPressure(p: ContextPressure | null): void {
+  contextPressureStore.set(p);
+}
+
 /** Phase 8 — current Oracle Worker job ID (for export). */
 export const currentJobIdStore = atom<string | null>(null);
 

@@ -74,6 +74,14 @@ export async function action(args: ActionFunctionArgs) {
    */
   let maxCompletionTokens: number | undefined;
 
+  /*
+   * Also capture the model's context window (maxTokenAllowed). The worker uses
+   * it to compute how full the context actually got during the build, which
+   * drives the honest "continue in a fresh chat" nudge — a real token
+   * measurement instead of a naive file count.
+   */
+  let contextWindow: number | undefined;
+
   try {
     const llmManagerModule = await import('~/lib/modules/llm/manager');
     const { PROVIDER_LIST } = await import('~/utils/constants');
@@ -83,9 +91,10 @@ export async function action(args: ActionFunctionArgs) {
       const staticModels = llmManagerModule.LLMManager.getInstance().getStaticModelListFromProvider(providerObj);
       const modelDetails = staticModels.find((m) => m.name === model);
       maxCompletionTokens = modelDetails?.maxCompletionTokens;
+      contextWindow = modelDetails?.maxTokenAllowed;
     }
   } catch (e) {
-    logger.warn(`Could not look up maxCompletionTokens for ${provider}/${model}:`, (e as Error).message);
+    logger.warn(`Could not look up model limits for ${provider}/${model}:`, (e as Error).message);
   }
 
   /*
@@ -123,6 +132,7 @@ export async function action(args: ActionFunctionArgs) {
          */
         ...(projectId ? { chatId: projectId } : {}),
         ...(maxCompletionTokens ? { maxCompletionTokens } : {}),
+        ...(contextWindow ? { contextWindow } : {}),
         ...(editJobId ? { editJobId } : {}),
       },
     })

@@ -672,6 +672,14 @@ Start directly with { — no markdown fences, no preamble.`;
  * Given the existing files and an edit prompt, asks the LLM to return
  * ONLY the files that need to change. Merges them with the originals.
  */
+export interface EditResult {
+  files: FileOperation[];
+  /** Peak input (prompt) tokens the model consumed on this edit. 0 if unknown. */
+  contextTokens: number;
+  /** Model hit its context/output limit (finishReason=length). */
+  truncated: boolean;
+}
+
 export async function generateEdit(
   existingFiles: FileOperation[],
   appType: string,
@@ -679,7 +687,7 @@ export async function generateEdit(
   providerName: string,
   modelName: string,
   apiKey: string,
-): Promise<FileOperation[]> {
+): Promise<EditResult> {
   const fileDump = existingFiles
     .map((f) => `=== ${f.path} ===\n${f.content}`)
     .join('\n\n')
@@ -717,7 +725,12 @@ STRICT RULES:
     throw new Error(`${providerName} returned empty content for edit`);
   }
 
-  logger.info(`[generateEdit] received ${rawText.length} chars`);
+  const contextTokens = result.usage?.promptTokens ?? 0;
+  const truncated = result.finishReason === 'length';
+
+  logger.info(
+    `[generateEdit] received ${rawText.length} chars (promptTokens=${contextTokens}, finishReason=${result.finishReason})`,
+  );
 
   let parsed: { files?: FileOperation[] };
 
@@ -733,7 +746,7 @@ STRICT RULES:
 
   if (patchedFiles.length === 0) {
     logger.warn('[generateEdit] LLM returned no changed files — returning original files unchanged');
-    return existingFiles;
+    return { files: existingFiles, contextTokens, truncated };
   }
 
   for (const f of patchedFiles) {
@@ -754,7 +767,7 @@ STRICT RULES:
     merged.set(path, file);
   }
 
-  return [...merged.values()];
+  return { files: [...merged.values()], contextTokens, truncated };
 }
 
 /**

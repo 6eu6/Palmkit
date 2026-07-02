@@ -24,7 +24,9 @@ import {
   appendActivityEvent,
   endActivityGroup,
   resetAllProgressStores,
+  setContextPressure,
   type AgentTodo,
+  type ContextPressure,
 } from '~/lib/stores/build-status';
 
 const FLAG_KEY = 'palmkit_use_external_worker';
@@ -517,6 +519,21 @@ export function useExternalWorker() {
         }
 
         const data = (await resp.json()) as Record<string, unknown>;
+
+        /*
+         * Context pressure — server-measured (peak prompt tokens vs the model's
+         * context window). Published so SessionAdvisor can offer a fresh chat by
+         * REAL context fullness, not file count. Only present once a build/edit
+         * has actually run and reported usage.
+         */
+        {
+          const vr = (data.validationResult as Record<string, unknown> | undefined) ?? {};
+          const cp = vr.contextPressure as ContextPressure | undefined;
+
+          if (cp && typeof cp.ratio === 'number') {
+            setContextPressure(cp);
+          }
+        }
 
         // Map DB status to UI status.
         let uiStatus: ExternalWorkerState['status'] = 'pending';
