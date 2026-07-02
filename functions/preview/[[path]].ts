@@ -136,13 +136,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   });
 
   /*
-   * Make the proxied document embeddable inside our cross-origin-isolated page:
-   * a COEP:require-corp page only embeds an iframe whose document ALSO carries a
-   * COEP header (even when same-origin). Set it here, and mark every proxied
-   * resource CORP same-origin so subresources load under that policy.
+   * The app page is no longer cross-origin-isolated (WebContainer is gone, so
+   * COEP: require-corp was dropped). That means we must NOT force COEP on the
+   * proxied preview document either — doing so would make the iframe block its
+   * own external images/fonts/CDN subresources (they rarely send CORP). With no
+   * COEP here, the same-origin iframe embeds fine and external resources load
+   * like the real web.
    */
-  headers.set('Cross-Origin-Resource-Policy', 'same-origin');
-  headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
 
   /*
    * Statuses that MUST NOT carry a body — returning one throws (→ Cloudflare 502).

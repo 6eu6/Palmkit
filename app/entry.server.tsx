@@ -92,8 +92,13 @@ export default async function handleRequest(
   responseHeaders.set('Vary', '*');
   responseHeaders.set('Cache-Tag', 'palmkit-html');
 
-  responseHeaders.set('Cross-Origin-Embedder-Policy', 'require-corp');
-  responseHeaders.set('Cross-Origin-Opener-Policy', 'same-origin');
+  /*
+   * No COEP/COOP cross-origin isolation. It was only needed for WebContainer's
+   * SharedArrayBuffer; WebContainer is gone (E2B runs every project instead).
+   * Dropping COEP: require-corp is what lets the E2B preview iframe load external
+   * images/fonts/CDN resources — require-corp blocked any subresource without a
+   * CORP header, which broke most generated landing pages.
+   */
 
   return new Response(body, {
     headers: responseHeaders,
