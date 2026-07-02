@@ -104,6 +104,13 @@ export function setContextPressure(p: ContextPressure | null): void {
   contextPressureStore.set(p);
 }
 
+/**
+ * The jobId currently shown by the LIVE global <BuildStream> (the newest
+ * build). Per-turn <TurnBuildStream> renders every OTHER build inline under its
+ * message; it skips this one so the active build isn't drawn twice.
+ */
+export const activeBuildJobIdStore = atom<string | null>(null);
+
 /** Phase 8 — current Oracle Worker job ID (for export). */
 export const currentJobIdStore = atom<string | null>(null);
 

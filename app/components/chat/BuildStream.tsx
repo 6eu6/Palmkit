@@ -420,88 +420,141 @@ const SectionView = memo(({ section }: { section: Section }) => {
 
 /* ── Public component ───────────────────────────────────────────────────── */
 
+/**
+ * Presentational timeline — renders any event log + progress. Both the live
+ * global BuildStream and the per-turn TurnBuildStream (past builds) delegate
+ * here, so a completed turn's stream looks identical to the live one.
+ *
+ * `collapsible` renders a header toggle (used for past turns, collapsed by
+ * default so the thread stays scannable; the live stream is always expanded).
+ */
+export const BuildStreamView = memo(
+  ({
+    events,
+    progress,
+    currentStep,
+    collapsible = false,
+    defaultOpen = true,
+  }: {
+    events: WorkerEvent[];
+    progress: number;
+    currentStep: string;
+    collapsible?: boolean;
+    defaultOpen?: boolean;
+  }) => {
+    const [open, setOpen] = useState(defaultOpen);
+    const sections = useMemo(() => foldEvents(events), [events]);
+
+    if (events.length === 0 && progress === 0) {
+      return null;
+    }
+
+    const done = currentStep === 'done' || events.some((e) => e.type === 'ready_for_preview');
+    const failed = events.some((e) => e.type === 'job_failed');
+
+    // Did `npm run build` actually pass? Read the last completion event's flag.
+    const buildVerified = (() => {
+      for (let i = events.length - 1; i >= 0; i--) {
+        const pl = events[i].payload as Record<string, unknown> | undefined;
+
+        if (events[i].type === 'file_generation_completed' && pl && 'buildVerified' in pl) {
+          return pl.buildVerified as boolean | null;
+        }
+      }
+      return null;
+    })();
+    const hasBuildErrors = buildVerified === false;
+    const fileCount = new Set(
+      events
+        .filter((e) => e.type === 'file_written')
+        .map((e) => (e.payload as any)?.path ?? (e.payload as any)?.filePath ?? e.message),
+    ).size;
+    const displayProgress = done ? 100 : Math.max(progress, 5);
+
+    return (
+      <div className="mx-3 mb-3 overflow-hidden rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-2">
+        {/* header */}
+        <div
+          className={classNames('border-b border-palmkit-elements-borderColor/60 px-4 py-2.5', {
+            'cursor-pointer select-none': collapsible,
+          })}
+          onClick={collapsible ? () => setOpen((o) => !o) : undefined}
+        >
+          <div className="flex items-center gap-2">
+            <span
+              className={classNames(
+                'shrink-0',
+                failed
+                  ? 'i-ph:x-circle-fill text-red-400'
+                  : done && hasBuildErrors
+                    ? 'i-ph:warning-fill text-amber-400'
+                    : done
+                      ? 'i-ph:check-circle-fill text-green-400'
+                      : 'i-svg-spinners:90-ring-with-bg text-blue-400',
+              )}
+            />
+            <span className="text-sm font-medium text-palmkit-elements-textPrimary">
+              {failed
+                ? 'Build failed'
+                : done && hasBuildErrors
+                  ? 'Build has errors'
+                  : done && buildVerified === true
+                    ? 'Build verified'
+                    : done
+                      ? 'Build complete'
+                      : 'Building…'}
+            </span>
+            {fileCount > 0 && (
+              <span
+                className={classNames('text-xs text-palmkit-elements-textTertiary tabular-nums', {
+                  'ml-auto': !collapsible,
+                  'ml-2': collapsible,
+                })}
+              >
+                {fileCount} files
+              </span>
+            )}
+            {collapsible && (
+              <span
+                className={classNames(
+                  'ml-auto shrink-0 text-palmkit-elements-textTertiary transition-transform',
+                  open ? 'i-ph:caret-up' : 'i-ph:caret-down',
+                )}
+              />
+            )}
+          </div>
+          {!done && (
+            <div className="mt-2 h-1 overflow-hidden rounded-full bg-palmkit-elements-bg-depth-1">
+              <div
+                className={classNames(
+                  'h-full rounded-full transition-all duration-700 ease-out',
+                  failed ? 'bg-red-400' : 'bg-green-400',
+                )}
+                style={{ width: `${displayProgress}%` }}
+              />
+            </div>
+          )}
+        </div>
+        {/* chronological stream — expands inline; the chat thread handles scroll */}
+        {open && (
+          <div className="px-4 py-3">
+            {sections.map((s, i) => (
+              <SectionView key={i} section={s} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  },
+);
+
+BuildStreamView.displayName = 'BuildStreamView';
+
 export const BuildStream = memo(() => {
   const events = useStore(workerEventsStore);
   const { progress, currentStep } = useStore(workerProgressStore);
 
-  const sections = useMemo(() => foldEvents(events), [events]);
-
-  if (events.length === 0 && progress === 0) {
-    return null;
-  }
-
-  const done = currentStep === 'done' || events.some((e) => e.type === 'ready_for_preview');
-  const failed = events.some((e) => e.type === 'job_failed');
-
-  // Did `npm run build` actually pass? Read the last completion event's flag.
-  const buildVerified = (() => {
-    for (let i = events.length - 1; i >= 0; i--) {
-      const pl = events[i].payload as Record<string, unknown> | undefined;
-
-      if (events[i].type === 'file_generation_completed' && pl && 'buildVerified' in pl) {
-        return pl.buildVerified as boolean | null;
-      }
-    }
-    return null;
-  })();
-  const hasBuildErrors = buildVerified === false;
-  const fileCount = new Set(
-    events
-      .filter((e) => e.type === 'file_written')
-      .map((e) => (e.payload as any)?.path ?? (e.payload as any)?.filePath ?? e.message),
-  ).size;
-  const displayProgress = done ? 100 : Math.max(progress, 5);
-
-  return (
-    <div className="mx-3 mb-3 overflow-hidden rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-2">
-      {/* header */}
-      <div className="border-b border-palmkit-elements-borderColor/60 px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <span
-            className={classNames(
-              'shrink-0',
-              failed
-                ? 'i-ph:x-circle-fill text-red-400'
-                : done && hasBuildErrors
-                  ? 'i-ph:warning-fill text-amber-400'
-                  : done
-                    ? 'i-ph:check-circle-fill text-green-400'
-                    : 'i-svg-spinners:90-ring-with-bg text-blue-400',
-            )}
-          />
-          <span className="text-sm font-medium text-palmkit-elements-textPrimary">
-            {failed
-              ? 'Build failed'
-              : done && hasBuildErrors
-                ? 'Build has errors'
-                : done && buildVerified === true
-                  ? 'Build verified'
-                  : done
-                    ? 'Build complete'
-                    : 'Building…'}
-          </span>
-          {fileCount > 0 && (
-            <span className="ml-auto text-xs text-palmkit-elements-textTertiary tabular-nums">{fileCount} files</span>
-          )}
-        </div>
-        <div className="mt-2 h-1 overflow-hidden rounded-full bg-palmkit-elements-bg-depth-1">
-          <div
-            className={classNames(
-              'h-full rounded-full transition-all duration-700 ease-out',
-              failed ? 'bg-red-400' : 'bg-green-400',
-            )}
-            style={{ width: `${displayProgress}%` }}
-          />
-        </div>
-      </div>
-      {/* chronological stream — expands inline; the chat thread handles scroll */}
-      <div className="px-4 py-3">
-        {sections.map((s, i) => (
-          <SectionView key={i} section={s} />
-        ))}
-      </div>
-    </div>
-  );
+  return <BuildStreamView events={events} progress={progress} currentStep={currentStep} />;
 });
 
 BuildStream.displayName = 'BuildStream';

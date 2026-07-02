@@ -17,6 +17,7 @@ import {
   setCurrentJobId,
   setWorkerProgress,
   resetWorkerProgress,
+  activeBuildJobIdStore,
 } from '~/lib/stores/build-status';
 import type { BuildCompleteness, BuildJobStatus } from '~/lib/stores/build-status';
 import { useExternalWorker, useExternalWorkerFlag } from '~/lib/hooks/use-external-worker';
@@ -453,6 +454,13 @@ export const ChatImpl = memo(
       /* Phase 5: sync job events to workerEventsStore for the progress UI */
       setWorkerEvents(extWorkerState.events);
 
+      /*
+       * Mark this as the live build so per-turn streams skip it (the global
+       * BuildStream already draws it). It stays "active" through
+       * ready_for_preview until the NEXT turn starts a new job.
+       */
+      activeBuildJobIdStore.set(extWorkerState.jobId ?? null);
+
       /* Phase 10: sync real progress percentage + current step */
       setWorkerProgress(extWorkerState.progress, extWorkerState.currentStep);
 
@@ -536,11 +544,30 @@ export const ChatImpl = memo(
 
           const newContent = buildWorkerStreamContent(extWorkerState);
 
-          if (newContent === last.content) {
+          /*
+           * Stamp THIS assistant turn with its jobId so the per-turn build
+           * stream (TurnBuildStream) can reload exactly this turn's timeline
+           * later — even after several more edits replace the live event store.
+           * Persisted with the message, so it survives reload. Dedup by jobId.
+           */
+          const jobId = extWorkerState.jobId;
+          const existingAnnotations = Array.isArray(last.annotations) ? last.annotations : [];
+          const hasBuildAnn =
+            !!jobId &&
+            existingAnnotations.some(
+              (a) => a && typeof a === 'object' && (a as any).type === 'palmkit-build' && (a as any).jobId === jobId,
+            );
+          const nextAnnotations =
+            jobId && !hasBuildAnn ? [...existingAnnotations, { type: 'palmkit-build', jobId }] : existingAnnotations;
+
+          if (newContent === last.content && nextAnnotations === existingAnnotations) {
             return prev;
           }
 
-          const updatedMessages = [...prev.slice(0, -1), { ...last, content: newContent }];
+          const updatedMessages = [
+            ...prev.slice(0, -1),
+            { ...last, content: newContent, annotations: nextAnnotations },
+          ];
 
           /*
            * Save to IndexedDB immediately when the content changes.

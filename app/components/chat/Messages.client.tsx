@@ -1,8 +1,11 @@
 import type { Message } from 'ai';
 import { Fragment } from 'react';
+import { useStore } from '@nanostores/react';
 import { classNames } from '~/utils/classNames';
 import { AssistantMessage } from './AssistantMessage';
 import { UserMessage } from './UserMessage';
+import { TurnBuildStream } from './TurnBuildStream';
+import { activeBuildJobIdStore } from '~/lib/stores/build-status';
 import { useLocation } from '@remix-run/react';
 import { db, chatId } from '~/lib/persistence/useChatHistory';
 import { forkChat } from '~/lib/persistence/db';
@@ -28,6 +31,22 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
   (props: MessagesProps, ref: ForwardedRef<HTMLDivElement> | undefined) => {
     const { id, isStreaming = false, messages = [] } = props;
     const location = useLocation();
+    const activeBuildJobId = useStore(activeBuildJobIdStore);
+
+    /* Extract the per-turn build jobId stamped on an assistant message. */
+    const getBuildJobId = (annotations: Message['annotations']): string | null => {
+      if (!Array.isArray(annotations)) {
+        return null;
+      }
+
+      for (const a of annotations) {
+        if (a && typeof a === 'object' && (a as any).type === 'palmkit-build' && (a as any).jobId) {
+          return (a as any).jobId as string;
+        }
+      }
+
+      return null;
+    };
 
     const handleRewind = (messageId: string) => {
       const searchParams = new URLSearchParams(location.search);
@@ -62,6 +81,15 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
                 return <Fragment key={index} />;
               }
 
+              /*
+               * Per-turn build stream: if this assistant turn ran a build whose
+               * job is NOT the live one, render its saved timeline inline
+               * (collapsed). The live build is drawn by the global BuildStream,
+               * so we skip it here to avoid a duplicate.
+               */
+              const buildJobId = !isUserMessage ? getBuildJobId(annotations) : null;
+              const showTurnStream = !!buildJobId && buildJobId !== activeBuildJobId;
+
               return (
                 <div
                   key={index}
@@ -73,20 +101,23 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
                     {isUserMessage ? (
                       <UserMessage content={content} parts={parts} />
                     ) : (
-                      <AssistantMessage
-                        content={content}
-                        annotations={message.annotations}
-                        messageId={messageId}
-                        onRewind={handleRewind}
-                        onFork={handleFork}
-                        append={props.append}
-                        chatMode={props.chatMode}
-                        setChatMode={props.setChatMode}
-                        model={props.model}
-                        provider={props.provider}
-                        parts={parts}
-                        addToolResult={props.addToolResult}
-                      />
+                      <>
+                        <AssistantMessage
+                          content={content}
+                          annotations={message.annotations}
+                          messageId={messageId}
+                          onRewind={handleRewind}
+                          onFork={handleFork}
+                          append={props.append}
+                          chatMode={props.chatMode}
+                          setChatMode={props.setChatMode}
+                          model={props.model}
+                          provider={props.provider}
+                          parts={parts}
+                          addToolResult={props.addToolResult}
+                        />
+                        {showTurnStream && <TurnBuildStream jobId={buildJobId!} />}
+                      </>
                     )}
                   </div>
                 </div>
