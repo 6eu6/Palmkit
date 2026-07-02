@@ -31,16 +31,24 @@ export const MobileActionDock = memo(() => {
       case 'chat':
         chatStore.setKey('showChat', true);
         workbenchStore.showWorkbench.set(false);
+
+        /*
+         * Terminal has its own tab — don't leave it open behind the others,
+         * where it just eats half the screen with the E2B "shell in cloud" note.
+         */
+        workbenchStore.toggleTerminal(false);
         break;
       case 'preview':
         chatStore.setKey('showChat', false);
         workbenchStore.showWorkbench.set(true);
         workbenchStore.currentView.set('preview');
+        workbenchStore.toggleTerminal(false);
         break;
       case 'files':
         chatStore.setKey('showChat', false);
         workbenchStore.showWorkbench.set(true);
         workbenchStore.currentView.set('code');
+        workbenchStore.toggleTerminal(false);
         break;
       case 'actions':
         chatStore.setKey('showChat', false);

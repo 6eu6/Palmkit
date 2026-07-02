@@ -84,7 +84,12 @@ export const EditorPanel = memo(
       <PanelGroup direction="vertical">
         <Panel defaultSize={showTerminal ? DEFAULT_EDITOR_SIZE : 100} minSize={20}>
           <PanelGroup direction="horizontal">
-            <Panel defaultSize={20} minSize={15} collapsible className="border-r border-palmkit-elements-borderColor">
+            <Panel
+              defaultSize={isMobile() ? 42 : 20}
+              minSize={isMobile() ? 30 : 15}
+              collapsible
+              className="border-r border-palmkit-elements-borderColor"
+            >
               <div className="h-full">
                 <Tabs.Root defaultValue="files" className="flex flex-col h-full">
                   <PanelHeader className="w-full text-sm font-medium text-palmkit-elements-textSecondary px-1">
