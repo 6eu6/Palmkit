@@ -294,7 +294,23 @@ export async function runOrchestratedBuild(
       let stepId = 0;
       let textBuffer = '';
       let lastFlushTime = Date.now();
-      const FLUSH_INTERVAL_MS = 500;
+
+      /*
+       * Reasoning aggregation. Each flush writes ONE job_events row, so flushing
+       * on every 500ms delta produced a swarm of tiny rows for a single continuous
+       * thought (observed: ~8 rows / ~10-char fragments for one narration) — costly
+       * (DB inserts + Realtime messages + poll payload) and choppy.
+       *
+       * Now we COALESCE a contiguous reasoning run: buffer deltas and flush only
+       * when the chunk gets sizeable (FLUSH_CHARS) OR a longer interval passes
+       * (FLUSH_INTERVAL_MS) OR a real boundary hits (tool-call / step-finish /
+       * finish, which call flushText directly). Short narrations become a single
+       * row; long "thinking" still streams periodically so it never looks frozen.
+       * The client concatenates fragments unchanged, so the rendered text is
+       * identical — just far fewer rows.
+       */
+      const FLUSH_INTERVAL_MS = 2000;
+      const FLUSH_CHARS = 700;
 
       const flushText = async (isFinal: boolean) => {
         if (textBuffer.length === 0) {
@@ -303,6 +319,7 @@ export async function runOrchestratedBuild(
 
         const text = textBuffer;
         textBuffer = '';
+        lastFlushTime = Date.now();
 
         try {
           await emitEvent(
@@ -320,6 +337,13 @@ export async function runOrchestratedBuild(
           );
         } catch {
           /* best-effort */
+        }
+      };
+
+      /* Flush only when the buffer is big enough or the interval elapsed. */
+      const maybeFlush = async () => {
+        if (textBuffer.length >= FLUSH_CHARS || (textBuffer.length > 0 && Date.now() - lastFlushTime > FLUSH_INTERVAL_MS)) {
+          await flushText(false);
         }
       };
 
@@ -435,11 +459,7 @@ export async function runOrchestratedBuild(
              */
             case 'text-delta': {
               textBuffer += part.textDelta;
-
-              if (Date.now() - lastFlushTime > FLUSH_INTERVAL_MS) {
-                await flushText(false);
-                lastFlushTime = Date.now();
-              }
+              await maybeFlush();
 
               break;
             }
@@ -452,11 +472,7 @@ export async function runOrchestratedBuild(
              */
             case 'reasoning': {
               textBuffer += part.textDelta;
-
-              if (Date.now() - lastFlushTime > FLUSH_INTERVAL_MS) {
-                await flushText(false);
-                lastFlushTime = Date.now();
-              }
+              await maybeFlush();
 
               break;
             }
