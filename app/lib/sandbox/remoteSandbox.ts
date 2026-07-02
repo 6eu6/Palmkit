@@ -239,6 +239,21 @@ export async function startRemoteSandbox(
   return url;
 }
 
+/**
+ * Resume a (possibly paused) sandbox. `Sandbox.connect` on the server
+ * auto-resumes a paused sandbox. Returns true if the sandbox still exists and
+ * was reachable, false if it's gone (reaped) or resume failed — the caller can
+ * then fall back to showing the "Launch preview" button.
+ */
+export async function resumeRemoteSandbox(id: string): Promise<boolean> {
+  try {
+    await callWithRetry({ op: 'resume', id }, 1);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Whether the dev server inside the sandbox is responding on its port yet. */
 export async function checkRemoteStatus(id: string, port?: number): Promise<boolean> {
   try {

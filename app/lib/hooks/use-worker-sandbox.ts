@@ -38,6 +38,7 @@ import {
   pushFiles,
   startRemoteSandbox,
   checkRemoteStatus,
+  resumeRemoteSandbox,
 } from '~/lib/sandbox/remoteSandbox';
 
 export type SandboxRunState = 'idle' | 'writing' | 'installing' | 'starting' | 'ready' | 'error';
@@ -62,7 +63,121 @@ export function useWorkerSandbox(): WorkerSandboxResult {
   const [usesMobileE2B, setUsesMobileE2B] = useState(false);
 
   const launchRef = useRef(false);
+  const reconnectRef = useRef(false);
   const prevJobRef = useRef(buildStatus.jobStatus);
+
+  /*
+   * SURVIVE PAGE REFRESH.
+   *
+   * The E2B preview sandbox lives server-side and stays alive (E2B pauses it
+   * after idle, and Sandbox.connect auto-resumes). But the client-side preview
+   * URL lived only in React state, so a page refresh dropped it and the user
+   * saw a blank preview / had to relaunch — the "preview disconnects on refresh"
+   * complaint.
+   *
+   * On mount, if the `pf_preview` cookie from a previous session is present,
+   * reconnect: resume the sandbox, confirm the dev server responds, and restore
+   * the same-origin `/preview/` URL. If the sandbox is gone (reaped), fall back
+   * silently to the idle "Launch preview" state.
+   */
+  useEffect(() => {
+    if (reconnectRef.current || typeof document === 'undefined') {
+      return undefined;
+    }
+
+    reconnectRef.current = true;
+
+    // Don't hijack an active build — only reconnect a finished preview.
+    if (buildStatusStore.get().jobStatus === 'generating') {
+      return undefined;
+    }
+
+    const match = document.cookie.match(/(?:^|;\s*)pf_preview=([^;]+)/);
+
+    if (!match) {
+      return undefined;
+    }
+
+    const [sid, portStr = '3000'] = decodeURIComponent(match[1]).split(':');
+    const port = Number(portStr) || 3000;
+
+    if (!sid) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      if (launchRef.current) {
+        return;
+      }
+
+      launchRef.current = true;
+      setSandboxState('starting');
+
+      try {
+        if (!(await isRemoteSandboxAvailable())) {
+          setSandboxState('idle');
+          return;
+        }
+
+        // Resume (auto-resumes if paused). If it's gone, bail to the launch button.
+        if (!(await resumeRemoteSandbox(sid))) {
+          setSandboxState('idle');
+          return;
+        }
+
+        const poll = async (tries: number): Promise<boolean> => {
+          for (let i = 0; i < tries && !cancelled; i++) {
+            if (await checkRemoteStatus(sid, port)) {
+              return true;
+            }
+
+            await new Promise((r) => setTimeout(r, 2500));
+          }
+
+          return false;
+        };
+
+        /*
+         * Common case — a quick refresh where the sandbox never idle-paused: the
+         * dev server is still running, so status is ready almost immediately.
+         */
+        let ok = await poll(3);
+
+        /*
+         * Returning after an idle pause: E2B restores the sandbox filesystem on
+         * resume but NOT the running dev-server process. Relaunch it — node_modules
+         * is already installed, so `npm install` is a no-op and Vite starts in ~200ms.
+         */
+        if (!ok && !cancelled) {
+          document.cookie = `pf_preview=${sid}:${port}; path=/; samesite=lax`;
+          await startRemoteSandbox(sid, { port }).catch(() => undefined);
+          ok = await poll(12);
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        if (ok) {
+          setUsesMobileE2B(true);
+          setSandboxUrl(`${window.location.origin}/preview/`);
+          setSandboxState('ready');
+        } else {
+          setSandboxState('idle');
+        }
+      } catch {
+        setSandboxState('idle');
+      } finally {
+        launchRef.current = false;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const appType = buildStatus.appType ?? '';
   const canUseSandbox = Boolean(appType && E2B_TYPES.has(appType));
@@ -166,15 +281,19 @@ async function _runInE2B(
 
   setState('installing');
 
-  // Start the dev server in the background. This returns quickly because
-  // the server runs `npm install && npm run dev` as a background process.
-  // We DON'T await the full install — we poll for readiness below.
+  /*
+   * Start the dev server in the background. This returns quickly because
+   * the server runs `npm install && npm run dev` as a background process.
+   * We DON'T await the full install — we poll for readiness below.
+   */
   console.log('[worker-sandbox] starting dev server...');
-  startRemoteSandbox(sandbox.id, { port: 3000 }).then((url) => {
-    console.log('[worker-sandbox] dev server started:', url);
-  }).catch((err) => {
-    console.error('[worker-sandbox] start failed:', err);
-  });
+  startRemoteSandbox(sandbox.id, { port: 3000 })
+    .then((url) => {
+      console.log('[worker-sandbox] dev server started:', url);
+    })
+    .catch((err) => {
+      console.error('[worker-sandbox] start failed:', err);
+    });
 
   setState('starting');
 
@@ -183,14 +302,18 @@ async function _runInE2B(
     document.cookie = `pf_preview=${sandbox.id}:3000; path=/; samesite=lax`;
   }
 
-  // Poll until the cloud dev server responds (up to ~120s).
-  // The dev server needs time for: npm install (~10s) + vite start (~2s).
+  /*
+   * Poll until the cloud dev server responds (up to ~120s).
+   * The dev server needs time for: npm install (~10s) + vite start (~2s).
+   */
   for (let i = 0; i < 40; i++) {
     const ready = await checkRemoteStatus(sandbox.id, 3000);
     console.log(`[worker-sandbox] poll ${i + 1}/40: ready=${ready}`);
+
     if (ready) {
       break;
     }
+
     await new Promise((r) => setTimeout(r, 3000));
   }
 
