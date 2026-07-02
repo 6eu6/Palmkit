@@ -14,7 +14,7 @@ export const MobileShell = memo(() => {
 
   useEffect(() => {
     if (showWorkbench && activeTab === 'chat') {
-      mobileActiveTab.set('preview');
+      mobileActiveTab.set('workspace');
     } else if (!showWorkbench && activeTab !== 'chat' && activeTab !== 'settings' && activeTab !== 'projects') {
       mobileActiveTab.set('chat');
       chatStore.setKey('showChat', true);

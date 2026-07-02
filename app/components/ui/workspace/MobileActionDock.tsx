@@ -1,24 +1,24 @@
 import { useStore } from '@nanostores/react';
 import { memo, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { mobileActiveTab, type MobileTab } from '~/lib/stores/mobile';
+import { mobileActiveTab, WORKSPACE_TABS, type MobileTab } from '~/lib/stores/mobile';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { chatStore } from '~/lib/stores/chat';
 
 /**
  * MobileActionDock — Premium mobile bottom navigation
  *
- * 5 tabs: Chat, Preview, Code, Terminal, Settings
- * Dark glass surface with CSS custom properties, purple accent system, Phosphor icons.
- * Safe-area aware. Uses design tokens from variables.scss.
+ * Two primary tabs: Chat and Workspace. The Workspace tab opens the workbench,
+ * whose own top slider switches file / diff / preview and whose toolbar toggles
+ * the terminal — so a single button covers the whole IDE surface. Settings and
+ * Projects live in the header (menu + account), not the bottom bar.
+ *
+ * Dark glass surface with CSS custom properties, purple accent, Phosphor icons.
  */
 
 const DOCK_ITEMS: { id: MobileTab; label: string; icon: string; iconActive: string }[] = [
   { id: 'chat', label: 'Chat', icon: 'i-ph:chat-circle-text', iconActive: 'i-ph:chat-circle-text-bold' },
-  { id: 'preview', label: 'Preview', icon: 'i-ph:play', iconActive: 'i-ph:play-bold' },
-  { id: 'files', label: 'Code', icon: 'i-ph:code', iconActive: 'i-ph:code-bold' },
-  { id: 'actions', label: 'Terminal', icon: 'i-ph:terminal-window', iconActive: 'i-ph:terminal-window-bold' },
-  { id: 'settings', label: 'Settings', icon: 'i-ph:gear-six', iconActive: 'i-ph:gear-six-bold' },
+  { id: 'workspace', label: 'Workspace', icon: 'i-ph:code', iconActive: 'i-ph:code-bold' },
 ];
 
 export const MobileActionDock = memo(() => {
@@ -37,6 +37,24 @@ export const MobileActionDock = memo(() => {
          * where it just eats half the screen with the E2B "shell in cloud" note.
          */
         workbenchStore.toggleTerminal(false);
+        break;
+      case 'workspace':
+        /*
+         * The single Workspace tab. Open the workbench and keep whatever view
+         * the user was last on (file / diff / preview) via its own slider;
+         * default to the code view so a build streams in visibly. The terminal
+         * is reached from the workbench toolbar, not forced open here.
+         */
+        chatStore.setKey('showChat', false);
+        workbenchStore.showWorkbench.set(true);
+        workbenchStore.toggleTerminal(false);
+
+        if (workbenchStore.currentView.get() === 'diff') {
+          // keep diff if that's where they were
+        } else if (!workbenchStore.previews.get().length) {
+          workbenchStore.currentView.set('code');
+        }
+
         break;
       case 'preview':
         chatStore.setKey('showChat', false);
@@ -84,7 +102,7 @@ export const MobileActionDock = memo(() => {
 
       <div className="flex items-center justify-around px-1 pt-1.5 pb-1.5">
         {DOCK_ITEMS.map((item) => {
-          const isActive = activeTab === item.id;
+          const isActive = item.id === 'workspace' ? WORKSPACE_TABS.includes(activeTab) : activeTab === item.id;
 
           return (
             <button
