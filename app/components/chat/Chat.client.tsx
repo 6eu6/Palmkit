@@ -382,6 +382,9 @@ export const ChatImpl = memo(
     const externalWorkerEnabled = useExternalWorkerFlag();
     const { state: extWorkerState, startJob: startExtJob, restoreJob: restoreExtJob } = useExternalWorker();
 
+    // Subscribe to chat metadata so the restore effect re-runs when it loads on refresh.
+    const activeChatMeta = useStore(chatMetadata);
+
     /*
      * RESTORE JOB ON PAGE LOAD / REFRESH
      *
@@ -400,17 +403,23 @@ export const ChatImpl = memo(
         return;
       }
 
-      // Read palmkitJobId from chat metadata (persisted in IndexedDB)
-      const metadata = chatMetadata.get();
-
-      if (metadata?.palmkitJobId && extWorkerState.status === 'idle' && !extWorkerState.jobId) {
+      /*
+       * Read palmkitJobId from chat metadata (persisted in IndexedDB). We depend
+       * on `activeChatMeta` (a useStore subscription) — NOT a one-shot .get() —
+       * because on a page refresh useChatHistory loads the metadata ASYNC, often
+       * AFTER this effect first runs. Without the subscription the effect never
+       * re-ran once the metadata arrived, so the job was never restored and the
+       * BuildStream stayed blank.
+       */
+      if (activeChatMeta?.palmkitJobId && extWorkerState.status === 'idle' && !extWorkerState.jobId) {
         /*
          * Restore the job — this starts polling which processes ALL events
-         * through dispatchJobEvent, populating the progress stores.
+         * through dispatchJobEvent, repopulating workerEventsStore so the live
+         * BuildStream comes back exactly where it was.
          */
-        restoreExtJob(metadata.palmkitJobId);
+        restoreExtJob(activeChatMeta.palmkitJobId);
       }
-    }, [externalWorkerEnabled, extWorkerState.status, extWorkerState.jobId, restoreExtJob]);
+    }, [externalWorkerEnabled, activeChatMeta, extWorkerState.status, extWorkerState.jobId, restoreExtJob]);
 
     // Sync external worker status → build-status store (for Preview gate).
     useEffect(() => {
@@ -463,31 +472,34 @@ export const ChatImpl = memo(
         workbenchStore.showWorkbench.set(true);
       }
 
-      /* Phase 8: track job ID for ZIP export + persist to chat metadata for restore-on-reload */
-      if (extWorkerState.status === 'ready_for_preview' && extWorkerState.jobId) {
-        setCurrentJobId(extWorkerState.jobId);
+      /*
+       * Persist the jobId to chat metadata AS SOON AS it exists — not only when
+       * the build finishes. This is what lets a MID-BUILD page refresh restore
+       * the live BuildStream: on reload we look up palmkitJobId and resume
+       * polling. (Previously this ran only on ready_for_preview, so refreshing
+       * DURING a build lost the whole stream — the user saw only the static
+       * "Building your project…" line with no idea where the build was.)
+       */
+      if (extWorkerState.jobId) {
+        /* Phase 8: track job ID for ZIP export once the build is ready. */
+        if (extWorkerState.status === 'ready_for_preview') {
+          setCurrentJobId(extWorkerState.jobId);
+        }
 
-        /*
-         * Persist jobId + appType to chat metadata so preview can be restored on page reload.
-         * Without this, reload loses the job reference AND the app type, so the preview
-         * can't decide whether to use blob URL (static), WebContainer (React desktop),
-         * or E2B (mobile/Python) — the user sees "No preview available".
-         */
         const currentMetadata = chatMetadata.get();
+        const appType = extWorkerState.appType ?? currentMetadata?.palmkitAppType;
 
-        if (currentMetadata?.palmkitJobId !== extWorkerState.jobId) {
+        if (currentMetadata?.palmkitJobId !== extWorkerState.jobId || currentMetadata?.palmkitAppType !== appType) {
           chatMetadata.set({
             ...currentMetadata,
             gitUrl: currentMetadata?.gitUrl ?? '',
             palmkitJobId: extWorkerState.jobId,
-            palmkitAppType: extWorkerState.appType ?? undefined,
+            palmkitAppType: appType,
           });
 
           /*
-           * CRITICAL: Save the chat to IndexedDB with the LATEST messages.
-           * The `messages` state should be updated by now (the useEffect
-           * runs after render, and setMessages was called in sendMessage).
-           * But to be safe, we also filter out hidden messages.
+           * Save the chat to IndexedDB with the LATEST messages + metadata so
+           * the jobId reference survives a refresh at any point in the build.
            */
           const visibleMessages = messages.filter((m) => !m.annotations?.includes('hidden'));
 
