@@ -26,6 +26,7 @@ import {
   disposeBuildResult,
 } from './agent-tools';
 import { filterTools, getAgentConfig, DEFAULT_AGENT_FLOW, type AgentRole } from './agent-registry';
+import { disposeSandbox } from './e2b-runner';
 import { logger } from './logger';
 import { emitEvent } from './event-emitter';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -923,5 +924,9 @@ export async function runOrchestratedBuild(
     // from growing without bound on the long-running worker).
     disposeProjectFiles(jobId);
     disposeBuildResult(jobId);
+    // Kill the job's persistent E2B sandbox (created lazily on the first
+    // run_shell). This is the ONLY place it's torn down, so it must run on
+    // every exit path — success, failure, timeout, or abort.
+    await disposeSandbox(jobId);
   }
 }

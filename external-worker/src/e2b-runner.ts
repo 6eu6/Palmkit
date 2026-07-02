@@ -1,38 +1,156 @@
 /**
- * E2B Shell Runner — Execute shell commands in an isolated E2B sandbox
+ * E2B Shell Runner — lazy, per-job PERSISTENT sandbox
  *
- * This replaces the old Bun.spawn approach that ran commands on the worker host.
- * Now every shell command runs in an isolated E2B sandbox with:
- * - The project's files written to /home/user/project
- * - npm/node/python available
- * - No access to worker secrets
- * - Auto-destroyed after the command completes
+ * Every shell command (run_shell / run_tests / take_screenshot) runs in an
+ * isolated E2B sandbox that holds the project's files at /home/user/project.
  *
- * The sandbox is created on-demand per command (not persisted). This is
- * resource-efficient: we only pay for E2B when the agent actually needs
- * to run a command, not during file writes.
+ * Lifecycle (per build job):
+ *   - LAZY: the sandbox is created on the FIRST shell command of the job, not
+ *     during file writes — we only pay for E2B when the agent actually runs
+ *     something.
+ *   - PERSISTENT: the SAME sandbox is reused for every subsequent command in
+ *     that job. This means `npm install` runs ONCE — its node_modules survives
+ *     into later `npm run build` calls and into the Builder⇄Tester repair loop,
+ *     instead of the old "fresh sandbox per command" that re-installed deps on
+ *     every single call.
+ *   - INCREMENTAL SYNC: before each command we push only the files that changed
+ *     (and remove source files that were deleted) since the last sync. Generated
+ *     artifacts inside the sandbox (node_modules, dist/) are never touched.
+ *   - BOUNDED: the sandbox has a hard TTL so a crashed worker can't leak it, and
+ *     it is killed the moment the job finishes (disposeSandbox in the
+ *     orchestrator's finally block). We log the sandbox-minutes it consumed.
+ *
+ * Concurrency: sandboxes are keyed by jobId, so the up-to-10 builds the worker
+ * runs in parallel each get their own isolated sandbox.
  */
 
 import { Sandbox } from 'e2b';
 import { logger } from './logger';
-import type { SupabaseClient } from '@supabase/supabase-js';
 
 const E2B_API_KEY = process.env.E2B_API_KEY!;
+const PROJECT_DIR = '/home/user/project';
+
+/*
+ * Hard cap on a single sandbox's lifetime. Set one minute LONGER than the
+ * orchestrator's 15-min hard timeout so the orchestrator (which aborts + calls
+ * disposeSandbox) is always what ends a build — the sandbox never dies out from
+ * under an in-flight command first. If the worker process itself dies, E2B still
+ * auto-kills the sandbox at this deadline, so it can never be leaked.
+ */
+const SANDBOX_TTL_MS = 16 * 60 * 1000;
+
+interface JobSandbox {
+  sandbox: Sandbox;
+  createdAt: number;
+  /** path (relative to PROJECT_DIR) -> content hash currently written in the sandbox */
+  synced: Map<string, number>;
+}
+
+/** Per-job sandbox registry. Keyed by jobId to isolate concurrent builds. */
+const jobSandboxes = new Map<string, JobSandbox>();
+/** In-flight creations, so a job's first two commands don't race two sandboxes. */
+const creating = new Map<string, Promise<JobSandbox>>();
+
+/** Fast FNV-1a 32-bit hash for cheap change detection (not security-sensitive). */
+function hashContent(s: string): number {
+  let h = 0x811c9dc5;
+
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+
+  return h >>> 0;
+}
+
+async function getOrCreateSandbox(jobId: string): Promise<JobSandbox> {
+  const existing = jobSandboxes.get(jobId);
+
+  if (existing) {
+    return existing;
+  }
+
+  const inFlight = creating.get(jobId);
+
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const promise = (async () => {
+    const sandbox = await Sandbox.create({ apiKey: E2B_API_KEY, timeoutMs: SANDBOX_TTL_MS });
+    const entry: JobSandbox = { sandbox, createdAt: Date.now(), synced: new Map() };
+    jobSandboxes.set(jobId, entry);
+    logger.info(`[e2b] Sandbox created for job ${jobId}: ${sandbox.sandboxId} (TTL ${SANDBOX_TTL_MS / 1000}s)`);
+
+    return entry;
+  })();
+
+  creating.set(jobId, promise);
+
+  try {
+    return await promise;
+  } finally {
+    creating.delete(jobId);
+  }
+}
 
 /**
- * Run a shell command in an E2B sandbox with the project's files.
+ * Push only the changed/removed SOURCE files into the sandbox.
+ * node_modules and other sandbox-generated artifacts are never in `files`, so
+ * they are never overwritten or deleted here.
+ */
+async function syncFiles(
+  entry: JobSandbox,
+  files: Record<string, string>,
+): Promise<{ written: number; deleted: number }> {
+  const writes: Array<{ path: string; data: string }> = [];
+  const present = new Set<string>();
+
+  for (const [path, content] of Object.entries(files)) {
+    present.add(path);
+
+    const h = hashContent(content);
+
+    if (entry.synced.get(path) !== h) {
+      writes.push({ path: `${PROJECT_DIR}/${path}`, data: content });
+      entry.synced.set(path, h);
+    }
+  }
+
+  const toDelete: string[] = [];
+
+  for (const path of entry.synced.keys()) {
+    if (!present.has(path)) {
+      toDelete.push(path);
+    }
+  }
+
+  if (writes.length > 0) {
+    await entry.sandbox.files.write(writes);
+  }
+
+  for (const path of toDelete) {
+    try {
+      await entry.sandbox.files.remove(`${PROJECT_DIR}/${path}`);
+    } catch {
+      // best-effort — the file may already be gone
+    }
+
+    entry.synced.delete(path);
+  }
+
+  return { written: writes.length, deleted: toDelete.length };
+}
+
+/**
+ * Run a shell command in the job's persistent E2B sandbox.
  *
- * 1. Create a new sandbox
- * 2. Write all project files from the in-memory Map to /home/user/project
- * 3. Run the command in /home/user/project
- * 4. Capture stdout/stderr/exit code
- * 5. Destroy the sandbox
- *
- * @param command - The shell command to run
- * @param files - Map of filePath -> content (the project's files)
- * @returns stdout, stderr, exitCode
+ * @param jobId   - the build job (keys the persistent sandbox)
+ * @param command - the shell command to run
+ * @param files   - the CURRENT project files (in-memory map); synced incrementally
  */
 export async function runInE2B(
+  jobId: string,
   command: string,
   files: Record<string, string>,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
@@ -40,62 +158,87 @@ export async function runInE2B(
     throw new Error('E2B_API_KEY not set — cannot run shell commands in sandbox');
   }
 
-  let sandbox: Sandbox | null = null;
+  let entry: JobSandbox;
 
   try {
-    // Create a new sandbox
-    sandbox = await Sandbox.create({ apiKey: E2B_API_KEY });
-    logger.info(`[e2b] Sandbox created: ${sandbox.sandboxId}`);
+    entry = await getOrCreateSandbox(jobId);
+  } catch (e) {
+    logger.error(`[e2b] Sandbox creation failed for job ${jobId}: ${e instanceof Error ? e.message : String(e)}`);
+    return { stdout: '', stderr: e instanceof Error ? e.message : String(e), exitCode: -1 };
+  }
 
-    // Write all project files to /home/user/project
-    const writePromises: Promise<void>[] = [];
+  try {
+    // Keep the sandbox alive for the rest of the build, but never past the
+    // absolute TTL measured from creation.
+    const remaining = SANDBOX_TTL_MS - (Date.now() - entry.createdAt);
 
-    for (const [path, content] of Object.entries(files)) {
-      const fullPath = `/home/user/project/${path}`;
-      writePromises.push(sandbox.files.write(fullPath, content).then(() => {}));
+    if (remaining > 0) {
+      try {
+        await entry.sandbox.setTimeout(remaining);
+      } catch {
+        // non-fatal — the create-time TTL still applies
+      }
     }
 
-    await Promise.all(writePromises);
-    logger.info(`[e2b] Wrote ${writePromises.length} files to sandbox`);
+    const sync = await syncFiles(entry, files);
 
-    // Run the command
-    //
-    // Timeout was 60_000ms — too short for `npm install` on real projects
-    // (often 60-120s on cold E2B sandboxes), and definitely too short for
-    // `npx playwright install chromium`. Bumped to 180s with a separate
-    // longer budget for install-type commands detected heuristically.
+    if (sync.written > 0 || sync.deleted > 0) {
+      logger.info(`[e2b] job ${jobId}: synced +${sync.written}/-${sync.deleted} files`);
+    }
+
+    /*
+     * `npm install` on a cold sandbox is slow; other commands are quick. Because
+     * node_modules now PERSISTS across calls, a second `npm install` in the same
+     * job is a fast no-op, but we still give install-type commands the longer
+     * budget for the first run.
+     */
     const isInstallCommand = /^(npm|pnpm|yarn|bunx|npx)\s+(install|i|add|ci|playwright install)/.test(command.trim());
     const timeoutMs = isInstallCommand ? 300_000 : 180_000;
 
-    const result = await sandbox.commands.run(command, {
-      cwd: '/home/user/project',
-      timeoutMs,
-    });
+    const result = await entry.sandbox.commands.run(command, { cwd: PROJECT_DIR, timeoutMs });
 
-    logger.info(`[e2b] Command "${command}" → exit ${result.exitCode}`);
+    logger.info(`[e2b] job ${jobId}: "${command.slice(0, 80)}" → exit ${result.exitCode}`);
 
-    return {
-      stdout: result.stdout || '',
-      stderr: result.stderr || '',
-      exitCode: result.exitCode,
-    };
+    return { stdout: result.stdout || '', stderr: result.stderr || '', exitCode: result.exitCode };
   } catch (e) {
-    logger.error(`[e2b] Error running command: ${e instanceof Error ? e.message : String(e)}`);
+    /*
+     * A non-zero exit throws CommandExitError, which carries the real
+     * exitCode + stdout + stderr. Surface those (the repair loop reads the
+     * build output) instead of collapsing them into a generic message.
+     */
+    const err = e as { exitCode?: number; stdout?: string; stderr?: string; message?: string };
 
-    return {
-      stdout: '',
-      stderr: e instanceof Error ? e.message : String(e),
-      exitCode: -1,
-    };
-  } finally {
-    // Always destroy the sandbox to avoid leaking resources
-    if (sandbox) {
-      try {
-        await sandbox.kill();
-        logger.info(`[e2b] Sandbox destroyed: ${sandbox.sandboxId}`);
-      } catch (e) {
-        logger.warn(`[e2b] Failed to destroy sandbox: ${e}`);
-      }
+    if (typeof err?.exitCode === 'number') {
+      logger.info(`[e2b] job ${jobId}: "${command.slice(0, 80)}" → exit ${err.exitCode} (non-zero)`);
+      return { stdout: err.stdout || '', stderr: err.stderr || err.message || '', exitCode: err.exitCode };
     }
+
+    // Anything else (timeout, sandbox died, network) — report as a hard failure.
+    logger.error(`[e2b] job ${jobId}: command error: ${err?.message ?? String(e)}`);
+    return { stdout: '', stderr: err?.message ?? String(e), exitCode: -1 };
+  }
+}
+
+/**
+ * Kill the job's sandbox and release its slot. Call this once when the build
+ * finishes (the orchestrator's finally block). Logs the sandbox-minutes used so
+ * E2B cost is observable per build.
+ */
+export async function disposeSandbox(jobId: string): Promise<void> {
+  const entry = jobSandboxes.get(jobId);
+
+  if (!entry) {
+    return;
+  }
+
+  jobSandboxes.delete(jobId);
+
+  const minutes = ((Date.now() - entry.createdAt) / 60000).toFixed(2);
+
+  try {
+    await entry.sandbox.kill();
+    logger.info(`[e2b] Sandbox destroyed for job ${jobId}: ${entry.sandbox.sandboxId} — ${minutes} sandbox-minutes`);
+  } catch (e) {
+    logger.warn(`[e2b] Failed to destroy sandbox for job ${jobId}: ${e}`);
   }
 }

@@ -266,25 +266,23 @@ AVAILABLE TOOLS:
 - search_code(pattern): Search for bugs or issues
 - done(summary): Report your findings
 
-⚠️ CRITICAL — THE SANDBOX DOES NOT PERSIST BETWEEN run_shell CALLS.
-Each run_shell starts a FRESH sandbox with your project files but WITHOUT the
-node_modules from any previous call. If you run "npm install" and then
-"npm run build" as TWO separate run_shell calls, the second runs in a brand-new
-sandbox with no node_modules and fails with "vite: not found". You MUST chain
-everything into ONE command with &&.
+THE SANDBOX PERSISTS across your run_shell calls within this build: node_modules
+from a previous "npm install" is still there on the next call, and the latest
+project files are synced in automatically. You do NOT need to reinstall every time.
 
 YOUR TASK (do it in as few steps as possible — this saves tokens):
-1. Run ONE combined command to install and build:
+1. Verify the build with ONE combined command:
    run_shell("cd /home/user/project && npm install && npm run build")
    If it exits 0, the build PASSES — that is your primary verification.
+   (node_modules from this install persists, so any later build re-check can be
+   just run_shell("cd /home/user/project && npm run build") — no reinstall.)
 2. Only if the build FAILS: read the failing file to identify the exact
    error and which file/line is wrong. Do NOT retry the build more than once.
    Do NOT try to fix it — that's the Builder's job.
 3. Call done() with: build pass/fail, the error (if any), and a one-line summary.
 
-DO NOT run "npm install" and "npm run build" as separate run_shell calls.
-DO NOT run exploratory commands like "ls node_modules" — they run in throwaway
-sandboxes and tell you nothing. One combined build command is all you need.
+DO NOT run exploratory commands like "ls node_modules" — one build command is all
+you need.
 
 WORKFLOW WITH update_todos:
 1. AT THE START: call update_todos with your verification plan as items, all "pending" except the first which is "in_progress".

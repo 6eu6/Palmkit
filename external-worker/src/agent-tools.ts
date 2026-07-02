@@ -458,7 +458,7 @@ export function createAgentTools(
           return { exitCode: 0, stdout: 'No files to test.', stderr: '', success: true, passed: 0, failed: 0 };
         }
 
-        const result = await runInE2B('npm test 2>&1 || vitest run 2>&1 || jest 2>&1 || echo "No tests found"', files);
+        const result = await runInE2B(jobId, 'npm test 2>&1 || vitest run 2>&1 || jest 2>&1 || echo "No tests found"', files);
 
         const passed = (result.stdout.match(/\d+ passing/gi) || [])[0]?.match(/\d+/)?.[0] || '0';
         const failed = (result.stdout.match(/\d+ failing/gi) || [])[0]?.match(/\d+/)?.[0] || '0';
@@ -495,6 +495,7 @@ export function createAgentTools(
         // Run a screenshot command in E2B
         // Install playwright in the sandbox and take a screenshot
         const result = await runInE2B(
+          jobId,
           'npx playwright install chromium 2>/dev/null; node -e "' +
             'const { chromium } = require(\"playwright\");' +
             '(async () => {' +
@@ -614,10 +615,11 @@ export function createAgentTools(
     run_shell: tool({
       description:
         'Run a shell command in an isolated sandbox to verify the build. Returns stdout, stderr, and exit code. ' +
-        'IMPORTANT: the sandbox is EPHEMERAL — a brand-new sandbox is created for EVERY call and it does NOT keep ' +
-        'node_modules or any state from previous calls. So NEVER split dependent steps across calls: run ' +
-        '"cd /home/user/project && npm install && npm run build" as ONE command, not "npm install" then ' +
-        '"npm run build" (the second would fail with "vite: not found"). Your project files are always present.',
+        'The sandbox PERSISTS across calls within this build: node_modules and other state from a previous ' +
+        'command (e.g. "npm install") are still there on the next call, and your latest project files are always ' +
+        'synced in before the command runs. So you can run "npm install" once and then "npm run build" as a ' +
+        'separate later call without reinstalling. (Running them together as ' +
+        '"cd /home/user/project && npm install && npm run build" is also fine.)',
       parameters: z.object({
         command: z
           .string()
@@ -639,7 +641,7 @@ export function createAgentTools(
           };
         }
 
-        const result = await runInE2B(command, files);
+        const result = await runInE2B(jobId, command, files);
 
         logger.info(`[agent] run_shell (E2B): "${command}" → exit ${result.exitCode}`);
 
