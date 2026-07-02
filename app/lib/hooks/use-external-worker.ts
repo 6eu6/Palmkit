@@ -372,6 +372,16 @@ export function useExternalWorker() {
                               ...currentFiles,
                               [filePath]: { type: 'file', content, isBinary: false },
                             });
+
+                            /*
+                             * LIVE CODE: follow the file the agent just wrote so the
+                             * editor shows code streaming in as it's built. Also
+                             * populates the editor on restore (the last replayed
+                             * file_written lands the editor on a real file instead
+                             * of blank). setSelectedFile doesn't change the current
+                             * view, so a user watching Preview isn't yanked away.
+                             */
+                            workbenchStore.setSelectedFile(filePath);
                           })
                           .catch(() => {
                             // best-effort
@@ -602,6 +612,12 @@ export function useExternalWorker() {
                         ...currentFiles,
                         [filePath]: { type: 'file', content: inlineContent, isBinary: false },
                       });
+
+                      /*
+                       * Follow the newest file (live code + fills the editor on
+                       * restore). See the realtime path for the full rationale.
+                       */
+                      workbenchStore.setSelectedFile(filePath);
                     })
                     .catch(() => {
                       // best-effort
@@ -749,6 +765,23 @@ export function useExternalWorker() {
                         fileMap[fullPath] = { type: 'file', content, isBinary: false };
                       }
                       workbenchStore.files.set(fileMap as any);
+
+                      /*
+                       * Open a sensible entry file so the Code view isn't blank
+                       * on restore. The worker path populates files directly
+                       * (bypassing setDocuments' first-file auto-select), which is
+                       * why the mobile Code tab opened empty until a manual tap.
+                       * Prefer a real entry point; fall back to the first file.
+                       */
+                      if (!workbenchStore.selectedFile.get()) {
+                        const keys = Object.keys(fileMap);
+                        const entry =
+                          keys.find((k) => /\/(index\.html|App\.(t|j)sx?|main\.(t|j)sx?)$/i.test(k)) ?? keys[0];
+
+                        if (entry) {
+                          workbenchStore.setSelectedFile(entry);
+                        }
+                      }
 
                       fetched = true;
                       console.log(
