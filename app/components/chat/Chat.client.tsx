@@ -105,18 +105,14 @@ const processSampledMessages = createSampler(
  *
  * IMPORTANT: This is a SHORT summary only — NOT a flat event log.
  * The detailed event information (reasoning, todos, file writes, shell
- * commands) is rendered by the dedicated panels above the chat input:
- *   - ThoughtProcessPanel (💭 reasoning text)
- *   - MultiAgentTodos (📋 todos checklist)
- *   - ActivityStream (🤖 grouped file/command activity)
- *   - WorkerProgress (📊 progress bar + stage pipeline)
+ * commands) is rendered inline in the conversation by the unified
+ * BuildStream component (a single CLI-style timeline), not by this text.
  *
  * Previously this function dumped every event as a flat text line, which
  * flooded the chat with "+tailwind.config.js", "Todos: 4/10 done",
- * "Building... (50s)" etc. — making the chat unreadable and pushing the
- * structured panels out of view.
+ * "Building... (50s)" etc. — making the chat unreadable.
  *
- * Now: just the status header + file count. The panels do the rest.
+ * Now: just the status header + file count. BuildStream does the rest.
  */
 function buildWorkerStreamContent(state: import('~/lib/hooks/use-external-worker').ExternalWorkerState): string {
   if (state.status === 'failed_clean') {
