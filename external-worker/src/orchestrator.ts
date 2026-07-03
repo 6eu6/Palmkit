@@ -677,6 +677,35 @@ export async function runOrchestratedBuild(
       }
 
       if (streamError) {
+        /*
+         * A Builder that ERRORED (flaky provider / bad tool-call — seen with
+         * GLM-5.2, which sometimes fails the LLM call in a few seconds) must not
+         * kill the whole build if we can still retry. If this is the Builder, we
+         * have retry budget, and nothing was written yet, recover: surface the
+         * real error, then re-queue the Builder with a force-build directive.
+         */
+        const canRetryBuilder =
+          role === 'builder' &&
+          builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES &&
+          Object.keys(getProjectFiles(jobId)).length === 0;
+
+        if (canRetryBuilder) {
+          logger.warn(`[orchestrator] Builder errored (${streamError.message}) — retrying once.`);
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk' as any,
+            `⚠️ Builder hit an error (${streamError.message.slice(0, 120)}) — retrying…`,
+            { reason: 'builder_error_retry', error: streamError.message.slice(0, 300) },
+          );
+          agentResults.push({ role, success: false, text: '', duration: Date.now() - agentStart });
+          streamError = null;
+          builderEmptyRetries++;
+          forceBuild = true;
+          agentQueue.unshift('builder');
+          continue; // skip the (unavailable) stream results; run the Builder again
+        }
+
         throw streamError;
       }
 
