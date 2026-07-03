@@ -100,7 +100,7 @@ Run against the app with the real Oracle worker via Supabase.
 | Edit (follow-up) → complete | ✅ |
 | Live diff shows the edit's changes | ✅ |
 | Mobile 2-tab dock (Chat / Workspace) | ✅ |
-| React + Vite + Tailwind build | ⚠️ stalled — model looped rewriting `vite.config.js` ×4; the orchestrator loop-guard aborted cleanly ("Please try again") |
+| React + Vite + Tailwind build | ✅ (after the loop fix) — the same build that used to stall on a `vite.config.js` rewrite loop now completes: `ready_for_preview`, 3 files, no error |
 
 All test data was removed from Supabase after the run.
 
@@ -130,10 +130,12 @@ The worker does **not** need `SUPABASE_ANON_KEY` (that's the frontend's).
 
 ## 6. Known issues / follow-ups
 
-- **Model loop stalls** — some models (e.g. GLM 4.7) can loop rewriting one
-  file; the orchestrator aborts at 4 rewrites. Consider raising the threshold or
-  giving the agent a "this file is fine, move on" hint. Affected builds fail
-  cleanly and are retryable.
+- **Model loop stalls — FIXED (2026-07-03).** Some models (e.g. GLM 4.7) looped
+  rewriting one file and never progressed, failing the build. Now `write_file`
+  refuses identical rewrites, nudges after 3 writes, and HARD-LOCKS a path after
+  4 writes (forcing the model to write remaining files + call `done()`), and the
+  orchestrator salvages the files instead of hard-failing. Verified: a build
+  that previously stalled twice now completes.
 - **Live diff** covers edits (non-empty baseline); a from-scratch build shows no
   diff by design.
 - **Shared fallback LLM key** caps horizontal scaling — prefer per-user keys or
