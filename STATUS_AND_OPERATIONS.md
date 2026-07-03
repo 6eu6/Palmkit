@@ -130,6 +130,19 @@ The worker does **not** need `SUPABASE_ANON_KEY` (that's the frontend's).
 
 ## 6. Known issues / follow-ups
 
+- **"Build did not produce any files" on complex prompts — ROOT-CAUSED & FIXED
+  (2026-07-03).** GLM-5.2 sometimes called the `update_todos` tool with empty
+  args `{}`. Because `todos` was a required param, the AI SDK threw a
+  schema-validation error BEFORE the tool ran, and that error aborted the whole
+  Builder stream → 0 files. A non-essential progress tool was killing entire
+  builds. Fixes: `todos` is now optional (a malformed call reaches the graceful
+  handler instead of crashing); the Builder retries once on a thrown error or a
+  0-file finish. Verified via 3 project sizes on the real worker — complex-build
+  success went from ~1/3 to ~3/4 (4–10 files each).
+- **GLM-5.2 is slow on very complex prompts** (occasionally >4 min of reasoning).
+  Not a failure — the 15-min hard timeout + retries handle it — but for
+  large/heavy builds a faster/stronger model gives a better experience.
+
 - **Model loop stalls — FIXED (2026-07-03).** Some models (e.g. GLM 4.7) looped
   rewriting one file and never progressed, failing the build. Now `write_file`
   refuses identical rewrites, nudges after 3 writes, and HARD-LOCKS a path after
