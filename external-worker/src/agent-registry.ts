@@ -302,13 +302,14 @@ Example Tester todos (keep it short — one combined build command):
     'done',
   ],
   /*
-   * Capped at 6 (was 15). With the single combined install+build command the
-   * Tester needs only: update_todos → run combined build → (optional read on
-   * failure) → done. The old value of 15 let a confused Tester flail through a
-   * dozen throwaway-sandbox commands (npm install, vite build, ls node_modules…)
-   * burning ~125s and thousands of tokens before hitting the step limit.
+   * 10 steps. The old cap of 6 was hit on EVERY real build ("Tester reached
+   * step limit (6)" showed in the chat for all three live-test projects):
+   * the model calls update_todos once per todo tick instead of once per
+   * batch, so todos(1) + install+build(2) + screenshot(3) + todo ticks(4-6)
+   * exhausted the budget before done(). 10 covers the todo chatter while
+   * still stopping a flailing Tester long before the old 15-step waste.
    */
-  maxSteps: 6,
+  maxSteps: 10,
   maxTokens: 8000, // Tester reports need space for error logs.
 };
 

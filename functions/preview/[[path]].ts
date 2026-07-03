@@ -96,29 +96,76 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       return new Response('Preview WebSocket unreachable (still starting?)', { status: 502 });
     }
 
-    const ws = (wsResp as Response & { webSocket?: WebSocket }).webSocket;
+    const upstreamWs = (wsResp as Response & { webSocket?: WebSocket }).webSocket;
 
-    if (!ws) {
+    if (!upstreamWs) {
       // Upstream didn't upgrade — return whatever it said (usually an error).
       return new Response(wsResp.body, { status: wsResp.status, headers: wsResp.headers });
     }
 
-    // Accept the server-side socket so the Workers runtime starts piping.
-    ws.accept();
-
     /*
-     * CRITICAL: echo the negotiated subprotocol back to the browser.
+     * FULL RELAY via WebSocketPair.
      *
-     * Vite's HMR client connects with `Sec-WebSocket-Protocol: vite-hmr`.
-     * Re-wrapping the upstream response in a fresh `new Response(...)` DROPPED
-     * that header, and per the WebSocket spec a client that offered a
-     * subprotocol MUST kill a connection whose 101 doesn't echo one. The
-     * browser then logged "Sent non-empty 'Sec-WebSocket-Protocol' header but
-     * no response was received", Vite declared "server connection lost",
-     * pinged /preview/__vite_ping over plain HTTP (which succeeds through this
-     * proxy), and RELOADED the iframe — an infinite flash/reload loop that
-     * made the preview unusable. Echoing the subprotocol keeps the socket up.
+     * Two previous attempts failed in two different ways:
+     *   1. Re-wrapping without echoing `Sec-WebSocket-Protocol` — the browser
+     *      kills a connection whose 101 doesn't echo the offered subprotocol
+     *      (`vite-hmr`), so the handshake itself failed.
+     *   2. `upstreamWs.accept()` + returning THAT socket in the Response —
+     *      accept() means "this Worker terminates the socket", so handing the
+     *      accepted upstream socket back to the client is contradictory: the
+     *      runtime completed the 101 and then dropped the socket immediately.
+     *      Vite saw "server connection lost", pinged /__vite_ping over HTTP
+     *      (which succeeds), and reloaded the iframe — the every-few-seconds
+     *      preview flash/reload loop.
+     *
+     * Correct pattern: terminate BOTH sides ourselves and pipe frames.
+     * client half → returned to the browser in the 101 (NOT accepted here);
+     * server half + upstream socket → accepted and cross-wired below.
      */
+    const pair = new WebSocketPair();
+    const clientWs = pair[0];
+    const serverWs = pair[1];
+
+    serverWs.accept();
+    upstreamWs.accept();
+
+    /* Workers only allow close codes 1000 / 3000-4999 to be sent explicitly. */
+    const sanitizeCode = (code?: number) => (code === 1000 || (code && code >= 3000 && code < 5000) ? code : 1000);
+
+    const closeBoth = (code?: number, reason?: string) => {
+      try {
+        serverWs.close(sanitizeCode(code), (reason || '').slice(0, 120));
+      } catch {
+        /* already closed */
+      }
+
+      try {
+        upstreamWs.close(sanitizeCode(code), (reason || '').slice(0, 120));
+      } catch {
+        /* already closed */
+      }
+    };
+
+    upstreamWs.addEventListener('message', (e: MessageEvent) => {
+      try {
+        serverWs.send(e.data as string | ArrayBuffer);
+      } catch {
+        closeBoth();
+      }
+    });
+    serverWs.addEventListener('message', (e: MessageEvent) => {
+      try {
+        upstreamWs.send(e.data as string | ArrayBuffer);
+      } catch {
+        closeBoth();
+      }
+    });
+    upstreamWs.addEventListener('close', (e: CloseEvent) => closeBoth(e.code, e.reason));
+    serverWs.addEventListener('close', (e: CloseEvent) => closeBoth(e.code, e.reason));
+    upstreamWs.addEventListener('error', () => closeBoth(1000, 'upstream error'));
+    serverWs.addEventListener('error', () => closeBoth(1000, 'client error'));
+
+    // Echo the subprotocol so the browser accepts the 101 (see failure 1 above).
     const respHeaders = new Headers();
     const negotiated = wsResp.headers.get('Sec-WebSocket-Protocol') || request.headers.get('Sec-WebSocket-Protocol');
 
@@ -126,7 +173,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       respHeaders.set('Sec-WebSocket-Protocol', negotiated.split(',')[0].trim());
     }
 
-    return new Response(null, { status: 101, webSocket: ws, headers: respHeaders } as ResponseInit) as Response;
+    return new Response(null, { status: 101, webSocket: clientWs, headers: respHeaders } as ResponseInit) as Response;
   }
 
   // Forward the request to the sandbox (keep method/body/most headers).

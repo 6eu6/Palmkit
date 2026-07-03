@@ -785,12 +785,25 @@ export async function runOrchestratedBuild(
         logger.warn(
           `[orchestrator] ${config.name} hit maxSteps (${config.maxSteps}) — agent did not call done().`,
         );
-        await emitEvent(
-          supabase,
-          jobId,
-          'file_chunk' as any,
-          `⚠️ ${config.name} reached step limit (${config.maxSteps}) — continuing with what was built.`,
-        );
+
+        /*
+         * Only surface a user-visible warning when it MATTERS. The Tester
+         * regularly burns its last step on todo bookkeeping AFTER already
+         * reporting "BUILD PASSED" — showing a red "reached step limit"
+         * banner for that made every successful build look broken. If the
+         * agent's own output shows the verification succeeded, log it
+         * server-side and stay quiet in the chat.
+         */
+        const verifiedAnyway = /BUILD PASSED|✅/.test(agentText);
+
+        if (!verifiedAnyway) {
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk' as any,
+            `⚠️ ${config.name} reached step limit (${config.maxSteps}) — continuing with what was built.`,
+          );
+        }
       }
 
       agentResults.push({
