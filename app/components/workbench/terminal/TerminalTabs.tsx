@@ -8,6 +8,7 @@ import { workbenchStore } from '~/lib/stores/workbench';
 import { classNames } from '~/utils/classNames';
 import { Terminal, type TerminalRef } from './Terminal';
 import { TerminalManager } from './TerminalManager';
+import { BuildTerminal } from './BuildTerminal';
 import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('Terminal');
@@ -222,29 +223,12 @@ export const TerminalTabs = memo(() => {
             logger.debug(`Starting Palmkit terminal [${index}]`);
 
             if (index == 0) {
-              return (
-                <React.Fragment key={`terminal-container-${index}`}>
-                  <Terminal
-                    key={`terminal-${index}`}
-                    id={`terminal_${index}`}
-                    className={classNames('h-full overflow-hidden modern-scrollbar-invert', {
-                      hidden: !isActive,
-                    })}
-                    ref={(ref) => {
-                      if (ref) {
-                        terminalRefs.current.set(index, ref);
-                      }
-                    }}
-                    onTerminalReady={(terminal) => workbenchStore.attachPalmkitTerminal(terminal)}
-                    onTerminalResize={(cols, rows) => workbenchStore.onTerminalResize(cols, rows)}
-                    theme={theme}
-                  />
-                  <TerminalManager
-                    terminal={terminalRefs.current.get(index)?.getTerminal() || null}
-                    isActive={isActive}
-                  />
-                </React.Fragment>
-              );
+              /*
+               * The "Palmkit Terminal" is the cloud sandbox (E2B) shell — it has
+               * no in-browser process, so instead of a dead xterm we render the
+               * live, read-only stream of the commands the agent actually runs.
+               */
+              return <BuildTerminal key={`terminal-${index}`} className={classNames({ hidden: !isActive })} />;
             } else {
               return (
                 <React.Fragment key={`terminal-container-${index}`}>

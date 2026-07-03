@@ -25,6 +25,8 @@ import {
   endActivityGroup,
   resetAllProgressStores,
   setContextPressure,
+  pushShellCommand,
+  completeShellCommand,
   type AgentTodo,
   type ContextPressure,
 } from '~/lib/stores/build-status';
@@ -151,6 +153,34 @@ function dispatchJobEvent(ev: JobEvent): void {
           command: payload.command as string | undefined,
           timestamp,
         });
+        break;
+      }
+
+      case 'shell_command': {
+        // A command started in the E2B sandbox — show it live with a spinner.
+        const command = (payload.command as string | undefined) ?? ev.message.replace(/^\$\s*/, '');
+
+        if (command) {
+          pushShellCommand(ev.seq, command);
+        }
+
+        break;
+      }
+
+      case 'shell_output': {
+        // The command finished — fill in stdout/stderr + exit code.
+        const command = (payload.command as string | undefined) ?? '';
+        const exitCode = (payload.exitCode as number | undefined) ?? 0;
+
+        if (command) {
+          completeShellCommand(
+            command,
+            exitCode,
+            payload.stdout as string | undefined,
+            payload.stderr as string | undefined,
+          );
+        }
+
         break;
       }
 

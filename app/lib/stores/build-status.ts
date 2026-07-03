@@ -330,12 +330,66 @@ export function clearActivityGroups(): void {
   activityGroupsStore.set([]);
 }
 
+/**
+ * Live terminal — the real shell commands the worker runs in the E2B sandbox,
+ * streamed to the client so the workbench terminal shows "$ npm run build" with
+ * a spinner while it runs, then the stdout/stderr and exit code when it lands.
+ * Fed by the worker's shell_command (start) + shell_output (finish) events.
+ */
+export interface TerminalLine {
+  seq: number;
+  command: string;
+  running: boolean;
+  exitCode?: number;
+  stdout?: string;
+  stderr?: string;
+}
+
+export const terminalOutputStore = atom<TerminalLine[]>([]);
+
+export function pushShellCommand(seq: number, command: string): void {
+  const current = terminalOutputStore.get();
+
+  // Dedup — the same seq can be delivered by both Realtime and polling.
+  if (current.some((l) => l.seq === seq)) {
+    return;
+  }
+
+  terminalOutputStore.set([...current, { seq, command, running: true }]);
+}
+
+export function completeShellCommand(command: string, exitCode: number, stdout?: string, stderr?: string): void {
+  const current = terminalOutputStore.get();
+
+  // Match the most recent still-running line for this command.
+  for (let i = current.length - 1; i >= 0; i--) {
+    if (current[i].command === command && current[i].running) {
+      const updated = [...current];
+      updated[i] = { ...updated[i], running: false, exitCode, stdout, stderr };
+      terminalOutputStore.set(updated);
+
+      return;
+    }
+  }
+
+  // No matching start (e.g. restore replays only the output) — append complete.
+  terminalOutputStore.set([
+    ...current,
+    { seq: (current[current.length - 1]?.seq ?? 0) + 1, command, running: false, exitCode, stdout, stderr },
+  ]);
+}
+
+export function clearTerminalOutput(): void {
+  terminalOutputStore.set([]);
+}
+
 /** Reset all real-time progress stores — called when a new chat starts. */
 export function resetAllProgressStores(): void {
   workerEventsStore.set([]);
   agentTodosStore.set({});
   reasoningStore.set([]);
   activityGroupsStore.set([]);
+  terminalOutputStore.set([]);
 }
 
 /** Phase 10 — real progress percentage + step from the Oracle Worker. */

@@ -641,9 +641,31 @@ export function createAgentTools(
           };
         }
 
+        /*
+         * LIVE TERMINAL: announce the command BEFORE it runs so the client's
+         * read-only terminal shows "$ npm run build" with a spinner while E2B
+         * executes, then the matching shell_output event fills in stdout/stderr
+         * and the exit code. Command-level granularity (E2B returns the whole
+         * output at once) — enough to watch the build work in real time.
+         */
+        await emitEvent(supabase, jobId, 'shell_command' as any, `$ ${command}`, { command, running: true });
+
         const result = await runInE2B(jobId, command, files);
 
         logger.info(`[agent] run_shell (E2B): "${command}" → exit ${result.exitCode}`);
+
+        await emitEvent(
+          supabase,
+          jobId,
+          'shell_output' as any,
+          `$ ${command} → exit ${result.exitCode}`,
+          {
+            command,
+            exitCode: result.exitCode,
+            stdout: (result.stdout ?? '').slice(0, 3000),
+            stderr: (result.stderr ?? '').slice(0, 2000),
+          },
+        );
 
         /*
          * If this was a real build/compile command, record its result for the
