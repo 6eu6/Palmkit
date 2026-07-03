@@ -78,6 +78,10 @@ function bumpWriteCount(jobId: string, path: string): number {
   return n;
 }
 
+function getWriteCount(jobId: string, path: string): number {
+  return jobWriteCounts.get(jobId)?.get(path) ?? 0;
+}
+
 export function resetProjectFiles(jobId: string): void {
   getJobFiles(jobId).clear();
   jobWriteCounts.delete(jobId);
@@ -193,6 +197,31 @@ export function createAgentTools(
               `${path} is ALREADY saved with EXACTLY this content — nothing changed. ` +
               `STOP rewriting ${path}. Move on to a different file that still needs work, ` +
               `or call done() if the project is complete.`,
+          };
+        }
+
+        /*
+         * HARD LOCK. If this path has already been written several times, refuse
+         * further writes and force the model to make progress instead. This is
+         * the definitive loop breaker for models that keep re-editing one file
+         * with tiny changes (so the identical-content check above never fires)
+         * and never move on to the remaining files — which would otherwise leave
+         * the project incomplete and fail the build.
+         */
+        const priorCount = getWriteCount(jobId, path);
+
+        if (priorCount >= 4) {
+          logger.warn(`[agent] write_file: ${path} LOCKED — ${priorCount} prior writes; refusing to break the loop`);
+          bumpWriteCount(jobId, path);
+
+          return {
+            success: false,
+            path,
+            locked: true,
+            message:
+              `REFUSED — ${path} is now LOCKED (you have written it ${priorCount} times). Rewriting it again will NOT help. ` +
+              `Create the files you have NOT written yet (e.g. the source/entry files), then call done(). ` +
+              `If every file already exists, call done() NOW.`,
           };
         }
 
