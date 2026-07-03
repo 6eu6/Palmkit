@@ -61,8 +61,26 @@ function getJobFiles(jobId: string): Map<string, string> {
   return m;
 }
 
+/** Per-job count of write_file calls per path — used to nudge a looping model. */
+const jobWriteCounts = new Map<string, Map<string, number>>();
+
+function bumpWriteCount(jobId: string, path: string): number {
+  let m = jobWriteCounts.get(jobId);
+
+  if (!m) {
+    m = new Map<string, number>();
+    jobWriteCounts.set(jobId, m);
+  }
+
+  const n = (m.get(path) ?? 0) + 1;
+  m.set(path, n);
+
+  return n;
+}
+
 export function resetProjectFiles(jobId: string): void {
   getJobFiles(jobId).clear();
+  jobWriteCounts.delete(jobId);
 }
 
 export function getProjectFiles(jobId: string): Record<string, string> {
@@ -76,6 +94,7 @@ export function getProjectFile(jobId: string, path: string): string | undefined 
 /** Release a job's file map once its build is finished (prevents unbounded growth). */
 export function disposeProjectFiles(jobId: string): void {
   jobFileMaps.delete(jobId);
+  jobWriteCounts.delete(jobId);
 }
 
 /*
@@ -153,6 +172,32 @@ export function createAgentTools(
         const fileContent =
           typeof content === 'string' ? content : JSON.stringify(content, null, 2);
 
+        /*
+         * LOOP BREAKER. Some models (GLM-4.x) get stuck rewriting the same file
+         * over and over. If this write is IDENTICAL to what's already saved,
+         * it's a no-op — refuse it and firmly redirect the model, instead of
+         * silently accepting it and letting the loop continue until the
+         * orchestrator's backstop aborts the whole build.
+         */
+        const prevContent = projectFiles.get(path);
+
+        if (prevContent !== undefined && prevContent === fileContent) {
+          logger.info(`[agent] write_file: ${path} unchanged — refusing redundant rewrite`);
+          bumpWriteCount(jobId, path);
+
+          return {
+            success: true,
+            path,
+            unchanged: true,
+            message:
+              `${path} is ALREADY saved with EXACTLY this content — nothing changed. ` +
+              `STOP rewriting ${path}. Move on to a different file that still needs work, ` +
+              `or call done() if the project is complete.`,
+          };
+        }
+
+        const writeCount = bumpWriteCount(jobId, path);
+
         // Store in memory
         projectFiles.set(path, fileContent);
 
@@ -198,12 +243,23 @@ export function createAgentTools(
           `[agent] write_file: ${path} (${fileContent.length} chars, ${lines} lines, inline=${inlineContent !== undefined})`,
         );
 
+        /*
+         * If the model has now written this same path several times (even with
+         * small changes each time), nudge it to stop fiddling and move on — this
+         * heads off the slow "rewrite the same file forever" loop before the
+         * orchestrator's hard backstop has to abort.
+         */
+        const loopNudge =
+          writeCount >= 3
+            ? ` NOTE: you have written ${path} ${writeCount} times now — this version is saved. Do NOT rewrite it again unless something is genuinely wrong; move on to another file or call done().`
+            : '';
+
         return {
           success: true,
           path,
           size: fileContent.length,
           lines,
-          message: `File ${path} written successfully (${fileContent.length} chars, ${lines} lines). Use read_file to verify if needed.`,
+          message: `File ${path} written successfully (${fileContent.length} chars, ${lines} lines).${loopNudge}`,
         };
       },
     }),

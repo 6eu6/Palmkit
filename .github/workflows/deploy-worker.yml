@@ -12,14 +12,19 @@ on:
         required: false
         default: 'Manual update'
 
-# Deploys the worker to EVERY configured Oracle box in parallel. Each worker is
-# an independent poller (Supabase's claim_next_build_job() is atomic, so they
-# never double-claim a job) — adding a box just adds ~10 concurrent build slots.
+# Deploys the worker to EVERY configured Oracle box in parallel. Each box is an
+# independent poller (Supabase's claim_next_build_job() is atomic, so they never
+# double-claim a job) — adding a box just adds ~10 concurrent build slots.
 #
-# To add a worker: set the secrets ORACLE_HOST_N + ORACLE_SSH_KEY_N (N = 2,3,4)
-# in the repo. A box with no secret is skipped automatically. Worker 1 keeps the
-# original secret names (ORACLE_HOST / ORACLE_SSH_KEY) for back-compat. All boxes
-# share the same login user (ORACLE_USER, e.g. "opc").
+# SELF-BOOTSTRAPPING: a fresh box (no /opt/palmkit-worker yet) is cloned,
+# systemd-installed, and .env-seeded automatically on its first deploy — so
+# adding a worker needs ZERO manual SSH. Just set its secrets and push.
+#
+# To add worker N (2..4): set secrets ORACLE_HOST_N + ORACLE_SSH_KEY_N. For a
+# brand-new box also set WORKER_ENV_B64 once (base64 of the full .env, shared by
+# all boxes) so first-boot can write /opt/palmkit-worker/external-worker/.env.
+# An unset host slot is skipped. Worker 1 keeps the original secret names. All
+# boxes share ORACLE_USER (e.g. "opc").
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -49,23 +54,63 @@ jobs:
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: SSH and update Oracle Worker ${{ matrix.worker }}
+      - name: Deploy (bootstrap if fresh) — worker ${{ matrix.worker }}
         if: steps.guard.outputs.configured == 'true'
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ env.HOST }}
           username: ${{ secrets.ORACLE_USER }}
           key: ${{ env.KEY }}
+          envs: WORKER_ENV_B64
           script: |
             set -e
+            export BUN_INSTALL="$HOME/.bun"
+            export PATH="$BUN_INSTALL/bin:$PATH"
+
+            # ── First boot: clone the repo, install Bun + the systemd service ──
+            if [ ! -d /opt/palmkit-worker/.git ]; then
+              echo "▶ Fresh box — bootstrapping…"
+              sudo mkdir -p /opt/palmkit-worker
+              sudo chown "$USER":"$USER" /opt/palmkit-worker
+              command -v bun >/dev/null 2>&1 || curl -fsSL https://bun.sh/install | bash
+              export PATH="$HOME/.bun/bin:$PATH"
+              git clone --depth=1 -b main https://github.com/6eu6/Palmkit.git /opt/palmkit-worker
+              sudo tee /etc/systemd/system/palmkit-worker.service >/dev/null <<SERVICE
+            [Unit]
+            Description=Palmkit External Build Worker
+            After=network-online.target
+            Wants=network-online.target
+            [Service]
+            Type=simple
+            User=$USER
+            WorkingDirectory=/opt/palmkit-worker/external-worker
+            EnvironmentFile=/opt/palmkit-worker/external-worker/.env
+            ExecStart=$HOME/.bun/bin/bun run src/index.ts
+            Restart=always
+            RestartSec=5
+            MemoryMax=5500M
+            [Install]
+            WantedBy=multi-user.target
+            SERVICE
+              sudo systemctl daemon-reload
+              sudo systemctl enable palmkit-worker
+            fi
+
+            # ── Update to the latest main ──
             cd /opt/palmkit-worker
             git fetch origin
             git checkout main 2>/dev/null || git checkout -b main origin/main
             git reset --hard origin/main
+
+            # ── Seed .env on first boot from the shared secret (never overwrite) ──
+            if [ ! -f external-worker/.env ] && [ -n "$WORKER_ENV_B64" ]; then
+              echo "$WORKER_ENV_B64" | base64 -d > external-worker/.env
+              chmod 600 external-worker/.env
+              echo "▶ Wrote external-worker/.env from WORKER_ENV_B64"
+            fi
+
             cd /opt/palmkit-worker/external-worker
-            export BUN_INSTALL="$HOME/.bun"
-            export PATH="$BUN_INSTALL/bin:$PATH"
             bun install --frozen-lockfile
             sudo systemctl restart palmkit-worker
-            echo "Worker updated and restarted ✅"
+            echo "Worker ${{ matrix.worker }} updated and restarted ✅"
             sudo systemctl status palmkit-worker --no-pager -l | tail -5

@@ -537,25 +537,31 @@ export async function runOrchestratedBuild(
                   fileWriteCounts.set(filePath, (fileWriteCounts.get(filePath) ?? 0) + 1);
                   const writes = fileWriteCounts.get(filePath)!;
 
-                  if (writes >= 4) {
-                    logger.error(
-                      `[orchestrator] Loop detected: ${config.name} wrote ${filePath} ${writes} times. Aborting stream.`,
+                  /*
+                   * LOOP SALVAGE (not hard-fail). The write_file tool already
+                   * no-ops identical rewrites and tells the model to stop, which
+                   * breaks most loops. This is the last-resort backstop: if a
+                   * file is STILL being rewritten many times, stop the stream —
+                   * but DON'T fail the job. Fall through to the normal finalize
+                   * gate, which keeps the files already generated and only fails
+                   * if there's no valid entry point. A looping model that had
+                   * already written a working app shouldn't lose the whole build.
+                   */
+                  const LOOP_ABORT_AT = 6; // was 4 — tolerate legitimate iteration
+
+                  if (writes >= LOOP_ABORT_AT) {
+                    logger.warn(
+                      `[orchestrator] ${config.name} wrote ${filePath} ${writes}× — stopping this agent and salvaging the files built so far.`,
                     );
                     await emitEvent(
                       supabase,
                       jobId,
-                      'job_failed',
-                      `Build stalled: ${config.name} rewrote ${filePath} ${writes} times (likely stuck in a loop). Please try again.`,
-                      { reason: 'loop_detected', file: filePath, count: writes },
+                      'file_chunk' as any,
+                      `⚠️ ${config.name} kept rewriting ${filePath}; wrapping up with the files built so far.`,
+                      { reason: 'loop_salvage', file: filePath, count: writes },
                     );
                     abortController.abort();
                     break;
-                  }
-
-                  if (writes === 3) {
-                    logger.warn(
-                      `[orchestrator] ${config.name} wrote ${filePath} ${writes} times — one more will abort.`,
-                    );
                   }
                 }
               }
