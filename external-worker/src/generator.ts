@@ -745,13 +745,41 @@ STRICT RULES:
 - Production quality — no placeholders, no TODOs.`;
 
   const model = getModelInstance(providerName, modelName, apiKey);
-  const result = await generateText({
-    model,
-    system: systemPrompt,
-    prompt: editPrompt,
-    maxTokens: 64000,
-    temperature: 0.5,
-  });
+
+  /*
+   * Safety timeout. The edit is ONE synchronous generateText call with no
+   * agent loop behind it — if the provider hangs (holds the connection open
+   * without streaming), nothing else bounds it and the job sits "generating"
+   * until the 25-min stuck-job reaper. Abort after a generous window so a hung
+   * provider fails cleanly and the edit becomes retriable instead of freezing
+   * the chat. Observed normal edit latency is ~80-130s, so 5 min is safe slack.
+   */
+  const EDIT_TIMEOUT_MS = 5 * 60 * 1000;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), EDIT_TIMEOUT_MS);
+
+  let result;
+
+  try {
+    result = await generateText({
+      model,
+      system: systemPrompt,
+      prompt: editPrompt,
+      maxTokens: 64000,
+      temperature: 0.5,
+      abortSignal: ac.signal,
+    });
+  } catch (err: any) {
+    if (ac.signal.aborted) {
+      throw new Error(
+        `Edit timed out after ${EDIT_TIMEOUT_MS / 1000}s waiting on ${providerName} — please try the change again`,
+      );
+    }
+
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 
   const rawText = result.text ?? '';
 

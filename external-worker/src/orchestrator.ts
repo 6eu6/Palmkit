@@ -197,6 +197,7 @@ export async function runOrchestratedBuild(
   let builderEmptyRetries = 0;
   const MAX_BUILDER_EMPTY_RETRIES = 1;
   let forceBuild = false;
+  let incompleteBuild = false; // Vite build finished but is missing scaffolding (e.g. package.json)
 
   /*
    * Loop detection — track how many times each file path is written per
@@ -255,13 +256,20 @@ export async function runOrchestratedBuild(
        * blunt directive to act now. Takes precedence over the normal prompts.
        */
       if (role === 'builder' && forceBuild) {
-        agentPrompt =
-          `${prompt}\n\n` +
-          `CRITICAL: You produced NO files on your last turn — you only planned. ` +
-          `STOP planning and explaining. RIGHT NOW, use the write_file tool to create EVERY file the project needs, ` +
-          `one call per file, starting with the entry file (index.html, or src/main.* + index.html for a bundler app). ` +
-          `After all files are written, call done(). Do NOT describe the plan — build it with tool calls immediately.`;
+        agentPrompt = incompleteBuild
+          ? `${prompt}\n\n` +
+            `CRITICAL: The project is INCOMPLETE and cannot run. It is missing required scaffolding — ` +
+            `at minimum package.json (a Vite app cannot install deps or build without it), and possibly ` +
+            `src/main.* (the React/Vue mount), vite.config.*, tailwind.config.js, or index.html. ` +
+            `Use list_files/read_file to see what already exists, then use write_file to add EVERY missing file ` +
+            `so the app installs and builds. Do NOT rewrite files that are already correct. After all files exist, call done().`
+          : `${prompt}\n\n` +
+            `CRITICAL: You produced NO files on your last turn — you only planned. ` +
+            `STOP planning and explaining. RIGHT NOW, use the write_file tool to create EVERY file the project needs, ` +
+            `one call per file, starting with the entry file (index.html, or src/main.* + index.html for a bundler app). ` +
+            `After all files are written, call done(). Do NOT describe the plan — build it with tool calls immediately.`;
         forceBuild = false; // consumed
+        incompleteBuild = false; // consumed
       }
 
       // Repair round: a previous build failed — give the Builder the exact
@@ -819,17 +827,37 @@ export async function runOrchestratedBuild(
        * ZERO files, the model planned without acting. Re-queue the Builder once
        * with a force-build directive (runs BEFORE the Tester) instead of failing.
        */
-      if (role === 'builder' && Object.keys(getProjectFiles(jobId)).length === 0 && builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES) {
-        builderEmptyRetries++;
-        forceBuild = true;
-        agentQueue.unshift('builder'); // run the Builder again next, before the Tester
-        await emitEvent(
-          supabase,
-          jobId,
-          'file_chunk' as any,
-          `⚠️ No files written yet — re-prompting the Builder to build now (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`,
-          { reason: 'empty_builder_retry', attempt: builderEmptyRetries },
-        );
+      if (role === 'builder' && builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES) {
+        const curFiles = getProjectFiles(jobId) as Record<string, string>;
+        const curPaths = Object.keys(curFiles);
+        const zeroFiles = curPaths.length === 0;
+
+        /*
+         * Under-generation gate. A Vite app (react/vue/nextjs) that finished
+         * WITHOUT package.json cannot install deps or build — the model called
+         * done() before writing the scaffolding (observed: a "react" build that
+         * shipped only index.html + App.jsx and rendered a broken preview).
+         * Treat it like an empty build and give it one completion round.
+         */
+        const builtType = detectAppTypeFromFiles(curFiles);
+        const isViteType = builtType === 'react' || builtType === 'vue' || builtType === 'nextjs';
+        const missingPkg = isViteType && !curPaths.some((p) => /(^|\/)package\.json$/i.test(p));
+
+        if (zeroFiles || missingPkg) {
+          builderEmptyRetries++;
+          forceBuild = true;
+          incompleteBuild = !zeroFiles && missingPkg;
+          agentQueue.unshift('builder'); // run the Builder again next, before the Tester
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk' as any,
+            zeroFiles
+              ? `⚠️ No files written yet — re-prompting the Builder to build now (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`
+              : `⚠️ Build is missing package.json — a Vite app can't run without it. Asking the Builder to finish the scaffolding (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`,
+            { reason: zeroFiles ? 'empty_builder_retry' : 'incomplete_build_retry', attempt: builderEmptyRetries },
+          );
+        }
       }
 
       /*
