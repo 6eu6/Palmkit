@@ -12,16 +12,50 @@ on:
         required: false
         default: 'Manual update'
 
+# Deploys the worker to EVERY configured Oracle box in parallel. Each worker is
+# an independent poller (Supabase's claim_next_build_job() is atomic, so they
+# never double-claim a job) — adding a box just adds ~10 concurrent build slots.
+#
+# To add a worker: set the secrets ORACLE_HOST_N + ORACLE_SSH_KEY_N (N = 2,3,4)
+# in the repo. A box with no secret is skipped automatically. Worker 1 keeps the
+# original secret names (ORACLE_HOST / ORACLE_SSH_KEY) for back-compat. All boxes
+# share the same login user (ORACLE_USER, e.g. "opc").
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # one down box must not block deploying the others
+      matrix:
+        worker: [1, 2, 3, 4]
+    env:
+      HOST: >-
+        ${{ matrix.worker == 1 && secrets.ORACLE_HOST
+        || matrix.worker == 2 && secrets.ORACLE_HOST_2
+        || matrix.worker == 3 && secrets.ORACLE_HOST_3
+        || matrix.worker == 4 && secrets.ORACLE_HOST_4 || '' }}
+      KEY: >-
+        ${{ matrix.worker == 1 && secrets.ORACLE_SSH_KEY
+        || matrix.worker == 2 && secrets.ORACLE_SSH_KEY_2
+        || matrix.worker == 3 && secrets.ORACLE_SSH_KEY_3
+        || matrix.worker == 4 && secrets.ORACLE_SSH_KEY_4 || '' }}
     steps:
-      - name: SSH and update Oracle Worker
+      - name: Skip if this worker slot is not configured
+        id: guard
+        run: |
+          if [ -z "$HOST" ]; then
+            echo "worker ${{ matrix.worker }} not configured — skipping"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: SSH and update Oracle Worker ${{ matrix.worker }}
+        if: steps.guard.outputs.configured == 'true'
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.ORACLE_HOST }}
+          host: ${{ env.HOST }}
           username: ${{ secrets.ORACLE_USER }}
-          key: ${{ secrets.ORACLE_SSH_KEY }}
+          key: ${{ env.KEY }}
           script: |
             set -e
             cd /opt/palmkit-worker

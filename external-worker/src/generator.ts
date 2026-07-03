@@ -687,16 +687,50 @@ export async function generateEdit(
   providerName: string,
   modelName: string,
   apiKey: string,
+  worklog?: string | null,
 ): Promise<EditResult> {
-  const fileDump = existingFiles
-    .map((f) => `=== ${f.path} ===\n${f.content}`)
-    .join('\n\n')
-    .slice(0, 12000);
+  /*
+   * Feed WHOLE files up to a generous budget instead of a 12KB mid-file cut.
+   * The old slice(0, 12000) truncated the fileset — so on any project bigger
+   * than ~12KB the edit model literally could not see (or safely rewrite) the
+   * files past the cut. Now we pack complete files until the budget is hit and
+   * list any that didn't fit by name, so the model still knows they exist.
+   */
+  const FILE_BUDGET = 100 * 1024; // ~100KB of source is comfortable for modern context windows
+  let used = 0;
+  const included: string[] = [];
+  const omitted: string[] = [];
+
+  for (const f of existingFiles) {
+    const block = `=== ${f.path} ===\n${f.content}`;
+
+    if (used + block.length <= FILE_BUDGET) {
+      included.push(block);
+      used += block.length;
+    } else {
+      omitted.push(f.path);
+    }
+  }
+
+  const fileDump = included.join('\n\n');
+  const omittedNote =
+    omitted.length > 0
+      ? `\n\n(These files also exist but were omitted for size — do NOT touch them unless the change requires it: ${omitted.join(', ')})`
+      : '';
+
+  /*
+   * Inject the project's worklog (its memory of past turns + decisions) so the
+   * edit is informed by history, not just the current file snapshot — the same
+   * continuity the orchestrated build path gets.
+   */
+  const worklogBlock = worklog
+    ? `\nPROJECT MEMORY (worklog.md — recent history & decisions):\n${worklog.slice(-4000)}\n`
+    : '';
 
   const systemPrompt = `You are Palmkit's code editor. You are modifying an existing ${appType} project.
-
+${worklogBlock}
 Current project files:
-${fileDump}
+${fileDump}${omittedNote}
 
 The user wants to make changes. Return ONLY the files that need to change.
 

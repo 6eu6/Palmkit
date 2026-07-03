@@ -32,7 +32,7 @@ import { runOrchestratedBuild } from './orchestrator';
 import { checkBuild, BUILD_CHECK_TYPES } from './build-checker';
 import { createRunner } from './build-runner';
 import { putFile, getFileText, buildKey, buildWorkspaceKey } from './r2-client';
-import { hydrateWorkspaceFromStorage } from './workspace-manager';
+import { hydrateWorkspaceFromStorage, readWorklog } from './workspace-manager';
 import { getUserApiKey } from './key-fetcher';
 import { emitEvent, emitFileWritten } from './event-emitter';
 import { createHash } from 'crypto';
@@ -266,7 +266,20 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       let mergedFiles: typeof existingFiles;
 
       try {
-        const editResult = await generateEdit(existingFiles, editAppType, prompt, providerName, modelName, apiKey);
+        // Feed the project's worklog (memory) into the edit so it's informed by
+        // past turns, not just the current file snapshot.
+        const editProjectId = (job.validation_result as any)?.chatId ?? job.project_id ?? job.id;
+        const editWorklog = await readWorklog(editProjectId).catch(() => null);
+
+        const editResult = await generateEdit(
+          existingFiles,
+          editAppType,
+          prompt,
+          providerName,
+          modelName,
+          apiKey,
+          editWorklog,
+        );
         mergedFiles = editResult.files as typeof existingFiles;
 
         const win = contextWindow && contextWindow > 0 ? contextWindow : 128_000;
