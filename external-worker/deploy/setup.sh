@@ -1,10 +1,10 @@
 #!/bin/bash
 # Palmkit External Worker — Full Setup
 # Oracle Linux 9 ARM64 (A1.Flex)
-# Usage: bash <(curl -fsSL https://raw.githubusercontent.com/6eu6/Palmkit/claude/palmkit-production-plan-tv9e6x/external-worker/deploy/setup.sh)
+# Usage: bash <(curl -fsSL https://raw.githubusercontent.com/6eu6/Palmkit/main/external-worker/deploy/setup.sh)
 set -e
 
-REPO_BRANCH="claude/palmkit-production-plan-tv9e6x"
+REPO_BRANCH="main"
 INSTALL_DIR="/opt/palmkit-worker"
 SERVICE_NAME="palmkit-worker"
 WORKER_PORT=8787
@@ -68,8 +68,15 @@ R2_BUCKET=palmkit-files
 # Generate: openssl rand -hex 32
 API_KEY_ENCRYPTION_KEY=
 
+# ─── E2B sandbox (REQUIRED — runs npm install / build in the cloud sandbox) ──
+E2B_API_KEY=
+
+# ─── LLM fallback key (used when a user has no key of their own) ─────────────
+OPENROUTER_API_KEY=
+
 # ─── Worker ──────────────────────────────────────────────────────────────────
 WORKER_PORT=8787
+# ADMIN_TOKEN=   # optional — required only for POST /admin/update
 ENVEOF
   chmod 600 "$ENV_FILE"
   echo "  Created $ENV_FILE  ← FILL IN SECRETS BEFORE STARTING"
