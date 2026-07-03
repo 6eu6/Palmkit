@@ -383,6 +383,19 @@ export function clearTerminalOutput(): void {
   terminalOutputStore.set([]);
 }
 
+/**
+ * Diff baseline — a snapshot of the project's files (WORK_DIR-prefixed path →
+ * original content) captured the moment a build/edit starts, BEFORE the worker
+ * streams new versions in. The Diff view seeds its fileHistory.originalContent
+ * from this, so as files stream the diff shows the real before→after for this
+ * turn's changes — live. Empty for a fresh project (nothing to diff against).
+ */
+export const diffBaselineStore = atom<Record<string, string>>({});
+
+export function setDiffBaseline(baseline: Record<string, string>): void {
+  diffBaselineStore.set(baseline);
+}
+
 /** Reset all real-time progress stores — called when a new chat starts. */
 export function resetAllProgressStores(): void {
   workerEventsStore.set([]);
@@ -390,6 +403,7 @@ export function resetAllProgressStores(): void {
   reasoningStore.set([]);
   activityGroupsStore.set([]);
   terminalOutputStore.set([]);
+  diffBaselineStore.set({});
 }
 
 /** Phase 10 — real progress percentage + step from the Oracle Worker. */

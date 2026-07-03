@@ -27,9 +27,12 @@ import {
   setContextPressure,
   pushShellCommand,
   completeShellCommand,
+  setDiffBaseline,
+  diffBaselineStore,
   type AgentTodo,
   type ContextPressure,
 } from '~/lib/stores/build-status';
+import { WORK_DIR } from '~/utils/constants';
 
 const FLAG_KEY = 'palmkit_use_external_worker';
 const POLL_INTERVAL_MS = 1500;
@@ -397,10 +400,18 @@ export function useExternalWorker() {
                          */
                         import('~/lib/stores/workbench')
                           .then(({ workbenchStore }) => {
+                            /*
+                             * workbenchStore.files is keyed by FULL WORK_DIR paths
+                             * (/home/project/...) — the FileTree, editor, and diff
+                             * all assume that. previewFilesStore stays raw (for the
+                             * preview/export). Keep them consistent so the diff
+                             * baseline matches the streaming files.
+                             */
+                            const fullPath = filePath.startsWith(WORK_DIR) ? filePath : `${WORK_DIR}/${filePath}`;
                             const currentFiles = workbenchStore.files.get() ?? {};
                             workbenchStore.files.set({
                               ...currentFiles,
-                              [filePath]: { type: 'file', content, isBinary: false },
+                              [fullPath]: { type: 'file', content, isBinary: false },
                             });
 
                             /*
@@ -411,7 +422,7 @@ export function useExternalWorker() {
                              * of blank). setSelectedFile doesn't change the current
                              * view, so a user watching Preview isn't yanked away.
                              */
-                            workbenchStore.setSelectedFile(filePath);
+                            workbenchStore.setSelectedFile(fullPath);
                           })
                           .catch(() => {
                             // best-effort
@@ -488,13 +499,37 @@ export function useExternalWorker() {
     async (prompt: string, model: string, provider: string, editFromJobId?: string, projectId?: string) => {
       setState({ ...initialState, status: 'pending', currentStep: 'queued' });
       fetchedPreview.current = false;
+
+      /*
+       * Capture the CURRENT files as the diff baseline BEFORE this build streams
+       * new versions over them, so the Diff view can show this turn's real
+       * before→after changes live. Do it before the resets clear things.
+       */
+      try {
+        const { workbenchStore } = await import('~/lib/stores/workbench');
+        const baseline: Record<string, string> = {};
+        const tree = workbenchStore.files.get() ?? {};
+
+        for (const [path, dirent] of Object.entries(tree)) {
+          if (dirent?.type === 'file' && !dirent.isBinary && typeof dirent.content === 'string') {
+            baseline[path] = dirent.content;
+          }
+        }
+        setDiffBaseline(baseline);
+      } catch {
+        // best-effort — no baseline just means the diff shows no prior version
+      }
+
       resetPreviewFiles();
 
       /*
        * Reset all progress stores (todos, reasoning, activity groups) so
        * stale data from a previous build doesn't bleed into the new one.
+       * NOTE: this also clears the diff baseline — so re-set it just after.
        */
+      const capturedBaseline = diffBaselineStore.get();
       resetAllProgressStores();
+      setDiffBaseline(capturedBaseline);
 
       try {
         const resp = await fetch('/api/jobs', {
@@ -637,17 +672,22 @@ export function useExternalWorker() {
 
                   import('~/lib/stores/workbench')
                     .then(({ workbenchStore }) => {
+                      /*
+                       * Keep workbenchStore.files on FULL WORK_DIR paths (see the
+                       * realtime path) so the tree, editor, and diff line up.
+                       */
+                      const fullPath = filePath.startsWith(WORK_DIR) ? filePath : `${WORK_DIR}/${filePath}`;
                       const currentFiles = workbenchStore.files.get() ?? {};
                       workbenchStore.files.set({
                         ...currentFiles,
-                        [filePath]: { type: 'file', content: inlineContent, isBinary: false },
+                        [fullPath]: { type: 'file', content: inlineContent, isBinary: false },
                       });
 
                       /*
                        * Follow the newest file (live code + fills the editor on
                        * restore). See the realtime path for the full rationale.
                        */
-                      workbenchStore.setSelectedFile(filePath);
+                      workbenchStore.setSelectedFile(fullPath);
                     })
                     .catch(() => {
                       // best-effort
@@ -670,11 +710,13 @@ export function useExternalWorker() {
 
                             import('~/lib/stores/workbench')
                               .then(({ workbenchStore }) => {
+                                const fullPath = filePath.startsWith(WORK_DIR) ? filePath : `${WORK_DIR}/${filePath}`;
                                 const currentFiles = workbenchStore.files.get() ?? {};
                                 workbenchStore.files.set({
                                   ...currentFiles,
-                                  [filePath]: { type: 'file', content: text, isBinary: false },
+                                  [fullPath]: { type: 'file', content: text, isBinary: false },
                                 });
+                                workbenchStore.setSelectedFile(fullPath);
                               })
                               .catch(() => {
                                 // best-effort

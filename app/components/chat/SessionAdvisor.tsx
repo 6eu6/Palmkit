@@ -25,6 +25,7 @@ import { workbenchStore } from '~/lib/stores/workbench';
 import { chatId, description, db } from '~/lib/persistence/useChatHistory';
 import { continueInFreshChat } from '~/lib/chat/continueInFreshChat';
 import { classNames } from '~/utils/classNames';
+import { WORK_DIR } from '~/utils/constants';
 
 /*
  * Gather the project's files from every place they might live, so the fork
@@ -39,8 +40,16 @@ function collectProjectFiles(preview: Record<string, string>): Record<string, st
   const tree = workbenchStore.files.get() ?? {};
 
   for (const [path, dirent] of Object.entries(tree)) {
-    if (dirent?.type === 'file' && !dirent.isBinary && typeof dirent.content === 'string' && !(path in out)) {
-      out[path] = dirent.content;
+    if (dirent?.type === 'file' && !dirent.isBinary && typeof dirent.content === 'string') {
+      /*
+       * workbenchStore.files keys are WORK_DIR-prefixed (/home/project/…); the
+       * fork carries RAW relative paths (index.html), so strip the prefix.
+       */
+      const rel = path.startsWith(WORK_DIR) ? path.slice(WORK_DIR.length).replace(/^\/+/, '') : path;
+
+      if (rel && !(rel in out)) {
+        out[rel] = dirent.content;
+      }
     }
   }
 

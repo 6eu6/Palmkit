@@ -22,7 +22,7 @@ import { EditorPanel } from './EditorPanel';
 import { Preview } from './Preview';
 import { EmptyWorkspaceState } from '~/components/ui/workspace/EmptyWorkspaceState';
 import { mobileActiveTab } from '~/lib/stores/mobile';
-import { previewFilesStore } from '~/lib/stores/build-status';
+import { previewFilesStore, diffBaselineStore } from '~/lib/stores/build-status';
 import { WORK_DIR } from '~/utils/constants';
 import useViewport from '~/lib/hooks';
 
@@ -306,6 +306,53 @@ export const Workbench = memo(
     const files = useStore(workbenchStore.files);
     const hasNoFiles = useMemo(() => !Object.values(files).some((dirent) => dirent?.type === 'file'), [files]);
     const selectedView = useStore(workbenchStore.currentView);
+    const diffBaseline = useStore(diffBaselineStore);
+
+    /*
+     * LIVE DIFF: the worker streams new file versions during a build. This seeds
+     * the diff's fileHistory from the pre-build baseline (captured at build
+     * start) for every file whose content ACTUALLY changed this turn — so the
+     * Diff view shows the real before→after live as files stream in. Only edits
+     * (non-empty baseline) trigger it; a fresh build / a restored completed
+     * project has an empty baseline, so there's no diff noise.
+     */
+    useEffect(() => {
+      const paths = Object.keys(diffBaseline);
+
+      if (paths.length === 0) {
+        return;
+      }
+
+      setFileHistory((prev) => {
+        let changed = false;
+        const next = { ...prev };
+
+        for (const path of paths) {
+          const dirent = files[path];
+
+          if (!dirent || dirent.type !== 'file' || next[path]) {
+            continue;
+          }
+
+          const original = diffBaseline[path];
+          const normalize = (s: string) => s.replace(/\r\n/g, '\n').trim();
+
+          if (normalize(dirent.content) !== normalize(original)) {
+            next[path] = {
+              originalContent: original,
+              lastModified: Date.now(),
+              changes: [],
+              versions: [{ timestamp: Date.now(), content: dirent.content }],
+              changeSource: 'auto-save',
+            };
+            changed = true;
+          }
+        }
+
+        return changed ? next : prev;
+      });
+    }, [diffBaseline, files]);
+
     const extPreviewFiles = useStore(previewFilesStore);
 
     // Inject external-worker R2 files into workbenchStore so they appear in the Code tab
