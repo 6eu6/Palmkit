@@ -113,8 +113,10 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
     const buildStatus = buildStatusStore.get();
     const appType = buildStatus.appType;
 
-    // Static apps: use blob URL preview
-    // React/Vue/Nextjs/Python: use E2B sandbox (Launch Preview button)
+    /*
+     * Static apps: use blob URL preview
+     * React/Vue/Nextjs/Python: use E2B sandbox (Launch Preview button)
+     */
     if (appType && appType !== 'static') {
       setExtWorkerBlobUrl(undefined);
       return undefined;
@@ -159,6 +161,17 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
     const htmlBlob = new Blob([rewritten], { type: 'text/html' });
     const blobUrl = URL.createObjectURL(htmlBlob);
     setExtWorkerBlobUrl(blobUrl);
+
+    /*
+     * AUTO-SURFACE the static preview: when the verified build's blob URL is
+     * ready, take the user straight to it (same behavior as the E2B path in
+     * use-worker-sandbox). Without this the user had to find
+     * Workspace → Preview manually after every static build.
+     */
+    if (buildStatus.jobStatus === 'ready_for_preview') {
+      workbenchStore.showWorkbench.set(true);
+      workbenchStore.currentView.set('preview');
+    }
 
     return () => {
       URL.revokeObjectURL(blobUrl);

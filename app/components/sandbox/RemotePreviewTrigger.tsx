@@ -11,16 +11,9 @@ import {
 import {
   ensureRemotePreview,
   remotePreviewStatus,
-  shouldUseRemotePreview,
   resetForChat,
   resetRemotePreview,
 } from '~/lib/sandbox/remotePreview';
-import { isMemoryConstrainedDevice } from '~/lib/sandbox/remoteSandbox';
-import { createScopedLogger } from '~/utils/logger';
-import { analyzeProject } from '~/lib/runtime/project-analyzer';
-import { showStaticPreview, clearStaticPreview } from '~/lib/runtime/static-preview';
-
-const logger = createScopedLogger('RPT');
 
 function currentChatId(): string | undefined {
   if (typeof window === 'undefined') {
@@ -100,11 +93,12 @@ export const RemotePreviewTrigger = memo(() => {
      * the user clicking that button, which calls ensureRemotePreview()
      * directly.
      */
-    const justFinished = prevStreaming.current && !isStreaming;
     prevStreaming.current = isStreaming;
 
-    // No action — just track state. The UI bar renders based on
-    // sandbox.state and gen.step, not on this effect's side effects.
+    /*
+     * No action — just track state. The UI bar renders based on
+     * sandbox.state and gen.step, not on this effect's side effects.
+     */
   }, [isStreaming, files, sandbox.state]);
 
   // Phase detection

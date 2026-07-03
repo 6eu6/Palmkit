@@ -213,12 +213,12 @@ export function upsertReasoning(entry: ReasoningEntry): void {
     return;
   }
 
-  // If this entry has a stepId, try to find an existing entry with the
-  // same agent+stepId to merge into (streaming append).
+  /*
+   * If this entry has a stepId, try to find an existing entry with the
+   * same agent+stepId to merge into (streaming append).
+   */
   if (entry.stepId !== undefined) {
-    const mergeIdx = current.findIndex(
-      (r) => r.agent === entry.agent && r.stepId === entry.stepId,
-    );
+    const mergeIdx = current.findIndex((r) => r.agent === entry.agent && r.stepId === entry.stepId);
 
     if (mergeIdx !== -1) {
       // Merge: append the new text to the existing entry.
@@ -229,6 +229,7 @@ export function upsertReasoning(entry: ReasoningEntry): void {
         isFinal: entry.isFinal,
       };
       reasoningStore.set(updated);
+
       return;
     }
   }
@@ -275,20 +276,21 @@ export const activityGroupsStore = atom<ActivityGroup[]>([]);
 
 export function startActivityGroup(agent: string, role: string, startedAt: number): void {
   const current = activityGroupsStore.get();
+
   // Don't add a duplicate if the same agent already has an open group
   if (current.some((g) => g.agent === agent && !g.endedAt)) {
     return;
   }
-  activityGroupsStore.set([
-    ...current,
-    { agent, role, startedAt, events: [] },
-  ]);
+
+  activityGroupsStore.set([...current, { agent, role, startedAt, events: [] }]);
 }
 
 export function appendActivityEvent(agent: string, event: ActivityEvent): void {
   const current = activityGroupsStore.get();
+
   // Find the latest open group for this agent
   const groupIdx = current.findIndex((g) => g.agent === agent && !g.endedAt);
+
   if (groupIdx === -1) {
     // No open group for this agent — create one on the fly
     activityGroupsStore.set([
@@ -302,6 +304,7 @@ export function appendActivityEvent(agent: string, event: ActivityEvent): void {
     ]);
     return;
   }
+
   const updated = [...current];
   updated[groupIdx] = {
     ...updated[groupIdx],
@@ -313,9 +316,11 @@ export function appendActivityEvent(agent: string, event: ActivityEvent): void {
 export function endActivityGroup(agent: string, endedAt: number, durationMs: number, success: boolean): void {
   const current = activityGroupsStore.get();
   const groupIdx = current.findIndex((g) => g.agent === agent && !g.endedAt);
+
   if (groupIdx === -1) {
     return;
   }
+
   const updated = [...current];
   updated[groupIdx] = {
     ...updated[groupIdx],

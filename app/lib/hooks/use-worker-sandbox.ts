@@ -31,7 +31,8 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
-import { buildStatusStore, previewFilesStore } from '~/lib/stores/build-status';
+import { buildStatusStore, previewFilesStore, activeBuildJobIdStore } from '~/lib/stores/build-status';
+import { workbenchStore } from '~/lib/stores/workbench';
 import {
   isRemoteSandboxAvailable,
   createRemoteSandbox,
@@ -53,6 +54,16 @@ export interface WorkerSandboxResult {
 }
 
 const E2B_TYPES = new Set(['react', 'vue', 'nextjs', 'python', 'flutter', 'react-native']);
+
+function currentChatId(): string {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  const m = window.location.pathname.match(/\/chat\/([^/]+)/);
+
+  return m ? m[1] : '';
+}
 
 export function useWorkerSandbox(): WorkerSandboxResult {
   const buildStatus = useStore(buildStatusStore);
@@ -98,10 +109,19 @@ export function useWorkerSandbox(): WorkerSandboxResult {
       return undefined;
     }
 
-    const [sid, portStr = '3000'] = decodeURIComponent(match[1]).split(':');
+    const [sid, portStr = '3000', cookieChatId = ''] = decodeURIComponent(match[1]).split(':');
     const port = Number(portStr) || 3000;
 
     if (!sid) {
+      return undefined;
+    }
+
+    /*
+     * PER-CHAT SCOPE: the cookie is written as `sid:port:chatId`. Only
+     * reconnect the sandbox that belongs to THIS conversation — previously the
+     * single global cookie made chat B silently restore chat A's preview.
+     */
+    if (cookieChatId && cookieChatId !== currentChatId()) {
       return undefined;
     }
 
@@ -151,7 +171,7 @@ export function useWorkerSandbox(): WorkerSandboxResult {
          * is already installed, so `npm install` is a no-op and Vite starts in ~200ms.
          */
         if (!ok && !cancelled) {
-          document.cookie = `pf_preview=${sid}:${port}; path=/; samesite=lax`;
+          document.cookie = `pf_preview=${sid}:${port}:${currentChatId()}; path=/; samesite=lax`;
           await startRemoteSandbox(sid, { port }).catch(() => undefined);
           ok = await poll(12);
         }
@@ -227,28 +247,78 @@ export function useWorkerSandbox(): WorkerSandboxResult {
   }, []);
 
   /*
-   * NO AUTO-LAUNCH.
+   * AUTO-LAUNCH ON VERIFIED BUILD.
    *
-   * The sandbox starts ONLY when:
-   *   1. The user clicks "Launch Preview" (calls launchSandbox())
-   *   2. OR the model's Tester agent explicitly runs `npm run dev` via
-   *      the run_shell tool (which runs inside the E2B sandbox on the
-   *      worker — separate from this client-side preview sandbox)
+   * `ready_for_preview` is only set AFTER the worker's Builder finished, the
+   * Tester ran, and the full file set was uploaded — the file-completeness
+   * races that motivated the old "no auto-launch" rule can't happen at this
+   * point. What the manual flow actually produced in live testing was: build
+   * verified ✓ → user stares at the Code tab → has to discover
+   * Workspace → Preview → "Launch Preview" by themselves. The correct
+   * behavior (like every peer tool): the moment the build is verified, start
+   * the sandbox and take the user to the running app.
    *
-   * The model is the brain. It decides when the build is ready for
-   * preview — not a timer or a status flag.
-   *
-   * The previous auto-launch (on `ready_for_preview`) caused:
-   *   - "Installing & launching preview" appearing before files were
-   *     visible in the workspace
-   *   - Race conditions between file injection and sandbox startup
-   *   - Confusion: user sees sandbox starting while the model is still
-   *     writing files
-   *
-   * Now: the build completes → files appear in the workspace → user
-   * sees the complete project → user (or model) decides to launch
-   * preview. Clean, predictable, model-driven.
+   * Guards: fires once per job (autoLaunchedJob ref), only for sandboxable
+   * app types, and waits for the R2 file fetch to land in previewFilesStore
+   * (up to 30s) before launching so we never push an empty file set.
    */
+  const autoLaunchedJob = useRef<string | undefined>(undefined);
+
+  const activeJobId = useStore(activeBuildJobIdStore);
+
+  useEffect(() => {
+    const { jobStatus, appType: type } = buildStatus;
+
+    if (jobStatus !== 'ready_for_preview' || !type || !E2B_TYPES.has(type)) {
+      return undefined;
+    }
+
+    const jobKey = activeJobId ?? 'unknown';
+
+    if (autoLaunchedJob.current === jobKey || launchRef.current || sandboxState !== 'idle') {
+      return undefined;
+    }
+
+    autoLaunchedJob.current = jobKey;
+
+    let cancelled = false;
+
+    (async () => {
+      // Wait for the ready_for_preview file fetch to populate the store.
+      for (let i = 0; i < 30 && !cancelled; i++) {
+        if (Object.keys(previewFilesStore.get()).length > 0) {
+          break;
+        }
+
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+
+      if (cancelled || Object.keys(previewFilesStore.get()).length === 0) {
+        return;
+      }
+
+      await doLaunch();
+    })().catch(console.error);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [buildStatus.jobStatus, activeJobId, buildStatus.appType, sandboxState, doLaunch]);
+
+  /*
+   * When the preview becomes ready (auto or manual), surface it: open the
+   * workbench and switch to the Preview view. On mobile, MobileShell reacts to
+   * showWorkbench and moves the user to the Workspace tab automatically.
+   */
+  const surfacedUrl = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (sandboxState === 'ready' && sandboxUrl && surfacedUrl.current !== sandboxUrl) {
+      surfacedUrl.current = sandboxUrl;
+      workbenchStore.showWorkbench.set(true);
+      workbenchStore.currentView.set('preview');
+    }
+  }, [sandboxState, sandboxUrl]);
 
   const launchSandbox = useCallback(() => {
     doLaunch().catch(console.error);
@@ -297,9 +367,12 @@ async function _runInE2B(
 
   setState('starting');
 
-  // Set the cookie immediately so the proxy can forward to this sandbox.
+  /*
+   * Set the cookie immediately so the proxy can forward to this sandbox.
+   * The trailing chatId scopes the preview to THIS conversation (see reconnect).
+   */
   if (typeof document !== 'undefined') {
-    document.cookie = `pf_preview=${sandbox.id}:3000; path=/; samesite=lax`;
+    document.cookie = `pf_preview=${sandbox.id}:3000:${currentChatId()}; path=/; samesite=lax`;
   }
 
   /*

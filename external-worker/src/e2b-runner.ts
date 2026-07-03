@@ -149,10 +149,22 @@ async function syncFiles(
  * @param command - the shell command to run
  * @param files   - the CURRENT project files (in-memory map); synced incrementally
  */
+/**
+ * Errors that mean the sandbox itself is gone (TTL reaped, host recycled,
+ * connection lost) rather than the command failing. On these we recreate the
+ * sandbox, force a FULL file re-sync, and retry the command once.
+ */
+function isDeadSandboxError(message: string): boolean {
+  return /does not exist|not found|sandbox.*(killed|expired|terminated)|connect|ECONNREFUSED|ETIMEDOUT|invalid_argument/i.test(
+    message,
+  );
+}
+
 export async function runInE2B(
   jobId: string,
   command: string,
   files: Record<string, string>,
+  isRetry = false,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   if (!E2B_API_KEY) {
     throw new Error('E2B_API_KEY not set — cannot run shell commands in sandbox');
@@ -168,16 +180,20 @@ export async function runInE2B(
   }
 
   try {
-    // Keep the sandbox alive for the rest of the build, but never past the
-    // absolute TTL measured from creation.
-    const remaining = SANDBOX_TTL_MS - (Date.now() - entry.createdAt);
-
-    if (remaining > 0) {
-      try {
-        await entry.sandbox.setTimeout(remaining);
-      } catch {
-        // non-fatal — the create-time TTL still applies
-      }
+    /*
+     * ROLLING TTL: extend the sandbox lifetime on every command instead of
+     * counting down from creation. Long builds (a complex multi-page app can
+     * stream files for 15+ minutes before the Tester runs) used to hit the
+     * absolute 16-min TTL MID-BUILD — the sandbox died under the agent and
+     * every later command failed with "cwd '/home/user/project' does not
+     * exist", so verification was silently skipped. With a rolling window the
+     * sandbox stays alive as long as the build is actively using it, and E2B
+     * still reaps it TTL minutes after the last activity if the worker dies.
+     */
+    try {
+      await entry.sandbox.setTimeout(SANDBOX_TTL_MS);
+    } catch {
+      // non-fatal — the create-time TTL still applies
     }
 
     const sync = await syncFiles(entry, files);
@@ -213,9 +229,32 @@ export async function runInE2B(
       return { stdout: err.stdout || '', stderr: err.stderr || err.message || '', exitCode: err.exitCode };
     }
 
-    // Anything else (timeout, sandbox died, network) — report as a hard failure.
-    logger.error(`[e2b] job ${jobId}: command error: ${err?.message ?? String(e)}`);
-    return { stdout: '', stderr: err?.message ?? String(e), exitCode: -1 };
+    const message = err?.message ?? String(e);
+
+    /*
+     * DEAD SANDBOX RECOVERY: if the sandbox was reaped mid-build (the exact
+     * failure seen live: every command after minute ~16 of a long build died
+     * with `[invalid_argument] cwd '/home/user/project' does not exist`),
+     * drop the stale entry, create a fresh sandbox, re-sync ALL files, and
+     * retry the command once. The build continues instead of silently losing
+     * its shell (and with it the Tester/verification phase).
+     */
+    if (!isRetry && isDeadSandboxError(message)) {
+      logger.warn(`[e2b] job ${jobId}: sandbox appears dead (${message.slice(0, 120)}) — recreating and retrying`);
+      jobSandboxes.delete(jobId);
+
+      try {
+        await entry.sandbox.kill();
+      } catch {
+        // already gone
+      }
+
+      return runInE2B(jobId, command, files, true);
+    }
+
+    // Anything else (timeout, network) — report as a hard failure.
+    logger.error(`[e2b] job ${jobId}: command error: ${message}`);
+    return { stdout: '', stderr: message, exitCode: -1 };
   }
 }
 

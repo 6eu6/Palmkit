@@ -32,10 +32,15 @@ interface ProjectSwitcherDrawerProps {
   onClose: () => void;
 }
 
+/*
+ * Slide in from the LEFT as a side drawer (standard mobile navigation
+ * pattern). It previously rose from the bottom of the screen like an action
+ * sheet, which read as broken for a hamburger-triggered history menu.
+ */
 const DRAWER_VARIANTS = {
-  hidden: { y: '100%' },
-  visible: { y: 0 },
-  exit: { y: '100%' },
+  hidden: { x: '-100%' },
+  visible: { x: 0 },
+  exit: { x: '-100%' },
 };
 
 const OVERLAY_VARIANTS = {
@@ -98,6 +103,23 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
       loadProjects();
     }
   }, [open, loadProjects]);
+
+  // Escape closes the drawer (it used to trap the user until they found the X).
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', onKey);
+
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
 
   const handleOpenProject = (item: ChatHistoryItem) => {
     const targetUrl = item.urlId ? `/chat/${item.urlId}` : `/chat/${item.id}`;
@@ -221,46 +243,26 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
             onClick={onClose}
           />
 
-          {/* Drawer */}
+          {/* Drawer — left side panel, themed with the same classes as the desktop sidebar */}
           <motion.div
             className={classNames(
-              'fixed inset-x-0 bottom-0 z-[999] flex flex-col',
-              'bg-[var(--palmkit-mobile-surface-bg-elevated)]',
-              'rounded-t-2xl',
-              'shadow-[var(--palmkit-shadow-xl)]',
+              'fixed left-0 top-0 bottom-0 z-[999] flex flex-col w-[85%] max-w-[340px]',
+              'bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800',
+              'rounded-r-2xl shadow-xl',
             )}
-            style={{ maxHeight: '85dvh', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+            style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
             variants={DRAWER_VARIANTS}
             initial="hidden"
             animate="visible"
             exit="exit"
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
           >
-            {/* Top accent line with shimmer */}
-            <div
-              className="absolute top-0 left-0 right-0 h-[2px] pointer-events-none rounded-t-2xl overflow-hidden"
-              style={{
-                background:
-                  'linear-gradient(90deg, transparent 5%, var(--palmkit-gradient-start) 30%, var(--palmkit-gradient-mid) 50%, var(--palmkit-gradient-end) 70%, transparent 95%)',
-                animation: 'accentLineShimmer 2.5s ease-in-out infinite',
-              }}
-            />
-
-            {/* Drag handle */}
-            <div className="flex justify-center pt-3 pb-1">
-              <div className="w-9 h-1 rounded-full bg-[var(--palmkit-mobile-surface-border)]" />
-            </div>
-
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3">
-              <h2 className="text-base font-semibold text-[var(--palmkit-mobile-text-primary)]">Projects</h2>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800/50">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-white">Projects</h2>
               <button
                 onClick={onClose}
-                className={classNames(
-                  'p-1.5 rounded-lg transition-colors active:scale-95',
-                  'text-[var(--palmkit-mobile-text-tertiary)]',
-                  'hover:bg-[var(--palmkit-mobile-accent-faint)] hover:text-[var(--palmkit-mobile-accent-text)]',
-                )}
+                className="p-1.5 rounded-lg transition-colors active:scale-95 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white"
                 aria-label="Close"
               >
                 <div className="i-ph:x text-base" />
@@ -268,17 +270,13 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
             </div>
 
             {/* New project button */}
-            <div className="px-5 pb-3">
+            <div className="px-4 py-3">
               <button
                 onClick={handleNewProject}
                 className={classNames(
-                  'w-full flex items-center justify-center gap-2',
-                  'rounded-[var(--palmkit-radius-md)] px-4 py-2.5',
-                  'bg-gradient-to-r from-[var(--palmkit-gradient-start)] to-[var(--palmkit-gradient-mid)]',
-                  'text-white font-medium text-sm',
-                  'shadow-[var(--palmkit-shadow-accent)]',
-                  'transition-all duration-200 active:scale-[0.98]',
-                  'hover:shadow-[var(--palmkit-shadow-accent-strong)]',
+                  'w-full flex items-center justify-center gap-2 rounded-lg px-4 py-2.5',
+                  'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-medium text-sm',
+                  'transition-all duration-200 active:scale-[0.98] hover:opacity-90',
                 )}
               >
                 <div className="i-ph:plus-circle text-base" />
@@ -289,7 +287,7 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
             {/* Project list */}
             <div className="flex-1 overflow-y-auto overscroll-contain">
               {projects.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-[var(--palmkit-mobile-text-tertiary)]">
+                <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
                   <div className="i-ph:folder-open text-5xl mb-4 opacity-40" />
                   <p className="text-sm font-medium">No projects yet</p>
                   <p className="text-xs mt-1.5 opacity-60">Start a new project to begin</p>
@@ -298,43 +296,27 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                 <div className="pb-4">
                   {binDates(projects).map(({ category, items }) => (
                     <div key={category}>
-                      <div
-                        className={classNames(
-                          'px-5 py-1.5 text-[10px] font-semibold uppercase tracking-wider',
-                          'text-[var(--palmkit-mobile-text-tertiary)]',
-                          'sticky top-0 bg-[var(--palmkit-mobile-surface-bg-elevated)] backdrop-blur-sm z-[1]',
-                        )}
-                      >
+                      <div className="px-5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 sticky top-0 bg-white dark:bg-gray-950 z-[1]">
                         {category}
                       </div>
                       {(items as ProjectItem[]).map((item) => (
                         <button
                           key={item.id}
                           onClick={() => handleOpenProject(item)}
-                          className={classNames(
-                            'w-full text-left px-5 py-3 transition-colors group flex items-start gap-3',
-                            'hover:bg-[var(--palmkit-mobile-accent-faint)]',
-                            'active:bg-[var(--palmkit-mobile-accent-subtle)]',
-                          )}
+                          className="w-full text-left px-4 py-3 transition-colors group flex items-start gap-3 hover:bg-gray-50 dark:hover:bg-gray-900 active:bg-gray-100 dark:active:bg-gray-800"
                         >
                           {/* Project icon container */}
-                          <div
-                            className={classNames(
-                              'w-9 h-9 rounded-[var(--palmkit-radius-md)]',
-                              'bg-[var(--palmkit-mobile-accent-faint)]',
-                              'flex items-center justify-center shrink-0 mt-0.5',
-                            )}
-                          >
-                            <div className="i-ph:code text-sm text-[var(--palmkit-mobile-accent-text)]" />
+                          <div className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center shrink-0 mt-0.5">
+                            <div className="i-ph:code text-sm text-gray-600 dark:text-gray-300" />
                           </div>
 
                           {/* Info */}
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-[var(--palmkit-mobile-text-primary)] truncate">
+                            <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                               {item.description || 'Untitled Project'}
                             </div>
                             <div className="flex items-center gap-2 mt-1">
-                              <span className="text-[10px] text-[var(--palmkit-mobile-text-tertiary)]">
+                              <span className="text-[10px] text-gray-500 dark:text-gray-400">
                                 {formatTime(item.timestamp)}
                               </span>
                               {renderStatusBadge(item.status)}
@@ -347,8 +329,8 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                             className={classNames(
                               'opacity-0 group-hover:opacity-100 active:opacity-100 group-active:opacity-100',
                               'p-1.5 rounded-lg shrink-0',
-                              'text-[var(--palmkit-mobile-text-tertiary)]',
-                              'hover:bg-[var(--palmkit-mobile-error-muted)] hover:text-[var(--palmkit-mobile-error)]',
+                              'text-gray-400 dark:text-gray-500',
+                              'hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-500',
                               'transition-all active:scale-95',
                             )}
                             title="Delete project"

@@ -16,6 +16,7 @@ import { classNames } from '~/utils/classNames';
 import { useStore } from '@nanostores/react';
 import { profileStore } from '~/lib/stores/profile';
 import { authUserStore } from '~/lib/stores/auth';
+import { sidebarOpenStore, syncSidebarLayoutVar } from '~/lib/stores/sidebar';
 import { killCurrentRemotePreview } from '~/lib/sandbox/remotePreview';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { deleteAllLockedForChat } from '~/lib/persistence/lockedFiles';
@@ -74,19 +75,24 @@ export const Menu = () => {
   const [list, setList] = useState<ChatHistoryItem[]>([]);
 
   /*
-   * BUG FIX (2026-06-29): Default the sidebar to OPEN on desktop (sm+)
-   * screens. Previously the sidebar started closed and only opened on
-   * mouse hover at the left edge — users had no way to discover their
-   * chat history. On mobile it stays closed (the hamburger button in
-   * the Header opens it).
+   * The sidebar's open state lives in a shared store so the Header toggle can
+   * drive it. On desktop it defaults to open and PUSHES the layout via the
+   * `--sidebar-width` CSS variable (see syncSidebarLayoutVar) — previously the
+   * fixed panel simply overlapped the composer and workbench. On mobile it
+   * stays closed (the hamburger opens the ProjectSwitcherDrawer instead).
    */
-  const [open, setOpen] = useState(() => {
-    if (typeof window === 'undefined') {
-      return false;
-    }
+  const open = useStore(sidebarOpenStore);
+  const setOpen = (v: boolean) => sidebarOpenStore.set(v);
 
-    return window.innerWidth >= 640; // sm breakpoint
-  });
+  useEffect(() => {
+    syncSidebarLayoutVar();
+
+    const onResize = () => syncSidebarLayoutVar();
+    window.addEventListener('resize', onResize);
+
+    return () => window.removeEventListener('resize', onResize);
+  }, [open]);
+
   const [dialogContent, setDialogContent] = useState<DialogContent>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const profile = useStore(profileStore);
@@ -374,9 +380,27 @@ export const Menu = () => {
   }, [filteredList]); // Depends only on filteredList
 
   useEffect(() => {
-    if (open) {
-      loadEntries();
+    if (!open) {
+      return undefined;
     }
+
+    loadEntries();
+
+    /*
+     * KEEP THE LIST FRESH. The desktop sidebar is persistently open, so the
+     * old "load once when opened" behavior meant new chats never appeared
+     * ("No previous conversations" while three builds were running). Re-read
+     * on window focus and on a light poll while open.
+     */
+    const onFocus = () => loadEntries();
+    window.addEventListener('focus', onFocus);
+
+    const interval = setInterval(loadEntries, 15_000);
+
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      clearInterval(interval);
+    };
   }, [open, loadEntries]);
 
   // Exit selection mode when sidebar is closed
@@ -390,41 +414,11 @@ export const Menu = () => {
     }
   }, [open, selectionMode]);
 
-  useEffect(() => {
-    /*
-     * BUG FIX (2026-06-29): On desktop (sm+, width >= 640) the sidebar
-     * is now persistent — don't auto-close it when the mouse moves away.
-     * Only the mobile hover-to-open behavior remains.
-     */
-    const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 640;
-
-    if (isDesktop) {
-      return undefined;
-    }
-
-    const enterThreshold = 20;
-    const exitThreshold = 20;
-
-    function onMouseMove(event: MouseEvent) {
-      if (isSettingsOpen) {
-        return;
-      }
-
-      if (event.pageX < enterThreshold) {
-        setOpen(true);
-      }
-
-      if (menuRef.current && event.clientX > menuRef.current.getBoundingClientRect().right + exitThreshold) {
-        setOpen(false);
-      }
-    }
-
-    window.addEventListener('mousemove', onMouseMove);
-
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-    };
-  }, [isSettingsOpen]);
+  /*
+   * The old mobile hover-to-open (mousemove at the left edge) is gone: mobile
+   * uses the hamburger → ProjectSwitcherDrawer, and on desktop the Header
+   * toggle + persistent panel replace edge-hovering.
+   */
 
   const handleDuplicate = async (id: string) => {
     await duplicateCurrentChat(id);

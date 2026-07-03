@@ -5,6 +5,7 @@ import { classNames } from '~/utils/classNames';
 import { HeaderActionButtons } from './HeaderActionButtons.client';
 import { ChatDescription } from '~/lib/persistence/ChatDescription.client';
 import { mobileActiveTab } from '~/lib/stores/mobile';
+import { toggleSidebar } from '~/lib/stores/sidebar';
 import { AccountMenu } from './AccountMenu';
 
 export function Header() {
@@ -40,7 +41,13 @@ export function Header() {
         >
           <div className="i-ph:list text-xl" />
         </button>
-        <div className="i-ph:sidebar-simple-duotone text-xl opacity-60 group-hover:opacity-100 transition-opacity duration-200 hidden sm:block" />
+        <button
+          onClick={() => toggleSidebar()}
+          className="hidden sm:block p-1 -ml-1 rounded-lg bg-transparent text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
+          aria-label="Toggle chat history sidebar"
+        >
+          <div className="i-ph:sidebar-simple-duotone text-xl opacity-60 group-hover:opacity-100 transition-opacity duration-200" />
+        </button>
         <a
           href="/"
           className="flex items-center transition-transform duration-200 group-hover:scale-[1.03]"

@@ -473,10 +473,18 @@ export const ChatImpl = memo(
        * tool calls. So showWorkbench was NEVER set to true, and the
        * workbench (with the preview iframe) stayed off-screen.
        *
-       * Fix: show the workbench as soon as we have files or the build
-       * is ready. This makes the preview visible alongside the chat.
+       * On phones (<640px), opening the workbench flips the bottom-dock tab
+       * to Workspace (MobileShell reacts to showWorkbench), which used to
+       * YANK the user out of the conversation the moment the first file was
+       * written mid-build. There, don't auto-open at all from here — the
+       * chat's inline BuildStream shows the live build, and the auto-preview
+       * paths (use-worker-sandbox for E2B apps, Preview's blob effect for
+       * static apps) open the workspace when the running app is actually
+       * ready to look at.
        */
-      if (extWorkerState.files.length > 0 || extWorkerState.status === 'ready_for_preview') {
+      const isPhone = typeof window !== 'undefined' && window.innerWidth < 640;
+
+      if (!isPhone && (extWorkerState.files.length > 0 || extWorkerState.status === 'ready_for_preview')) {
         workbenchStore.showWorkbench.set(true);
       }
 
@@ -564,9 +572,21 @@ export const ChatImpl = memo(
             return prev;
           }
 
+          /*
+           * Replace BOTH `content` and `parts`. The ai-sdk renders assistant
+           * messages from `parts` when present; updating only `content` left
+           * the stale text parts in place, so successive status lines rendered
+           * on top of each other ("Building project…project…** · 1 reasoning
+           * stepne · 2 reasoning stepsdone…" — the garbled banner seen live).
+           */
           const updatedMessages = [
             ...prev.slice(0, -1),
-            { ...last, content: newContent, annotations: nextAnnotations },
+            {
+              ...last,
+              content: newContent,
+              parts: [{ type: 'text' as const, text: newContent }],
+              annotations: nextAnnotations,
+            },
           ];
 
           /*

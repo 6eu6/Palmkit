@@ -149,9 +149,11 @@ export async function loader(args: LoaderFunctionArgs) {
     });
   }
 
-  // ─── GET /api/workspace?action=download&projectId=xxx&path=downloads/file.zip ───
-  // Serves a file as an attachment (forces download in the browser).
-  // Used for generated outputs in the downloads/ folder.
+  /*
+   * ─── GET /api/workspace?action=download&projectId=xxx&path=downloads/file.zip ───
+   * Serves a file as an attachment (forces download in the browser).
+   * Used for generated outputs in the downloads/ folder.
+   */
   if (action === 'download') {
     const path = url.searchParams.get('path');
 
@@ -163,9 +165,7 @@ export async function loader(args: LoaderFunctionArgs) {
     const workspaceKey = `projects/${projectId}/workspace/${normalized}`;
     const storageKey = `${authed.user.id}/${workspaceKey}`;
 
-    const { data: fileData, error: downloadError } = await authed.supabase.storage
-      .from(BUCKET)
-      .download(storageKey);
+    const { data: fileData, error: downloadError } = await authed.supabase.storage.from(BUCKET).download(storageKey);
 
     if (downloadError || !fileData) {
       return json({ error: 'File not found', path: normalized }, { status: 404 });
@@ -186,8 +186,10 @@ export async function loader(args: LoaderFunctionArgs) {
     });
   }
 
-  // ─── GET /api/workspace?action=uploads&projectId=xxx ───
-  // Lists files in the uploads/ folder specifically.
+  /*
+   * ─── GET /api/workspace?action=uploads&projectId=xxx ───
+   * Lists files in the uploads/ folder specifically.
+   */
   if (action === 'uploads') {
     const prefix = `${authed.user.id}/projects/${projectId}/workspace/uploads/`;
     const supabase = authed.supabase;
@@ -370,12 +372,10 @@ export async function action(args: ActionFunctionArgs) {
   // Upload to Supabase Storage
   const storageKey = `${authed.user.id}/projects/${projectId}/workspace/${normalized}`;
 
-  const { error: uploadError } = await authed.supabase.storage
-    .from(BUCKET)
-    .upload(storageKey, content, {
-      contentType: file.type || 'application/octet-stream',
-      upsert: true,
-    });
+  const { error: uploadError } = await authed.supabase.storage.from(BUCKET).upload(storageKey, content, {
+    contentType: file.type || 'application/octet-stream',
+    upsert: true,
+  });
 
   if (uploadError) {
     logger.error(`Upload failed for ${normalized}:`, uploadError.message);

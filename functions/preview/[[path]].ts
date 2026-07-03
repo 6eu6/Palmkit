@@ -106,7 +106,27 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     // Accept the server-side socket so the Workers runtime starts piping.
     ws.accept();
 
-    return new Response(null, { status: 101, webSocket: ws }) as Response;
+    /*
+     * CRITICAL: echo the negotiated subprotocol back to the browser.
+     *
+     * Vite's HMR client connects with `Sec-WebSocket-Protocol: vite-hmr`.
+     * Re-wrapping the upstream response in a fresh `new Response(...)` DROPPED
+     * that header, and per the WebSocket spec a client that offered a
+     * subprotocol MUST kill a connection whose 101 doesn't echo one. The
+     * browser then logged "Sent non-empty 'Sec-WebSocket-Protocol' header but
+     * no response was received", Vite declared "server connection lost",
+     * pinged /preview/__vite_ping over plain HTTP (which succeeds through this
+     * proxy), and RELOADED the iframe — an infinite flash/reload loop that
+     * made the preview unusable. Echoing the subprotocol keeps the socket up.
+     */
+    const respHeaders = new Headers();
+    const negotiated = wsResp.headers.get('Sec-WebSocket-Protocol') || request.headers.get('Sec-WebSocket-Protocol');
+
+    if (negotiated) {
+      respHeaders.set('Sec-WebSocket-Protocol', negotiated.split(',')[0].trim());
+    }
+
+    return new Response(null, { status: 101, webSocket: ws, headers: respHeaders } as ResponseInit) as Response;
   }
 
   // Forward the request to the sandbox (keep method/body/most headers).

@@ -236,6 +236,7 @@ function createDebouncedSnapshotSaver(delay: number = 2000) {
             chatIndex: chatIdx,
             files: snapshotFiles,
             summary: chatSummary,
+
             /*
              * Persist structured progress data so the user can refresh the
              * page mid-build and still see the Todos / Thought Process /
@@ -456,8 +457,9 @@ export function useChatHistory() {
                  * Set BOTH previewFilesStore AND buildStatusStore
                  * so Preview component can find files and show blob preview
                  */
-                const { buildStatusStore, setPreviewFiles: setPreviewFilesStore } =
-                  await import('~/lib/stores/build-status');
+                const { buildStatusStore, setPreviewFiles: setPreviewFilesStore } = await import(
+                  '~/lib/stores/build-status'
+                );
                 setPreviewFilesStore(previewFiles);
 
                 const current = buildStatusStore.get();
@@ -1267,6 +1269,7 @@ ${value.content}
         chatIndex: chatIdx,
         files,
         summary: chatSummary,
+
         /*
          * Persist structured progress data (todos, reasoning, activity groups)
          * so the panels survive page refresh. Same pattern as the debounced

@@ -361,7 +361,13 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         data-chat-visible={showChat}
       >
         <ClientOnly>{() => <Menu />}</ClientOnly>
-        <div className="flex flex-col lg:flex-row overflow-y-auto w-full h-full">
+        {/* paddingLeft = --sidebar-width (340px when the desktop history panel
+            is open, 0 otherwise) so the chat column starts AFTER the fixed
+            sidebar instead of underneath it. */}
+        <div
+          className="flex flex-col lg:flex-row overflow-y-auto w-full h-full transition-[padding-left] duration-200"
+          style={{ paddingLeft: 'var(--sidebar-width, 0px)' }}
+        >
           <div
             className={classNames(styles.Chat, 'flex flex-col h-full', {
               'flex-grow lg:min-w-[var(--chat-min-width)]': !showWorkbench,

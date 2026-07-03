@@ -459,8 +459,17 @@ export const Workbench = memo(
         >
           <div
             className={classNames(
-              'fixed top-[calc(var(--header-height)+1.2rem)] bottom-6 w-[var(--workbench-inner-width)] z-0 transition-[left,width] duration-200 palmkit-ease-cubic-bezier',
+              'fixed w-[var(--workbench-inner-width)] z-0 transition-[left,width] duration-200 palmkit-ease-cubic-bezier',
               {
+                /*
+                 * Phones (<sm): fill the space between the header and the
+                 * bottom dock edge-to-edge. The previous inset card (top
+                 * offset + bottom-6 + rounded borders) floated OVER the chat
+                 * with the conversation visibly poking out behind it — it
+                 * read as a broken overlay, not a screen. From sm up the
+                 * original floating-card styling is kept.
+                 */
+                'top-[var(--header-height)] bottom-[calc(var(--palmkit-mobile-dock-height,3.5rem)+env(safe-area-inset-bottom,0px))] sm:top-[calc(var(--header-height)+1.2rem)] sm:bottom-6': true,
                 'w-full': isSmallViewport,
                 'left-0': showWorkbench && isSmallViewport,
                 'left-[var(--workbench-left)]': showWorkbench,
@@ -468,8 +477,8 @@ export const Workbench = memo(
               },
             )}
           >
-            <div className="absolute inset-0 px-2 lg:px-4">
-              <div className="h-full flex flex-col bg-palmkit-elements-background-depth-2 border border-palmkit-elements-borderColor shadow-lg shadow-black/5 dark:shadow-black/20 rounded-xl overflow-hidden">
+            <div className="absolute inset-0 px-0 sm:px-2 lg:px-4">
+              <div className="h-full flex flex-col bg-palmkit-elements-background-depth-2 border border-palmkit-elements-borderColor shadow-lg shadow-black/5 dark:shadow-black/20 overflow-hidden rounded-none border-x-0 border-b-0 sm:rounded-xl sm:border-x sm:border-b">
                 <div
                   data-workbench-toolbar
                   className="flex items-center px-3 py-2 border-b border-palmkit-elements-borderColor gap-1.5 bg-palmkit-elements-bg-depth-2"

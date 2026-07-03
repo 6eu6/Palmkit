@@ -5,6 +5,7 @@ export interface Snapshot {
   chatIndex: string;
   files: FileMap;
   summary?: string;
+
   /*
    * Structured progress data — persisted so the user can refresh the page
    * mid-build (or after a build) and still see the Todos / Thought Process
@@ -21,4 +22,3 @@ export interface Snapshot {
   reasoning?: ReasoningEntry[];
   activityGroups?: ActivityGroup[];
 }
-
