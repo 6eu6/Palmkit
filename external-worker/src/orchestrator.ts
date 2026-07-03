@@ -189,6 +189,16 @@ export async function runOrchestratedBuild(
   let repairContext = '';
 
   /*
+   * Empty-Builder retry. Some models (observed with GLM-5.2 on complex prompts)
+   * spend the whole turn REASONING and never call write_file, then stop cleanly
+   * — leaving 0 files. Rather than fail, we re-prompt the Builder ONCE with a
+   * blunt "stop planning, write the files now" directive.
+   */
+  let builderEmptyRetries = 0;
+  const MAX_BUILDER_EMPTY_RETRIES = 1;
+  let forceBuild = false;
+
+  /*
    * Loop detection — track how many times each file path is written per
    * build. If a path is written 4+ times, the LLM is stuck in a loop
    * (observed with GLM-4.7: write → read → rewrite → hang). We abort
@@ -237,6 +247,21 @@ export async function runOrchestratedBuild(
         // No researcher context (e.g. Researcher skipped) but this IS a
         // continuation — make sure the Builder still sees the handoff.
         agentPrompt = `${prompt}${handoffBlock}\n\nThis is a continuation of an existing project. Use read_file/list_files to inspect the carried-over files before changing them; do not rebuild from scratch.`;
+      }
+
+      /*
+       * Force-build retry: the previous Builder turn produced NO files (the
+       * model reasoned but never called write_file). Override the prompt with a
+       * blunt directive to act now. Takes precedence over the normal prompts.
+       */
+      if (role === 'builder' && forceBuild) {
+        agentPrompt =
+          `${prompt}\n\n` +
+          `CRITICAL: You produced NO files on your last turn — you only planned. ` +
+          `STOP planning and explaining. RIGHT NOW, use the write_file tool to create EVERY file the project needs, ` +
+          `one call per file, starting with the entry file (index.html, or src/main.* + index.html for a bundler app). ` +
+          `After all files are written, call done(). Do NOT describe the plan — build it with tool calls immediately.`;
+        forceBuild = false; // consumed
       }
 
       // Repair round: a previous build failed — give the Builder the exact
@@ -759,6 +784,24 @@ export async function runOrchestratedBuild(
         `✅ ${config.name} agent completed (${(agentDuration / 1000).toFixed(1)}s)`,
         { agent: config.name, role, durationMs: agentDuration, success: agentSuccess },
       );
+
+      /*
+       * Empty-Builder gate. If the Builder finished but the project still has
+       * ZERO files, the model planned without acting. Re-queue the Builder once
+       * with a force-build directive (runs BEFORE the Tester) instead of failing.
+       */
+      if (role === 'builder' && Object.keys(getProjectFiles(jobId)).length === 0 && builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES) {
+        builderEmptyRetries++;
+        forceBuild = true;
+        agentQueue.unshift('builder'); // run the Builder again next, before the Tester
+        await emitEvent(
+          supabase,
+          jobId,
+          'file_chunk' as any,
+          `⚠️ No files written yet — re-prompting the Builder to build now (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`,
+          { reason: 'empty_builder_retry', attempt: builderEmptyRetries },
+        );
+      }
 
       /*
        * Build-verification repair gate. After a Tester runs, inspect the real
