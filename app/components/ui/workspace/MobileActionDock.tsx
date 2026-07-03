@@ -18,11 +18,19 @@ import { chatStore } from '~/lib/stores/chat';
 
 const DOCK_ITEMS: { id: MobileTab; label: string; icon: string; iconActive: string }[] = [
   { id: 'chat', label: 'Chat', icon: 'i-ph:chat-circle-text', iconActive: 'i-ph:chat-circle-text-bold' },
-  { id: 'workspace', label: 'Workspace', icon: 'i-ph:code', iconActive: 'i-ph:code-bold' },
+  { id: 'workspace', label: 'App', icon: 'i-ph:play-circle', iconActive: 'i-ph:play-circle-bold' },
 ];
 
 export const MobileActionDock = memo(() => {
   const activeTab = useStore(mobileActiveTab);
+
+  /*
+   * Design v2: while the user stays in Chat during a build, a pulsing accent
+   * dot on the App tab signals "there is something to look at" the moment
+   * project files exist — instead of yanking them out of the conversation.
+   */
+  const files = useStore(workbenchStore.files);
+  const hasFiles = Object.values(files ?? {}).some((d) => d?.type === 'file');
 
   const handleTabChange = useCallback((tab: MobileTab) => {
     mobileActiveTab.set(tab);
@@ -144,6 +152,17 @@ export const MobileActionDock = memo(() => {
                     }),
                   }}
                 />
+                {/* Pulsing "something to see" dot on App while user is in Chat */}
+                {item.id === 'workspace' && !isActive && hasFiles && (
+                  <span
+                    className="absolute -top-0.5 -right-1 w-1.5 h-1.5 rounded-full"
+                    style={{
+                      background: 'var(--pk-accent)',
+                      boxShadow: '0 0 6px var(--pk-accent)',
+                      animation: 'dockIndicatorPulse 2s ease-in-out infinite',
+                    }}
+                  />
+                )}
               </div>
 
               {/* Label */}

@@ -103,7 +103,7 @@ function ToolButton({
   );
 }
 
-/* Prominent send / stop button that lives inside the box (reference-style). */
+/* Prominent send / stop button — brand accent (Design v2). */
 function SendStopButton({
   isStreaming,
   canSend,
@@ -127,14 +127,20 @@ function SendStopButton({
         onClick(e);
       }}
       className={classNames(
-        'shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-150 active:scale-95',
+        'shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-150 active:scale-[.94]',
         'disabled:opacity-30 disabled:cursor-not-allowed',
       )}
-      style={{
-        background: isStreaming ? 'rgba(239, 68, 68, 0.92)' : 'var(--palmkit-elements-textPrimary)',
-      }}
+      style={
+        isStreaming
+          ? { background: 'rgba(239, 68, 68, 0.92)', color: '#fff' }
+          : {
+              background: 'linear-gradient(145deg, var(--pk-accent), var(--pk-accent-deep))',
+              color: 'var(--pk-on-accent)',
+              boxShadow: enabled ? '0 2px 14px var(--pk-accent-dim)' : 'none',
+            }
+      }
     >
-      <div className="text-palmkit-elements-bg-depth-1 text-base">
+      <div className="text-base">
         {isStreaming ? <div className="i-ph:stop-bold" /> : <div className="i-ph:arrow-up-bold" />}
       </div>
     </button>
@@ -144,6 +150,13 @@ function SendStopButton({
 /* ---------- Main ChatBox ---------- */
 export const ChatBox: React.FC<ChatBoxProps> = (props) => {
   const canSend = props.input.length > 0 || props.uploadedFiles.length > 0;
+
+  /*
+   * Design v2 — compact composer. On phones the secondary tools (web search,
+   * palette, MCP, Supabase) hide behind a single "+" toggle so the box stays
+   * one clean row; on sm+ they are always visible.
+   */
+  const [moreToolsOpen, setMoreToolsOpen] = React.useState(false);
 
   const onSendClick = (event: React.UIEvent) => {
     if (props.isStreaming) {
@@ -165,8 +178,8 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
         'border border-palmkit-elements-borderColor',
         'shadow-[0_2px_16px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_24px_rgba(0,0,0,0.4)]',
         'transition-all duration-200',
-        'focus-within:border-palmkit-elements-borderColorActive',
-        'focus-within:shadow-[0_0_0_1px_var(--palmkit-elements-borderColorActive)]',
+        'focus-within:border-[var(--pk-accent)]',
+        'focus-within:shadow-[0_0_0_1px_var(--pk-accent),0_2px_24px_var(--pk-accent-dim)]',
       )}
     >
       {/* Collapsible model settings (provider + model + API key) */}
@@ -326,31 +339,33 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
         translate="no"
       />
 
-      {/* In-box toolbar — every action lives here, no popups.
-          ALL buttons are visible on ALL screen sizes. On narrow screens
-          (mobile), the left toolbar scrolls horizontally — the standard
-          mobile pattern used by messaging apps (Telegram, WhatsApp, etc.). */}
+      {/* In-box toolbar (Design v2 — one compact row).
+          Model chip + attach + enhance are always visible; the secondary
+          tools (web search, palette, MCP, Supabase) are always visible on
+          sm+ and live behind a "+" toggle on phones. */}
       <div className="bolt-toolbar-fade flex items-center gap-1 px-2 pb-2 pt-1">
-        {/* Left: model chip + tools (scrolls horizontally on small screens) */}
         <div className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto bolt-toolbar-scroll">
-          {/* Model chip — toggles the settings panel */}
+          {/* Model chip — pill that opens the model/key sheet */}
           <button
             type="button"
             title="Model settings"
             onClick={() => props.setIsModelSettingsCollapsed(!props.isModelSettingsCollapsed)}
             disabled={!props.providerList || props.providerList.length === 0}
             className={classNames(
-              'shrink-0 flex items-center gap-1 h-8 pl-1.5 pr-2 rounded-lg transition-all duration-150',
-              'text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary hover:bg-palmkit-elements-item-backgroundActive',
+              'shrink-0 flex items-center gap-1.5 h-7 px-2.5 rounded-full transition-all duration-150 border',
+              props.isModelSettingsCollapsed
+                ? 'border-palmkit-elements-borderColor text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary hover:border-[var(--pk-glass-border-hi)]'
+                : 'border-[var(--pk-accent)] text-[var(--pk-accent)] bg-[var(--pk-accent-dim)]',
             )}
           >
-            <div className={`i-ph:caret-${props.isModelSettingsCollapsed ? 'right' : 'down'} text-[12px]`} />
-            <span className="text-[11px] font-medium max-w-[110px] truncate">{props.model || 'Model'}</span>
+            <span className="text-[11px] font-medium max-w-[110px] truncate">
+              {(props.model || 'Model').split('/').pop()}
+            </span>
+            <div className={`i-ph:caret-${props.isModelSettingsCollapsed ? 'down' : 'up'} text-[11px]`} />
           </button>
 
           <div className="shrink-0 w-px h-5 mx-0.5 bg-palmkit-elements-borderColor" />
 
-          {/* ALL tools — visible on every screen size, scroll horizontally on mobile */}
           <ToolButton icon="i-ph:paperclip" title="Attach image" onClick={props.handleFileUpload} />
 
           <ToolButton
@@ -364,18 +379,30 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             loading={props.enhancingPrompt}
           />
 
-          {/* Self-contained dialog / action triggers */}
-          <ClientOnly>
-            {() => (
-              <WebSearch
-                onSearchResult={props.onWebSearchResult ?? ((_r: string) => undefined)}
-                disabled={props.isStreaming}
-              />
-            )}
-          </ClientOnly>
-          <ColorSchemeDialog designScheme={props.designScheme} setDesignScheme={props.setDesignScheme} />
-          <McpTools />
-          <SupabaseConnection />
+          {/* "+" — phones only: reveals the secondary tools */}
+          <div className="sm:hidden">
+            <ToolButton
+              icon={moreToolsOpen ? 'i-ph:x' : 'i-ph:plus'}
+              title="More tools"
+              onClick={() => setMoreToolsOpen(!moreToolsOpen)}
+              active={moreToolsOpen}
+            />
+          </div>
+
+          {/* Secondary tools — always on sm+, behind "+" on phones */}
+          <div className={classNames('items-center gap-0.5', moreToolsOpen ? 'flex' : 'hidden sm:flex')}>
+            <ClientOnly>
+              {() => (
+                <WebSearch
+                  onSearchResult={props.onWebSearchResult ?? ((_r: string) => undefined)}
+                  disabled={props.isStreaming}
+                />
+              )}
+            </ClientOnly>
+            <ColorSchemeDialog designScheme={props.designScheme} setDesignScheme={props.setDesignScheme} />
+            <McpTools />
+            <SupabaseConnection />
+          </div>
         </div>
 
         {/* Right: mode toggle + mic + send (always visible, never scrolls) */}
@@ -419,16 +446,6 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
           </ClientOnly>
         </div>
       </div>
-
-      {/* Mobile keyboard hint */}
-      {props.input.length > 1 && (
-        <div className="flex sm:hidden items-center justify-end px-3 pb-1.5">
-          <div className="text-[10px] text-palmkit-elements-textTertiary">
-            <kbd className="px-1 py-0.5 rounded bg-palmkit-elements-bg-depth-2 text-[10px]">Enter</kbd> send{' '}
-            <kbd className="px-1 py-0.5 rounded bg-palmkit-elements-bg-depth-2 text-[10px]">Shift+Enter</kbd> new line
-          </div>
-        </div>
-      )}
 
       <ExpoQrModal open={props.qrModalOpen} onClose={() => props.setQrModalOpen(false)} />
     </div>

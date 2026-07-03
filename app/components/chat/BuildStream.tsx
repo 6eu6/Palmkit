@@ -17,6 +17,7 @@ import { memo, useMemo, useState } from 'react';
 import { useStore } from '@nanostores/react';
 import { workerEventsStore, workerProgressStore, type WorkerEvent } from '~/lib/stores/build-status';
 import { classNames } from '~/utils/classNames';
+import { PalmkitLoader } from '~/components/ui/PalmkitLoader';
 
 /* ── Row + section model ────────────────────────────────────────────────── */
 
@@ -307,16 +308,18 @@ const Todos = memo(({ todos, counts }: { todos: TodoItem[]; counts?: { done: num
     <ul className="space-y-0.5">
       {todos.map((t, i) => (
         <li key={i} className="flex items-center gap-2 text-sm">
-          <span
-            className={classNames(
-              'shrink-0 text-[13px]',
-              t.status === 'done'
-                ? 'i-ph:check-circle-fill text-green-400'
-                : t.status === 'in_progress'
-                  ? 'i-svg-spinners:90-ring-with-bg text-blue-400'
+          {t.status === 'in_progress' ? (
+            <PalmkitLoader bare size={12} className="shrink-0 text-[var(--pk-accent)]" />
+          ) : (
+            <span
+              className={classNames(
+                'shrink-0 text-[13px]',
+                t.status === 'done'
+                  ? 'i-ph:check-circle-fill text-green-400'
                   : 'i-ph:circle text-palmkit-elements-textTertiary',
-            )}
-          />
+              )}
+            />
+          )}
           <span
             className={classNames(
               t.status === 'done'
@@ -356,7 +359,7 @@ const SectionView = memo(({ section }: { section: Section }) => {
         <span className={classNames('z-10 -ml-5 shrink-0', icon, accent)} />
         <span className={classNames('text-sm font-medium', accent)}>{section.agent}</span>
         {section.running ? (
-          <span className="i-svg-spinners:90-ring-with-bg text-xs text-palmkit-elements-textTertiary" />
+          <PalmkitLoader bare size={12} className="text-[var(--pk-accent)]" />
         ) : (
           <span className="flex items-center gap-1 text-xs text-palmkit-elements-textTertiary">
             <span
@@ -481,18 +484,20 @@ export const BuildStreamView = memo(
           onClick={collapsible ? () => setOpen((o) => !o) : undefined}
         >
           <div className="flex items-center gap-2">
-            <span
-              className={classNames(
-                'shrink-0',
-                failed
-                  ? 'i-ph:x-circle-fill text-red-400'
-                  : done && hasBuildErrors
-                    ? 'i-ph:warning-fill text-amber-400'
-                    : done
-                      ? 'i-ph:check-circle-fill text-green-400'
-                      : 'i-svg-spinners:90-ring-with-bg text-blue-400',
-              )}
-            />
+            {failed || done ? (
+              <span
+                className={classNames(
+                  'shrink-0',
+                  failed
+                    ? 'i-ph:x-circle-fill text-red-400'
+                    : hasBuildErrors
+                      ? 'i-ph:warning-fill text-amber-400'
+                      : 'i-ph:check-circle-fill text-green-400',
+                )}
+              />
+            ) : (
+              <PalmkitLoader bare size={15} className="shrink-0 text-[var(--pk-accent)]" />
+            )}
             <span className="text-sm font-medium text-palmkit-elements-textPrimary">
               {failed
                 ? 'Build failed'

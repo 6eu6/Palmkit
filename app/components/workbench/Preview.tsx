@@ -9,6 +9,7 @@ import { expoUrlAtom } from '~/lib/stores/qrCodeStore';
 import { ExpoQrModal } from '~/components/workbench/ExpoQrModal';
 import { canShowPreview, buildStatusMessage, buildStatusStore, previewFilesStore } from '~/lib/stores/build-status';
 import { useWorkerSandbox } from '~/lib/hooks/use-worker-sandbox';
+import { PalmkitLoader } from '~/components/ui/PalmkitLoader';
 import type { ElementInfo } from './Inspector';
 import { InspectorPanel } from './InspectorPanel';
 import { pendingEditPromptStore, type QueuedEdit } from '~/lib/stores/inspector';
@@ -1070,15 +1071,17 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                 className="flex flex-col items-center gap-5 max-w-xs text-center"
                 style={{ animation: 'fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}
               >
-                <div className="w-16 h-16 rounded-2xl flex items-center justify-center bg-palmkit-elements-item-backgroundAccent border border-palmkit-elements-borderColor">
-                  {sandboxState === 'writing' || sandboxState === 'installing' || sandboxState === 'starting' ? (
-                    <div className="i-svg-spinners:ring-resize text-2xl text-palmkit-elements-textTertiary animate-spin" />
-                  ) : sandboxState === 'error' ? (
-                    <div className="i-ph:warning text-2xl text-red-400" />
-                  ) : (
-                    <div className="i-ph:browser text-2xl text-palmkit-elements-textTertiary" />
-                  )}
-                </div>
+                {sandboxState === 'writing' || sandboxState === 'installing' || sandboxState === 'starting' ? (
+                  <PalmkitLoader size={64} />
+                ) : (
+                  <div className="w-16 h-16 rounded-2xl flex items-center justify-center bg-palmkit-elements-item-backgroundAccent border border-palmkit-elements-borderColor">
+                    {sandboxState === 'error' ? (
+                      <div className="i-ph:warning text-2xl text-red-400" />
+                    ) : (
+                      <div className="i-ph:browser text-2xl text-palmkit-elements-textTertiary" />
+                    )}
+                  </div>
+                )}
                 <div>
                   <h3 className="text-sm font-semibold text-palmkit-elements-textPrimary mb-1.5">
                     {sandboxState === 'writing'

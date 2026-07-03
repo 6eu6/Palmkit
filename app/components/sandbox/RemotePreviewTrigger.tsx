@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react';
 import { memo, useEffect, useRef, useState } from 'react';
 import { streamingState } from '~/lib/stores/streaming';
+import { PalmkitLoader } from '~/components/ui/PalmkitLoader';
 import { workbenchStore } from '~/lib/stores/workbench';
 import {
   generationStatusStore,
@@ -200,10 +201,7 @@ export const RemotePreviewTrigger = memo(() => {
       }}
     >
       <div className="flex items-center gap-2.5 px-3.5 py-2.5">
-        <span
-          className="i-svg-spinners:90-ring-with-bg text-base shrink-0"
-          style={{ color: 'var(--palmkit-mobile-accent-text)' }}
-        />
+        <PalmkitLoader bare size={16} className="shrink-0 text-[var(--pk-accent)]" />
         <span className="text-xs font-medium truncate" style={{ color: 'var(--palmkit-mobile-text-primary)' }}>
           {label}
         </span>

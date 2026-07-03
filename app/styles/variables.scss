@@ -1,6 +1,16 @@
 /* Color Tokens Light Theme */
 :root,
 :root[data-theme='light'] {
+  /* Design System v2 — brand accent (ice cyan, from the logo/loader identity).
+     The ONLY decorative accent; status colors stay separate. Darkened in
+     light mode for AA contrast on white. */
+  --pk-accent: #0b90b4;
+  --pk-accent-deep: #0b7d9c;
+  --pk-accent-dim: rgba(11, 144, 180, 0.1);
+  --pk-on-accent: #ffffff;
+  --pk-glass-border: rgba(17, 35, 53, 0.1);
+  --pk-glass-border-hi: rgba(17, 35, 53, 0.18);
+
   --palmkit-elements-borderColor: theme('colors.alpha.gray.10');
   --palmkit-elements-borderColorActive: theme('colors.gray.400');
 
@@ -115,6 +125,14 @@
 
 /* Color Tokens Dark Theme */
 :root[data-theme='dark'] {
+  /* Design System v2 — brand accent (ice cyan) */
+  --pk-accent: #71e4ff;
+  --pk-accent-deep: #2ab8dc;
+  --pk-accent-dim: rgba(113, 228, 255, 0.13);
+  --pk-on-accent: #04222b;
+  --pk-glass-border: rgba(255, 255, 255, 0.09);
+  --pk-glass-border-hi: rgba(255, 255, 255, 0.16);
+
   --palmkit-elements-borderColor: theme('colors.alpha.white.10');
   --palmkit-elements-borderColorActive: theme('colors.gray.500');
 
@@ -319,13 +337,13 @@
   --palmkit-mobile-surface-border-strong: rgba(255, 255, 255, 0.15);
   --palmkit-mobile-surface-glow: rgba(255, 255, 255, 0.03);
 
-  /* --- Mobile Accent System (Monochrome — Clean B&W) --- */
-  --palmkit-mobile-accent: rgba(255, 255, 255, 1);
-  --palmkit-mobile-accent-hover: rgba(229, 229, 229, 1);
-  --palmkit-mobile-accent-muted: rgba(255, 255, 255, 0.12);
-  --palmkit-mobile-accent-subtle: rgba(255, 255, 255, 0.06);
-  --palmkit-mobile-accent-faint: rgba(255, 255, 255, 0.03);
-  --palmkit-mobile-accent-text: #e5e5e5;
+  /* --- Mobile Accent System (Design v2 — ice cyan from the brand loader) --- */
+  --palmkit-mobile-accent: rgba(113, 228, 255, 1);
+  --palmkit-mobile-accent-hover: rgba(42, 184, 220, 1);
+  --palmkit-mobile-accent-muted: rgba(113, 228, 255, 0.13);
+  --palmkit-mobile-accent-subtle: rgba(113, 228, 255, 0.07);
+  --palmkit-mobile-accent-faint: rgba(113, 228, 255, 0.04);
+  --palmkit-mobile-accent-text: #a9ecff;
 
   /* --- Secondary Accent (Monochrome) --- */
   --palmkit-teal: rgba(212, 212, 212, 1);
