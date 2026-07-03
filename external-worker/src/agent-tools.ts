@@ -834,9 +834,20 @@ export function createAgentTools(
         'Only ONE task should be "in_progress" at a time. Keep task text short (max 80 chars). ' +
         'Pass the `todos` parameter as a JSON ARRAY (not a string), e.g. ' +
         '[{"text":"Create App.tsx","status":"in_progress"},{"text":"Add styles","status":"pending"}].',
+      /*
+       * `todos` is OPTIONAL on purpose. Some models (observed with GLM-5.2) call
+       * update_todos with EMPTY args `{}`. If the param is required, the AI SDK
+       * throws a schema-validation error BEFORE execute() runs — and that error
+       * aborts the whole Builder stream, killing the build with 0 files. Making
+       * it optional lets a malformed call reach execute(), which handles every
+       * shape gracefully (returns a soft error the model can recover from)
+       * instead of crashing. A non-essential progress tool must never be able to
+       * fail a build.
+       */
       parameters: z.object({
         todos: z
           .any()
+          .optional()
           .describe(
             'The complete current task list as a JSON array. ' +
               'Each item must have: { "text": string (max 120 chars), "status": "pending" | "in_progress" | "done" }. ' +
