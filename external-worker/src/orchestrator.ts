@@ -87,6 +87,9 @@ export async function runOrchestratedBuild(
 
     /** How hard reasoning models think: off | medium | max (default: enabled, provider-decided). */
     reasoningEffort?: 'off' | 'medium' | 'max';
+
+    /** Media config for generate_image (OpenRouter key + image model). */
+    media?: { apiKey: string; model: string };
   },
 ): Promise<OrchestratorResult> {
   const startTime = Date.now();
@@ -136,7 +139,7 @@ export async function runOrchestratedBuild(
   }
 
   // Create all tools (shared across agents, filtered per agent)
-  const allTools = createAgentTools(jobId, supabase, projectId);
+  const allTools = createAgentTools(jobId, supabase, projectId, opts?.media);
 
   // Keep-alive timer (every 10s instead of 5s to reduce Realtime events)
   const keepAlive = setInterval(async () => {

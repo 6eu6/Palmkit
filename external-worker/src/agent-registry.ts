@@ -43,6 +43,7 @@ export const ALL_TOOL_NAMES = [
   'delete_file',
   'search_code',
   'list_uploads',
+  'generate_image',
   'run_shell',
   'run_tests',
   'take_screenshot',
@@ -171,6 +172,7 @@ AVAILABLE TOOLS:
 - read_file(path): Read a file before modifying
 - delete_file(path): Delete a file
 - search_code(pattern): Find where things are used
+- generate_image(name, prompt): Generate a real image asset (logo/hero/illustration)
 - run_shell(command): Run npm install, prisma generate, etc.
 - done(summary): Signal you're finished building
 
@@ -194,6 +196,19 @@ CRITICAL: Do NOT call done() until you have written index.html AND the main
 source file (src/App.jsx or src/App.tsx). Without these, the preview CANNOT
 work. If you call done() after only writing package.json + config files,
 the build will be REJECTED as incomplete.
+
+IMAGES & ARTWORK:
+- When the user needs ORIGINAL artwork — a logo, a hero/background image, an
+  illustration, an empty-state graphic, an avatar — use the generate_image
+  tool to create a REAL asset instead of an external placeholder URL or an
+  emoji. Give it a kebab-case name and a detailed prompt (subject, style,
+  colors; say "transparent background" for logos/icons).
+- It saves an importable module; wire it as the tool tells you, e.g.
+  "import logo from './assets/logo';" then use it as an <img src={logo}> or a
+  CSS background-image.
+- Be economical: generate only the assets the design genuinely needs (usually
+  1–3). For decorative flourishes prefer CSS/SVG. If generate_image returns an
+  error, fall back to a tasteful CSS/SVG placeholder — do NOT retry it.
 
 CRITICAL RULES:
 - Write COMPLETE file content — no placeholders, no truncation
@@ -237,6 +252,8 @@ If the project needs a database:
     'read_file',
     'delete_file',
     'search_code',
+    'list_uploads',
+    'generate_image',
     'run_shell',
     'update_todos',
     'done',

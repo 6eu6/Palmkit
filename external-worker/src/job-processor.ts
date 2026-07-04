@@ -34,6 +34,7 @@ import { createRunner } from './build-runner';
 import { putFile, getFileText, buildKey, buildWorkspaceKey } from './r2-client';
 import { hydrateWorkspaceFromStorage, readWorklog } from './workspace-manager';
 import { getUserApiKey } from './key-fetcher';
+import { DEFAULT_IMAGE_MODEL } from './image-gen';
 import { emitEvent, emitFileWritten } from './event-emitter';
 import { createHash } from 'crypto';
 
@@ -406,7 +407,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
          * reasoningEffort tunes how hard reasoning models think (off/medium/max).
          */
         const roleIds = (job.validation_result?.modelRoles ?? {}) as Partial<
-          Record<'brain' | 'builder' | 'tester', string>
+          Record<'brain' | 'builder' | 'tester' | 'vision' | 'media', string>
         >;
         const agentModels: Partial<Record<'brain' | 'builder' | 'tester', typeof model>> = {};
 
@@ -425,6 +426,17 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
         const reasoningEffort = job.validation_result?.reasoningEffort as 'off' | 'medium' | 'max' | undefined;
 
+        /*
+         * Media pipeline: generate_image runs on OpenRouter's image endpoint,
+         * which needs an OpenRouter key. We enable it only when the build's own
+         * provider is OpenRouter (so we reuse the user's key). The image model
+         * is the user's Media role choice, else a sensible default.
+         */
+        const media =
+          providerName.toLowerCase() === 'openrouter' && apiKey
+            ? { apiKey, model: roleIds.media || DEFAULT_IMAGE_MODEL }
+            : undefined;
+
         const agentResult = await runOrchestratedBuild(
           prompt,
           model,
@@ -435,7 +447,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           spec.maxCompletionTokens, // dynamic maxTokens based on model limits
           spec.appType, // appType for manifest (so restore knows how to preview)
           contextWindow, // model context window → context-pressure measurement
-          { agentModels, reasoningEffort },
+          { agentModels, reasoningEffort, media },
         );
 
         // Capture the server-measured context pressure for the fork nudge.
