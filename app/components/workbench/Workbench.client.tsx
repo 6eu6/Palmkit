@@ -481,7 +481,7 @@ export const Workbench = memo(
               <div className="h-full flex flex-col bg-palmkit-elements-background-depth-2 border border-palmkit-elements-borderColor shadow-lg shadow-black/5 dark:shadow-black/20 overflow-hidden rounded-none border-x-0 border-b-0 sm:rounded-xl sm:border-x sm:border-b">
                 <div
                   data-workbench-toolbar
-                  className="flex items-center px-3 py-2 border-b border-palmkit-elements-borderColor gap-1.5 bg-palmkit-elements-bg-depth-2"
+                  className="flex items-center px-3 py-2 border-b border-[var(--pk-glass-border)] gap-1.5 bg-palmkit-elements-bg-depth-2/70 backdrop-blur-md"
                 >
                   <button
                     className={`${showChat ? 'i-ph:sidebar-simple-fill' : 'i-ph:sidebar-simple'} text-base text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary mr-1 shrink-0 transition-colors duration-200`}

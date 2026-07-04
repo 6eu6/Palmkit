@@ -56,7 +56,7 @@ const SliderButton = memo(({ selected, children, setSelected }: SliderButtonProp
       className={classNames(
         'bg-transparent text-xs font-medium px-3 py-1 rounded-md relative transition-colors duration-200',
         selected
-          ? 'text-palmkit-elements-button-primary-text'
+          ? 'text-[var(--pk-accent)]'
           : 'text-palmkit-elements-item-contentDefault hover:text-palmkit-elements-item-contentActive',
       )}
     >
@@ -65,7 +65,8 @@ const SliderButton = memo(({ selected, children, setSelected }: SliderButtonProp
         <motion.span
           layoutId="pill-tab"
           transition={{ duration: 0.2, ease: cubicEasingFn }}
-          className="absolute inset-0 z-0 bg-palmkit-elements-button-primary-background rounded-md"
+          className="absolute inset-0 z-0 rounded-md"
+          style={{ background: 'var(--pk-accent-dim)', border: '1px solid var(--pk-glass-border-hi)' }}
         ></motion.span>
       )}
     </button>
