@@ -821,16 +821,18 @@ export async function runOrchestratedBuild(
         );
 
         /*
-         * Only surface a user-visible warning when it MATTERS. The Tester
-         * regularly burns its last step on todo bookkeeping AFTER already
-         * reporting "BUILD PASSED" — showing a red "reached step limit"
-         * banner for that made every successful build look broken. If the
-         * agent's own output shows the verification succeeded, log it
-         * server-side and stay quiet in the chat.
+         * Only surface this warning when it is USER-ACTIONABLE.
+         *
+         * For the TESTER it never is: the Tester is a QA agent that spends its
+         * last steps ticking todos, and the build's REAL outcome is reported
+         * separately ("build verified ✓" or the unified failure card). Showing
+         * a red "reached step limit" banner for the Tester made verified builds
+         * look broken (confirmed in live testing — a build that verified fine
+         * still carried the scary banner). So we stay quiet for the Tester and
+         * only warn for the Builder, where hitting the cap means the file set
+         * may genuinely be incomplete.
          */
-        const verifiedAnyway = /BUILD PASSED|✅/.test(agentText);
-
-        if (!verifiedAnyway) {
+        if (role === 'builder') {
           await emitEvent(
             supabase,
             jobId,

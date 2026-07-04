@@ -184,7 +184,11 @@ For React + Vite projects (MOST COMMON):
   6. src/index.css (Tailwind directives: @tailwind base/components/utilities)
   7. tailwind.config.js (content paths)
   8. postcss.config.js (tailwindcss + autoprefixer plugins)
-For TypeScript projects, use .tsx/.ts extensions instead of .jsx/.js.
+For TypeScript projects, use .tsx/.ts extensions instead of .jsx/.js AND you MUST
+also create src/vite-env.d.ts containing exactly:
+  /// <reference types="vite/client" />
+Without it, TypeScript fails the build with "cannot find module './index.css'"
+on the CSS import in main.tsx — a guaranteed error that wastes a repair round.
 
 CRITICAL: Do NOT call done() until you have written index.html AND the main
 source file (src/App.jsx or src/App.tsx). Without these, the preview CANNOT
