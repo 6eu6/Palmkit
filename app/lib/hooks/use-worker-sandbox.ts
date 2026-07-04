@@ -340,12 +340,24 @@ export function useWorkerSandbox(): WorkerSandboxResult {
     let cancelled = false;
 
     (async () => {
-      // Wait for the ready_for_preview file fetch to populate the store.
+      /*
+       * Wait for the ready_for_preview fetch to populate the store AND settle.
+       * The fetch streams files in over a second or two; launching on the very
+       * first file pushed an incomplete set to the sandbox and Vite failed to
+       * resolve late-arriving assets (e.g. generated image modules). We now
+       * wait until the file COUNT is non-zero and stable across two checks, so
+       * the whole project — including big assets — is present before we push.
+       */
+      let prevCount = -1;
+
       for (let i = 0; i < 30 && !cancelled; i++) {
-        if (Object.keys(previewFilesStore.get()).length > 0) {
+        const count = Object.keys(previewFilesStore.get()).length;
+
+        if (count > 0 && count === prevCount) {
           break;
         }
 
+        prevCount = count;
         await new Promise((r) => setTimeout(r, 1000));
       }
 

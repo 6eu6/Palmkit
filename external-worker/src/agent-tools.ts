@@ -715,10 +715,14 @@ export function createAgentTools(
         try {
           await emitEvent(supabase, jobId, 'file_chunk' as any, `🎨 Generating image "${safe}"…`);
 
+          // Logos/icons need alpha (keep PNG); heroes/photos compress to JPEG.
+          const transparent = /logo|icon|mark|avatar|badge|transparent/i.test(`${safe} ${prompt}`);
+
           const img = await generateImage({
             apiKey: media.apiKey,
             model: media.model || DEFAULT_IMAGE_MODEL,
             prompt,
+            transparent,
           });
 
           // Store as an importable ES module exporting the data URI. This flows
