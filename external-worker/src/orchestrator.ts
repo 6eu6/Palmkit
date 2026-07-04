@@ -27,6 +27,7 @@ import {
 } from './agent-tools';
 import { filterTools, getAgentConfig, DEFAULT_AGENT_FLOW, type AgentRole } from './agent-registry';
 import { disposeSandbox } from './e2b-runner';
+import { putFile, buildWorkspaceKey } from './r2-client';
 import { logger } from './logger';
 import { emitEvent } from './event-emitter';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -138,6 +139,15 @@ export async function runOrchestratedBuild(
     );
   }
 
+  /*
+   * DESIGN BRIEF MEMORY — the Planner writes .palmkit/design-brief.md on the
+   * first build (identity + palette + media plan). On later edits the Planner is
+   * skipped, but the Builder still needs that art direction so the design stays
+   * consistent (same palette, same logo, no off-theme new imagery). We load any
+   * previously-saved brief here and fall back to it when the Planner didn't run.
+   */
+  const existingBrief = await readWorkspaceFile(projectId, '.palmkit/design-brief.md');
+
   // Create all tools (shared across agents, filtered per agent)
   const allTools = createAgentTools(jobId, supabase, projectId, opts?.media);
 
@@ -183,6 +193,7 @@ export async function runOrchestratedBuild(
 
   const agentResults: OrchestratorResult['agentResults'] = [];
   let researcherContext = '';
+  let plannerContext = '';
   let builderContext = '';
   let testerContext = '';
   let overallSuccess = false;
@@ -243,6 +254,19 @@ export async function runOrchestratedBuild(
         continue;
       }
 
+      /*
+       * The Planner (design brain) is complementary to the Researcher: it runs
+       * on NEW projects to set the identity + design system + media plan up
+       * front. On EDITS we skip it — the Researcher already read the existing
+       * project, and the saved design brief (existingBrief) is carried forward
+       * to the Builder for consistency — so re-planning would just burn a brain
+       * call and risk drifting the established design.
+       */
+      if (role === 'planner' && hasWorklog) {
+        logger.info('[orchestrator] Skipping Planner (edit — reusing the saved design brief)');
+        continue;
+      }
+
       const agentTools = filterTools(allTools as unknown as ToolSet, config.allowedTools);
 
       // Build the agent's prompt (includes context from previous agents)
@@ -252,8 +276,29 @@ export async function runOrchestratedBuild(
         agentPrompt = `${prompt}${handoffBlock}\n\nPROJECT MEMORY (worklog.md):\n${worklog}`;
       }
 
+      if (role === 'planner') {
+        // The design brain: turn the request (+ any researcher findings) into an
+        // art-directed brief. Kept minimal — the system prompt carries the shape.
+        agentPrompt =
+          `${prompt}${handoffBlock}` +
+          (researcherContext ? `\n\nRESEARCHER FINDINGS (existing project):\n${researcherContext}` : '') +
+          `\n\nProduce the design + media brief for this request now.`;
+      }
+
+      /*
+       * The design brief handed to the Builder: the Planner's fresh output when
+       * it ran (new project), otherwise the saved brief from a previous build
+       * (edits) so the design stays consistent.
+       */
+      const activeBrief = plannerContext || existingBrief || '';
+      const briefBlock = activeBrief
+        ? `\n\n=== DESIGN & MEDIA BRIEF (your art direction — apply the design system and execute the media plan exactly) ===\n${activeBrief}\n=== END BRIEF ===`
+        : '';
+
       if (role === 'builder' && researcherContext) {
-        agentPrompt = `${prompt}${handoffBlock}\n\nRESEARCHER FINDINGS:\n${researcherContext}\n\nNow build the project based on these findings and the user's request.`;
+        agentPrompt = `${prompt}${handoffBlock}${briefBlock}\n\nRESEARCHER FINDINGS:\n${researcherContext}\n\nNow build the project based on the brief, these findings, and the user's request.`;
+      } else if (role === 'builder' && briefBlock) {
+        agentPrompt = `${prompt}${handoffBlock}${briefBlock}\n\nNow build the project based on the brief and the user's request.`;
       } else if (role === 'builder' && handoffBlock) {
         // No researcher context (e.g. Researcher skipped) but this IS a
         // continuation — make sure the Builder still sees the handoff.
@@ -859,6 +904,21 @@ export async function runOrchestratedBuild(
       // Store context for next agent
       if (role === 'researcher') {
         researcherContext = agentText;
+      } else if (role === 'planner') {
+        plannerContext = agentText;
+
+        /*
+         * Persist the brief so future EDITS (which skip the Planner) still get
+         * the same identity/palette/media direction and keep the design
+         * consistent. Best-effort — a failed save never blocks the build.
+         */
+        if (agentText.trim()) {
+          try {
+            await putFile(buildWorkspaceKey(projectId, '.palmkit/design-brief.md'), agentText);
+          } catch (e) {
+            logger.warn(`[orchestrator] Failed to persist design brief: ${e}`);
+          }
+        }
       } else if (role === 'builder') {
         builderContext = agentText;
       } else if (role === 'tester') {

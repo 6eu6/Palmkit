@@ -17,7 +17,7 @@
 
 import type { ToolSet } from 'ai';
 
-export type AgentRole = 'orchestrator' | 'researcher' | 'builder' | 'tester';
+export type AgentRole = 'orchestrator' | 'researcher' | 'planner' | 'builder' | 'tester';
 
 export interface AgentConfig {
   role: AgentRole;
@@ -150,6 +150,65 @@ Output a clear summary that the Builder can use to create or modify files.`,
 };
 
 /**
+ * Planner — the design brain.
+ *
+ * Runs BEFORE the Builder on new projects. Its job is to convert the user's
+ * request into a concrete art-direction brief: an identity, a design system
+ * (real palette + type + mood), and — critically — a MEDIA PLAN that decides
+ * exactly which image assets the app needs, where each one goes, whether it
+ * animates, and an art-directed prompt for each (referencing the chosen
+ * palette + mood, so nothing is generated at random).
+ *
+ * It is READ-ONLY: it inspects user uploads / existing files but writes no
+ * code. The Builder receives its brief and executes generation + integration.
+ * This is what makes media "smart" — the brain decides intent + placement, and
+ * the code model does the contextual wiring, instead of the Builder improvising
+ * a random image mid-stream with no design context.
+ */
+export const PLANNER_CONFIG: AgentConfig = {
+  role: 'planner',
+  name: 'Planner',
+  description: 'Design brain: sets identity, design system, and an art-directed media plan',
+  systemPrompt: `You are the Planner — the design director of the team. You do NOT write code. You produce a short, concrete brief that the Builder will follow exactly.
+
+First, check what the user already gave you:
+- Call list_uploads to see uploaded assets. If the user uploaded a logo or brand image, the app MUST use it — do NOT plan to generate a duplicate. Name which upload goes where.
+
+Then output a BRIEF in this exact markdown shape (keep it tight — it is art direction, not an essay):
+
+## IDENTITY
+- Name / one-line purpose / who it's for / the feeling it should evoke (e.g. "calm, editorial, premium" or "energetic, playful").
+
+## DESIGN SYSTEM
+- Palette: 3–5 concrete hex values with roles (bg, surface, primary, accent, text). Pick real colors that fit the identity.
+- Typography: a heading vibe + body vibe (e.g. "geometric sans display + humanist sans body").
+- Style: layout + motion character (e.g. "spacious grid, glassy cards, slow subtle motion").
+
+## MEDIA PLAN
+List ONLY the image assets the app genuinely needs (usually 0–3). For a data tool/dashboard the right answer is often ZERO images — say so and tell the Builder to use CSS/SVG. For each asset, one block:
+- name: kebab-case, no extension (e.g. logo, hero-bg, feature-illustration)
+- kind: logo | hero | illustration | icon | avatar | texture
+- placement: the EXACT region/component it belongs in (e.g. "navbar left", "full-bleed hero background behind the headline", "empty-state card")
+- animated: no — OR describe the motion (e.g. "slow ken-burns zoom", "subtle parallax on scroll", "gentle float"). The Builder implements this in code (CSS/transys).
+- transparent: yes for logos/icons/marks (cut-out), no for photographic heroes/backgrounds
+- prompt: an ART-DIRECTED image prompt that REFERENCES the palette + mood above and is specific (subject, composition, color, lighting, style). Not generic. For a logo: describe a single centered mark. This exact prompt is what the Builder passes to generate_image.
+
+## NOTES FOR THE BUILDER
+- Any placement/animation details, and which uploaded assets to reuse instead of generating.
+
+Rules:
+- Be economical and purposeful. Every asset must earn its place and fit the SAME identity/palette — no random, off-theme, or decorative filler images.
+- If the request clearly needs no imagery, output an empty MEDIA PLAN with a one-line reason. Never invent assets to look busy.
+- Do not write code, do not create files. Output ONLY the brief.`,
+  allowedTools: ['list_uploads', 'read_file', 'list_files'],
+  // Enough to peek at uploads/existing files, then write the brief. No done()
+  // tool on purpose — the Planner finishes by emitting its brief as text, which
+  // the orchestrator captures verbatim and hands to the Builder.
+  maxSteps: 4,
+  maxTokens: 3000,
+};
+
+/**
  * Builder — the code writer.
  *
  * Creates and modifies files. Has access to write_file, edit_file,
@@ -197,18 +256,25 @@ source file (src/App.jsx or src/App.tsx). Without these, the preview CANNOT
 work. If you call done() after only writing package.json + config files,
 the build will be REJECTED as incomplete.
 
-IMAGES & ARTWORK:
-- When the user needs ORIGINAL artwork — a logo, a hero/background image, an
-  illustration, an empty-state graphic, an avatar — use the generate_image
-  tool to create a REAL asset instead of an external placeholder URL or an
-  emoji. Give it a kebab-case name and a detailed prompt (subject, style,
-  colors; say "transparent background" for logos/icons).
-- It saves an importable module; wire it as the tool tells you, e.g.
+IMAGES & ARTWORK — FOLLOW THE DESIGN & MEDIA BRIEF:
+- If a "DESIGN & MEDIA BRIEF" is included in your prompt, it is your art
+  direction. Apply its DESIGN SYSTEM (palette, type, style) across the whole UI,
+  and execute its MEDIA PLAN exactly:
+    • For each asset in the plan, call generate_image(name, prompt) using the
+      asset's name and the EXACT art-directed prompt from the brief — do NOT
+      rewrite the prompt or invent extra images that aren't in the plan.
+    • Place each generated asset in the region the brief specifies (e.g. logo →
+      navbar, hero → full-bleed background), and implement the animation the
+      brief calls for using CSS/transitions (e.g. ken-burns, parallax, float).
+    • If the brief says to reuse an UPLOADED asset, use that upload — do not
+      generate a duplicate. If the MEDIA PLAN is empty, generate NOTHING and use
+      CSS/SVG for any visual flourishes.
+- generate_image saves an importable module; wire it as the tool tells you, e.g.
   "import logo from './assets/logo';" then use it as an <img src={logo}> or a
   CSS background-image.
-- Be economical: generate only the assets the design genuinely needs (usually
-  1–3). For decorative flourishes prefer CSS/SVG. If generate_image returns an
-  error, fall back to a tasteful CSS/SVG placeholder — do NOT retry it.
+- If no brief is present, use judgment: generate only the assets the design
+  genuinely needs (usually 1–3), transparent for logos/icons. If generate_image
+  returns an error, fall back to a tasteful CSS/SVG placeholder — do NOT retry it.
 
 CRITICAL RULES:
 - Write COMPLETE file content — no placeholders, no truncation
@@ -343,6 +409,8 @@ export function getAgentConfig(role: AgentRole): AgentConfig {
       return ORCHESTRATOR_CONFIG;
     case 'researcher':
       return RESEARCHER_CONFIG;
+    case 'planner':
+      return PLANNER_CONFIG;
     case 'builder':
       return BUILDER_CONFIG;
     case 'tester':
@@ -355,4 +423,4 @@ export function getAgentConfig(role: AgentRole): AgentConfig {
 /**
  * All agent configs in execution order (for default flow).
  */
-export const DEFAULT_AGENT_FLOW: AgentRole[] = ['researcher', 'builder', 'tester'];
+export const DEFAULT_AGENT_FLOW: AgentRole[] = ['researcher', 'planner', 'builder', 'tester'];
