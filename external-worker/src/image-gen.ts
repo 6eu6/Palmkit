@@ -28,6 +28,87 @@ export interface GeneratedImage {
  *
  * Falls back to the original data URI if processing fails for any reason.
  */
+/**
+ * Knock out a near-uniform background to real transparency.
+ *
+ * Image models routinely ignore "transparent background" and bake a solid
+ * white/light fill into the pixels, so a logo comes out as a white rectangle.
+ * We fix that deterministically: sample the four corners, and if they agree on
+ * a background color, flood-fill from the edges — every edge-connected pixel
+ * within tolerance of that color becomes transparent. Flood-fill (not a global
+ * threshold) preserves matching colors INSIDE the mark (e.g. a white highlight
+ * enclosed by the logo). If the corners disagree (a real full-bleed scene), we
+ * bail and leave the image untouched.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function removeBackground(img: any): boolean {
+  const w: number = img.bitmap.width;
+  const h: number = img.bitmap.height;
+  const data: Buffer = img.bitmap.data; // RGBA
+  const at = (x: number, y: number) => (y * w + x) * 4;
+
+  const corners = [at(0, 0), at(w - 1, 0), at(0, h - 1), at(w - 1, h - 1)];
+  const cr = corners.map((i) => [data[i], data[i + 1], data[i + 2]]);
+  const dist = (a: number[], b: number[]) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2]));
+
+  // Corners must agree (uniform border) — otherwise this isn't a plain-bg logo.
+  for (let i = 1; i < cr.length; i++) {
+    if (dist(cr[0], cr[i]) > 24) {
+      return false;
+    }
+  }
+
+  const bg = cr[0];
+  const TOL = 40; // per-channel tolerance for "is background"
+  const stack: number[] = [];
+  const visited = new Uint8Array(w * h);
+
+  const push = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) {
+      return;
+    }
+
+    const p = y * w + x;
+
+    if (visited[p]) {
+      return;
+    }
+
+    const i = p * 4;
+
+    if (dist([data[i], data[i + 1], data[i + 2]], bg) <= TOL) {
+      visited[p] = 1;
+      stack.push(x, y);
+    }
+  };
+
+  for (let x = 0; x < w; x++) {
+    push(x, 0);
+    push(x, h - 1);
+  }
+
+  for (let y = 0; y < h; y++) {
+    push(0, y);
+    push(w - 1, y);
+  }
+
+  let cleared = 0;
+
+  while (stack.length) {
+    const y = stack.pop()!;
+    const x = stack.pop()!;
+    data[(y * w + x) * 4 + 3] = 0; // alpha → 0
+    cleared++;
+    push(x + 1, y);
+    push(x - 1, y);
+    push(x, y + 1);
+    push(x, y - 1);
+  }
+
+  // Only count it a success if we actually removed a meaningful border region.
+  return cleared > w * h * 0.02;
+}
+
 async function compressImage(dataUri: string, transparent: boolean): Promise<GeneratedImage> {
   const original = (): GeneratedImage => {
     const mime = dataUri.slice(5, dataUri.indexOf(';')) || 'image/png';
@@ -50,6 +131,14 @@ async function compressImage(dataUri: string, transparent: boolean): Promise<Gen
     let mime: string;
 
     if (transparent) {
+      // Cut out the baked-in background so the logo/icon is actually isolated.
+      try {
+        const removed = removeBackground(img);
+        logger.info(`[image-gen] background removal: ${removed ? 'applied' : 'skipped (non-uniform)'}`);
+      } catch (e) {
+        logger.warn(`[image-gen] background removal failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+
       outBuf = await img.getBuffer('image/png');
       mime = 'image/png';
     } else {
@@ -78,7 +167,18 @@ export async function generateImage(opts: {
   transparent?: boolean;
   timeoutMs?: number;
 }): Promise<GeneratedImage> {
-  const { apiKey, model, prompt } = opts;
+  const { apiKey, model } = opts;
+
+  /*
+   * For logos/icons, steer the model toward a cleanly-removable result: a
+   * centered, isolated subject on ONE flat solid color with no scene, gradient
+   * or shadow. The model still often bakes in a background, but a flat uniform
+   * one is exactly what removeBackground() keys out reliably afterward.
+   */
+  const prompt = opts.transparent
+    ? `${opts.prompt}\n\nComposition: a single centered, isolated subject on a plain flat SOLID white background. No scene, no gradient, no drop shadow, no reflection, no border — just the subject on flat white, with clear margins, so the background can be cleanly removed to transparency.`
+    : opts.prompt;
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 90_000);
 
