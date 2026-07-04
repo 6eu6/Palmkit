@@ -32,6 +32,9 @@ import McpTab from '~/components/@settings/tabs/mcp/McpTab';
 
 interface ControlPanelProps {
   open: boolean;
+
+  /** Optional tab to land on when opening (e.g. 'mcp' from the sidebar Connections group). */
+  initialTab?: TabType;
   onClose: () => void;
 }
 
@@ -44,7 +47,7 @@ const BetaLabel = () => (
   </div>
 );
 
-export const ControlPanel = ({ open, onClose }: ControlPanelProps) => {
+export const ControlPanel = ({ open, onClose, initialTab }: ControlPanelProps) => {
   // State
   const [activeTab, setActiveTab] = useState<TabType | null>(null);
   const [loadingTab, setLoadingTab] = useState<TabType | null>(null);
@@ -99,10 +102,10 @@ export const ControlPanel = ({ open, onClose }: ControlPanelProps) => {
       setLoadingTab(null);
       setShowTabManagement(false);
     } else {
-      // When opening, set to null to show the main view
-      setActiveTab(null);
+      // When opening, land on the requested tab (or the main view)
+      setActiveTab(initialTab ?? null);
     }
-  }, [open]);
+  }, [open, initialTab]);
 
   // Handle closing
   const handleClose = () => {

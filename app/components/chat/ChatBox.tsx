@@ -18,6 +18,15 @@ import type { DesignScheme } from '~/types/design-scheme';
 import type { ElementInfo } from '~/components/workbench/Inspector';
 import { McpTools } from './MCPTools';
 import { WebSearch } from './WebSearch.client';
+import { useStore } from '@nanostores/react';
+import {
+  MODEL_ROLE_META,
+  modelRolesStore,
+  reasoningEffortStore,
+  cycleReasoningEffort,
+  setModelRole,
+  type ModelRole,
+} from '~/lib/stores/model-roles';
 
 interface ChatBoxProps {
   isModelSettingsCollapsed: boolean;
@@ -157,6 +166,8 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
    * one clean row; on sm+ they are always visible.
    */
   const [moreToolsOpen, setMoreToolsOpen] = React.useState(false);
+  const reasoningEffort = useStore(reasoningEffortStore);
+  const modelRoles = useStore(modelRolesStore);
 
   const onSendClick = (event: React.UIEvent) => {
     if (props.isStreaming) {
@@ -188,7 +199,7 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
           <div
             className={classNames(
               'overflow-hidden transition-all',
-              props.isModelSettingsCollapsed ? 'max-h-0' : 'max-h-[420px]',
+              props.isModelSettingsCollapsed ? 'max-h-0' : 'max-h-[70vh] overflow-y-auto',
             )}
           >
             <div className="p-2 border-b border-palmkit-elements-borderColor/70">
@@ -214,6 +225,51 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                     }}
                   />
                 )}
+
+              {/* Model Router — one model per task (Design v2).
+                  brain/builder/tester are live in the build pipeline today;
+                  vision/media are stored and light up with the media pipeline. */}
+              <div className="mt-2 pt-2 border-t border-palmkit-elements-borderColor/60">
+                <div className="px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-palmkit-elements-textTertiary">
+                  Models per task
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 px-1">
+                  {(Object.keys(MODEL_ROLE_META) as ModelRole[]).map((role) => {
+                    const meta = MODEL_ROLE_META[role];
+
+                    return (
+                      <label
+                        key={role}
+                        className="flex items-center gap-2 rounded-lg border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-2 px-2 py-1.5"
+                        title={meta.hint}
+                      >
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-[11px] font-medium text-palmkit-elements-textSecondary truncate">
+                            {meta.label}
+                            {!meta.wired && (
+                              <span className="ml-1 rounded-full px-1.5 text-[9px] font-semibold text-[var(--pk-accent)] bg-[var(--pk-accent-dim)]">
+                                soon
+                              </span>
+                            )}
+                          </span>
+                        </span>
+                        <select
+                          value={modelRoles[role] ?? ''}
+                          onChange={(e) => setModelRole(role, e.target.value)}
+                          className="max-w-[46%] text-[11px] rounded-md border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-1 text-palmkit-elements-textPrimary px-1.5 py-1 outline-none focus:border-[var(--pk-accent)]"
+                        >
+                          <option value="">Main model</option>
+                          {props.modelList.map((m: { name: string; label?: string }) => (
+                            <option key={m.name} value={m.name}>
+                              {m.label ?? m.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -364,6 +420,24 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             <div className={`i-ph:caret-${props.isModelSettingsCollapsed ? 'down' : 'up'} text-[11px]`} />
           </button>
 
+          {/* Think — how hard reasoning models think: Med → Max → Off */}
+          <button
+            type="button"
+            title="Thinking effort (applies to reasoning-capable models)"
+            onClick={() => cycleReasoningEffort()}
+            className={classNames(
+              'shrink-0 flex items-center gap-1 h-7 px-2.5 rounded-full transition-all duration-150 border text-[11px] font-medium',
+              reasoningEffort === 'max'
+                ? 'border-[var(--pk-accent)] text-[var(--pk-accent)] bg-[var(--pk-accent-dim)]'
+                : reasoningEffort === 'off'
+                  ? 'border-palmkit-elements-borderColor text-palmkit-elements-textTertiary'
+                  : 'border-palmkit-elements-borderColor text-palmkit-elements-textSecondary',
+            )}
+          >
+            <div className="i-ph:brain text-[13px]" />
+            <span>{reasoningEffort === 'max' ? 'Max' : reasoningEffort === 'off' ? 'Off' : 'Med'}</span>
+          </button>
+
           <div className="shrink-0 w-px h-5 mx-0.5 bg-palmkit-elements-borderColor" />
 
           <ToolButton icon="i-ph:paperclip" title="Attach image" onClick={props.handleFileUpload} />
@@ -407,21 +481,34 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
 
         {/* Right: mode toggle + mic + send (always visible, never scrolls) */}
         <div className="flex items-center gap-1 shrink-0 pl-1">
-          {props.chatStarted && (
+          {/* Mode: Chat (talk/plan) vs Code (build the project) — visible from
+              the very first message so users pick the intent up front. */}
+          <div className="shrink-0 flex h-8 rounded-lg border border-palmkit-elements-borderColor overflow-hidden text-[11px] font-medium">
             <button
               type="button"
-              title="Toggle build / discuss"
               className={classNames(
-                'shrink-0 h-8 px-2.5 rounded-lg text-[11px] font-medium transition-all duration-150',
-                props.chatMode === 'build'
-                  ? 'bg-palmkit-elements-item-backgroundActive text-palmkit-elements-textPrimary'
-                  : 'text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary hover:bg-palmkit-elements-item-backgroundActive',
+                'px-2.5 transition-all duration-150',
+                props.chatMode === 'discuss'
+                  ? 'bg-[var(--pk-accent-dim)] text-[var(--pk-accent)]'
+                  : 'text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary',
               )}
-              onClick={() => props.setChatMode?.(props.chatMode === 'discuss' ? 'build' : 'discuss')}
+              onClick={() => props.setChatMode?.('discuss')}
             >
-              {props.chatMode === 'discuss' ? 'Discuss' : 'Build'}
+              Chat
             </button>
-          )}
+            <button
+              type="button"
+              className={classNames(
+                'px-2.5 transition-all duration-150',
+                props.chatMode !== 'discuss'
+                  ? 'bg-[var(--pk-accent-dim)] text-[var(--pk-accent)]'
+                  : 'text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary',
+              )}
+              onClick={() => props.setChatMode?.('build')}
+            >
+              Code
+            </button>
+          </div>
 
           <ClientOnly>
             {() => (

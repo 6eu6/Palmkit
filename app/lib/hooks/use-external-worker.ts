@@ -532,6 +532,16 @@ export function useExternalWorker() {
       setDiffBaseline(capturedBaseline);
 
       try {
+        /*
+         * Model Router + thinking control: attach the user's per-task model
+         * assignments and reasoning-effort choice so the worker can run each
+         * agent (brain/builder/tester) on its own model and tune thinking.
+         */
+        const { modelRolesStore, reasoningEffortStore } = await import('~/lib/stores/model-roles');
+        const roles = Object.fromEntries(
+          Object.entries(modelRolesStore.get()).filter(([, v]) => typeof v === 'string' && v.length > 0),
+        );
+
         const resp = await fetch('/api/jobs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -539,6 +549,8 @@ export function useExternalWorker() {
             prompt,
             model,
             provider,
+            reasoningEffort: reasoningEffortStore.get(),
+            ...(Object.keys(roles).length > 0 ? { modelRoles: roles } : {}),
             ...(editFromJobId ? { editJobId: editFromJobId } : {}),
             ...(projectId ? { projectId } : {}),
           }),

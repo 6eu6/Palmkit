@@ -81,6 +81,13 @@ export async function runOrchestratedBuild(
   maxCompletionTokens?: number,
   appType?: string,
   contextWindow?: number,
+  opts?: {
+    /** Per-role model overrides (Model Router): brain/builder/tester. Missing role = main model. */
+    agentModels?: Partial<Record<'brain' | 'builder' | 'tester', LanguageModelV1>>;
+
+    /** How hard reasoning models think: off | medium | max (default: enabled, provider-decided). */
+    reasoningEffort?: 'off' | 'medium' | 'max';
+  },
 ): Promise<OrchestratorResult> {
   const startTime = Date.now();
   resetProjectFiles(jobId);
@@ -325,7 +332,25 @@ export async function runOrchestratedBuild(
        * 2. Even GLM-4.7 supports reasoning — the old regex missed it
        * 3. Harmless for non-reasoning models
        */
-      const providerOptions = { openrouter: { reasoning: { enabled: true } } };
+      /*
+       * Thinking control (Design v2): the user picks off/medium/max in the
+       * composer. 'off' disables reasoning tokens entirely (fastest,
+       * cheapest); 'medium'/'max' map to OpenRouter effort levels. When
+       * unset we keep the old behavior (enabled, provider decides).
+       */
+      const effort = opts?.reasoningEffort;
+      const providerOptions = {
+        openrouter: {
+          reasoning:
+            effort === 'off'
+              ? { enabled: false }
+              : effort === 'max'
+                ? { effort: 'high' }
+                : effort === 'medium'
+                  ? { effort: 'medium' }
+                  : { enabled: true },
+        },
+      } as any;
 
       /*
        * STREAMING — use streamText (not generateText) so the LLM's text and
@@ -485,8 +510,17 @@ export async function runOrchestratedBuild(
         }
       };
 
+      /*
+       * Model Router: each agent can run on its own model — the brain
+       * (orchestrator/researcher) on the smartest one, builders on a fast
+       * coder, the tester on a checker. Falls back to the main model.
+       */
+      const roleKey: 'brain' | 'builder' | 'tester' =
+        role === 'builder' ? 'builder' : role === 'tester' ? 'tester' : 'brain';
+      const agentModel = opts?.agentModels?.[roleKey] ?? model;
+
       const streamResult = streamText({
-        model,
+        model: agentModel,
         system: config.systemPrompt,
         prompt: agentPrompt,
         tools: agentTools,

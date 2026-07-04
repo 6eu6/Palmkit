@@ -398,6 +398,33 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
          * Now if the orchestrator fails or produces 0 files, we fail the job
          * with a clear error message instead of silently falling back.
          */
+        /*
+         * Model Router (Design v2): the user can assign a model per role —
+         * brain (planning/research), builder (code-writing agents), tester
+         * (verification). Each is instantiated on the same provider/key as
+         * the main model; a missing role falls back to the main model.
+         * reasoningEffort tunes how hard reasoning models think (off/medium/max).
+         */
+        const roleIds = (job.validation_result?.modelRoles ?? {}) as Partial<
+          Record<'brain' | 'builder' | 'tester', string>
+        >;
+        const agentModels: Partial<Record<'brain' | 'builder' | 'tester', typeof model>> = {};
+
+        for (const roleName of ['brain', 'builder', 'tester'] as const) {
+          const id = roleIds[roleName];
+
+          if (id && typeof id === 'string' && id !== modelName) {
+            try {
+              agentModels[roleName] = getModelInstance(providerName, id, apiKey);
+              logger.info(`Job ${job.id}: model router — ${roleName} → ${id}`);
+            } catch (e) {
+              logger.warn(`Job ${job.id}: model router — failed to init ${roleName}=${id}: ${e}`);
+            }
+          }
+        }
+
+        const reasoningEffort = job.validation_result?.reasoningEffort as 'off' | 'medium' | 'max' | undefined;
+
         const agentResult = await runOrchestratedBuild(
           prompt,
           model,
@@ -408,6 +435,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           spec.maxCompletionTokens, // dynamic maxTokens based on model limits
           spec.appType, // appType for manifest (so restore knows how to preview)
           contextWindow, // model context window → context-pressure measurement
+          { agentModels, reasoningEffort },
         );
 
         // Capture the server-measured context pressure for the fork nudge.

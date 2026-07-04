@@ -95,6 +95,7 @@ export const Menu = () => {
 
   const [dialogContent, setDialogContent] = useState<DialogContent>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'mcp' | 'github' | undefined>(undefined);
   const profile = useStore(profileStore);
   const authUser = useStore(authUserStore);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -426,8 +427,14 @@ export const Menu = () => {
   };
 
   const handleSettingsClick = () => {
+    setSettingsTab(undefined);
     setIsSettingsOpen(true);
     setOpen(false);
+  };
+
+  const openConnections = (tab: 'mcp' | 'github') => {
+    setSettingsTab(tab);
+    setIsSettingsOpen(true);
   };
 
   const handleSettingsClose = () => {
@@ -501,7 +508,28 @@ export const Menu = () => {
               />
             </div>
           </div>
-          <div className="flex items-center justify-between text-sm px-4 py-2">
+          {/* Connections — MCP tools + service integrations, above the chat list */}
+          <div className="px-4 pb-1">
+            <div className="text-sm font-medium text-gray-600 dark:text-gray-400 pb-1.5">Connections</div>
+            <div className="flex flex-col gap-0.5">
+              <button
+                onClick={() => openConnections('mcp')}
+                className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors text-left"
+              >
+                <span className="i-ph:plugs-connected h-4 w-4 text-gray-500 dark:text-gray-400" />
+                MCP Tools
+              </button>
+              <button
+                onClick={() => openConnections('github')}
+                className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors text-left"
+              >
+                <span className="i-ph:git-branch h-4 w-4 text-gray-500 dark:text-gray-400" />
+                Integrations
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-sm px-4 py-2 border-t border-gray-100 dark:border-gray-800/50 mt-1">
             <div className="font-medium text-gray-600 dark:text-gray-400">Your Chats</div>
             {selectionMode && (
               <div className="flex items-center gap-2">
@@ -664,7 +692,7 @@ export const Menu = () => {
         </div>
       </motion.div>
 
-      <ControlPanel open={isSettingsOpen} onClose={handleSettingsClose} />
+      <ControlPanel open={isSettingsOpen} onClose={handleSettingsClose} initialTab={settingsTab} />
     </>
   );
 };

@@ -57,7 +57,7 @@ export async function action(args: ActionFunctionArgs) {
     return json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { prompt, model, provider, projectId, files, editJobId } = body;
+  const { prompt, model, provider, projectId, files, editJobId, reasoningEffort, modelRoles } = body;
 
   if (!prompt || typeof prompt !== 'string') {
     return json({ error: 'prompt is required' }, { status: 400 });
@@ -134,6 +134,15 @@ export async function action(args: ActionFunctionArgs) {
         ...(maxCompletionTokens ? { maxCompletionTokens } : {}),
         ...(contextWindow ? { contextWindow } : {}),
         ...(editJobId ? { editJobId } : {}),
+
+        /*
+         * Model Router + thinking control (Design v2).
+         * reasoningEffort: 'off' | 'medium' | 'max' — how hard reasoning
+         * models think. modelRoles: per-task model overrides
+         * ({ brain, builder, tester, vision, media }); empty = main model.
+         */
+        ...(reasoningEffort && ['off', 'medium', 'max'].includes(reasoningEffort) ? { reasoningEffort } : {}),
+        ...(modelRoles && typeof modelRoles === 'object' ? { modelRoles } : {}),
       },
     })
     .select('id')
