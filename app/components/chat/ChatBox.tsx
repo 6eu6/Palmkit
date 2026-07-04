@@ -256,7 +256,17 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                         <select
                           value={modelRoles[role] ?? ''}
                           onChange={(e) => setModelRole(role, e.target.value)}
-                          className="max-w-[46%] text-[11px] rounded-md border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-1 text-palmkit-elements-textPrimary px-1.5 py-1 outline-none focus:border-[var(--pk-accent)]"
+                          className="max-w-[46%] appearance-none text-[11px] rounded-md border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary px-2 py-1 outline-none focus:border-[var(--pk-accent)] cursor-pointer"
+                          style={{
+                            /*
+                             * native <select> ignores utility bg classes in some
+                             * engines and rendered as a white pill on dark —
+                             * force the surface + a drawn caret
+                             */
+                            background:
+                              'var(--palmkit-elements-bg-depth-1) url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%278%27 height=%275%27%3E%3Cpath d=%27M0 0l4 5 4-5z%27 fill=%27%2371e4ff%27/%3E%3C/svg%3E") no-repeat right 7px center',
+                            paddingRight: 20,
+                          }}
                         >
                           <option value="">Main model</option>
                           {props.modelList.map((m: { name: string; label?: string }) => (

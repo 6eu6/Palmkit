@@ -18,8 +18,9 @@ export function Header() {
 
   return (
     <header
+      style={{ paddingLeft: 'calc(var(--sidebar-width, 0px) + 0.75rem)' }}
       className={classNames(
-        'flex items-center px-3 sm:px-4 h-[var(--header-height)]',
+        'flex items-center px-3 sm:px-4 h-[var(--header-height)] transition-[padding-left] duration-200',
         'transition-all duration-300 ease-out',
         {
           'border-transparent bg-transparent': !chat.started,

@@ -69,6 +69,47 @@ export const MobileShell = memo(() => {
     mobileActiveTab.set('chat');
   }, []);
 
+  /*
+   * Touch spec (Design v2): a swipe that STARTS at the left screen edge
+   * (20px hot zone) and travels right opens the projects drawer — the same
+   * gesture every mobile OS uses for its navigation drawer. Only on phones,
+   * and never while the drawer is already open.
+   */
+  useEffect(() => {
+    let startX = -1;
+    let startY = -1;
+
+    const onTouchStart = (e: TouchEvent) => {
+      const t = e.touches[0];
+      startX = t.clientX <= 20 && window.innerWidth < 640 ? t.clientX : -1;
+      startY = t.clientY;
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (startX < 0 || mobileProjectsOpen) {
+        return;
+      }
+
+      const t = e.touches[0];
+      const dx = t.clientX - startX;
+      const dy = Math.abs(t.clientY - startY);
+
+      if (dx > 48 && dy < 40) {
+        startX = -1;
+        setMobileProjectsOpen(true);
+        mobileActiveTab.set('projects');
+      }
+    };
+
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+    };
+  }, [mobileProjectsOpen]);
+
   return (
     <>
       <RemotePreviewTrigger />

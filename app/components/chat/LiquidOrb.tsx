@@ -52,7 +52,12 @@ export default function LiquidOrb({ state, visible }: LiquidOrbProps) {
         width: 0,
         height: 0,
         pointerEvents: 'none',
-        zIndex: 30,
+
+        /*
+         * Below the composer (z-prompt) so the expanded model sheet is never
+         * covered by the orb — it is decoration, not chrome.
+         */
+        zIndex: 1,
         transform: `translate3d(${cx}px, ${cy}px, 0)`,
         opacity: visible ? 1 : 0,
         transition: 'transform 0.6s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.6s ease',

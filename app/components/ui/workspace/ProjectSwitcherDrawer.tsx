@@ -255,7 +255,19 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
             initial="hidden"
             animate="visible"
             exit="exit"
-            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+            transition={{ type: 'spring', damping: 32, stiffness: 320 }}
+            drag="x"
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={{ left: 0.9, right: 0 }}
+            onDragEnd={(_e, info) => {
+              /*
+               * Design v2 touch spec: the panel follows the finger; a swipe
+               * past 35% width OR a fast fling (>0.5 px/ms) closes it.
+               */
+              if (info.offset.x < -110 || info.velocity.x < -500) {
+                onClose();
+              }
+            }}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800/50">
