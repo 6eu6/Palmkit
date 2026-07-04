@@ -28,6 +28,79 @@ export const MobileShell = memo(() => {
     }
   }, []);
 
+  /*
+   * Touch spec (Design v2): a horizontal swipe on the content area moves
+   * between the two dock destinations — swipe LEFT (finger →) goes Chat→App,
+   * swipe RIGHT goes App→Chat, matching the dock pill's slide. Skipped when
+   * the gesture starts inside the code editor / terminal (they scroll
+   * horizontally) or over the preview iframe (it owns its own touches).
+   */
+  useEffect(() => {
+    let sx = -1;
+    let sy = -1;
+    let blocked = false;
+
+    const onStart = (e: TouchEvent) => {
+      if (window.innerWidth >= 640 || e.touches.length !== 1) {
+        sx = -1;
+        return;
+      }
+
+      const target = e.target as HTMLElement | null;
+      blocked = !!target?.closest('.cm-editor, .xterm, iframe, [data-no-swipe], input, textarea, select');
+
+      const t = e.touches[0];
+      sx = t.clientX;
+      sy = t.clientY;
+    };
+
+    const onEnd = (e: TouchEvent) => {
+      if (sx < 0 || blocked) {
+        return;
+      }
+
+      const t = e.changedTouches[0];
+      const startX = sx;
+      const dx = t.clientX - startX;
+      const dy = Math.abs(t.clientY - sy);
+      sx = -1;
+
+      /*
+       * A confident horizontal swipe — not a vertical scroll, and not the
+       * left-edge pull that opens the projects drawer (handled separately).
+       */
+      if (Math.abs(dx) < 70 || dy > 50 || startX < 28) {
+        return;
+      }
+
+      const onWorkspace = workbenchStore.showWorkbench.get();
+
+      if (dx < 0 && !onWorkspace) {
+        // Chat → App (only once files exist, so we never land on an empty screen)
+        const hasFiles = Object.values(workbenchStore.files.get() ?? {}).some((d) => d?.type === 'file');
+
+        if (hasFiles) {
+          chatStore.setKey('showChat', false);
+          workbenchStore.showWorkbench.set(true);
+          mobileActiveTab.set('workspace');
+        }
+      } else if (dx > 0 && onWorkspace) {
+        // App → Chat
+        chatStore.setKey('showChat', true);
+        workbenchStore.showWorkbench.set(false);
+        mobileActiveTab.set('chat');
+      }
+    };
+
+    window.addEventListener('touchstart', onStart, { passive: true });
+    window.addEventListener('touchend', onEnd, { passive: true });
+
+    return () => {
+      window.removeEventListener('touchstart', onStart);
+      window.removeEventListener('touchend', onEnd);
+    };
+  }, []);
+
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 640px)');
     const handler = (e: MediaQueryListEvent) => {

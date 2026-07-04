@@ -102,10 +102,19 @@ export const RemotePreviewTrigger = memo(() => {
      */
   }, [isStreaming, files, sandbox.state]);
 
-  // Phase detection
+  /*
+   * Phase detection.
+   *
+   * Design v2 — ONE surface per function. The build/generation phase now has
+   * its own inline surface: the BuildStream card rendered inside the
+   * conversation. So this floating bar no longer mirrors generation (that was
+   * the "layer floating over the chat" duplication). It shows ONLY the cloud
+   * sandbox launch (creating/installing) — the one phase the chat card does
+   * not cover, since on phones we intentionally don't auto-open the workspace
+   * mid-build. Errors still surface here for both phases.
+   */
   const sandboxPreparing = sandbox.state === 'creating' || sandbox.state === 'installing';
-  const genActive = gen.step !== 'idle' && gen.step !== 'done' && gen.step !== 'error';
-  const active = sandboxPreparing || genActive;
+  const active = sandboxPreparing;
   const hasError = sandbox.state === 'error' || gen.step === 'error';
 
   // 1s ticker for the counters while active.
