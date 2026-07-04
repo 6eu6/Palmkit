@@ -455,6 +455,14 @@ export const BuildStreamView = memo(
     const done = currentStep === 'done' || events.some((e) => e.type === 'ready_for_preview');
     const failed = events.some((e) => e.type === 'job_failed');
 
+    // Human-readable failure reason for the unified failure card.
+    const failureReason = (() => {
+      const fail = [...events].reverse().find((e) => e.type === 'job_failed');
+      const msg = (fail?.message ?? '').replace(/^[❌⚠️\s]+/, '').trim();
+
+      return msg.length > 0 ? msg : null;
+    })();
+
     // Did `npm run build` actually pass? Read the last completion event's flag.
     const buildVerified = (() => {
       for (let i = events.length - 1; i >= 0; i--) {
@@ -540,6 +548,41 @@ export const BuildStreamView = memo(
             </div>
           )}
         </div>
+        {/* Unified failure card — one clear surface for any build failure:
+            human-readable reason + Retry (re-runs the same prompt) + Show
+            logs (expands the stream). No raw stack traces, no silent fails. */}
+        {failed && (
+          <div className="mx-4 mb-3 rounded-lg border border-red-500/30 bg-red-500/5 px-3.5 py-3">
+            <div className="flex items-start gap-2.5">
+              <span className="i-ph:warning-circle-fill text-red-400 text-base shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-palmkit-elements-textPrimary">Build failed</p>
+                <p className="mt-0.5 text-xs text-palmkit-elements-textSecondary break-words">
+                  {failureReason ?? 'Something went wrong while building. You can retry or open the logs.'}
+                </p>
+                <div className="mt-2.5 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => window.dispatchEvent(new CustomEvent('palmkit:retry-build'))}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all active:scale-95"
+                    style={{ background: 'var(--pk-accent)', color: 'var(--pk-on-accent)' }}
+                  >
+                    <span className="i-ph:arrow-clockwise text-sm" />
+                    Retry
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-palmkit-elements-borderColor px-3 py-1.5 text-xs font-medium text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
+                  >
+                    <span className="i-ph:list-magnifying-glass text-sm" />
+                    Show logs
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         {/* chronological stream — expands inline; the chat thread handles scroll */}
         {open && (
           <div className="px-4 py-3">

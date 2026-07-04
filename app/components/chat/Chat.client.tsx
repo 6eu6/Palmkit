@@ -1218,6 +1218,33 @@ export const ChatImpl = memo(
       textareaRef.current?.blur();
     };
 
+    /*
+     * Retry from the failure card: the unified "Build failed" card in the
+     * BuildStream dispatches `palmkit:retry-build`; re-send the last user
+     * message so the whole build runs again with the same prompt.
+     */
+    useEffect(() => {
+      const onRetry = () => {
+        if (isLoading) {
+          return;
+        }
+
+        const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+
+        if (lastUser?.content) {
+          const text = typeof lastUser.content === 'string' ? lastUser.content : '';
+
+          if (text.trim()) {
+            sendMessage({} as React.UIEvent, text);
+          }
+        }
+      };
+
+      window.addEventListener('palmkit:retry-build', onRetry);
+
+      return () => window.removeEventListener('palmkit:retry-build', onRetry);
+    }, [messages, isLoading]);
+
     /**
      * Handles the change event for the textarea and updates the input state.
      * @param event - The change event from the textarea.

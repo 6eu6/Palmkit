@@ -31,7 +31,12 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
-import { buildStatusStore, previewFilesStore, activeBuildJobIdStore } from '~/lib/stores/build-status';
+import {
+  buildStatusStore,
+  previewFilesStore,
+  activeBuildJobIdStore,
+  workerProgressStore,
+} from '~/lib/stores/build-status';
 import { workbenchStore } from '~/lib/stores/workbench';
 import {
   isRemoteSandboxAvailable,
@@ -234,14 +239,19 @@ export function useWorkerSandbox(): WorkerSandboxResult {
     launchRef.current = true;
     setSandboxError(undefined);
 
+    // Reuse the sandbox we prewarmed for THIS job, if any.
+    const jobKey = activeBuildJobIdStore.get() ?? undefined;
+    const prewarmedId = jobKey && prewarm.current?.jobKey === jobKey ? prewarm.current.id : undefined;
+
     try {
       setUsesMobileE2B(true);
-      await _runInE2B(files, type, setSandboxState, setSandboxUrl, setSandboxError);
+      await _runInE2B(files, type, setSandboxState, setSandboxUrl, setSandboxError, prewarmedId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setSandboxError(msg);
       setSandboxState('error');
     } finally {
+      prewarm.current = null;
       launchRef.current = false;
     }
   }, []);
@@ -265,6 +275,52 @@ export function useWorkerSandbox(): WorkerSandboxResult {
   const autoLaunchedJob = useRef<string | undefined>(undefined);
 
   const activeJobId = useStore(activeBuildJobIdStore);
+
+  /*
+   * PREWARM (Design v2, Phase D). Allocating an E2B sandbox has a few seconds
+   * of cold-start latency. We pay it in the BACKGROUND while the build is
+   * still finishing (progress ≥ 55%) so it's hidden, then reuse that same
+   * sandbox at launch instead of creating a fresh one — cutting first-preview
+   * time. We only ALLOCATE here; files are pushed and the dev server starts
+   * only at ready_for_preview, so the user never sees a stale/partial preview.
+   */
+  const prewarm = useRef<{ jobKey: string; id: string } | null>(null);
+  const prewarmingRef = useRef(false);
+  const { progress } = useStore(workerProgressStore);
+
+  useEffect(() => {
+    const jobKey = activeJobId ?? undefined;
+    const type = buildStatus.appType ?? '';
+
+    if (
+      !jobKey ||
+      buildStatus.jobStatus !== 'generating' ||
+      !E2B_TYPES.has(type) ||
+      prewarmingRef.current ||
+      prewarm.current?.jobKey === jobKey ||
+      progress < 55 // only once the build is well underway — keeps us inside the sandbox TTL
+    ) {
+      return;
+    }
+
+    prewarmingRef.current = true;
+
+    (async () => {
+      try {
+        if (!(await isRemoteSandboxAvailable())) {
+          return;
+        }
+
+        const sandbox = await createRemoteSandbox(type);
+        prewarm.current = { jobKey, id: sandbox.id };
+        console.log('[worker-sandbox] prewarmed sandbox', sandbox.id, 'for job', jobKey);
+      } catch (e) {
+        console.warn('[worker-sandbox] prewarm failed (will create on launch):', e);
+      } finally {
+        prewarmingRef.current = false;
+      }
+    })();
+  }, [activeJobId, buildStatus.jobStatus, buildStatus.appType, progress]);
 
   useEffect(() => {
     const { jobStatus, appType: type } = buildStatus;
@@ -333,6 +389,7 @@ async function _runInE2B(
   setState: (s: SandboxRunState) => void,
   setUrl: (u: string) => void,
   setError: (e: string) => void,
+  prewarmedId?: string,
 ): Promise<void> {
   const available = await isRemoteSandboxAvailable();
 
@@ -345,8 +402,13 @@ async function _runInE2B(
 
   setState('writing');
 
-  const sandbox = await createRemoteSandbox(appType);
-  console.log('[worker-sandbox] sandbox created:', sandbox.id, 'cached:', sandbox.cached);
+  /*
+   * Reuse the sandbox prewarmed during the build if present — its allocation
+   * cold-start already happened, so we go straight to pushing files. Otherwise
+   * allocate one now.
+   */
+  const sandbox = prewarmedId ? { id: prewarmedId, cached: true } : await createRemoteSandbox(appType);
+  console.log('[worker-sandbox] sandbox', sandbox.id, prewarmedId ? '(prewarmed)' : `created cached=${sandbox.cached}`);
   await pushFiles(sandbox.id, files);
 
   setState('installing');
