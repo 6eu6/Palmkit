@@ -37,6 +37,15 @@ import { emitEvent } from './event-emitter';
 import { runInE2B } from './e2b-runner';
 import { generateImage, DEFAULT_IMAGE_MODEL } from './image-gen';
 
+/**
+ * Max file-content size inlined into a file_written event. Files at/under this
+ * stream to the client via Realtime (the reliable delivery path everything
+ * depends on); larger files fall back to a workspace fetch. 300KB covers our
+ * compressed image-asset modules and stays well under Supabase Realtime's ~1MB
+ * message limit.
+ */
+const MAX_INLINE_CONTENT = 300 * 1024;
+
 /** Media config for generate_image — the OpenRouter key + the image model. */
 export interface MediaConfig {
   apiKey: string;
@@ -174,7 +183,7 @@ export function createAgentTools(
     }
 
     const lines = content.split('\n').length;
-    const inlineContent = content.length <= 100 * 1024 ? content : undefined;
+    const inlineContent = content.length <= MAX_INLINE_CONTENT ? content : undefined;
     await emitEvent(supabase, jobId, 'file_written' as any, `📝 ${path} (${lines} lines, ${content.length} chars)`, {
       filePath: path,
       path,
@@ -283,7 +292,6 @@ export function createAgentTools(
         // (Supabase Realtime has a ~1MB message limit). For files > 100KB, the
         // client falls back to fetching via /api/workspace at ready_for_preview.
         const lines = fileContent.split('\n').length;
-        const MAX_INLINE_CONTENT = 100 * 1024; // 100KB
         const inlineContent =
           fileContent.length <= MAX_INLINE_CONTENT ? fileContent : undefined;
 
@@ -495,7 +503,6 @@ export function createAgentTools(
 
         // Emit file_written with the new content so the client UI updates live.
         const lines = updated.split('\n').length;
-        const MAX_INLINE_CONTENT = 100 * 1024;
         const inlineContent =
           updated.length <= MAX_INLINE_CONTENT ? updated : undefined;
 
