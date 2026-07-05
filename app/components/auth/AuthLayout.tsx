@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
  */
 export function AuthLayout({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return (
-    <div className="min-h-[100dvh] flex flex-col bg-palmkit-elements-bg-depth-1 text-palmkit-elements-textPrimary">
+    <div className="min-h-[100dvh] flex flex-col bg-palmkit-elements-background-depth-1 text-palmkit-elements-textPrimary">
       <header className="flex items-center px-4 h-14">
         <Link to="/" className="flex items-center" aria-label="Palmkit home">
           <img src="/palmkit-logo-light.png" alt="Palmkit" className="h-7 w-auto select-none dark:hidden" />
@@ -86,7 +86,7 @@ export function AuthInput(props: React.InputHTMLAttributes<HTMLInputElement> & {
       <span className="block text-xs font-medium text-palmkit-elements-textSecondary mb-1.5">{label}</span>
       <input
         {...rest}
-        className="w-full h-11 px-3.5 rounded-xl text-sm bg-palmkit-elements-bg-depth-2 border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary focus:outline-none focus:ring-2 focus:ring-[#00A8B5]/30 transition-all"
+        className="w-full h-11 px-3.5 rounded-xl text-sm bg-palmkit-elements-background-depth-2 border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary focus:outline-none focus:ring-2 focus:ring-[#00A8B5]/30 transition-all"
       />
     </label>
   );

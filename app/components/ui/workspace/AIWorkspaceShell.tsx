@@ -32,7 +32,7 @@ export const WorkspaceShell = memo(
       <div
         className={classNames(
           'relative flex flex-col min-h-dvh w-full overflow-x-hidden',
-          'bg-palmkit-elements-bg-depth-1',
+          'bg-palmkit-elements-background-depth-1',
           className,
         )}
       >

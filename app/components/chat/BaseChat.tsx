@@ -647,7 +647,7 @@ function ScrollToBottom() {
   return (
     !isAtBottom && (
       <>
-        <div className="sticky bottom-0 left-0 right-0 bg-gradient-to-t from-palmkit-elements-bg-depth-1 to-transparent h-20 z-10" />
+        <div className="sticky bottom-0 left-0 right-0 bg-gradient-to-t from-palmkit-elements-background-depth-1 to-transparent h-20 z-10" />
         <button
           className="sticky z-50 bottom-0 left-0 right-0 text-sm rounded-full px-4 py-2 flex items-center justify-center mx-auto gap-2 glass-surface hover:shadow-[0_0_16px_var(--palmkit-glow-color)] transition-all duration-200"
           onClick={() => scrollToBottom()}

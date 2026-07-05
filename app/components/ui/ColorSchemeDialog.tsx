@@ -68,7 +68,7 @@ export const ColorSchemeDialog: React.FC<ColorSchemeDialogProps> = ({ setDesignS
         </h3>
         <button
           onClick={handleReset}
-          className="text-sm bg-transparent hover:bg-palmkit-elements-bg-depth-2 text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary rounded-lg flex items-center gap-2 transition-all duration-200"
+          className="text-sm bg-transparent hover:bg-palmkit-elements-background-depth-2 text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary rounded-lg flex items-center gap-2 transition-all duration-200"
         >
           <span className="i-ph:arrow-clockwise text-sm" />
           Reset
@@ -79,7 +79,7 @@ export const ColorSchemeDialog: React.FC<ColorSchemeDialogProps> = ({ setDesignS
         {paletteRoles.map((role) => (
           <div
             key={role.key}
-            className="group flex items-center gap-4 p-4 rounded-xl bg-palmkit-elements-bg-depth-3 hover:bg-palmkit-elements-bg-depth-2 border border-transparent hover:border-palmkit-elements-borderColor transition-all duration-200"
+            className="group flex items-center gap-4 p-4 rounded-xl bg-palmkit-elements-background-depth-3 hover:bg-palmkit-elements-background-depth-2 border border-transparent hover:border-palmkit-elements-borderColor transition-all duration-200"
           >
             <div className="relative flex-shrink-0">
               <div
@@ -98,7 +98,7 @@ export const ColorSchemeDialog: React.FC<ColorSchemeDialogProps> = ({ setDesignS
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 tabIndex={-1}
               />
-              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-palmkit-elements-bg-depth-1 rounded-full flex items-center justify-center shadow-sm">
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-palmkit-elements-background-depth-1 rounded-full flex items-center justify-center shadow-sm">
                 <span className="i-ph:pencil-simple text-xs text-palmkit-elements-textSecondary" />
               </div>
             </div>
@@ -107,7 +107,7 @@ export const ColorSchemeDialog: React.FC<ColorSchemeDialogProps> = ({ setDesignS
               <div className="text-sm text-palmkit-elements-textSecondary line-clamp-2 leading-relaxed">
                 {role.description}
               </div>
-              <div className="text-xs text-palmkit-elements-textTertiary font-mono mt-1 px-2 py-1 bg-palmkit-elements-bg-depth-1 rounded-md inline-block">
+              <div className="text-xs text-palmkit-elements-textTertiary font-mono mt-1 px-2 py-1 bg-palmkit-elements-background-depth-1 rounded-md inline-block">
                 {palette[role.key]}
               </div>
             </div>
@@ -133,7 +133,7 @@ export const ColorSchemeDialog: React.FC<ColorSchemeDialogProps> = ({ setDesignS
             className={`group p-4 rounded-xl border-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-palmkit-elements-borderColorActive ${
               font.includes(f.key)
                 ? 'bg-palmkit-elements-item-backgroundAccent border-palmkit-elements-borderColorActive shadow-lg'
-                : 'bg-palmkit-elements-background-depth-3 border-palmkit-elements-borderColor hover:border-palmkit-elements-borderColorActive hover:bg-palmkit-elements-bg-depth-2'
+                : 'bg-palmkit-elements-background-depth-3 border-palmkit-elements-borderColor hover:border-palmkit-elements-borderColorActive hover:bg-palmkit-elements-background-depth-2'
             }`}
           >
             <div className="text-center space-y-2">
@@ -201,7 +201,7 @@ export const ColorSchemeDialog: React.FC<ColorSchemeDialogProps> = ({ setDesignS
                       ? ''
                       : isSelected
                         ? 'bg-palmkit-elements-item-backgroundAccent text-palmkit-elements-item-contentAccent shadow-lg'
-                        : 'bg-palmkit-elements-bg-depth-3 hover:bg-palmkit-elements-bg-depth-2 text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary'
+                        : 'bg-palmkit-elements-background-depth-3 hover:bg-palmkit-elements-background-depth-2 text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary'
                 } ${f.key === 'shadow' ? (isSelected ? 'shadow-xl' : 'shadow-lg') : 'shadow-md'}`}
                 style={{
                   ...(f.key === 'gradient' && {
@@ -213,7 +213,7 @@ export const ColorSchemeDialog: React.FC<ColorSchemeDialogProps> = ({ setDesignS
                 }}
               >
                 <div className="flex flex-col items-center gap-4">
-                  <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-palmkit-elements-bg-depth-1 bg-opacity-20">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-palmkit-elements-background-depth-1 bg-opacity-20">
                     {f.key === 'rounded' && (
                       <div
                         className={`w-6 h-6 bg-current transition-all duration-200 ${
@@ -294,7 +294,7 @@ export const ColorSchemeDialog: React.FC<ColorSchemeDialogProps> = ({ setDesignS
             </div>
 
             {/* Navigation Tabs */}
-            <div className="flex gap-1 p-1 bg-palmkit-elements-bg-depth-3 rounded-xl">
+            <div className="flex gap-1 p-1 bg-palmkit-elements-background-depth-3 rounded-xl">
               {[
                 { key: 'colors', label: 'Colors', icon: 'i-ph:palette' },
                 { key: 'typography', label: 'Typography', icon: 'i-ph:text-aa' },
@@ -306,7 +306,7 @@ export const ColorSchemeDialog: React.FC<ColorSchemeDialogProps> = ({ setDesignS
                   className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all duration-200 ${
                     activeSection === tab.key
                       ? 'bg-palmkit-elements-background-depth-3 text-palmkit-elements-textPrimary shadow-md'
-                      : 'bg-palmkit-elements-background-depth-2 text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary hover:bg-palmkit-elements-bg-depth-2'
+                      : 'bg-palmkit-elements-background-depth-2 text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary hover:bg-palmkit-elements-background-depth-2'
                   }`}
                 >
                   <span className={`${tab.icon} text-lg`} />

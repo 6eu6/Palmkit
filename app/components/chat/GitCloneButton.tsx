@@ -183,7 +183,7 @@ ${escapePalmkitTags(file.content)}
 
       {isDialogOpen && !selectedProvider && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-palmkit-elements-bg-depth-1 rounded-xl shadow-xl border border-palmkit-elements-borderColor max-w-md w-full">
+          <div className="bg-palmkit-elements-background-depth-1 rounded-xl shadow-xl border border-palmkit-elements-borderColor max-w-md w-full">
             <div className="p-6">
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-lg font-semibold text-palmkit-elements-textPrimary">Import Repository</h3>
@@ -243,7 +243,7 @@ ${escapePalmkitTags(file.content)}
 
       {isDialogOpen && selectedProvider === 'github' && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-palmkit-elements-bg-depth-1 rounded-xl shadow-xl border border-palmkit-elements-borderColor w-full max-w-4xl max-h-[90vh] overflow-hidden">
+          <div className="bg-palmkit-elements-background-depth-1 rounded-xl shadow-xl border border-palmkit-elements-borderColor w-full max-w-4xl max-h-[90vh] overflow-hidden">
             <div className="p-5 border-b border-palmkit-elements-borderColor flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-palmkit-elements-item-backgroundAccent flex items-center justify-center">
@@ -274,7 +274,7 @@ ${escapePalmkitTags(file.content)}
 
       {isDialogOpen && selectedProvider === 'gitlab' && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-palmkit-elements-bg-depth-1 rounded-xl shadow-xl border border-palmkit-elements-borderColor w-full max-w-4xl max-h-[90vh] overflow-hidden">
+          <div className="bg-palmkit-elements-background-depth-1 rounded-xl shadow-xl border border-palmkit-elements-borderColor w-full max-w-4xl max-h-[90vh] overflow-hidden">
             <div className="p-5 border-b border-palmkit-elements-borderColor flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-palmkit-elements-item-backgroundAccent flex items-center justify-center">

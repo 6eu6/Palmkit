@@ -106,7 +106,7 @@ export default function Signup() {
       <div className="flex flex-col gap-3">
         <a
           href="/api/auth/github"
-          className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary bg-palmkit-elements-bg-depth-2 hover:bg-palmkit-elements-bg-depth-3 transition-colors"
+          className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary bg-palmkit-elements-background-depth-2 hover:bg-palmkit-elements-background-depth-3 transition-colors"
         >
           <span className="i-ph:github-logo-fill text-lg" />
           Continue with GitHub
@@ -114,7 +114,7 @@ export default function Signup() {
 
         <a
           href="/api/auth/twitter"
-          className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary bg-palmkit-elements-bg-depth-2 hover:bg-palmkit-elements-bg-depth-3 transition-colors"
+          className="w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2 border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary bg-palmkit-elements-background-depth-2 hover:bg-palmkit-elements-background-depth-3 transition-colors"
         >
           <span className="i-ph:x-logo-fill text-lg" />
           Continue with X

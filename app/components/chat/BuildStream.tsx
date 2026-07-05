@@ -306,7 +306,7 @@ const CommandRow = memo(({ text }: { text: string }) => (
 ));
 
 const Todos = memo(({ todos, counts }: { todos: TodoItem[]; counts?: { done: number; total: number } }) => (
-  <div className="rounded-md border border-palmkit-elements-borderColor/60 bg-palmkit-elements-bg-depth-3/40 p-2">
+  <div className="rounded-md border border-palmkit-elements-borderColor/60 bg-palmkit-elements-background-depth-3/40 p-2">
     <div className="mb-1 flex items-center gap-1.5 text-xs text-palmkit-elements-textTertiary">
       <span className="i-ph:list-checks" />
       <span>Plan {counts ? `(${counts.done}/${counts.total})` : ''}</span>

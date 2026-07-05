@@ -84,11 +84,11 @@ export function ThinkingMeter() {
           <Tooltip.Content
             side="top"
             sideOffset={8}
-            className="z-[9999] max-w-[220px] rounded-lg border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-2 px-3 py-2 text-xs shadow-lg"
+            className="z-[9999] max-w-[220px] rounded-lg border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 px-3 py-2 text-xs shadow-lg"
           >
             <div className="font-semibold text-palmkit-elements-textPrimary">Thinking · {current.label}</div>
             <div className="mt-0.5 text-palmkit-elements-textTertiary">{current.hint}</div>
-            <Tooltip.Arrow className="fill-palmkit-elements-bg-depth-2" />
+            <Tooltip.Arrow className="fill-palmkit-elements-background-depth-2" />
           </Tooltip.Content>
         </Tooltip.Portal>
       </Tooltip.Root>
@@ -120,7 +120,7 @@ function MenuRow({
         {hint && <span className="block text-[11px] text-palmkit-elements-textTertiary truncate">{hint}</span>}
       </span>
       {soon && (
-        <span className="shrink-0 rounded-full bg-palmkit-elements-bg-depth-3 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-palmkit-elements-textTertiary">
+        <span className="shrink-0 rounded-full bg-palmkit-elements-background-depth-3 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-palmkit-elements-textTertiary">
           Soon
         </span>
       )}
@@ -185,7 +185,7 @@ export function PlusMenu({ onAttach, tools }: { onAttach: () => void; tools: Rea
           side="top"
           align="start"
           sideOffset={10}
-          className="z-[9999] w-[300px] max-h-[70vh] overflow-y-auto rounded-2xl border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-2 p-2 shadow-2xl"
+          className="z-[9999] w-[300px] max-h-[70vh] overflow-y-auto rounded-2xl border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 p-2 shadow-2xl"
         >
           {/* Tools strip — the existing working tools, relocated here. */}
           <div className="px-1.5 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-palmkit-elements-textTertiary">

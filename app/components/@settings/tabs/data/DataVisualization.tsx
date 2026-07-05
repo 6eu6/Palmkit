@@ -321,7 +321,7 @@ export function DataVisualization({ chats }: DataVisualizationProps) {
 
   const cardClasses = classNames(
     'p-6 rounded-lg shadow-sm',
-    'bg-palmkit-elements-bg-depth-1',
+    'bg-palmkit-elements-background-depth-1',
     'border border-palmkit-elements-borderColor',
   );
 

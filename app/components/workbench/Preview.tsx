@@ -1066,7 +1066,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
               )}
             </>
           ) : (
-            <div className="flex flex-col w-full h-full justify-center items-center bg-palmkit-elements-bg-depth-1 px-6">
+            <div className="flex flex-col w-full h-full justify-center items-center bg-palmkit-elements-background-depth-1 px-6">
               <div
                 className="flex flex-col items-center gap-5 max-w-xs text-center"
                 style={{ animation: 'fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}

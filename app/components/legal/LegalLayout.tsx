@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
  */
 export function LegalLayout({ title, updated, children }: { title: string; updated: string; children: ReactNode }) {
   return (
-    <div className="min-h-[100dvh] bg-palmkit-elements-bg-depth-1 text-palmkit-elements-textPrimary">
+    <div className="min-h-[100dvh] bg-palmkit-elements-background-depth-1 text-palmkit-elements-textPrimary">
       {/* Header */}
       <header
         className="sticky top-0 z-10 flex items-center gap-2 px-4 h-14 border-b backdrop-blur-xl"

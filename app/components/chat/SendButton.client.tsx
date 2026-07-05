@@ -34,7 +34,7 @@ export const SendButton = ({ show, isStreaming, disabled, onClick }: SendButtonP
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
-          <div className="text-sm text-palmkit-elements-bg-depth-1">
+          <div className="text-sm text-palmkit-elements-background-depth-1">
             {!isStreaming ? <div className="i-ph:arrow-up-bold"></div> : <div className="i-ph:stop-bold"></div>}
           </div>
         </motion.button>

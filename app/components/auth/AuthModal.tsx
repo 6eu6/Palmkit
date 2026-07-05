@@ -37,7 +37,7 @@ export function AuthModal() {
   }
 
   const oauthBtn =
-    'w-full h-12 rounded-xl font-medium text-sm flex items-center justify-center gap-2.5 border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary bg-palmkit-elements-bg-depth-2 hover:bg-palmkit-elements-bg-depth-3 transition-colors';
+    'w-full h-12 rounded-xl font-medium text-sm flex items-center justify-center gap-2.5 border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary bg-palmkit-elements-background-depth-2 hover:bg-palmkit-elements-background-depth-3 transition-colors';
 
   return (
     <div
@@ -65,7 +65,7 @@ export function AuthModal() {
         <button
           onClick={closeAuthModal}
           aria-label="Close"
-          className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-palmkit-elements-textSecondary hover:bg-palmkit-elements-bg-depth-3 transition-colors"
+          className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-palmkit-elements-textSecondary hover:bg-palmkit-elements-background-depth-3 transition-colors"
         >
           <span className="i-ph:x text-lg" />
         </button>

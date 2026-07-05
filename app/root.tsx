@@ -206,7 +206,7 @@ export function ErrorBoundary() {
       : 'Unknown error';
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-palmkit-elements-bg-depth-1 text-palmkit-elements-textPrimary p-6">
+    <div className="min-h-screen flex items-center justify-center bg-palmkit-elements-background-depth-1 text-palmkit-elements-textPrimary p-6">
       <div className="max-w-md w-full text-center">
         <div className="text-4xl mb-4">⚠️</div>
         <h1 className="text-xl font-bold mb-3">Something went wrong</h1>

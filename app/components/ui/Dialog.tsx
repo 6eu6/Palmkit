@@ -348,7 +348,7 @@ export function SelectionDialog({
           'flex items-start space-x-3 p-2 rounded-md transition-colors',
           selectedItems.includes(item.id)
             ? 'bg-palmkit-elements-item-backgroundAccent'
-            : 'bg-palmkit-elements-bg-depth-2 hover:bg-palmkit-elements-item-backgroundActive',
+            : 'bg-palmkit-elements-background-depth-2 hover:bg-palmkit-elements-item-backgroundActive',
         )}
         style={{
           ...style,
@@ -398,14 +398,14 @@ export function SelectionDialog({
                 variant="ghost"
                 size="sm"
                 onClick={handleSelectAll}
-                className="text-xs h-8 px-2 text-palmkit-elements-textPrimary hover:text-palmkit-elements-item-contentAccent hover:bg-palmkit-elements-item-backgroundAccent bg-palmkit-elements-bg-depth-2 dark:bg-transparent"
+                className="text-xs h-8 px-2 text-palmkit-elements-textPrimary hover:text-palmkit-elements-item-contentAccent hover:bg-palmkit-elements-item-backgroundAccent bg-palmkit-elements-background-depth-2 dark:bg-transparent"
               >
                 {selectAll ? 'Deselect All' : 'Select All'}
               </Button>
             </div>
 
             <div
-              className="pr-2 border rounded-md border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-2"
+              className="pr-2 border rounded-md border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2"
               style={{
                 maxHeight,
               }}
@@ -416,7 +416,7 @@ export function SelectionDialog({
                   width="100%"
                   itemCount={items.length}
                   itemSize={60}
-                  className="scrollbar-thin scrollbar-thumb-rounded scrollbar-thumb-palmkit-elements-bg-depth-3"
+                  className="scrollbar-thin scrollbar-thumb-rounded scrollbar-thumb-palmkit-elements-background-depth-3"
                 >
                   {ItemRenderer}
                 </FixedSizeList>

@@ -52,7 +52,7 @@ export function ContinuationSuggestion({
       <button
         type="button"
         onClick={use}
-        className="inline-flex items-center gap-1.5 rounded-full border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-2 px-3 py-1.5 text-sm text-palmkit-elements-textPrimary transition-colors hover:bg-palmkit-elements-bg-depth-3"
+        className="inline-flex items-center gap-1.5 rounded-full border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 px-3 py-1.5 text-sm text-palmkit-elements-textPrimary transition-colors hover:bg-palmkit-elements-background-depth-3"
       >
         <span className="i-ph:play-circle text-[15px] text-palmkit-elements-item-contentAccent" />
         <span className="truncate max-w-[22rem]">Continue: {suggestion}</span>

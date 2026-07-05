@@ -156,11 +156,11 @@ export function SessionAdvisor() {
   return (
     <div className="flex items-start gap-3">
       {/* Assistant-style avatar so this reads as a message in the thread. */}
-      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-palmkit-elements-bg-depth-3 text-palmkit-elements-textSecondary">
+      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-palmkit-elements-background-depth-3 text-palmkit-elements-textSecondary">
         <span className="i-ph:git-fork text-[15px]" />
       </div>
 
-      <div className="min-w-0 flex-1 rounded-2xl rounded-tl-sm border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-2 px-4 py-3 text-sm">
+      <div className="min-w-0 flex-1 rounded-2xl rounded-tl-sm border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 px-4 py-3 text-sm">
         <p className="leading-relaxed text-palmkit-elements-textSecondary">
           {truncated ? (
             <>
@@ -198,7 +198,7 @@ export function SessionAdvisor() {
             type="button"
             onClick={dismiss}
             disabled={busy}
-            className="rounded-lg px-3 py-1.5 font-medium text-palmkit-elements-textSecondary transition-colors hover:bg-palmkit-elements-bg-depth-3 hover:text-palmkit-elements-textPrimary disabled:opacity-60"
+            className="rounded-lg px-3 py-1.5 font-medium text-palmkit-elements-textSecondary transition-colors hover:bg-palmkit-elements-background-depth-3 hover:text-palmkit-elements-textPrimary disabled:opacity-60"
           >
             Keep editing here
           </button>

@@ -93,7 +93,7 @@ function BuildCard({ build, onOpen }: { build: BuildRow; onOpen: (id: string) =>
   }
 
   return (
-    <div className="group relative flex flex-col gap-3 rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-2 p-4 transition hover:border-palmkit-elements-borderColorActive hover:bg-palmkit-elements-bg-depth-3">
+    <div className="group relative flex flex-col gap-3 rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 p-4 transition hover:border-palmkit-elements-borderColorActive hover:bg-palmkit-elements-background-depth-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className={classNames(icon, 'text-xl')} />
@@ -199,14 +199,14 @@ export default function BuildsPage() {
         </div>
 
         {!authed && (
-          <div className="rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-2 p-8 text-center">
+          <div className="rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 p-8 text-center">
             <div className="i-ph:lock text-4xl text-palmkit-elements-textTertiary mx-auto mb-3" />
             <p className="text-palmkit-elements-textSecondary">Sign in to view your build history.</p>
           </div>
         )}
 
         {authed && builds.length === 0 && (
-          <div className="rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-2 p-12 text-center">
+          <div className="rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 p-12 text-center">
             <div className="i-ph:code-block text-5xl text-palmkit-elements-textTertiary mx-auto mb-4" />
             <h2 className="text-lg font-semibold mb-2">No builds yet</h2>
             <p className="text-sm text-palmkit-elements-textSecondary mb-6">
@@ -228,7 +228,7 @@ export default function BuildsPage() {
               loading === build.id ? (
                 <div
                   key={build.id}
-                  className="flex items-center justify-center rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-2 p-8"
+                  className="flex items-center justify-center rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 p-8"
                 >
                   <div className="i-svg-spinners:90-ring-with-bg text-2xl text-palmkit-elements-loader-progress" />
                 </div>

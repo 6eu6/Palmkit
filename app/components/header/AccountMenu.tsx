@@ -97,7 +97,7 @@ export function AccountMenu() {
             onClick={openProfile}
             className={classNames(
               'w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-palmkit-elements-textPrimary',
-              'hover:bg-palmkit-elements-bg-depth-3 transition-colors',
+              'hover:bg-palmkit-elements-background-depth-3 transition-colors',
             )}
           >
             <span className="i-ph:user-circle text-base text-palmkit-elements-textSecondary" />
@@ -108,7 +108,7 @@ export function AccountMenu() {
             href="/api/account/export"
             className={classNames(
               'w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-palmkit-elements-textPrimary',
-              'hover:bg-palmkit-elements-bg-depth-3 transition-colors',
+              'hover:bg-palmkit-elements-background-depth-3 transition-colors',
             )}
           >
             <span className="i-ph:download-simple text-base text-palmkit-elements-textSecondary" />
@@ -120,7 +120,7 @@ export function AccountMenu() {
               type="submit"
               className={classNames(
                 'w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-palmkit-elements-textPrimary',
-                'hover:bg-palmkit-elements-bg-depth-3 transition-colors',
+                'hover:bg-palmkit-elements-background-depth-3 transition-colors',
               )}
             >
               <span className="i-ph:sign-out text-base text-palmkit-elements-textSecondary" />
@@ -153,7 +153,7 @@ export function AccountMenu() {
                   </Form>
                   <button
                     onClick={() => setConfirmingDelete(false)}
-                    className="flex-1 h-8 rounded-lg text-xs font-medium text-palmkit-elements-textPrimary bg-palmkit-elements-bg-depth-3 hover:bg-palmkit-elements-bg-depth-2 transition-colors"
+                    className="flex-1 h-8 rounded-lg text-xs font-medium text-palmkit-elements-textPrimary bg-palmkit-elements-background-depth-3 hover:bg-palmkit-elements-background-depth-2 transition-colors"
                   >
                     Cancel
                   </button>
