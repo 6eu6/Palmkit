@@ -469,11 +469,20 @@ export const BuildStreamView = memo(
     progress,
     currentStep,
     defaultOpen = true,
+    past = false,
   }: {
     events: WorkerEvent[];
     progress: number;
     currentStep: string;
     defaultOpen?: boolean;
+
+    /**
+     * A PAST turn (a finished build earlier in the thread) — rendered as a
+     * collapsible one-line summary so the thread stays scannable, exactly like a
+     * coding chat folds an old "Worked for 36s ›". The LIVE turn is never
+     * collapsible: it flows openly as the assistant's current reply.
+     */
+    past?: boolean;
   }) => {
     const [open, setOpen] = useState(defaultOpen);
     const sections = useMemo(() => foldEvents(events), [events]);
@@ -550,84 +559,93 @@ export const BuildStreamView = memo(
     // Total agent time, for the "· Worked for Xs" summary once the build ends.
     const totalMs = sections.reduce((sum, sec) => sum + (sec.durationMs ?? 0), 0);
 
+    // Only PAST turns fold; the live turn always flows open as the current reply.
     const toggle = () => setOpen((o) => !o);
+    const showBody = past ? open : true;
 
+    const statusLabel = failed
+      ? 'Build failed'
+      : done && hasBuildErrors
+        ? 'Build has errors'
+        : done && buildVerified === true
+          ? 'Build verified'
+          : done
+            ? 'Build complete'
+            : phaseLabel(currentStep);
+
+    const summary = done
+      ? [totalMs > 0 ? `Worked for ${fmtDur(totalMs)}` : '', fileCount > 0 ? `${fileCount} files` : '']
+          .filter(Boolean)
+          .join(' · ')
+      : fileCount > 0
+        ? `${fileCount} files`
+        : '';
+
+    /*
+     * No card, no box — the build IS the assistant's turn, so it flows directly
+     * in the conversation: a slim status line, then the reasoning + tool rows.
+     * The status icon (loader / ✓ / ✗) is the only chrome; past turns get a
+     * caret to fold, the live turn never does.
+     */
     return (
-      <div className="mx-3 mb-3 overflow-hidden rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-2">
-        {/* header — click to expand/collapse the timeline */}
+      <div className="mb-5">
         <div
-          className="cursor-pointer select-none border-b border-palmkit-elements-borderColor/60 px-4 py-2.5"
-          onClick={toggle}
+          className={classNames('flex items-center gap-2', past && 'cursor-pointer select-none')}
+          onClick={past ? toggle : undefined}
         >
-          <div className="flex items-center gap-2">
-            {failed || done ? (
-              <span
-                className={classNames(
-                  'shrink-0',
-                  failed
-                    ? 'i-ph:x-circle-fill text-red-400'
-                    : hasBuildErrors
-                      ? 'i-ph:warning-fill text-amber-400'
-                      : 'i-ph:check-circle-fill text-green-400',
-                )}
-              />
-            ) : (
-              <PalmkitLoader bare size={15} className="shrink-0 text-[var(--pk-accent)]" />
-            )}
-            <span className="text-sm font-medium text-palmkit-elements-textPrimary">
-              {failed
-                ? 'Build failed'
-                : done && hasBuildErrors
-                  ? 'Build has errors'
-                  : done && buildVerified === true
-                    ? 'Build verified'
-                    : done
-                      ? 'Build complete'
-                      : phaseLabel(currentStep)}
+          {failed || done ? (
+            <span
+              className={classNames(
+                'shrink-0',
+                failed
+                  ? 'i-ph:x-circle-fill text-red-400'
+                  : hasBuildErrors
+                    ? 'i-ph:warning-fill text-amber-400'
+                    : 'i-ph:check-circle-fill text-green-400',
+              )}
+            />
+          ) : (
+            <PalmkitLoader bare size={15} className="shrink-0 text-[var(--pk-accent)]" />
+          )}
+          <span className="text-sm font-medium text-palmkit-elements-textPrimary">{statusLabel}</span>
+          {/* live action tail while building (Le Chat style) */}
+          {!done && !failed && (
+            <span className="min-w-0 flex-1 truncate font-mono text-xs text-palmkit-elements-textTertiary">
+              {lastAction}
             </span>
-            {/* live action tail while building (Le Chat style) */}
-            {!done && !failed && (
-              <span className="min-w-0 flex-1 truncate font-mono text-xs text-palmkit-elements-textTertiary">
-                {lastAction}
-              </span>
-            )}
+          )}
+          {summary && (
             <span
               className={classNames('shrink-0 text-xs text-palmkit-elements-textTertiary tabular-nums', {
                 'ml-auto': done || failed,
               })}
             >
-              {done
-                ? [totalMs > 0 ? `Worked for ${fmtDur(totalMs)}` : '', fileCount > 0 ? `${fileCount} files` : '']
-                    .filter(Boolean)
-                    .join(' · ')
-                : fileCount > 0
-                  ? `${fileCount} files`
-                  : ''}
+              {summary}
             </span>
+          )}
+          {past && (
             <span
               className={classNames(
                 'shrink-0 text-palmkit-elements-textTertiary transition-transform',
                 open ? 'i-ph:caret-up' : 'i-ph:caret-down',
               )}
             />
-          </div>
-          {!done && (
-            <div className="mt-2 h-1 overflow-hidden rounded-full bg-palmkit-elements-bg-depth-1">
-              <div
-                className={classNames(
-                  'h-full rounded-full transition-all duration-700 ease-out',
-                  failed ? 'bg-red-400' : 'bg-green-400',
-                )}
-                style={{ width: `${displayProgress}%` }}
-              />
-            </div>
           )}
         </div>
-        {/* Unified failure card — one clear surface for any build failure:
-            human-readable reason + Retry (re-runs the same prompt) + Show
-            logs (expands the stream). No raw stack traces, no silent fails. */}
+
+        {/* a hair-thin progress line under the status while building */}
+        {!done && !failed && (
+          <div className="mt-2 h-px w-full overflow-hidden bg-palmkit-elements-borderColor/50">
+            <div
+              className="h-full bg-[var(--pk-accent)] transition-all duration-700 ease-out"
+              style={{ width: `${displayProgress}%` }}
+            />
+          </div>
+        )}
+
+        {/* Unified failure alert — human reason + Retry + Show logs. */}
         {failed && (
-          <div className="mx-4 mb-3 rounded-lg border border-red-500/30 bg-red-500/5 px-3.5 py-3">
+          <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/5 px-3.5 py-3">
             <div className="flex items-start gap-2.5">
               <span className="i-ph:warning-circle-fill text-red-400 text-base shrink-0 mt-0.5" />
               <div className="min-w-0 flex-1">
@@ -658,9 +676,10 @@ export const BuildStreamView = memo(
             </div>
           </div>
         )}
-        {/* chronological stream — expands inline; the chat thread handles scroll */}
-        {open && (
-          <div className="px-4 py-3">
+
+        {/* the reasoning + tool rows, flowing as the reply (no box) */}
+        {showBody && (
+          <div className="mt-3">
             {sections.map((s, i) => (
               <SectionView key={i} section={s} />
             ))}

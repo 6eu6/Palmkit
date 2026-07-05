@@ -45,7 +45,7 @@ const LiveBuildPlaceholder = memo(() => {
   }
 
   return (
-    <div className="mx-3 mb-3 flex items-center gap-2 rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-2 px-4 py-2.5">
+    <div className="mb-5 flex items-center gap-2">
       <PalmkitLoader bare size={15} className="shrink-0 text-[var(--pk-accent)]" />
       <span className="text-sm font-medium text-palmkit-elements-textPrimary">Working…</span>
     </div>
