@@ -752,9 +752,12 @@ STRICT RULES:
    * without streaming), nothing else bounds it and the job sits "generating"
    * until the 25-min stuck-job reaper. Abort after a generous window so a hung
    * provider fails cleanly and the edit becomes retriable instead of freezing
-   * the chat. Observed normal edit latency is ~80-130s, so 5 min is safe slack.
+   * the chat. Typical edits are ~80-130s, but a large edit on a slower model
+   * (e.g. rewriting many files of a big app) legitimately runs longer and was
+   * hitting the old 5-min wall ("Edit timed out after 300s"). Give it 10 min —
+   * still well under the orchestrator's 15-min cap and the 25-min reaper.
    */
-  const EDIT_TIMEOUT_MS = 5 * 60 * 1000;
+  const EDIT_TIMEOUT_MS = 10 * 60 * 1000;
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), EDIT_TIMEOUT_MS);
 

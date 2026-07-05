@@ -584,7 +584,20 @@ export function createAgentTools(
           return { exitCode: 0, stdout: 'No files to test.', stderr: '', success: true, passed: 0, failed: 0 };
         }
 
-        const result = await runInE2B(jobId, 'npm test 2>&1 || vitest run 2>&1 || jest 2>&1 || echo "No tests found"', files);
+        /*
+         * CRITICAL: force RUN-ONCE mode. `npm test` for a Vite/React project is
+         * usually `vitest`, which DEFAULTS TO WATCH MODE and never exits — the
+         * process just waits for file changes, so the command hangs until the
+         * E2B timeout and the Tester stalls forever at "Run test suite" (never
+         * reaching screenshot/report). vitest, jest and react-scripts all honour
+         * CI=true → run once and exit. `timeout` is a hard safety net so even a
+         * stubborn watcher is killed and we fall through to the next runner.
+         */
+        const result = await runInE2B(
+          jobId,
+          "CI=true timeout 150 sh -c 'npm test 2>&1 || npx --yes vitest run 2>&1 || npx --yes jest --ci 2>&1 || echo \"No tests found\"'",
+          files,
+        );
 
         const passed = (result.stdout.match(/\d+ passing/gi) || [])[0]?.match(/\d+/)?.[0] || '0';
         const failed = (result.stdout.match(/\d+ failing/gi) || [])[0]?.match(/\d+/)?.[0] || '0';
