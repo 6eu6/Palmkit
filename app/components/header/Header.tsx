@@ -14,8 +14,9 @@ import { toggleSidebar } from '~/lib/stores/sidebar';
  */
 const glassButton =
   'pointer-events-auto items-center justify-center h-9 w-9 rounded-xl border border-[var(--pk-glass-border)] ' +
-  'bg-[var(--palmkit-mobile-surface-bg,rgba(255,255,255,0.04))] backdrop-blur-xl text-palmkit-elements-textSecondary ' +
-  'hover:text-palmkit-elements-textPrimary hover:border-[var(--pk-glass-border-hi)] active:scale-95 transition-all shadow-sm';
+  'bg-[var(--pk-glass-bg)] backdrop-blur-xl backdrop-saturate-150 text-palmkit-elements-textSecondary ' +
+  'hover:text-palmkit-elements-textPrimary hover:bg-[var(--pk-glass-bg-hi)] hover:border-[var(--pk-glass-border-hi)] ' +
+  'active:scale-95 transition-all shadow-sm';
 
 export function Header() {
   const chat = useStore(chatStore);

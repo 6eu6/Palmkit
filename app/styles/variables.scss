@@ -10,6 +10,10 @@
   --pk-on-accent: #ffffff;
   --pk-glass-border: rgba(0, 0, 0, 0.1);
   --pk-glass-border-hi: rgba(0, 0, 0, 0.16);
+  /* Translucent fill for iOS-style glass chrome (hamburger, floating toggle).
+     Must be LOW opacity so backdrop-blur actually frosts what's behind it. */
+  --pk-glass-bg: rgba(255, 255, 255, 0.55);
+  --pk-glass-bg-hi: rgba(255, 255, 255, 0.72);
 
   --palmkit-elements-borderColor: theme('colors.alpha.gray.10');
   --palmkit-elements-borderColorActive: theme('colors.gray.400');
@@ -133,6 +137,9 @@
   --pk-on-accent: #000000;
   --pk-glass-border: rgba(255, 255, 255, 0.09);
   --pk-glass-border-hi: rgba(255, 255, 255, 0.16);
+  /* Dark glass — a faint light tint over a blur reads as frosted on black. */
+  --pk-glass-bg: rgba(40, 40, 42, 0.45);
+  --pk-glass-bg-hi: rgba(55, 55, 58, 0.6);
 
   --palmkit-elements-borderColor: theme('colors.alpha.white.10');
   --palmkit-elements-borderColorActive: theme('colors.gray.500');
@@ -259,7 +266,10 @@
  */
 :root {
   --header-height: 54px;
-  --palmkit-mobile-dock-height: 56px;
+  /* v3: the bottom dock is gone (replaced by a floating toggle), so no vertical
+     strip is reserved for it — content reclaims the space. Kept as a token so
+     the existing calc(... + safe-area) bottom offsets still resolve. */
+  --palmkit-mobile-dock-height: 0px;
   --chat-max-width: 46rem;
   --chat-min-width: 533px;
 
@@ -324,7 +334,10 @@
   --palmkit-radius-pill: 9999px;
 
   /* --- Mobile Layout Tokens --- */
-  --palmkit-mobile-dock-height: 56px;
+  /* v3: the bottom dock is gone (replaced by a floating toggle), so no vertical
+     strip is reserved for it — content reclaims the space. Kept as a token so
+     the existing calc(... + safe-area) bottom offsets still resolve. */
+  --palmkit-mobile-dock-height: 0px;
   --palmkit-mobile-header-height: 48px;
   --palmkit-mobile-compact-item: 36px;
   --palmkit-mobile-touch-target: 44px;

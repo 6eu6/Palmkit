@@ -1,6 +1,6 @@
 import { useStore } from '@nanostores/react';
 import { memo, useCallback, useEffect, useState } from 'react';
-import { MobileActionDock } from '~/components/ui/workspace/MobileActionDock';
+import { FloatingViewToggle } from '~/components/mobile/FloatingViewToggle';
 import { ProjectSwitcherDrawer } from '~/components/ui/workspace/ProjectSwitcherDrawer';
 import { mobileActiveTab } from '~/lib/stores/mobile';
 import { workbenchStore } from '~/lib/stores/workbench';
@@ -186,10 +186,11 @@ export const MobileShell = memo(() => {
   return (
     <>
       <RemotePreviewTrigger />
-      <MobileActionDock />
 
-      {/* Bottom spacer: pushes content above the dock */}
-      <div className="sm:hidden shrink-0" style={{ height: 'var(--palmkit-mobile-dock-height)' }} />
+      {/* v3: the fixed bottom Chat/App dock is replaced by a draggable floating
+          toggle — it frees the whole bottom strip so chat + preview get the
+          full screen on mobile. No spacer needed anymore. */}
+      <FloatingViewToggle />
 
       {/* Note: the previous floating Terminal/Export action bar was removed —
           it duplicated the dock's Terminal tab and the workbench toolbar's
