@@ -17,6 +17,23 @@ export function toggleSidebar(value?: boolean) {
   sidebarOpenStore.set(value ?? !sidebarOpenStore.get());
 }
 
+export type SidebarMode = 'chat' | 'work' | 'code';
+
+/**
+ * Which workspace the sidebar (and a new session) is scoped to.
+ * - `code` — build apps / dev sessions (Palmkit's default and, for now, the
+ *   only fully-wired flow).
+ * - `chat` — plain conversation (no build/preview).
+ * - `work` — tasks / scheduled runs.
+ * The Chat/Work/Code segmented control at the top of the sidebar drives this;
+ * it swaps the quick-action set and (once chats carry a mode) filters the list.
+ */
+export const sidebarModeStore = atom<SidebarMode>('code');
+
+export function setSidebarMode(mode: SidebarMode) {
+  sidebarModeStore.set(mode);
+}
+
 /** Keep the CSS layout variable in sync with the store (and viewport size). */
 export function syncSidebarLayoutVar() {
   if (typeof document === 'undefined') {

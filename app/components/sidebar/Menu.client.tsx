@@ -16,10 +16,37 @@ import { classNames } from '~/utils/classNames';
 import { useStore } from '@nanostores/react';
 import { profileStore } from '~/lib/stores/profile';
 import { authUserStore } from '~/lib/stores/auth';
-import { sidebarOpenStore, syncSidebarLayoutVar } from '~/lib/stores/sidebar';
+import {
+  sidebarOpenStore,
+  syncSidebarLayoutVar,
+  sidebarModeStore,
+  setSidebarMode,
+  type SidebarMode,
+} from '~/lib/stores/sidebar';
 import { killCurrentRemotePreview } from '~/lib/sandbox/remotePreview';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { deleteAllLockedForChat } from '~/lib/persistence/lockedFiles';
+
+/**
+ * Quick actions shown under the Chat/Work/Code segmented control, one set per
+ * mode (mirrors Le Chat's per-tab actions). Items with an `href` navigate;
+ * the rest are placeholders for flows landing in later phases and show a
+ * "Soon" chip.
+ */
+const SIDEBAR_QUICK_ACTIONS: Record<SidebarMode, Array<{ label: string; icon: string; href?: string }>> = {
+  chat: [
+    { label: 'Agents', icon: 'i-ph:robot' },
+    { label: 'Context', icon: 'i-ph:squares-four' },
+  ],
+  work: [
+    { label: 'Context', icon: 'i-ph:squares-four' },
+    { label: 'Scheduled', icon: 'i-ph:clock' },
+  ],
+  code: [
+    { label: 'My Builds', icon: 'i-ph:clock-counter-clockwise', href: '/builds' },
+    { label: 'Extensions', icon: 'i-ph:puzzle-piece' },
+  ],
+};
 
 const menuVariants = {
   closed: {
@@ -98,6 +125,7 @@ export const Menu = () => {
   const [settingsTab, setSettingsTab] = useState<'mcp' | 'github' | undefined>(undefined);
   const profile = useStore(profileStore);
   const authUser = useStore(authUserStore);
+  const mode = useStore(sidebarModeStore);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
 
@@ -474,13 +502,32 @@ export const Menu = () => {
         <CurrentDateTime />
         <div className="flex-1 flex flex-col h-full w-full overflow-hidden">
           <div className="p-4 space-y-3">
+            {/* Chat / Work / Code — the workspace this sidebar is scoped to. */}
+            <div className="grid grid-cols-3 gap-1 rounded-xl bg-gray-100 dark:bg-gray-900 p-1">
+              {(['chat', 'work', 'code'] as SidebarMode[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setSidebarMode(m)}
+                  className={classNames(
+                    'rounded-lg py-1.5 text-sm font-medium capitalize transition-colors',
+                    mode === m
+                      ? 'bg-white dark:bg-black text-gray-900 dark:text-gray-100 shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
+                  )}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+
+            {/* Primary action (label varies by mode) + selection toggle. */}
             <div className="flex gap-2">
               <a
                 href="/"
                 className="flex-1 flex gap-2 items-center bg-gray-50 dark:bg-gray-500/10 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-500/20 rounded-lg px-4 py-2 transition-colors"
               >
                 <span className="inline-block i-ph:plus-circle h-4 w-4" />
-                <span className="text-sm font-medium">Start new chat</span>
+                <span className="text-sm font-medium">{mode === 'code' ? 'New Session' : 'New Chat'}</span>
               </a>
               <button
                 onClick={toggleSelectionMode}
@@ -495,14 +542,35 @@ export const Menu = () => {
                 <span className={selectionMode ? 'i-ph:x h-4 w-4' : 'i-ph:check-square h-4 w-4'} />
               </button>
             </div>
-            {/* Builds history — moved here from the (removed) header. */}
-            <a
-              href="/builds"
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
-            >
-              <span className="i-ph:clock-counter-clockwise h-4 w-4" />
-              <span className="font-medium">My Builds</span>
-            </a>
+
+            {/* Per-tab quick actions. Items without a destination yet show a
+                'Soon' chip; My Builds (Code) links to the build history. */}
+            <div className="flex flex-col gap-0.5">
+              {SIDEBAR_QUICK_ACTIONS[mode].map((a) =>
+                a.href ? (
+                  <a
+                    key={a.label}
+                    href={a.href}
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors"
+                  >
+                    <span className={classNames(a.icon, 'h-4 w-4 text-gray-500 dark:text-gray-400')} />
+                    {a.label}
+                  </a>
+                ) : (
+                  <button
+                    key={a.label}
+                    onClick={() => toast.info(`${a.label} — coming soon`)}
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors text-left"
+                  >
+                    <span className={classNames(a.icon, 'h-4 w-4 text-gray-500 dark:text-gray-400')} />
+                    <span className="flex-1">{a.label}</span>
+                    <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-600">
+                      Soon
+                    </span>
+                  </button>
+                ),
+              )}
+            </div>
             <div className="relative w-full">
               <div className="absolute left-3 top-1/2 -translate-y-1/2">
                 <span className="i-ph:magnifying-glass h-4 w-4 text-gray-400 dark:text-gray-500" />
