@@ -8,8 +8,7 @@ import { binDates } from '~/components/sidebar/date-binning';
 import { classNames } from '~/utils/classNames';
 import { useStore } from '@nanostores/react';
 import { sidebarModeStore, setSidebarMode, SIDEBAR_QUICK_ACTIONS, type SidebarMode } from '~/lib/stores/sidebar';
-import { profileStore } from '~/lib/stores/profile';
-import { authUserStore } from '~/lib/stores/auth';
+import { ProfileMenu } from '~/components/ui/ProfileMenu';
 
 /**
  * ProjectSwitcherDrawer
@@ -57,11 +56,6 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
   const navigate = useNavigate();
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const mode = useStore(sidebarModeStore);
-  const profile = useStore(profileStore);
-  const authUser = useStore(authUserStore);
-
-  const displayName = profile?.username || authUser?.email?.split('@')[0] || 'Account';
-  const initials = displayName.slice(0, 2).toUpperCase();
 
   const loadProjects = useCallback(async () => {
     if (!db) {
@@ -354,20 +348,9 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
               )}
             </div>
 
-            {/* Profile footer */}
+            {/* Profile footer — opens settings / theme / account */}
             <div className="mt-auto border-t border-gray-100 px-3 py-3 dark:border-neutral-800">
-              <button className="flex w-full items-center gap-3 rounded-xl px-2 py-1.5 transition active:bg-gray-50 dark:active:bg-neutral-900">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-[13px] font-semibold text-gray-700 dark:bg-neutral-800 dark:text-gray-200">
-                  {initials}
-                </span>
-                <span className="min-w-0 flex-1 text-left">
-                  <span className="block truncate text-[14px] font-medium text-gray-900 dark:text-white">
-                    {displayName}
-                  </span>
-                  <span className="block text-[11px] text-gray-400 dark:text-gray-600">Free</span>
-                </span>
-                <span className="i-ph:caret-up-down text-gray-400 dark:text-gray-600" />
-              </button>
+              <ProfileMenu />
             </div>
           </motion.div>
         </>

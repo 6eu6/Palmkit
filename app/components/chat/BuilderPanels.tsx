@@ -12,6 +12,7 @@ import {
   removeLibraryItem,
 } from '~/lib/stores/libraries';
 import { BUILTIN_WORKFLOWS, activeWorkflowStore, applyWorkflow } from '~/lib/stores/workflows';
+import { STARTER_TEMPLATES } from '~/utils/constants';
 
 /* Shared shell so the three panels look identical to SkillsDialog. */
 function PanelShell({
@@ -271,6 +272,61 @@ export function WorkflowsDialog({ open, onOpenChange }: { open: boolean; onOpenC
           <span className="i-ph:arrow-right mt-1 shrink-0 text-palmkit-elements-textTertiary" />
         </button>
       ))}
+    </PanelShell>
+  );
+}
+
+/* ---------- Connectors ---------- */
+export function ConnectorsDialog({
+  open,
+  onOpenChange,
+  tools,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  tools: React.ReactNode;
+}) {
+  return (
+    <PanelShell
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Connectors"
+      subtitle="Tools & integrations for your builds"
+    >
+      <div className="px-1.5 pb-1.5 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-palmkit-elements-textTertiary">
+        Available
+      </div>
+      {/* The tool components render their own icon-triggers + dialogs; grouped
+          here as one tidy connectors surface. */}
+      <div className="flex flex-wrap items-center gap-1 rounded-xl border border-palmkit-elements-borderColor p-2">
+        {tools}
+      </div>
+      <p className="px-1.5 pt-2 text-[11px] leading-relaxed text-palmkit-elements-textTertiary">
+        Web search, design theme, MCP tools and your database connect here — tap an icon to configure it.
+      </p>
+    </PanelShell>
+  );
+}
+
+/* ---------- Templates ---------- */
+export function TemplatesDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  return (
+    <PanelShell open={open} onOpenChange={onOpenChange} title="Templates" subtitle="Start from a ready-made stack">
+      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+        {STARTER_TEMPLATES.map((template) => (
+          <a
+            key={template.name}
+            href={`/git?url=https://github.com/${template.githubRepo}.git`}
+            title={template.label}
+            className="group flex flex-col items-center gap-1.5 rounded-xl border border-palmkit-elements-borderColor px-1 py-3 transition-colors hover:bg-palmkit-elements-item-backgroundActive"
+          >
+            <span className={classNames(template.icon, 'h-7 w-7 text-3xl opacity-80 group-hover:opacity-100')} />
+            <span className="w-full truncate px-1 text-center text-[10px] text-palmkit-elements-textTertiary">
+              {template.label}
+            </span>
+          </a>
+        ))}
+      </div>
     </PanelShell>
   );
 }

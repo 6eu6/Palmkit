@@ -3,12 +3,11 @@ import * as Popover from '@radix-ui/react-popover';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { useStore } from '@nanostores/react';
 import { classNames } from '~/utils/classNames';
-import { STARTER_TEMPLATES } from '~/utils/constants';
 import { reasoningEffortStore, setReasoningEffort, REASONING_LEVELS } from '~/lib/stores/model-roles';
 import { enabledSkillsStore } from '~/lib/stores/skills';
 import { enabledLibrariesStore } from '~/lib/stores/libraries';
 import { SkillsDialog } from './SkillsDialog';
-import { AgentsDialog, LibrariesDialog, WorkflowsDialog } from './BuilderPanels';
+import { AgentsDialog, LibrariesDialog, WorkflowsDialog, ConnectorsDialog, TemplatesDialog } from './BuilderPanels';
 
 /**
  * ThinkingMeter — the "thinking power" control (v3 Phase 5).
@@ -99,34 +98,47 @@ export function ThinkingMeter() {
   );
 }
 
-/* A tappable tile in the "+" menu build-surfaces grid. */
-function MenuTile({
+/*
+ * A clean list row in the "+" menu — real icon, label, optional chevron/badge.
+ * Matches the Le Chat pattern: icon · label · (count) · chevron.
+ */
+function MenuRow({
   icon,
   label,
-  hint,
-  active,
+  chevron,
+  count,
+  href,
   onClick,
 }: {
   icon: string;
   label: string;
-  hint?: string;
-  active?: boolean;
+  chevron?: boolean;
+  count?: number;
+  href?: string;
   onClick?: () => void;
 }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group flex w-[calc(50%-4px)] shrink-0 grow-0 flex-col gap-2 self-start rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-1 p-3 text-left transition-all hover:border-[var(--pk-glass-border-hi)] hover:bg-palmkit-elements-item-backgroundActive active:scale-[.98]"
-    >
-      <span className="flex items-center justify-between">
-        <span className={classNames(icon, 'text-[19px] text-palmkit-elements-textSecondary')} />
-        {active && <span className="h-1.5 w-1.5 rounded-full bg-[var(--pk-accent)]" />}
-      </span>
-      <span className="min-w-0">
-        <span className="block text-[13px] font-semibold text-palmkit-elements-textPrimary">{label}</span>
-        {hint && <span className="block truncate text-[10px] text-palmkit-elements-textTertiary">{hint}</span>}
-      </span>
+  const inner = (
+    <>
+      <span className={classNames(icon, 'shrink-0 text-[19px] text-palmkit-elements-textSecondary')} />
+      <span className="flex-1 text-[14px] font-medium text-palmkit-elements-textPrimary">{label}</span>
+      {typeof count === 'number' && count > 0 && (
+        <span className="rounded-full bg-[var(--pk-accent-dim)] px-1.5 text-[10px] font-semibold text-[var(--pk-accent)]">
+          {count}
+        </span>
+      )}
+      {chevron && <span className="i-ph:caret-right shrink-0 text-xs text-palmkit-elements-textTertiary" />}
+    </>
+  );
+  const cls =
+    'flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors hover:bg-palmkit-elements-item-backgroundActive';
+
+  return href ? (
+    <a href={href} className={cls}>
+      {inner}
+    </a>
+  ) : (
+    <button type="button" onClick={onClick} className={cls}>
+      {inner}
     </button>
   );
 }
@@ -148,8 +160,27 @@ export function PlusMenu({ onAttach, tools }: { onAttach: () => void; tools: Rea
   const [agentsOpen, setAgentsOpen] = React.useState(false);
   const [workflowsOpen, setWorkflowsOpen] = React.useState(false);
   const [librariesOpen, setLibrariesOpen] = React.useState(false);
+  const [connectorsOpen, setConnectorsOpen] = React.useState(false);
+  const [templatesOpen, setTemplatesOpen] = React.useState(false);
   const enabledSkills = useStore(enabledSkillsStore);
   const enabledLibraries = useStore(enabledLibrariesStore);
+
+  const openPanel = (setter: (v: boolean) => void) => () => {
+    setOpen(false);
+    setter(true);
+  };
+
+  const resetInput = () => {
+    setOpen(false);
+
+    const ta = document.querySelector('textarea');
+
+    if (ta) {
+      const setValue = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+      setValue?.call(ta, '');
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  };
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -175,113 +206,59 @@ export function PlusMenu({ onAttach, tools }: { onAttach: () => void; tools: Rea
           sideOffset={12}
           collisionPadding={8}
           className={classNames(
-            'pk-no-fullscreen z-[9999] w-[calc(100vw-16px)] sm:w-[360px] max-h-[76vh] overflow-y-auto',
-            'rounded-2xl border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 p-3 shadow-2xl',
+            'pk-no-fullscreen z-[9999] w-[calc(100vw-16px)] sm:w-[300px] max-h-[76vh] overflow-y-auto',
+            'rounded-2xl border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 p-1.5 shadow-2xl',
           )}
           style={{ animation: 'pk-menu-in 0.16s cubic-bezier(0.16, 1, 0.3, 1)', transformOrigin: 'bottom center' }}
         >
           <style>
             {'@keyframes pk-menu-in{from{opacity:0;transform:translateY(6px) scale(0.98)}to{opacity:1;transform:none}}'}
           </style>
-          {/* Build surfaces — a clean 2-up tile grid.
-              Uses flex-wrap, NOT `grid`: a stray global `.grid` rule forces a
-              100vh height here, ballooning the tiles. Flex sidesteps it. */}
-          <div className="flex flex-wrap gap-2">
-            <MenuTile
-              icon="i-ph:sparkle"
-              label="Skills"
-              hint={enabledSkills.length > 0 ? `${enabledSkills.length} active` : 'House rules'}
-              active={enabledSkills.length > 0}
-              onClick={() => {
-                setOpen(false);
-                setSkillsOpen(true);
-              }}
-            />
-            <MenuTile
-              icon="i-ph:robot"
-              label="Agents"
-              hint="Build pipeline"
-              onClick={() => {
-                setOpen(false);
-                setAgentsOpen(true);
-              }}
-            />
-            <MenuTile
-              icon="i-ph:flow-arrow"
-              label="Workflows"
-              hint="One-tap presets"
-              onClick={() => {
-                setOpen(false);
-                setWorkflowsOpen(true);
-              }}
-            />
-            <MenuTile
-              icon="i-ph:books"
-              label="Libraries"
-              hint={enabledLibraries.length > 0 ? `${enabledLibraries.length} active` : 'Reusable refs'}
-              active={enabledLibraries.length > 0}
-              onClick={() => {
-                setOpen(false);
-                setLibrariesOpen(true);
-              }}
-            />
-          </div>
 
-          {/* Projects — full-width row. */}
-          <a
-            href="/builds"
-            className="mt-2 flex items-center gap-2.5 rounded-xl border border-palmkit-elements-borderColor px-3 py-2.5 transition-colors hover:bg-palmkit-elements-item-backgroundActive"
-          >
-            <span className="i-ph:folders text-[17px] text-palmkit-elements-textSecondary" />
-            <span className="flex-1 text-[13px] font-medium text-palmkit-elements-textPrimary">Projects</span>
-            <span className="i-ph:caret-right text-xs text-palmkit-elements-textTertiary" />
-          </a>
+          {/* Clean vertical list — one real icon per row, chevron when the row
+              opens a sub-panel (Le Chat pattern). */}
+          <MenuRow
+            icon="i-ph:upload-simple"
+            label="Upload files"
+            onClick={() => {
+              setOpen(false);
+              onAttach();
+            }}
+          />
 
-          {/* Tools — attach + the existing tool components, one tidy row. */}
-          <div className="mt-3 px-0.5 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-palmkit-elements-textTertiary">
-            Tools
-          </div>
-          <div className="flex items-center gap-1 rounded-xl border border-palmkit-elements-borderColor p-1">
-            <button
-              type="button"
-              title="Attach image"
-              aria-label="Attach image"
-              onClick={() => {
-                setOpen(false);
-                onAttach();
-              }}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-palmkit-elements-textTertiary transition-colors hover:bg-palmkit-elements-item-backgroundActive hover:text-palmkit-elements-textPrimary"
-            >
-              <div className="i-ph:paperclip text-[18px]" />
-            </button>
-            {tools}
-          </div>
+          <div className="my-1 h-px bg-palmkit-elements-borderColor/70" />
 
-          {/* Templates — a single horizontal strip so it never wraps into a mess. */}
-          <div className="mt-3 px-0.5 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-palmkit-elements-textTertiary">
-            Start from a stack
-          </div>
-          <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
-            {STARTER_TEMPLATES.map((template) => (
-              <a
-                key={template.name}
-                href={`/git?url=https://github.com/${template.githubRepo}.git`}
-                title={template.label}
-                className="group flex w-[60px] shrink-0 flex-col items-center gap-1 rounded-xl px-1 py-2 transition-colors hover:bg-palmkit-elements-item-backgroundActive"
-              >
-                <span className={classNames(template.icon, 'h-7 w-7 text-3xl opacity-80 group-hover:opacity-100')} />
-                <span className="w-full truncate text-center text-[9px] text-palmkit-elements-textTertiary">
-                  {template.label}
-                </span>
-              </a>
-            ))}
-          </div>
+          <MenuRow
+            icon="i-ph:sparkle"
+            label="Skills"
+            chevron
+            count={enabledSkills.length}
+            onClick={openPanel(setSkillsOpen)}
+          />
+          <MenuRow icon="i-ph:robot" label="Agents" chevron onClick={openPanel(setAgentsOpen)} />
+          <MenuRow icon="i-ph:flow-arrow" label="Workflows" chevron onClick={openPanel(setWorkflowsOpen)} />
+          <MenuRow
+            icon="i-ph:books"
+            label="Libraries"
+            chevron
+            count={enabledLibraries.length}
+            onClick={openPanel(setLibrariesOpen)}
+          />
+          <MenuRow icon="i-ph:plugs-connected" label="Connectors" chevron onClick={openPanel(setConnectorsOpen)} />
+          <MenuRow icon="i-ph:folder" label="Projects" chevron href="/builds" />
+          <MenuRow icon="i-ph:stack" label="Templates" chevron onClick={openPanel(setTemplatesOpen)} />
+
+          <div className="my-1 h-px bg-palmkit-elements-borderColor/70" />
+
+          <MenuRow icon="i-ph:arrow-counter-clockwise" label="Reset input" onClick={resetInput} />
         </Popover.Content>
       </Popover.Portal>
       <SkillsDialog open={skillsOpen} onOpenChange={setSkillsOpen} />
       <AgentsDialog open={agentsOpen} onOpenChange={setAgentsOpen} />
       <WorkflowsDialog open={workflowsOpen} onOpenChange={setWorkflowsOpen} />
       <LibrariesDialog open={librariesOpen} onOpenChange={setLibrariesOpen} />
+      <ConnectorsDialog open={connectorsOpen} onOpenChange={setConnectorsOpen} tools={tools} />
+      <TemplatesDialog open={templatesOpen} onOpenChange={setTemplatesOpen} />
     </Popover.Root>
   );
 }
