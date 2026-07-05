@@ -6,6 +6,8 @@ import { db, getAll, deleteById, getSnapshot, type ChatHistoryItem } from '~/lib
 import { chatId } from '~/lib/persistence';
 import { binDates } from '~/components/sidebar/date-binning';
 import { classNames } from '~/utils/classNames';
+import { useStore } from '@nanostores/react';
+import { sidebarModeStore, setSidebarMode, SIDEBAR_QUICK_ACTIONS, type SidebarMode } from '~/lib/stores/sidebar';
 
 /**
  * ProjectSwitcherDrawer
@@ -52,6 +54,7 @@ const OVERLAY_VARIANTS = {
 export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDrawerProps) => {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const mode = useStore(sidebarModeStore);
 
   const loadProjects = useCallback(async () => {
     if (!db) {
@@ -281,8 +284,28 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
               </button>
             </div>
 
-            {/* New project button */}
-            <div className="px-4 py-3">
+            {/* Chat / Work / Code — the workspace this drawer is scoped to. */}
+            <div className="px-4 pt-3">
+              <div className="grid grid-cols-3 gap-1 rounded-xl bg-gray-100 dark:bg-gray-900 p-1">
+                {(['chat', 'work', 'code'] as SidebarMode[]).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setSidebarMode(m)}
+                    className={classNames(
+                      'rounded-lg py-1.5 text-sm font-medium capitalize transition-colors',
+                      mode === m
+                        ? 'bg-white dark:bg-black text-gray-900 dark:text-gray-100 shadow-sm'
+                        : 'text-gray-500 dark:text-gray-400',
+                    )}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Primary action (label varies by mode). */}
+            <div className="px-4 pt-3">
               <button
                 onClick={handleNewProject}
                 className={classNames(
@@ -292,8 +315,37 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                 )}
               >
                 <div className="i-ph:plus-circle text-base" />
-                New Project
+                {mode === 'code' ? 'New Session' : 'New Chat'}
               </button>
+            </div>
+
+            {/* Per-tab quick actions. */}
+            <div className="px-4 pt-2 pb-1 flex flex-col gap-0.5">
+              {SIDEBAR_QUICK_ACTIONS[mode].map((a) =>
+                a.href ? (
+                  <a
+                    key={a.label}
+                    href={a.href}
+                    onClick={onClose}
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-gray-700 dark:text-gray-300 active:bg-gray-100 dark:active:bg-gray-800/70 transition-colors"
+                  >
+                    <span className={classNames(a.icon, 'h-4 w-4 text-gray-500 dark:text-gray-400')} />
+                    {a.label}
+                  </a>
+                ) : (
+                  <button
+                    key={a.label}
+                    onClick={() => toast.info(`${a.label} — coming soon`)}
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-gray-700 dark:text-gray-300 active:bg-gray-100 dark:active:bg-gray-800/70 transition-colors text-left"
+                  >
+                    <span className={classNames(a.icon, 'h-4 w-4 text-gray-500 dark:text-gray-400')} />
+                    <span className="flex-1">{a.label}</span>
+                    <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-600">
+                      Soon
+                    </span>
+                  </button>
+                ),
+              )}
             </div>
 
             {/* Project list */}

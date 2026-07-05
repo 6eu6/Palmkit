@@ -21,32 +21,12 @@ import {
   syncSidebarLayoutVar,
   sidebarModeStore,
   setSidebarMode,
+  SIDEBAR_QUICK_ACTIONS,
   type SidebarMode,
 } from '~/lib/stores/sidebar';
 import { killCurrentRemotePreview } from '~/lib/sandbox/remotePreview';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { deleteAllLockedForChat } from '~/lib/persistence/lockedFiles';
-
-/**
- * Quick actions shown under the Chat/Work/Code segmented control, one set per
- * mode (mirrors Le Chat's per-tab actions). Items with an `href` navigate;
- * the rest are placeholders for flows landing in later phases and show a
- * "Soon" chip.
- */
-const SIDEBAR_QUICK_ACTIONS: Record<SidebarMode, Array<{ label: string; icon: string; href?: string }>> = {
-  chat: [
-    { label: 'Agents', icon: 'i-ph:robot' },
-    { label: 'Context', icon: 'i-ph:squares-four' },
-  ],
-  work: [
-    { label: 'Context', icon: 'i-ph:squares-four' },
-    { label: 'Scheduled', icon: 'i-ph:clock' },
-  ],
-  code: [
-    { label: 'My Builds', icon: 'i-ph:clock-counter-clockwise', href: '/builds' },
-    { label: 'Extensions', icon: 'i-ph:puzzle-piece' },
-  ],
-};
 
 const menuVariants = {
   closed: {

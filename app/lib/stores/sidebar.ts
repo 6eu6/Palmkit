@@ -34,6 +34,32 @@ export function setSidebarMode(mode: SidebarMode) {
   sidebarModeStore.set(mode);
 }
 
+export interface SidebarQuickAction {
+  label: string;
+  icon: string;
+  href?: string;
+}
+
+/**
+ * Quick actions under the Chat/Work/Code control, one set per mode — shared by
+ * the desktop sidebar and the mobile drawer so they stay identical. Items with
+ * an `href` navigate; the rest are placeholders for later phases ("Soon").
+ */
+export const SIDEBAR_QUICK_ACTIONS: Record<SidebarMode, SidebarQuickAction[]> = {
+  chat: [
+    { label: 'Agents', icon: 'i-ph:robot' },
+    { label: 'Context', icon: 'i-ph:squares-four' },
+  ],
+  work: [
+    { label: 'Context', icon: 'i-ph:squares-four' },
+    { label: 'Scheduled', icon: 'i-ph:clock' },
+  ],
+  code: [
+    { label: 'My Builds', icon: 'i-ph:clock-counter-clockwise', href: '/builds' },
+    { label: 'Extensions', icon: 'i-ph:puzzle-piece' },
+  ],
+};
+
 /** Keep the CSS layout variable in sync with the store (and viewport size). */
 export function syncSidebarLayoutVar() {
   if (typeof document === 'undefined') {
