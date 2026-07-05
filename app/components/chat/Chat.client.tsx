@@ -1018,7 +1018,22 @@ export const ChatImpl = memo(
 
         // Add user message to chat so the conversation is visible and persisted
         const extUserText = finalMessageContent;
-        const isEditJob = extWorkerState.status === 'ready_for_preview' && Boolean(extWorkerState.jobId);
+
+        /*
+         * Treat this as an EDIT when the chat already has a build to edit:
+         *   - the live worker state is ready (a build finished this session), OR
+         *   - the chat carries a persisted jobId (a REOPENED/restored chat whose
+         *     worker state hasn't rehydrated yet).
+         * Without the second case, editing a project opened from history rebuilt
+         * it from scratch — throwing away the user's existing files/customizations
+         * — because editFromJobId was undefined. We resolve the prior job here and
+         * reuse it for both the placeholder label and the edit handoff below.
+         */
+        const priorJobId =
+          (extWorkerState.status === 'ready_for_preview' && extWorkerState.jobId) ||
+          chatMetadata.get()?.palmkitJobId ||
+          undefined;
+        const isEditJob = Boolean(priorJobId);
 
         /*
          * Build the new messages array BEFORE calling setMessages.
@@ -1050,9 +1065,8 @@ export const ChatImpl = memo(
         resetEnhancer();
         textareaRef.current?.blur();
 
-        /* Phase 7: if there's a completed build in this session, treat as edit */
-        const editFromJobId =
-          extWorkerState.status === 'ready_for_preview' && extWorkerState.jobId ? extWorkerState.jobId : undefined;
+        /* Edit the existing project (same-session build OR a reopened chat). */
+        const editFromJobId = priorJobId;
 
         /*
          * Pass the chat ID as projectId so the worker can key the workspace

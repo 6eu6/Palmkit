@@ -337,6 +337,32 @@ const Todos = memo(({ todos, counts }: { todos: TodoItem[]; counts?: { done: num
   </div>
 ));
 
+/**
+ * Human, phase-aware label for the live header — mirrors how coding agents show
+ * their current stage ("Planning…", "Verifying build…") instead of a single
+ * static "Building…". Falls back to "Building…" for unknown/empty steps.
+ */
+function phaseLabel(step: string): string {
+  switch (step) {
+    case 'queued':
+      return 'Preparing…';
+    case 'plan':
+    case 'planning':
+      return 'Planning…';
+    case 'generate':
+    case 'file_generation':
+      return 'Building…';
+    case 'validate':
+      return 'Validating…';
+    case 'build_check':
+      return 'Verifying build…';
+    case 'uploading':
+      return 'Finalizing…';
+    default:
+      return 'Building…';
+  }
+}
+
 function fmtDur(ms?: number): string {
   if (!ms) {
     return '';
@@ -515,7 +541,7 @@ export const BuildStreamView = memo(
                     ? 'Build verified'
                     : done
                       ? 'Build complete'
-                      : 'Building…'}
+                      : phaseLabel(currentStep)}
             </span>
             {fileCount > 0 && (
               <span

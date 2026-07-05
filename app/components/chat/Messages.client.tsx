@@ -1,11 +1,12 @@
 import type { Message } from 'ai';
-import { Fragment } from 'react';
+import { Fragment, memo } from 'react';
 import { useStore } from '@nanostores/react';
 import { classNames } from '~/utils/classNames';
 import { AssistantMessage } from './AssistantMessage';
 import { UserMessage } from './UserMessage';
 import { TurnBuildStream } from './TurnBuildStream';
-import { activeBuildJobIdStore } from '~/lib/stores/build-status';
+import { activeBuildJobIdStore, workerEventsStore, workerProgressStore } from '~/lib/stores/build-status';
+import { PalmkitLoader } from '~/components/ui/PalmkitLoader';
 import { useLocation } from '@remix-run/react';
 import { db, chatId } from '~/lib/persistence/useChatHistory';
 import { forkChat } from '~/lib/persistence/db';
@@ -25,6 +26,40 @@ interface MessagesProps {
   model?: string;
   provider?: ProviderInfo;
   addToolResult: ({ toolCallId, result }: { toolCallId: string; result: any }) => void;
+}
+
+/**
+ * A build turn's real UI is the clean BuildStream timeline. In the brief window
+ * right after the user sends — before the first worker event/progress arrives —
+ * that stream has no data yet, so this shows a minimal "Working…" line so the
+ * user always sees the build is running. It hides itself the instant the global
+ * BuildStream has something to render, leaving a single clean stream (no
+ * duplicate, and none of the old hardcoded "⚡ Building project…" banner).
+ */
+const LiveBuildPlaceholder = memo(() => {
+  const events = useStore(workerEventsStore);
+  const { progress } = useStore(workerProgressStore);
+
+  if (events.length > 0 || progress > 0) {
+    return null;
+  }
+
+  return (
+    <div className="mx-3 mb-3 flex items-center gap-2 rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-2 px-4 py-2.5">
+      <PalmkitLoader bare size={15} className="shrink-0 text-[var(--pk-accent)]" />
+      <span className="text-sm font-medium text-palmkit-elements-textPrimary">Working…</span>
+    </div>
+  );
+});
+LiveBuildPlaceholder.displayName = 'LiveBuildPlaceholder';
+
+/**
+ * True when an assistant message body is JUST the worker build banner
+ * (⚡/🔨/✅/❌ …) — i.e. this turn IS a build, whose real representation is the
+ * BuildStream timeline, not the hardcoded text line.
+ */
+function isBuildBannerContent(content: unknown): boolean {
+  return typeof content === 'string' && /^\s*[⚡🔨✅❌]/.test(content);
 }
 
 export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
@@ -90,6 +125,16 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
               const buildJobId = !isUserMessage ? getBuildJobId(annotations) : null;
               const showTurnStream = !!buildJobId && buildJobId !== activeBuildJobId;
 
+              /*
+               * A build turn — the in-progress one (its content is the worker
+               * banner, before its jobId annotation is stamped) or a finished/
+               * failed one (carries a palmkit-build jobId). Its clean timeline is
+               * drawn by TurnBuildStream (past) or the global BuildStream (live),
+               * so we render the stream AS the turn and drop the old hardcoded
+               * "⚡ Building project…" text banner entirely.
+               */
+              const isBuildTurn = !isUserMessage && (!!buildJobId || isBuildBannerContent(content));
+
               return (
                 <div
                   key={index}
@@ -100,6 +145,12 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
                   <div className="grid grid-col-1 w-full">
                     {isUserMessage ? (
                       <UserMessage content={content} parts={parts} />
+                    ) : isBuildTurn ? (
+                      showTurnStream ? (
+                        <TurnBuildStream jobId={buildJobId!} />
+                      ) : (
+                        <LiveBuildPlaceholder />
+                      )
                     ) : (
                       <>
                         <AssistantMessage
