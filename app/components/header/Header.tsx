@@ -1,90 +1,44 @@
 import { useStore } from '@nanostores/react';
 import { ClientOnly } from 'remix-utils/client-only';
 import { chatStore } from '~/lib/stores/chat';
-import { classNames } from '~/utils/classNames';
 import { HeaderActionButtons } from './HeaderActionButtons.client';
-import { ChatDescription } from '~/lib/persistence/ChatDescription.client';
 import { mobileActiveTab } from '~/lib/stores/mobile';
 import { toggleSidebar } from '~/lib/stores/sidebar';
-import { AccountMenu } from './AccountMenu';
+
+/*
+ * Design v3 — the header bar is gone. What remains is a transparent overlay
+ * strip carrying only a glassy iOS-style hamburger (top-left) and, once a build
+ * exists, the workbench actions (top-right). The logo, chat title, Builds link
+ * and account menu all live in the sidebar now — nothing chromes the top of the
+ * canvas, so the content reads as one clean surface.
+ */
+const glassButton =
+  'pointer-events-auto flex items-center justify-center h-9 w-9 rounded-xl border border-[var(--pk-glass-border)] ' +
+  'bg-[var(--palmkit-mobile-surface-bg,rgba(255,255,255,0.04))] backdrop-blur-xl text-palmkit-elements-textSecondary ' +
+  'hover:text-palmkit-elements-textPrimary hover:border-[var(--pk-glass-border-hi)] active:scale-95 transition-all shadow-sm';
 
 export function Header() {
   const chat = useStore(chatStore);
 
-  const handleMobileMenu = () => {
-    // Open the projects/history drawer so users can switch, delete or start projects.
-    mobileActiveTab.set('projects');
-  };
-
   return (
-    <header
-      style={{ paddingLeft: 'calc(var(--sidebar-width, 0px) + 0.75rem)' }}
-      className={classNames(
-        'flex items-center px-3 sm:px-4 h-[var(--header-height)] transition-[padding-left] duration-200',
-        'transition-all duration-300 ease-out',
-        {
-          'border-transparent bg-transparent': !chat.started,
-          'bg-[var(--palmkit-mobile-surface-bg)] backdrop-blur-xl border-b border-[var(--palmkit-mobile-surface-border)]':
-            chat.started,
-        },
-      )}
-    >
-      <div className="flex items-center gap-2 z-logo text-palmkit-elements-textPrimary cursor-pointer group">
-        <button
-          onClick={handleMobileMenu}
-          className={classNames(
-            'sm:hidden p-1.5 -ml-1 rounded-lg transition-colors',
-            'text-[var(--palmkit-mobile-text-secondary)]',
-            'hover:bg-[var(--palmkit-mobile-accent-faint)] hover:text-[var(--palmkit-mobile-accent-text)]',
-            'active:bg-[var(--palmkit-mobile-accent-faint)] active:text-[var(--palmkit-mobile-accent-text)]',
-          )}
-          aria-label="Projects and history"
-        >
-          <div className="i-ph:list text-xl" />
-        </button>
-        <button
-          onClick={() => toggleSidebar()}
-          className="hidden sm:block p-1 -ml-1 rounded-lg bg-transparent text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
-          aria-label="Toggle chat history sidebar"
-        >
-          <div className="i-ph:sidebar-simple-duotone text-xl opacity-60 group-hover:opacity-100 transition-opacity duration-200" />
-        </button>
-        <a
-          href="/"
-          className="flex items-center transition-transform duration-200 group-hover:scale-[1.03]"
-          aria-label="Palmkit home"
-        >
-          {/* Palmkit wordmark logo — light/dark variants */}
-          <img src="/palmkit-logo-light.png" alt="Palmkit" className="h-7 w-auto select-none dark:hidden" />
-          <img src="/palmkit-logo-dark.png" alt="Palmkit" className="h-7 w-auto select-none hidden dark:block" />
-        </a>
-      </div>
+    <div className="pointer-events-none absolute inset-x-0 top-0 z-logo flex items-start justify-between p-3 sm:p-4">
+      {/* glassy hamburger — opens the projects drawer on mobile, toggles the sidebar on desktop */}
+      <button onClick={() => mobileActiveTab.set('projects')} className={`${glassButton} sm:hidden`} aria-label="Menu">
+        <div className="i-ph:list text-lg" />
+      </button>
+      <button onClick={() => toggleSidebar()} className={`${glassButton} hidden sm:flex`} aria-label="Toggle sidebar">
+        <div className="i-ph:sidebar-simple text-lg" />
+      </button>
+
       {chat.started && (
-        <span className="flex-1 px-3 sm:px-4 truncate text-center text-xs sm:text-sm font-medium text-[var(--palmkit-mobile-text-secondary)]">
-          <ClientOnly>{() => <ChatDescription />}</ClientOnly>
-        </span>
+        <ClientOnly>
+          {() => (
+            <div className="pointer-events-auto flex-shrink-0">
+              <HeaderActionButtons chatStarted={chat.started} />
+            </div>
+          )}
+        </ClientOnly>
       )}
-      <div className={classNames('flex items-center gap-2', { 'ml-auto': !chat.started })}>
-        {/* Phase 6: Build history link */}
-        <a
-          href="/builds"
-          className="hidden sm:flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-palmkit-elements-textSecondary hover:bg-palmkit-elements-bg-depth-2 hover:text-palmkit-elements-textPrimary transition-colors"
-          aria-label="My Builds"
-        >
-          <div className="i-ph:clock-counter-clockwise text-base" />
-          <span>Builds</span>
-        </a>
-        {chat.started && (
-          <ClientOnly>
-            {() => (
-              <div className="flex-shrink-0">
-                <HeaderActionButtons chatStarted={chat.started} />
-              </div>
-            )}
-          </ClientOnly>
-        )}
-        <ClientOnly>{() => <AccountMenu />}</ClientOnly>
-      </div>
-    </header>
+    </div>
   );
 }
