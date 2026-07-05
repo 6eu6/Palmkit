@@ -99,51 +99,34 @@ export function ThinkingMeter() {
   );
 }
 
-/* One labelled row inside the "+" menu. */
-function MenuRow({
+/* A tappable tile in the "+" menu build-surfaces grid. */
+function MenuTile({
   icon,
   label,
   hint,
-  soon,
-  href,
+  active,
   onClick,
 }: {
   icon: string;
   label: string;
   hint?: string;
-  soon?: boolean;
-  href?: string;
+  active?: boolean;
   onClick?: () => void;
 }) {
-  const inner = (
-    <>
-      <span className={classNames(icon, 'text-[17px] text-palmkit-elements-textSecondary shrink-0')} />
-      <span className="min-w-0 flex-1">
-        <span className="block text-[13px] font-medium text-palmkit-elements-textPrimary">{label}</span>
-        {hint && <span className="block text-[11px] text-palmkit-elements-textTertiary truncate">{hint}</span>}
-      </span>
-      {soon && (
-        <span className="shrink-0 rounded-full bg-palmkit-elements-background-depth-3 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-palmkit-elements-textTertiary">
-          Soon
-        </span>
-      )}
-    </>
-  );
-
-  const cls =
-    'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-palmkit-elements-item-backgroundActive';
-
-  if (href) {
-    return (
-      <a href={href} className={cls}>
-        {inner}
-      </a>
-    );
-  }
-
   return (
-    <button type="button" onClick={onClick} className={cls}>
-      {inner}
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex flex-col gap-2 rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-1 p-3 text-left transition-all hover:border-[var(--pk-glass-border-hi)] hover:bg-palmkit-elements-item-backgroundActive active:scale-[.98]"
+    >
+      <span className="flex items-center justify-between">
+        <span className={classNames(icon, 'text-[19px] text-palmkit-elements-textSecondary')} />
+        {active && <span className="h-1.5 w-1.5 rounded-full bg-[var(--pk-accent)]" />}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[13px] font-semibold text-palmkit-elements-textPrimary">{label}</span>
+        {hint && <span className="block truncate text-[10px] text-palmkit-elements-textTertiary">{hint}</span>}
+      </span>
     </button>
   );
 }
@@ -188,15 +171,75 @@ export function PlusMenu({ onAttach, tools }: { onAttach: () => void; tools: Rea
       <Popover.Portal>
         <Popover.Content
           side="top"
-          align="start"
-          sideOffset={10}
-          className="z-[9999] w-[300px] max-h-[70vh] overflow-y-auto rounded-2xl border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 p-2 shadow-2xl"
+          align="end"
+          sideOffset={12}
+          collisionPadding={8}
+          className={classNames(
+            'z-[9999] w-[calc(100vw-16px)] sm:w-[360px] max-h-[76vh] overflow-y-auto',
+            'rounded-2xl border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 p-3 shadow-2xl',
+          )}
+          style={{ animation: 'pk-menu-in 0.16s cubic-bezier(0.16, 1, 0.3, 1)', transformOrigin: 'bottom center' }}
         >
-          {/* Tools strip — the existing working tools, relocated here. */}
-          <div className="px-1.5 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-palmkit-elements-textTertiary">
+          <style>
+            {'@keyframes pk-menu-in{from{opacity:0;transform:translateY(6px) scale(0.98)}to{opacity:1;transform:none}}'}
+          </style>
+          {/* Build surfaces — a clean 2-up tile grid. */}
+          <div className="grid grid-cols-2 gap-2">
+            <MenuTile
+              icon="i-ph:sparkle"
+              label="Skills"
+              hint={enabledSkills.length > 0 ? `${enabledSkills.length} active` : 'House rules'}
+              active={enabledSkills.length > 0}
+              onClick={() => {
+                setOpen(false);
+                setSkillsOpen(true);
+              }}
+            />
+            <MenuTile
+              icon="i-ph:robot"
+              label="Agents"
+              hint="Build pipeline"
+              onClick={() => {
+                setOpen(false);
+                setAgentsOpen(true);
+              }}
+            />
+            <MenuTile
+              icon="i-ph:flow-arrow"
+              label="Workflows"
+              hint="One-tap presets"
+              onClick={() => {
+                setOpen(false);
+                setWorkflowsOpen(true);
+              }}
+            />
+            <MenuTile
+              icon="i-ph:books"
+              label="Libraries"
+              hint={enabledLibraries.length > 0 ? `${enabledLibraries.length} active` : 'Reusable refs'}
+              active={enabledLibraries.length > 0}
+              onClick={() => {
+                setOpen(false);
+                setLibrariesOpen(true);
+              }}
+            />
+          </div>
+
+          {/* Projects — full-width row. */}
+          <a
+            href="/builds"
+            className="mt-2 flex items-center gap-2.5 rounded-xl border border-palmkit-elements-borderColor px-3 py-2.5 transition-colors hover:bg-palmkit-elements-item-backgroundActive"
+          >
+            <span className="i-ph:folders text-[17px] text-palmkit-elements-textSecondary" />
+            <span className="flex-1 text-[13px] font-medium text-palmkit-elements-textPrimary">Projects</span>
+            <span className="i-ph:caret-right text-xs text-palmkit-elements-textTertiary" />
+          </a>
+
+          {/* Tools — attach + the existing tool components, one tidy row. */}
+          <div className="mt-3 px-0.5 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-palmkit-elements-textTertiary">
             Tools
           </div>
-          <div className="flex items-center gap-1 px-1 pb-1">
+          <div className="flex items-center gap-1 rounded-xl border border-palmkit-elements-borderColor p-1">
             <button
               type="button"
               title="Attach image"
@@ -205,77 +248,26 @@ export function PlusMenu({ onAttach, tools }: { onAttach: () => void; tools: Rea
                 setOpen(false);
                 onAttach();
               }}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary hover:bg-palmkit-elements-item-backgroundActive transition-colors"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-palmkit-elements-textTertiary transition-colors hover:bg-palmkit-elements-item-backgroundActive hover:text-palmkit-elements-textPrimary"
             >
               <div className="i-ph:paperclip text-[18px]" />
             </button>
             {tools}
           </div>
 
-          <div className="my-1.5 h-px bg-palmkit-elements-borderColor/70" />
-
-          {/* Product surfaces */}
-          <MenuRow
-            icon="i-ph:sparkle"
-            label="Skills"
-            hint={
-              enabledSkills.length > 0
-                ? `${enabledSkills.length} active · injected into builds`
-                : 'Reusable instructions injected into builds'
-            }
-            onClick={() => {
-              setOpen(false);
-              setSkillsOpen(true);
-            }}
-          />
-          <MenuRow
-            icon="i-ph:robot"
-            label="Agents"
-            hint="Tune the build pipeline"
-            onClick={() => {
-              setOpen(false);
-              setAgentsOpen(true);
-            }}
-          />
-          <MenuRow
-            icon="i-ph:flow-arrow"
-            label="Workflows"
-            hint="One-tap build presets"
-            onClick={() => {
-              setOpen(false);
-              setWorkflowsOpen(true);
-            }}
-          />
-          <MenuRow
-            icon="i-ph:books"
-            label="Libraries"
-            hint={
-              enabledLibraries.length > 0
-                ? `${enabledLibraries.length} active · reference for builds`
-                : 'Reusable snippets, tokens & docs'
-            }
-            onClick={() => {
-              setOpen(false);
-              setLibrariesOpen(true);
-            }}
-          />
-          <MenuRow icon="i-ph:folders" label="Projects" hint="Your builds" href="/builds" />
-
-          <div className="my-1.5 h-px bg-palmkit-elements-borderColor/70" />
-
-          {/* Starter stack — moved out of the loose row under the suggestions. */}
-          <div className="px-1.5 pb-1.5 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-palmkit-elements-textTertiary">
+          {/* Templates — a single horizontal strip so it never wraps into a mess. */}
+          <div className="mt-3 px-0.5 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-palmkit-elements-textTertiary">
             Start from a stack
           </div>
-          <div className="grid grid-cols-4 gap-1 px-1 pb-1">
+          <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
             {STARTER_TEMPLATES.map((template) => (
               <a
                 key={template.name}
                 href={`/git?url=https://github.com/${template.githubRepo}.git`}
                 title={template.label}
-                className="group flex flex-col items-center gap-1 rounded-lg px-1 py-2 hover:bg-palmkit-elements-item-backgroundActive transition-colors"
+                className="group flex w-[60px] shrink-0 flex-col items-center gap-1 rounded-xl px-1 py-2 transition-colors hover:bg-palmkit-elements-item-backgroundActive"
               >
-                <span className={classNames(template.icon, 'w-6 h-6 text-2xl opacity-80 group-hover:opacity-100')} />
+                <span className={classNames(template.icon, 'h-7 w-7 text-3xl opacity-80 group-hover:opacity-100')} />
                 <span className="w-full truncate text-center text-[9px] text-palmkit-elements-textTertiary">
                   {template.label}
                 </span>
