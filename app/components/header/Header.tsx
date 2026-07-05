@@ -13,7 +13,7 @@ import { toggleSidebar } from '~/lib/stores/sidebar';
  * canvas, so the content reads as one clean surface.
  */
 const glassButton =
-  'pointer-events-auto flex items-center justify-center h-9 w-9 rounded-xl border border-[var(--pk-glass-border)] ' +
+  'pointer-events-auto items-center justify-center h-9 w-9 rounded-xl border border-[var(--pk-glass-border)] ' +
   'bg-[var(--palmkit-mobile-surface-bg,rgba(255,255,255,0.04))] backdrop-blur-xl text-palmkit-elements-textSecondary ' +
   'hover:text-palmkit-elements-textPrimary hover:border-[var(--pk-glass-border-hi)] active:scale-95 transition-all shadow-sm';
 
@@ -22,8 +22,14 @@ export function Header() {
 
   return (
     <div className="pointer-events-none absolute inset-x-0 top-0 z-logo flex items-start justify-between p-3 sm:p-4">
-      {/* glassy hamburger — opens the projects drawer on mobile, toggles the sidebar on desktop */}
-      <button onClick={() => mobileActiveTab.set('projects')} className={`${glassButton} sm:hidden`} aria-label="Menu">
+      {/* glassy hamburger — opens the projects drawer on mobile, toggles the sidebar on desktop.
+          Exactly one is shown per breakpoint; the display class must NOT collide with a base
+          `flex`, so the base has none and each button sets its own. */}
+      <button
+        onClick={() => mobileActiveTab.set('projects')}
+        className={`${glassButton} flex sm:hidden`}
+        aria-label="Menu"
+      >
         <div className="i-ph:list text-lg" />
       </button>
       <button onClick={() => toggleSidebar()} className={`${glassButton} hidden sm:flex`} aria-label="Toggle sidebar">
