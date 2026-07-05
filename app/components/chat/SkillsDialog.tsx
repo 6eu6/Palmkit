@@ -47,7 +47,7 @@ export function SkillsDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-[9999] flex max-h-[85vh] w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 shadow-2xl">
+        <Dialog.Content className="pk-no-fullscreen fixed left-1/2 top-1/2 z-[9999] flex max-h-[85vh] w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 shadow-2xl">
           <div className="flex items-center justify-between border-b border-palmkit-elements-borderColor px-4 py-3">
             <div>
               <Dialog.Title className="text-sm font-semibold text-palmkit-elements-textPrimary">Skills</Dialog.Title>

@@ -117,7 +117,7 @@ function MenuTile({
     <button
       type="button"
       onClick={onClick}
-      className="group flex flex-col gap-2 rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-1 p-3 text-left transition-all hover:border-[var(--pk-glass-border-hi)] hover:bg-palmkit-elements-item-backgroundActive active:scale-[.98]"
+      className="group flex w-[calc(50%-4px)] shrink-0 grow-0 flex-col gap-2 self-start rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-1 p-3 text-left transition-all hover:border-[var(--pk-glass-border-hi)] hover:bg-palmkit-elements-item-backgroundActive active:scale-[.98]"
     >
       <span className="flex items-center justify-between">
         <span className={classNames(icon, 'text-[19px] text-palmkit-elements-textSecondary')} />
@@ -175,7 +175,7 @@ export function PlusMenu({ onAttach, tools }: { onAttach: () => void; tools: Rea
           sideOffset={12}
           collisionPadding={8}
           className={classNames(
-            'z-[9999] w-[calc(100vw-16px)] sm:w-[360px] max-h-[76vh] overflow-y-auto',
+            'pk-no-fullscreen z-[9999] w-[calc(100vw-16px)] sm:w-[360px] max-h-[76vh] overflow-y-auto',
             'rounded-2xl border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 p-3 shadow-2xl',
           )}
           style={{ animation: 'pk-menu-in 0.16s cubic-bezier(0.16, 1, 0.3, 1)', transformOrigin: 'bottom center' }}
@@ -183,8 +183,10 @@ export function PlusMenu({ onAttach, tools }: { onAttach: () => void; tools: Rea
           <style>
             {'@keyframes pk-menu-in{from{opacity:0;transform:translateY(6px) scale(0.98)}to{opacity:1;transform:none}}'}
           </style>
-          {/* Build surfaces — a clean 2-up tile grid. */}
-          <div className="grid grid-cols-2 gap-2">
+          {/* Build surfaces — a clean 2-up tile grid.
+              Uses flex-wrap, NOT `grid`: a stray global `.grid` rule forces a
+              100vh height here, ballooning the tiles. Flex sidesteps it. */}
+          <div className="flex flex-wrap gap-2">
             <MenuTile
               icon="i-ph:sparkle"
               label="Skills"
