@@ -210,7 +210,7 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
           <motion.div
             className={classNames(
               'fixed left-0 top-0 bottom-0 z-[999] flex flex-col w-[85%] max-w-[340px]',
-              'bg-white dark:bg-black border-r border-gray-200 dark:border-white/[0.08]',
+              'bg-white dark:bg-black border-r border-gray-200 dark:border-neutral-800',
               'rounded-r-2xl shadow-2xl',
             )}
             style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
@@ -247,7 +247,7 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
 
             {/* Chat / Work / Code segmented control */}
             <div className="px-4">
-              <div className="flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-white/[0.06]">
+              <div className="flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-neutral-900">
                 {(['chat', 'work', 'code'] as SidebarMode[]).map((m) => (
                   <button
                     key={m}
@@ -255,7 +255,7 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                     className={classNames(
                       'flex-1 rounded-lg py-1.5 text-[13px] font-semibold capitalize transition-all',
                       mode === m
-                        ? 'bg-white text-gray-900 shadow-sm dark:bg-white/[0.14] dark:text-white'
+                        ? 'bg-white text-gray-900 shadow-sm dark:bg-neutral-800 dark:text-white'
                         : 'text-gray-400 dark:text-gray-500',
                     )}
                   >
@@ -269,7 +269,7 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
             <div className="space-y-0.5 px-3 pt-3">
               <button
                 onClick={handleNewProject}
-                className="flex w-full items-center gap-3 rounded-xl bg-gray-50 px-3 py-2.5 text-[14px] font-medium text-gray-900 transition active:bg-gray-100 dark:bg-white/[0.04] dark:text-white dark:active:bg-white/[0.08]"
+                className="flex w-full items-center gap-3 rounded-xl bg-gray-50 px-3 py-2.5 text-[14px] font-medium text-gray-900 transition active:bg-gray-100 dark:bg-neutral-900 dark:text-white dark:active:bg-neutral-800"
               >
                 <span className="i-ph:plus-circle text-lg text-gray-500 dark:text-gray-400" />
                 {mode === 'code' ? 'New Session' : 'New Chat'}
@@ -280,7 +280,7 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                     key={a.label}
                     href={a.href}
                     onClick={onClose}
-                    className="flex items-center gap-3 rounded-xl px-3 py-2 text-[14px] text-gray-700 transition active:bg-gray-50 dark:text-gray-300 dark:active:bg-white/[0.04]"
+                    className="flex items-center gap-3 rounded-xl px-3 py-2 text-[14px] text-gray-700 transition active:bg-gray-50 dark:text-gray-300 dark:active:bg-neutral-900"
                   >
                     <span className={classNames(a.icon, 'text-lg text-gray-400 dark:text-gray-500')} />
                     {a.label}
@@ -289,11 +289,11 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                   <button
                     key={a.label}
                     onClick={() => toast.info(`${a.label} — coming soon`)}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-[14px] text-gray-700 transition active:bg-gray-50 dark:text-gray-300 dark:active:bg-white/[0.04]"
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-[14px] text-gray-700 transition active:bg-gray-50 dark:text-gray-300 dark:active:bg-neutral-900"
                   >
                     <span className={classNames(a.icon, 'text-lg text-gray-400 dark:text-gray-500')} />
                     <span className="flex-1">{a.label}</span>
-                    <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:bg-white/[0.06] dark:text-gray-500">
+                    <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:bg-neutral-800 dark:text-gray-500">
                       Soon
                     </span>
                   </button>
@@ -318,7 +318,7 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                       <div key={item.id} className="group relative">
                         <button
                           onClick={() => handleOpenProject(item)}
-                          className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition active:bg-gray-50 dark:active:bg-white/[0.04]"
+                          className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition active:bg-gray-50 dark:active:bg-neutral-900"
                         >
                           <span
                             className={classNames(
@@ -352,9 +352,9 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
             </div>
 
             {/* Profile footer */}
-            <div className="mt-auto border-t border-gray-100 px-3 py-3 dark:border-white/[0.06]">
-              <button className="flex w-full items-center gap-3 rounded-xl px-2 py-1.5 transition active:bg-gray-50 dark:active:bg-white/[0.04]">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-[13px] font-semibold text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">
+            <div className="mt-auto border-t border-gray-100 px-3 py-3 dark:border-neutral-800">
+              <button className="flex w-full items-center gap-3 rounded-xl px-2 py-1.5 transition active:bg-gray-50 dark:active:bg-neutral-900">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-[13px] font-semibold text-gray-700 dark:bg-neutral-800 dark:text-gray-200">
                   {initials}
                 </span>
                 <span className="min-w-0 flex-1 text-left">

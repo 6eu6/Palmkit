@@ -464,12 +464,12 @@ export const Menu = () => {
         style={{ width: '340px' }}
         className={classNames(
           'flex selection-accent flex-col side-menu fixed top-0 h-full rounded-r-2xl',
-          'bg-white dark:bg-gray-950 border-r border-palmkit-elements-borderColor',
+          'bg-white dark:bg-black border-r border-palmkit-elements-borderColor',
           'shadow-sm text-sm',
           isSettingsOpen ? 'z-40' : 'z-sidebar',
         )}
       >
-        <div className="h-12 flex items-center justify-between px-4 border-b border-gray-100 dark:border-gray-800/50 bg-gray-50/50 dark:bg-gray-900/50 rounded-tr-2xl">
+        <div className="h-12 flex items-center justify-between px-4 border-b border-gray-100 dark:border-neutral-800 bg-gray-50/50 dark:bg-black rounded-tr-2xl">
           <div className="flex items-center gap-2">
             <img src="/palmkit-icon.jpg" alt="Palmkit" className="w-6 h-6 rounded-md object-cover" />
             <span className="font-semibold text-sm text-gray-900 dark:text-white">Palmkit</span>
@@ -483,7 +483,7 @@ export const Menu = () => {
         <div className="flex-1 flex flex-col h-full w-full overflow-hidden">
           <div className="p-4 space-y-3">
             {/* Chat / Work / Code — same clean control as the mobile drawer. */}
-            <div className="flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-white/[0.06]">
+            <div className="flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-neutral-900">
               {(['chat', 'work', 'code'] as SidebarMode[]).map((m) => (
                 <button
                   key={m}
@@ -491,7 +491,7 @@ export const Menu = () => {
                   className={classNames(
                     'flex-1 rounded-lg py-1.5 text-[13px] font-semibold capitalize transition-all',
                     mode === m
-                      ? 'bg-white text-gray-900 shadow-sm dark:bg-white/[0.14] dark:text-white'
+                      ? 'bg-white text-gray-900 shadow-sm dark:bg-neutral-800 dark:text-white'
                       : 'text-gray-400 dark:text-gray-500',
                   )}
                 >
