@@ -482,17 +482,17 @@ export const Menu = () => {
         <CurrentDateTime />
         <div className="flex-1 flex flex-col h-full w-full overflow-hidden">
           <div className="p-4 space-y-3">
-            {/* Chat / Work / Code — the workspace this sidebar is scoped to. */}
-            <div className="grid grid-cols-3 gap-1 rounded-xl bg-gray-100 dark:bg-gray-900 p-1">
+            {/* Chat / Work / Code — same clean control as the mobile drawer. */}
+            <div className="flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-white/[0.06]">
               {(['chat', 'work', 'code'] as SidebarMode[]).map((m) => (
                 <button
                   key={m}
                   onClick={() => setSidebarMode(m)}
                   className={classNames(
-                    'rounded-lg py-1.5 text-sm font-medium capitalize transition-colors',
+                    'flex-1 rounded-lg py-1.5 text-[13px] font-semibold capitalize transition-all',
                     mode === m
-                      ? 'bg-white dark:bg-black text-gray-900 dark:text-gray-100 shadow-sm'
-                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
+                      ? 'bg-white text-gray-900 shadow-sm dark:bg-white/[0.14] dark:text-white'
+                      : 'text-gray-400 dark:text-gray-500',
                   )}
                 >
                   {m}

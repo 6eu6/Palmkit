@@ -330,10 +330,10 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                                   : 'bg-gray-300 dark:bg-gray-600',
                             )}
                           />
-                          <span className="min-w-0 flex-1 truncate text-[14px] text-gray-800 dark:text-gray-200">
+                          <span className="min-w-0 flex-1 truncate text-[14px] text-palmkit-elements-textPrimary">
                             {item.description || 'Untitled'}
                           </span>
-                          <span className="shrink-0 text-[11px] text-gray-400 dark:text-gray-600">
+                          <span className="shrink-0 text-[11px] text-palmkit-elements-textTertiary">
                             {formatTime(item.timestamp)}
                           </span>
                         </button>
