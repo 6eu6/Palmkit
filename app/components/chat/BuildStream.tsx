@@ -13,7 +13,7 @@
  * Built with UnoCSS (presetUno utilities + presetIcons `i-ph:*`) and the
  * existing `palmkit-elements-*` theme tokens — no new dependencies.
  */
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '@nanostores/react';
 import { workerEventsStore, workerProgressStore, type WorkerEvent } from '~/lib/stores/build-status';
 import { classNames } from '~/utils/classNames';
@@ -462,24 +462,35 @@ export const BuildStreamView = memo(
     events,
     progress,
     currentStep,
-    collapsible = false,
     defaultOpen = true,
   }: {
     events: WorkerEvent[];
     progress: number;
     currentStep: string;
-    collapsible?: boolean;
     defaultOpen?: boolean;
   }) => {
     const [open, setOpen] = useState(defaultOpen);
+    const userToggled = useRef(false);
     const sections = useMemo(() => foldEvents(events), [events]);
+
+    const done = currentStep === 'done' || events.some((e) => e.type === 'ready_for_preview');
+    const failed = events.some((e) => e.type === 'job_failed');
+
+    /*
+     * Auto-collapse the live stream into a one-line summary when the build
+     * finishes — the way a coding agent folds "Worked for 1m 20s ⌄" so the
+     * thread stays scannable — while keeping it fully expanded during the build.
+     * A failure stays open (the user needs the error). Manual toggles win.
+     */
+    useEffect(() => {
+      if (done && !failed && !userToggled.current) {
+        setOpen(false);
+      }
+    }, [done, failed]);
 
     if (events.length === 0 && progress === 0) {
       return null;
     }
-
-    const done = currentStep === 'done' || events.some((e) => e.type === 'ready_for_preview');
-    const failed = events.some((e) => e.type === 'job_failed');
 
     // Human-readable failure reason for the unified failure card.
     const failureReason = (() => {
@@ -508,14 +519,55 @@ export const BuildStreamView = memo(
     ).size;
     const displayProgress = done ? 100 : Math.max(progress, 5);
 
+    /*
+     * The most recent action — shown as a live monospace tail in the header
+     * while building (e.g. "Writing App.tsx", "$ npm run build", "Read App.jsx"),
+     * the way Le Chat/Cursor show the current step next to "Working". Scans the
+     * folded sections from the end for the latest meaningful row.
+     */
+    const lastAction = (() => {
+      for (let i = sections.length - 1; i >= 0; i--) {
+        const rows = sections[i].rows;
+
+        for (let j = rows.length - 1; j >= 0; j--) {
+          const r = rows[j];
+
+          if (r.kind === 'file') {
+            const verb = r.changeKind === 'delete' ? 'Deleting' : r.changeKind === 'edit' ? 'Editing' : 'Writing';
+            return `${verb} ${r.path.split('/').pop()}`;
+          }
+
+          if (r.kind === 'command') {
+            return `$ ${r.text}`;
+          }
+
+          if (r.kind === 'read' || r.kind === 'system') {
+            return r.text;
+          }
+
+          if (r.kind === 'thinking') {
+            return 'Thinking…';
+          }
+        }
+      }
+
+      return currentStep === 'queued' ? 'Preparing…' : 'Working…';
+    })();
+
+    // Total agent time, for the "· Worked for Xs" summary once the build ends.
+    const totalMs = sections.reduce((sum, sec) => sum + (sec.durationMs ?? 0), 0);
+
+    const toggle = () => {
+      userToggled.current = true;
+      setOpen((o) => !o);
+    };
+
     return (
       <div className="mx-3 mb-3 overflow-hidden rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-2">
-        {/* header */}
+        {/* header — click to expand/collapse the timeline */}
         <div
-          className={classNames('border-b border-palmkit-elements-borderColor/60 px-4 py-2.5', {
-            'cursor-pointer select-none': collapsible,
-          })}
-          onClick={collapsible ? () => setOpen((o) => !o) : undefined}
+          className="cursor-pointer select-none border-b border-palmkit-elements-borderColor/60 px-4 py-2.5"
+          onClick={toggle}
         >
           <div className="flex items-center gap-2">
             {failed || done ? (
@@ -543,24 +595,25 @@ export const BuildStreamView = memo(
                       ? 'Build complete'
                       : phaseLabel(currentStep)}
             </span>
-            {fileCount > 0 && (
-              <span
-                className={classNames('text-xs text-palmkit-elements-textTertiary tabular-nums', {
-                  'ml-auto': !collapsible,
-                  'ml-2': collapsible,
-                })}
-              >
-                {fileCount} files
+            {/* live action tail while building (Le Chat style) */}
+            {!done && !failed && (
+              <span className="min-w-0 flex-1 truncate font-mono text-xs text-palmkit-elements-textTertiary">
+                {lastAction}
               </span>
             )}
-            {collapsible && (
-              <span
-                className={classNames(
-                  'ml-auto shrink-0 text-palmkit-elements-textTertiary transition-transform',
-                  open ? 'i-ph:caret-up' : 'i-ph:caret-down',
-                )}
-              />
-            )}
+            <span
+              className={classNames('shrink-0 text-xs text-palmkit-elements-textTertiary tabular-nums', {
+                'ml-auto': done || failed,
+              })}
+            >
+              {done && totalMs > 0 ? `Worked for ${fmtDur(totalMs)}` : fileCount > 0 ? `${fileCount} files` : ''}
+            </span>
+            <span
+              className={classNames(
+                'shrink-0 text-palmkit-elements-textTertiary transition-transform',
+                open ? 'i-ph:caret-up' : 'i-ph:caret-down',
+              )}
+            />
           </div>
           {!done && (
             <div className="mt-2 h-1 overflow-hidden rounded-full bg-palmkit-elements-bg-depth-1">

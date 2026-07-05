@@ -58,5 +58,5 @@ export function TurnBuildStream({ jobId }: { jobId: string }) {
   }
 
   // A past turn is always finished — render collapsed, marked done.
-  return <BuildStreamView events={events} progress={100} currentStep="done" collapsible defaultOpen={false} />;
+  return <BuildStreamView events={events} progress={100} currentStep="done" defaultOpen={false} />;
 }
