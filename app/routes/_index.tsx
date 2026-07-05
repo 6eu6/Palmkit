@@ -5,7 +5,6 @@ import { BaseChat } from '~/components/chat/BaseChat';
 import { Chat } from '~/components/chat/Chat.client';
 import { Header } from '~/components/header/Header';
 import { Landing } from '~/components/landing/Landing';
-import BackgroundRays from '~/components/ui/BackgroundRays';
 import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
 
 export const meta: MetaFunction = () => {
@@ -40,7 +39,6 @@ export default function Index() {
 
   return (
     <div className="relative flex flex-col h-full w-full bg-palmkit-elements-background-depth-1">
-      <ClientOnly>{() => <BackgroundRays />}</ClientOnly>
       <Header />
       <ClientOnly fallback={<BaseChat />}>{() => <Chat />}</ClientOnly>
     </div>
