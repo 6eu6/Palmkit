@@ -23,8 +23,12 @@ export interface PalmkitLoaderProps {
 const KEYFRAMES = `
 @keyframes pk-loader-trace { to { stroke-dashoffset: -316; } }
 @keyframes pk-loader-shine { 60%, 100% { transform: translateX(70%) rotate(22deg); } }
+@keyframes pk-loader-breathe {
+  0%, 100% { transform: scale(0.9); opacity: 0.72; }
+  50%      { transform: scale(1); opacity: 1; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .pk-loader-trace, .pk-loader-shine { animation: none !important; }
+  .pk-loader-trace, .pk-loader-shine, .pk-loader-breathe { animation: none !important; }
 }
 `;
 
@@ -88,7 +92,18 @@ export const PalmkitLoader = memo(({ size = 148, className = '', bare = false }:
         style={{ display: 'inline-flex', width: size, height: size }}
       >
         <style>{KEYFRAMES}</style>
-        {icon('currentColor', Math.max(2, size * 0.12))}
+        {/* The mark gently breathes while the light-trace runs its strokes —
+            so the working indicator reads as the live Palmkit logo. */}
+        <span
+          className="pk-loader-breathe"
+          style={{
+            display: 'inline-flex',
+            transformOrigin: 'center',
+            animation: 'pk-loader-breathe 1.8s ease-in-out infinite',
+          }}
+        >
+          {icon('currentColor', Math.max(2, size * 0.12))}
+        </span>
       </span>
     );
   }

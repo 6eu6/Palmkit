@@ -471,7 +471,7 @@ export const Menu = () => {
       >
         <div className="h-12 flex items-center justify-between px-4 border-b border-gray-100 dark:border-neutral-800 bg-gray-50/50 dark:bg-black rounded-tr-2xl">
           <div className="flex items-center gap-2">
-            <img src="/palmkit-icon.jpg" alt="Palmkit" className="w-6 h-6 rounded-md object-cover" />
+            <img src="/palmkit-mark.png" alt="" className="w-6 h-6 object-contain" />
             <span className="font-semibold text-sm text-gray-900 dark:text-white">Palmkit</span>
           </div>
           <div className="flex items-center gap-2">
