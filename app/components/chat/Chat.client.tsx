@@ -1094,7 +1094,13 @@ export const ChatImpl = memo(
          * - Browser history (back button works)
          * - Bookmarking
          */
-        if (window.location.pathname !== `/chat/${workerChatId}`) {
+        /*
+         * Only claim the URL for a BRAND-NEW chat (started from "/"). On a
+         * follow-up we're already on this chat's /chat/<slug> URL, and
+         * storeMessageHistory keeps that slug — replacing it with the internal
+         * numeric id here would needlessly change the address bar mid-conversation.
+         */
+        if (!window.location.pathname.startsWith('/chat/')) {
           window.history.replaceState({}, '', `/chat/${workerChatId}`);
         }
 

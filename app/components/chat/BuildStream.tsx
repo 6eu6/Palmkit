@@ -13,7 +13,7 @@
  * Built with UnoCSS (presetUno utilities + presetIcons `i-ph:*`) and the
  * existing `palmkit-elements-*` theme tokens — no new dependencies.
  */
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { useStore } from '@nanostores/react';
 import { workerEventsStore, workerProgressStore, type WorkerEvent } from '~/lib/stores/build-status';
 import { classNames } from '~/utils/classNames';
@@ -216,9 +216,15 @@ function foldEvents(events: WorkerEvent[]): Section[] {
 
 /* ── Presentational pieces ──────────────────────────────────────────────── */
 
+/*
+ * The model's reasoning/narration — the "thinking" and explanation of what it's
+ * doing. Shown EXPANDED by default so the build reads like a conversation (the
+ * agent talking through its work), not a hidden line. Long runs can be folded by
+ * tapping; very long ones start folded so a single huge thought doesn't dominate.
+ */
 const Thinking = memo(({ text }: { text: string }) => {
-  const [open, setOpen] = useState(false);
-  const preview = text.length > 140 ? `${text.slice(0, 140)}…` : text;
+  const [open, setOpen] = useState(text.length <= 1200);
+  const preview = text.length > 220 ? `${text.slice(0, 220)}…` : text;
 
   return (
     <button
@@ -229,7 +235,7 @@ const Thinking = memo(({ text }: { text: string }) => {
       <span className="i-ph:brain mt-0.5 shrink-0 text-palmkit-elements-textTertiary" />
       <span
         className={classNames(
-          'text-sm leading-relaxed text-palmkit-elements-textSecondary italic whitespace-pre-wrap',
+          'whitespace-pre-wrap text-sm leading-relaxed text-palmkit-elements-textSecondary',
           open ? '' : 'line-clamp-2',
         )}
       >
@@ -470,23 +476,10 @@ export const BuildStreamView = memo(
     defaultOpen?: boolean;
   }) => {
     const [open, setOpen] = useState(defaultOpen);
-    const userToggled = useRef(false);
     const sections = useMemo(() => foldEvents(events), [events]);
 
     const done = currentStep === 'done' || events.some((e) => e.type === 'ready_for_preview');
     const failed = events.some((e) => e.type === 'job_failed');
-
-    /*
-     * Auto-collapse the live stream into a one-line summary when the build
-     * finishes — the way a coding agent folds "Worked for 1m 20s ⌄" so the
-     * thread stays scannable — while keeping it fully expanded during the build.
-     * A failure stays open (the user needs the error). Manual toggles win.
-     */
-    useEffect(() => {
-      if (done && !failed && !userToggled.current) {
-        setOpen(false);
-      }
-    }, [done, failed]);
 
     if (events.length === 0 && progress === 0) {
       return null;
@@ -557,10 +550,7 @@ export const BuildStreamView = memo(
     // Total agent time, for the "· Worked for Xs" summary once the build ends.
     const totalMs = sections.reduce((sum, sec) => sum + (sec.durationMs ?? 0), 0);
 
-    const toggle = () => {
-      userToggled.current = true;
-      setOpen((o) => !o);
-    };
+    const toggle = () => setOpen((o) => !o);
 
     return (
       <div className="mx-3 mb-3 overflow-hidden rounded-xl border border-palmkit-elements-borderColor bg-palmkit-elements-bg-depth-2">
@@ -606,7 +596,13 @@ export const BuildStreamView = memo(
                 'ml-auto': done || failed,
               })}
             >
-              {done && totalMs > 0 ? `Worked for ${fmtDur(totalMs)}` : fileCount > 0 ? `${fileCount} files` : ''}
+              {done
+                ? [totalMs > 0 ? `Worked for ${fmtDur(totalMs)}` : '', fileCount > 0 ? `${fileCount} files` : '']
+                    .filter(Boolean)
+                    .join(' · ')
+                : fileCount > 0
+                  ? `${fileCount} files`
+                  : ''}
             </span>
             <span
               className={classNames(
