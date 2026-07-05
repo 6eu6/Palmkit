@@ -469,7 +469,9 @@ export const Menu = () => {
           isSettingsOpen ? 'z-40' : 'z-sidebar',
         )}
       >
-        <div className="h-12 flex items-center justify-between px-4 border-b border-gray-100 dark:border-neutral-800 bg-gray-50/50 dark:bg-black rounded-tr-2xl">
+        {/* Left padding clears the floating glass sidebar-toggle that overlays
+            the top-left corner, so the brand mark isn't hidden behind it. */}
+        <div className="h-12 flex items-center justify-between pl-14 pr-3 border-b border-gray-100 dark:border-neutral-800 bg-gray-50/50 dark:bg-black rounded-tr-2xl">
           <div className="flex items-center gap-2">
             <img src="/palmkit-mark.png" alt="" className="w-6 h-6 object-contain dark:hidden" />
             <img src="/palmkit-mark-ondark.png" alt="" className="hidden w-6 h-6 object-contain dark:block" />
