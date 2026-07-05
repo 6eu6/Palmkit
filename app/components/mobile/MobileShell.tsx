@@ -120,14 +120,23 @@ export const MobileShell = memo(() => {
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
   const [mobileProjectsOpen, setMobileProjectsOpen] = useState(false);
 
+  /*
+   * The Settings drawer (ControlPanel) renders at z-[100/101], while the
+   * Projects drawer sits at z-[999]. If both are open at once the Projects
+   * drawer covers Settings — so the user taps "Settings" from the account
+   * menu and sees nothing change. Make the two drawers mutually exclusive:
+   * opening one closes the other.
+   */
   useEffect(() => {
     if (isSettingsTab) {
+      setMobileProjectsOpen(false);
       setMobileSettingsOpen(true);
     }
   }, [isSettingsTab]);
 
   useEffect(() => {
     if (isProjectsTab) {
+      setMobileSettingsOpen(false);
       setMobileProjectsOpen(true);
     }
   }, [isProjectsTab]);

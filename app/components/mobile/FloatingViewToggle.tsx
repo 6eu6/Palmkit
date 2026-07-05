@@ -110,8 +110,9 @@ export const FloatingViewToggle = memo(() => {
       aria-label={toView === 'app' ? 'Open app preview' : 'Back to chat'}
       className={classNames(
         'sm:hidden fixed left-0 top-0 z-[60] flex items-center justify-center rounded-full',
-        'border border-[var(--pk-glass-border-hi)] bg-[var(--pk-glass-bg-hi)] backdrop-blur-xl backdrop-saturate-150',
-        'text-palmkit-elements-textPrimary shadow-lg active:scale-95',
+        'border border-[var(--pk-glass-border-hi)] bg-[var(--pk-glass-bg-hi)] backdrop-blur-2xl backdrop-saturate-[1.8]',
+        'text-palmkit-elements-textPrimary active:scale-95',
+        'shadow-[inset_0_1px_0_0_rgba(255,255,255,0.5),0_8px_22px_-6px_rgba(0,0,0,0.35)]',
       )}
       style={{ x, y, width: SIZE, height: SIZE, touchAction: 'none' }}
       drag

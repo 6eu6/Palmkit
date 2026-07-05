@@ -1,5 +1,5 @@
 import { useLoaderData, useNavigate, useSearchParams } from '@remix-run/react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useStore } from '@nanostores/react';
 import { atom } from 'nanostores';
 import { generateId, type JSONValue, type Message } from 'ai';
@@ -273,6 +273,37 @@ export function useChatHistory() {
   const accountUser = useStore(authUserStore);
 
   /*
+   * Route-change teardown (render-time, the official React "adjust state when
+   * a prop changes" pattern). When the route id changes, we synchronously tear
+   * down the previously-mounted chat — ready=false, messages=[] — so that
+   * <ChatImpl> (keyed by routeId in Chat.client.tsx) unmounts BEFORE the
+   * browser paints a stale frame. It remounts fresh once the new chat finishes
+   * loading, picking up the new initialMessages. This is what makes clicking a
+   * conversation (or starting a new one) actually switch the view without a
+   * manual page refresh.
+   *
+   * Doing this during render (not in an effect) is intentional: an effect runs
+   * AFTER paint, so there'd be one visible frame of the old chat's messages on
+   * the new route. Setting state during render re-renders immediately, so the
+   * stale frame is never committed.
+   *
+   * NOTE: brand-new chats are created via window.history.replaceState (see
+   * Chat.client.tsx), which does NOT re-run the Remix loader, so `mixedId`
+   * stays undefined during creation and this teardown never fires mid-stream.
+   */
+  const [prevRouteId, setPrevRouteId] = useState<string | undefined>(mixedId);
+
+  if (mixedId !== prevRouteId) {
+    setPrevRouteId(mixedId);
+    setReady(false);
+    setInitialMessages([]);
+    setArchivedMessages([]);
+    setUrlId(undefined);
+  }
+
+  const loadEpochRef = useRef(0);
+
+  /*
    * On sign-in, pull the user's projects from the account into the local store
    * so the chat list reflects work created on other devices.
    */
@@ -283,6 +314,15 @@ export function useChatHistory() {
   }, [accountUser?.id]);
 
   useEffect(() => {
+    /*
+     * Stale-load guard (epoch token). If the user navigates A -> B while A's
+     * (slow, R2-backed) restore is still in flight, A's .then() resolves after
+     * B's epoch is current and is dropped, so it can never clobber B's
+     * freshly-loaded state. The route-change teardown itself happens during
+     * render (see prevRouteId below) so there's no stale frame.
+     */
+    const myEpoch = ++loadEpochRef.current;
+
     /*
      * SILENT INSTANT RESTORE from sessionStorage (for worker builds).
      * This runs BEFORE the db check because IndexedDB might not be ready
@@ -395,6 +435,11 @@ export function useChatHistory() {
           return [storedMessages, snapshot] as const;
         })
         .then(async ([storedMessages, snapshot]) => {
+          // Stale-load guard: a newer navigation superseded this one.
+          if (loadEpochRef.current !== myEpoch) {
+            return;
+          }
+
           const hasMessages = storedMessages && storedMessages.messages.length > 0;
           const hasSnapshot = snapshot && snapshot.files && Object.keys(snapshot.files).length > 0;
 
@@ -1244,6 +1289,11 @@ ${value.content}
           }
         })
         .catch((error) => {
+          // Stale-load guard: don't surface errors for a chat we've already left.
+          if (loadEpochRef.current !== myEpoch) {
+            return;
+          }
+
           console.error(error);
 
           logStore.logError('Failed to load chat messages or snapshot', error);
@@ -1368,6 +1418,7 @@ ${value.content}
 
   return {
     ready: !mixedId || ready,
+    routeId: mixedId,
     initialMessages,
     updateChatMestaData: async (metadata: IChatMetadata) => {
       const id = chatId.get();

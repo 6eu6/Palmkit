@@ -55,19 +55,37 @@ const logger = createScopedLogger('Chat');
 export function Chat() {
   renderLogger.trace('Chat');
 
-  const { ready, initialMessages, storeMessageHistory, importChat, exportChat, takeDebouncedSnapshot, takeSnapshot } =
-    useChatHistory();
+  const {
+    ready,
+    routeId,
+    initialMessages,
+    storeMessageHistory,
+    importChat,
+    exportChat,
+    takeDebouncedSnapshot,
+    takeSnapshot,
+  } = useChatHistory();
   const title = useStore(descriptionAtom);
   const [projectListOpen, setProjectListOpen] = useState(false);
   useEffect(() => {
     workbenchStore.setReloadedMessages(initialMessages.map((m) => m.id));
   }, [initialMessages]);
 
+  /*
+   * Keying <ChatImpl> by the route id remounts the whole chat tree when the
+   * user switches conversations (/chat/A -> /chat/B) or starts a new one
+   * (/chat/A -> /). useChat() only reads `initialMessages` on mount, so
+   * without this key the previous chat's messages would stay on screen until
+   * a manual page refresh. Brand-new chats are created via history.replaceState
+   * (no loader re-run), so routeId stays undefined during creation and the
+   * in-flight stream is preserved.
+   */
   return (
     <>
       <RestoreOverlay />
       {ready && (
         <ChatImpl
+          key={routeId ?? 'home'}
           description={title}
           initialMessages={initialMessages}
           exportChat={exportChat}

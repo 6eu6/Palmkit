@@ -11,12 +11,18 @@ import { toggleSidebar } from '~/lib/stores/sidebar';
  * exists, the workbench actions (top-right). The logo, chat title, Builds link
  * and account menu all live in the sidebar now — nothing chromes the top of the
  * canvas, so the content reads as one clean surface.
+ *
+ * The hamburger uses a true iOS frosted-glass treatment: a translucent fill,
+ * heavy backdrop blur + saturation, a hairline border, a 1px specular highlight
+ * along the top inside edge (the "lit" rim that makes frosted glass read as a
+ * physical pane), and a soft drop shadow so it lifts off the canvas.
  */
 const glassButton =
-  'pointer-events-auto items-center justify-center h-9 w-9 rounded-xl border border-[var(--pk-glass-border)] ' +
-  'bg-[var(--pk-glass-bg)] backdrop-blur-xl backdrop-saturate-150 text-palmkit-elements-textSecondary ' +
+  'pointer-events-auto items-center justify-center h-10 w-10 rounded-2xl border border-[var(--pk-glass-border)] ' +
+  'bg-[var(--pk-glass-bg)] backdrop-blur-2xl backdrop-saturate-[1.8] text-palmkit-elements-textSecondary ' +
+  'shadow-[inset_0_1px_0_0_rgba(255,255,255,0.55),inset_0_-1px_0_0_rgba(0,0,0,0.04),0_6px_18px_-6px_rgba(0,0,0,0.28)] ' +
   'hover:text-palmkit-elements-textPrimary hover:bg-[var(--pk-glass-bg-hi)] hover:border-[var(--pk-glass-border-hi)] ' +
-  'active:scale-95 transition-all shadow-sm';
+  'active:scale-95 transition-all duration-200';
 
 export function Header() {
   const chat = useStore(chatStore);

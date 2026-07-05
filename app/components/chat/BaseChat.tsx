@@ -3,7 +3,7 @@
  * Preventing TS checks with files presented in the video for a better presentation.
  */
 import type { JSONValue, Message } from 'ai';
-import React, { type RefCallback, lazy, Suspense, useEffect, useState } from 'react';
+import React, { type RefCallback, useEffect, useState } from 'react';
 import { ClientOnly } from 'remix-utils/client-only';
 import { Menu } from '~/components/sidebar/Menu.client';
 import { Workbench } from '~/components/workbench/Workbench.client';
@@ -39,10 +39,6 @@ import LlmErrorAlert from './LLMApiAlert';
 import { MobileShell } from '~/components/mobile/MobileShell';
 import { AuthModal } from '~/components/auth/AuthModal';
 import { authUserStore } from '~/lib/stores/auth';
-import type { PersonaState } from '~/lib/orb/orb-presets';
-
-// Live WebGL orb — loaded client-only (lazy) so the shader never runs on SSR.
-const LiquidOrb = lazy(() => import('./LiquidOrb'));
 
 const TEXTAREA_MIN_HEIGHT = 96;
 
@@ -585,18 +581,8 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       </div>
     );
 
-    const personaState: PersonaState = isStreaming ? 'thinking' : input.length > 0 ? 'listening' : 'idle';
-
     return (
       <Tooltip.Provider delayDuration={200}>
-        {/* Live liquid-metal orb — hero of the welcome screen */}
-        <ClientOnly>
-          {() => (
-            <Suspense fallback={null}>
-              <LiquidOrb state={personaState} visible={!chatStarted} />
-            </Suspense>
-          )}
-        </ClientOnly>
         {baseChat}
         <ClientOnly>{() => <MobileShell />}</ClientOnly>
         <ClientOnly>{() => <AuthModal />}</ClientOnly>
