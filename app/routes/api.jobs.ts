@@ -57,7 +57,19 @@ export async function action(args: ActionFunctionArgs) {
     return json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { prompt, model, provider, projectId, files, editJobId, reasoningEffort, modelRoles, skills } = body;
+  const {
+    prompt,
+    model,
+    provider,
+    projectId,
+    files,
+    editJobId,
+    reasoningEffort,
+    modelRoles,
+    skills,
+    libraries,
+    agentConfig,
+  } = body;
 
   if (!prompt || typeof prompt !== 'string') {
     return json({ error: 'prompt is required' }, { status: 400 });
@@ -159,6 +171,34 @@ export async function action(args: ActionFunctionArgs) {
                 .slice(0, 12)
                 .map((s) => ({ name: s.name.slice(0, 80), instructions: s.instructions.slice(0, 2000) })),
             }
+          : {}),
+
+        /*
+         * Libraries: reference material ({ name, kind, content }) injected into
+         * the Builder. Capped like skills to keep the row small.
+         */
+        ...(Array.isArray(libraries) && libraries.length > 0
+          ? {
+              libraries: libraries
+                .filter(
+                  (l: unknown): l is { name: string; kind: string; content: string } =>
+                    !!l && typeof (l as any).name === 'string' && typeof (l as any).content === 'string',
+                )
+                .slice(0, 12)
+                .map((l) => ({
+                  name: l.name.slice(0, 80),
+                  kind: typeof l.kind === 'string' ? l.kind.slice(0, 24) : 'ref',
+                  content: l.content.slice(0, 4000),
+                })),
+            }
+          : {}),
+
+        /*
+         * Agents: optional pipeline phases the user turned off (Researcher /
+         * Tester). Only present when non-default; the orchestrator honours it.
+         */
+        ...(agentConfig && typeof agentConfig === 'object'
+          ? { agentConfig: { researcher: agentConfig.researcher !== false, tester: agentConfig.tester !== false } }
           : {}),
       },
     })

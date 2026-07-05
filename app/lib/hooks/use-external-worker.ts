@@ -546,6 +546,14 @@ export function useExternalWorker() {
         const { getActiveSkillPayload } = await import('~/lib/stores/skills');
         const skills = getActiveSkillPayload();
 
+        // Libraries: enabled reference material injected into the Builder.
+        const { getActiveLibraryPayload } = await import('~/lib/stores/libraries');
+        const libraries = getActiveLibraryPayload();
+
+        // Agents: optional pipeline phases (Researcher/Tester) the user toggled off.
+        const { getAgentConfigPayload } = await import('~/lib/stores/agents');
+        const agentConfig = getAgentConfigPayload();
+
         const resp = await fetch('/api/jobs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -556,6 +564,8 @@ export function useExternalWorker() {
             reasoningEffort: reasoningEffortStore.get(),
             ...(Object.keys(roles).length > 0 ? { modelRoles: roles } : {}),
             ...(skills.length > 0 ? { skills } : {}),
+            ...(libraries.length > 0 ? { libraries } : {}),
+            ...(agentConfig ? { agentConfig } : {}),
             ...(editFromJobId ? { editJobId: editFromJobId } : {}),
             ...(projectId ? { projectId } : {}),
           }),

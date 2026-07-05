@@ -2,12 +2,13 @@ import React from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { useStore } from '@nanostores/react';
-import { toast } from 'react-toastify';
 import { classNames } from '~/utils/classNames';
 import { STARTER_TEMPLATES } from '~/utils/constants';
 import { reasoningEffortStore, setReasoningEffort, REASONING_LEVELS } from '~/lib/stores/model-roles';
 import { enabledSkillsStore } from '~/lib/stores/skills';
+import { enabledLibrariesStore } from '~/lib/stores/libraries';
 import { SkillsDialog } from './SkillsDialog';
+import { AgentsDialog, LibrariesDialog, WorkflowsDialog } from './BuilderPanels';
 
 /**
  * ThinkingMeter — the "thinking power" control (v3 Phase 5).
@@ -161,11 +162,11 @@ function MenuRow({
 export function PlusMenu({ onAttach, tools }: { onAttach: () => void; tools: React.ReactNode }) {
   const [open, setOpen] = React.useState(false);
   const [skillsOpen, setSkillsOpen] = React.useState(false);
+  const [agentsOpen, setAgentsOpen] = React.useState(false);
+  const [workflowsOpen, setWorkflowsOpen] = React.useState(false);
+  const [librariesOpen, setLibrariesOpen] = React.useState(false);
   const enabledSkills = useStore(enabledSkillsStore);
-  const soon = (label: string) => () => {
-    setOpen(false);
-    toast.info(`${label} — coming soon`);
-  };
+  const enabledLibraries = useStore(enabledLibrariesStore);
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -230,23 +231,33 @@ export function PlusMenu({ onAttach, tools }: { onAttach: () => void; tools: Rea
           <MenuRow
             icon="i-ph:robot"
             label="Agents"
-            hint="Custom sub-agents for your flow"
-            soon
-            onClick={soon('Agents')}
+            hint="Tune the build pipeline"
+            onClick={() => {
+              setOpen(false);
+              setAgentsOpen(true);
+            }}
           />
           <MenuRow
             icon="i-ph:flow-arrow"
             label="Workflows"
-            hint="Multi-step automations"
-            soon
-            onClick={soon('Workflows')}
+            hint="One-tap build presets"
+            onClick={() => {
+              setOpen(false);
+              setWorkflowsOpen(true);
+            }}
           />
           <MenuRow
             icon="i-ph:books"
             label="Libraries"
-            hint="Saved snippets, components & docs"
-            soon
-            onClick={soon('Libraries')}
+            hint={
+              enabledLibraries.length > 0
+                ? `${enabledLibraries.length} active · reference for builds`
+                : 'Reusable snippets, tokens & docs'
+            }
+            onClick={() => {
+              setOpen(false);
+              setLibrariesOpen(true);
+            }}
           />
           <MenuRow icon="i-ph:folders" label="Projects" hint="Your builds" href="/builds" />
 
@@ -274,6 +285,9 @@ export function PlusMenu({ onAttach, tools }: { onAttach: () => void; tools: Rea
         </Popover.Content>
       </Popover.Portal>
       <SkillsDialog open={skillsOpen} onOpenChange={setSkillsOpen} />
+      <AgentsDialog open={agentsOpen} onOpenChange={setAgentsOpen} />
+      <WorkflowsDialog open={workflowsOpen} onOpenChange={setWorkflowsOpen} />
+      <LibrariesDialog open={librariesOpen} onOpenChange={setLibrariesOpen} />
     </Popover.Root>
   );
 }

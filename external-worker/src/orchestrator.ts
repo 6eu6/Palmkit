@@ -94,6 +94,12 @@ export async function runOrchestratedBuild(
 
     /** User-enabled Skills — instruction playbooks injected into Planner/Builder. */
     skills?: { name: string; instructions: string }[];
+
+    /** User-enabled Libraries — reference material injected into the Builder. */
+    libraries?: { name: string; kind: string; content: string }[];
+
+    /** Optional pipeline phases the user toggled (Researcher / Tester). */
+    agentConfig?: { researcher: boolean; tester: boolean };
   },
 ): Promise<OrchestratorResult> {
   const startTime = Date.now();
@@ -254,6 +260,18 @@ export async function runOrchestratedBuild(
         continue;
       }
 
+      // Agents setting: user turned this optional phase off.
+      if (role === 'researcher' && opts?.agentConfig && opts.agentConfig.researcher === false) {
+        logger.info('[orchestrator] Skipping Researcher (disabled by Agents setting)');
+        continue;
+      }
+
+      if (role === 'tester' && opts?.agentConfig && opts.agentConfig.tester === false) {
+        logger.info('[orchestrator] Skipping Tester (disabled by Agents setting)');
+        await emitEvent(supabase, jobId, 'file_chunk' as any, '⏭️ Skipping verification (Tester disabled)');
+        continue;
+      }
+
       /*
        * The Planner (design brain) is complementary to the Researcher: it runs
        * on NEW projects to set the identity + design system + media plan up
@@ -346,6 +364,15 @@ export async function runOrchestratedBuild(
       if ((role === 'planner' || role === 'builder') && opts?.skills && opts.skills.length > 0) {
         const skillsBlock = opts.skills.map((s) => `• ${s.name}: ${s.instructions}`).join('\n');
         agentPrompt = `${agentPrompt}\n\n=== ACTIVE SKILLS (mandatory house rules — apply all of them) ===\n${skillsBlock}\n=== END SKILLS ===`;
+      }
+
+      /*
+       * Libraries: reference material the Builder can draw on (snippets, tokens,
+       * docs). Not commands — the model uses them where relevant.
+       */
+      if (role === 'builder' && opts?.libraries && opts.libraries.length > 0) {
+        const libBlock = opts.libraries.map((l) => `--- ${l.name} (${l.kind}) ---\n${l.content}`).join('\n\n');
+        agentPrompt = `${agentPrompt}\n\n=== REFERENCE LIBRARY (reusable material to draw on where relevant) ===\n${libBlock}\n=== END REFERENCE LIBRARY ===`;
       }
 
       logger.info(`[orchestrator] Running ${config.name} agent (maxSteps=${config.maxSteps})`);

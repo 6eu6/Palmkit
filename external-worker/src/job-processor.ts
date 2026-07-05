@@ -473,6 +473,17 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           ? (job.validation_result.skills as { name: string; instructions: string }[])
           : undefined;
 
+        // Libraries: user-enabled reference material injected into the Builder.
+        const libraries = Array.isArray(job.validation_result?.libraries)
+          ? (job.validation_result.libraries as { name: string; kind: string; content: string }[])
+          : undefined;
+
+        // Agents: optional pipeline phases (Researcher/Tester) the user toggled off.
+        const agentConfig =
+          job.validation_result?.agentConfig && typeof job.validation_result.agentConfig === 'object'
+            ? (job.validation_result.agentConfig as { researcher: boolean; tester: boolean })
+            : undefined;
+
         /*
          * Media pipeline: generate_image runs on OpenRouter's image endpoint,
          * which needs an OpenRouter key. We enable it only when the build's own
@@ -494,7 +505,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           spec.maxCompletionTokens, // dynamic maxTokens based on model limits
           spec.appType, // appType for manifest (so restore knows how to preview)
           contextWindow, // model context window → context-pressure measurement
-          { agentModels, reasoningEffort, media, skills },
+          { agentModels, reasoningEffort, media, skills, libraries, agentConfig },
         );
 
         // Capture the server-measured context pressure for the fork nudge.
