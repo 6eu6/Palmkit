@@ -264,7 +264,7 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                              * force the surface + a drawn caret
                              */
                             background:
-                              'var(--palmkit-elements-bg-depth-1) url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%278%27 height=%275%27%3E%3Cpath d=%27M0 0l4 5 4-5z%27 fill=%27%2371e4ff%27/%3E%3C/svg%3E") no-repeat right 7px center',
+                              'var(--palmkit-elements-bg-depth-1) url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%278%27 height=%275%27%3E%3Cpath d=%27M0 0l4 5 4-5z%27 fill=%27%23888888%27/%3E%3C/svg%3E") no-repeat right 7px center',
                             paddingRight: 20,
                           }}
                         >

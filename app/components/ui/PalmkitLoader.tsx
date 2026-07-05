@@ -108,7 +108,7 @@ export const PalmkitLoader = memo(({ size = 148, className = '', bare = false }:
           inset: 0,
           borderRadius: 999,
           filter: 'blur(10px)',
-          background: 'radial-gradient(circle, var(--pk-accent-dim, rgba(113,228,255,.14)), transparent 63%)',
+          background: 'radial-gradient(circle, var(--pk-accent-dim, rgba(255,255,255,.12)), transparent 63%)',
         }}
       />
       {/* glass card */}
