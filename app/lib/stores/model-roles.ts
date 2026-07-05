@@ -61,16 +61,27 @@ export const reasoningEffortStore = atom<ReasoningEffort>(
   typeof localStorage !== 'undefined' ? ((localStorage.getItem(EFFORT_KEY) as ReasoningEffort) ?? 'medium') : 'medium',
 );
 
-export function cycleReasoningEffort(): ReasoningEffort {
-  const order: ReasoningEffort[] = ['medium', 'max', 'off'];
-  const next = order[(order.indexOf(reasoningEffortStore.get()) + 1) % order.length];
-  reasoningEffortStore.set(next);
+export function setReasoningEffort(effort: ReasoningEffort) {
+  reasoningEffortStore.set(effort);
 
   try {
-    localStorage.setItem(EFFORT_KEY, next);
+    localStorage.setItem(EFFORT_KEY, effort);
   } catch {
     /* private mode */
   }
+}
+
+export function cycleReasoningEffort(): ReasoningEffort {
+  const order: ReasoningEffort[] = ['medium', 'max', 'off'];
+  const next = order[(order.indexOf(reasoningEffortStore.get()) + 1) % order.length];
+  setReasoningEffort(next);
 
   return next;
 }
+
+/** Ordered levels for the "thinking power" meter, low → high. */
+export const REASONING_LEVELS: { value: ReasoningEffort; label: string; hint: string }[] = [
+  { value: 'off', label: 'Off', hint: 'No extended thinking — fastest, cheapest' },
+  { value: 'medium', label: 'Medium', hint: 'Balanced reasoning for most tasks' },
+  { value: 'max', label: 'Max', hint: 'Deepest reasoning — best for hard problems' },
+];

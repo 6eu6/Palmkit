@@ -18,15 +18,10 @@ import type { DesignScheme } from '~/types/design-scheme';
 import type { ElementInfo } from '~/components/workbench/Inspector';
 import { McpTools } from './MCPTools';
 import { WebSearch } from './WebSearch.client';
+import { ThinkingMeter, PlusMenu } from './ComposerControls';
 import { useStore } from '@nanostores/react';
-import {
-  MODEL_ROLE_META,
-  modelRolesStore,
-  reasoningEffortStore,
-  cycleReasoningEffort,
-  setModelRole,
-  type ModelRole,
-} from '~/lib/stores/model-roles';
+import { sidebarModeStore } from '~/lib/stores/sidebar';
+import { MODEL_ROLE_META, modelRolesStore, setModelRole, type ModelRole } from '~/lib/stores/model-roles';
 
 interface ChatBoxProps {
   isModelSettingsCollapsed: boolean;
@@ -165,9 +160,19 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
    * palette, MCP, Supabase) hide behind a single "+" toggle so the box stays
    * one clean row; on sm+ they are always visible.
    */
-  const [moreToolsOpen, setMoreToolsOpen] = React.useState(false);
-  const reasoningEffort = useStore(reasoningEffortStore);
   const modelRoles = useStore(modelRolesStore);
+  const sidebarMode = useStore(sidebarModeStore);
+
+  /*
+   * The Chat/Code intent now lives in the sidebar's segmented control (v3), so
+   * the old in-composer Build/Discuss toggle is gone. Keep the existing
+   * build/discuss plumbing alive by mirroring the sidebar choice: the Code tab
+   * builds a project, everything else is a plain discussion.
+   */
+  const setChatMode = props.setChatMode;
+  React.useEffect(() => {
+    setChatMode?.(sidebarMode === 'code' ? 'build' : 'discuss');
+  }, [sidebarMode, setChatMode]);
 
   const onSendClick = (event: React.UIEvent) => {
     if (props.isStreaming) {
@@ -405,12 +410,12 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
         translate="no"
       />
 
-      {/* In-box toolbar (Design v2 — one compact row).
-          Model chip + attach + enhance are always visible; the secondary
-          tools (web search, palette, MCP, Supabase) are always visible on
-          sm+ and live behind a "+" toggle on phones. */}
+      {/* In-box toolbar (v3 — one clean row).
+          Left: model chip · thinking meter · "+" menu (attach, connectors,
+          skills/agents/workflows/libraries/projects, starter stack) · enhance.
+          Right: mic · send. The Chat/Code intent moved to the sidebar. */}
       <div className="bolt-toolbar-fade flex items-center gap-1 px-2 pb-2 pt-1">
-        <div className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto bolt-toolbar-scroll">
+        <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto bolt-toolbar-scroll">
           {/* Model chip — pill that opens the model/key sheet */}
           <button
             type="button"
@@ -430,27 +435,28 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             <div className={`i-ph:caret-${props.isModelSettingsCollapsed ? 'down' : 'up'} text-[11px]`} />
           </button>
 
-          {/* Think — how hard reasoning models think: Med → Max → Off */}
-          <button
-            type="button"
-            title="Thinking effort (applies to reasoning-capable models)"
-            onClick={() => cycleReasoningEffort()}
-            className={classNames(
-              'shrink-0 flex items-center gap-1 h-7 px-2.5 rounded-full transition-all duration-150 border text-[11px] font-medium',
-              reasoningEffort === 'max'
-                ? 'border-[var(--pk-accent)] text-[var(--pk-accent)] bg-[var(--pk-accent-dim)]'
-                : reasoningEffort === 'off'
-                  ? 'border-palmkit-elements-borderColor text-palmkit-elements-textTertiary'
-                  : 'border-palmkit-elements-borderColor text-palmkit-elements-textSecondary',
-            )}
-          >
-            <div className="i-ph:brain text-[13px]" />
-            <span>{reasoningEffort === 'max' ? 'Max' : reasoningEffort === 'off' ? 'Off' : 'Med'}</span>
-          </button>
+          {/* Thinking power — volume-style meter (Off / Medium / Max) */}
+          <ClientOnly>{() => <ThinkingMeter />}</ClientOnly>
 
-          <div className="shrink-0 w-px h-5 mx-0.5 bg-palmkit-elements-borderColor" />
-
-          <ToolButton icon="i-ph:paperclip" title="Attach image" onClick={props.handleFileUpload} />
+          {/* "+" — attach, connectors, product surfaces, starter stack */}
+          <PlusMenu
+            onAttach={props.handleFileUpload}
+            tools={
+              <>
+                <ClientOnly>
+                  {() => (
+                    <WebSearch
+                      onSearchResult={props.onWebSearchResult ?? ((_r: string) => undefined)}
+                      disabled={props.isStreaming}
+                    />
+                  )}
+                </ClientOnly>
+                <ColorSchemeDialog designScheme={props.designScheme} setDesignScheme={props.setDesignScheme} />
+                <McpTools />
+                <SupabaseConnection />
+              </>
+            }
+          />
 
           <ToolButton
             icon="i-palmkit:stars"
@@ -462,64 +468,10 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             disabled={props.input.length === 0 || props.enhancingPrompt}
             loading={props.enhancingPrompt}
           />
-
-          {/* "+" — phones only: reveals the secondary tools */}
-          <div className="sm:hidden">
-            <ToolButton
-              icon={moreToolsOpen ? 'i-ph:x' : 'i-ph:plus'}
-              title="More tools"
-              onClick={() => setMoreToolsOpen(!moreToolsOpen)}
-              active={moreToolsOpen}
-            />
-          </div>
-
-          {/* Secondary tools — always on sm+, behind "+" on phones */}
-          <div className={classNames('items-center gap-0.5', moreToolsOpen ? 'flex' : 'hidden sm:flex')}>
-            <ClientOnly>
-              {() => (
-                <WebSearch
-                  onSearchResult={props.onWebSearchResult ?? ((_r: string) => undefined)}
-                  disabled={props.isStreaming}
-                />
-              )}
-            </ClientOnly>
-            <ColorSchemeDialog designScheme={props.designScheme} setDesignScheme={props.setDesignScheme} />
-            <McpTools />
-            <SupabaseConnection />
-          </div>
         </div>
 
-        {/* Right: mode toggle + mic + send (always visible, never scrolls) */}
+        {/* Right: mic + send (always visible, never scrolls) */}
         <div className="flex items-center gap-1 shrink-0 pl-1">
-          {/* Mode: Chat (talk/plan) vs Code (build the project) — visible from
-              the very first message so users pick the intent up front. */}
-          <div className="shrink-0 flex h-8 rounded-lg border border-palmkit-elements-borderColor overflow-hidden text-[11px] font-medium">
-            <button
-              type="button"
-              className={classNames(
-                'px-2.5 transition-all duration-150',
-                props.chatMode === 'discuss'
-                  ? 'bg-[var(--pk-accent-dim)] text-[var(--pk-accent)]'
-                  : 'text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary',
-              )}
-              onClick={() => props.setChatMode?.('discuss')}
-            >
-              Chat
-            </button>
-            <button
-              type="button"
-              className={classNames(
-                'px-2.5 transition-all duration-150',
-                props.chatMode !== 'discuss'
-                  ? 'bg-[var(--pk-accent-dim)] text-[var(--pk-accent)]'
-                  : 'text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary',
-              )}
-              onClick={() => props.setChatMode?.('build')}
-            >
-              Code
-            </button>
-          </div>
-
           <ClientOnly>
             {() => (
               <SpeechRecognitionButton
