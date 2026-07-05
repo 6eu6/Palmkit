@@ -37,19 +37,39 @@ export function ThinkingMeter() {
             className="shrink-0 flex items-center gap-1.5 h-7 pl-2 pr-2.5 rounded-full border border-palmkit-elements-borderColor hover:border-[var(--pk-glass-border-hi)] transition-colors"
           >
             <div className="i-ph:brain text-[13px] text-palmkit-elements-textTertiary" />
-            <div className="flex items-end gap-[3px] h-3.5">
+            {/*
+             * Bars are <span>s, not <button>s: a global rule forces every
+             * <button> to a 32px min touch-target, which would blow the thin
+             * meter bars up into blobs. The parent div carries the a11y role.
+             */}
+            <div
+              role="slider"
+              aria-valuemin={0}
+              aria-valuemax={2}
+              aria-valuenow={Math.max(activeIndex, 0)}
+              aria-valuetext={current.label}
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+                  setReasoningEffort(REASONING_LEVELS[Math.min(activeIndex + 1, 2)].value);
+                } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+                  setReasoningEffort(REASONING_LEVELS[Math.max(activeIndex - 1, 0)].value);
+                }
+              }}
+              className="flex items-end gap-[3px] h-3.5 cursor-pointer outline-none"
+            >
               {REASONING_LEVELS.map((level, i) => {
                 const lit = i <= activeIndex && effort !== 'off';
                 const heights = ['h-1.5', 'h-2.5', 'h-3.5'];
 
                 return (
-                  <button
+                  <span
                     key={level.value}
-                    type="button"
+                    role="button"
                     aria-label={level.label}
                     title={level.label}
                     onClick={() => setReasoningEffort(level.value)}
-                    className={classNames('w-1 rounded-full transition-all duration-150', heights[i])}
+                    className={classNames('block w-1 rounded-full transition-all duration-150', heights[i])}
                     style={{
                       backgroundColor: lit ? 'var(--pk-accent)' : 'var(--palmkit-elements-borderColor)',
                       opacity: lit ? litOpacity : 1,
