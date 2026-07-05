@@ -1407,25 +1407,32 @@ ${value.content}
 
       if (!urlId) {
         /*
-         * Key the urlId to the chat's OWN id so the local record has id === urlId.
+         * Use the chat's OWN id AS its urlId, so the local record has id === urlId.
          *
-         * The account layer (accountSync) stores projects by url_id and, when it
-         * syncs one back, recreates the local record keyed by that url_id. If a
-         * chat's internal id and urlId diverge — which happened for worker chats,
-         * where id = workerChatId but the urlId was derived from the first
-         * message's id (a different Date.now()) — the sync-back created a SECOND
-         * local record keyed by the url_id: the duplicate 2-message "stub" chats
-         * that filled the sidebar with pairs. Deriving the urlId from chatId keeps
-         * them identical, so a round-trip updates the same record instead of
-         * forking a duplicate. Falls back to the old derivation only if chatId is
-         * somehow unset.
+         * Why this matters: the account layer (accountSync) stores projects by
+         * url_id and, when it syncs one back, recreates the local record keyed by
+         * that url_id. If a chat's id and urlId diverge, that sync-back forks a
+         * SECOND local record keyed by the url_id — the duplicate 2-message "stub"
+         * chats that filled the sidebar with pairs.
+         *
+         * We must NOT run getUrlId(chatId) here: this save path fires TWICE in
+         * quick succession (send + the worker-event effect), and the second call
+         * sees the first call's record already holding urlId=chatId, treats it as
+         * a collision, and appends "-2" — re-diverging id from urlId. chatId is
+         * already unique (a timestamp / getNextId), so we assign it verbatim.
+         * Only when there is somehow no chatId do we fall back to deriving one.
          */
-        const firstUserMessage = messages.find((m) => m.role === 'user');
-        const artifactId = chatId.get() || workbenchStore.firstArtifact?.id || firstUserMessage?.id || 'chat';
+        const cid = chatId.get();
 
-        const newUrlId = await getUrlId(db, artifactId);
-        _urlId = newUrlId;
-        shouldNavigateTo = newUrlId;
+        if (cid) {
+          _urlId = cid;
+        } else {
+          const firstUserMessage = messages.find((m) => m.role === 'user');
+          const artifactId = workbenchStore.firstArtifact?.id || firstUserMessage?.id || 'chat';
+          _urlId = await getUrlId(db, artifactId);
+        }
+
+        shouldNavigateTo = _urlId;
 
         // Don't setUrlId or navigate yet — wait until after IndexedDB write
       }
