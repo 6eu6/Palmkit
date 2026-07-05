@@ -71,3 +71,6 @@ __pycache__/
 *.pyc
 *.pyo
 .playwright-mcp/
+
+# stray verification screenshots (saved to repo root by tooling)
+/*.png
