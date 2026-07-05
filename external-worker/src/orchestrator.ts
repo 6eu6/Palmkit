@@ -91,6 +91,9 @@ export async function runOrchestratedBuild(
 
     /** Media config for generate_image (OpenRouter key + image model). */
     media?: { apiKey: string; model: string };
+
+    /** User-enabled Skills — instruction playbooks injected into Planner/Builder. */
+    skills?: { name: string; instructions: string }[];
   },
 ): Promise<OrchestratorResult> {
   const startTime = Date.now();
@@ -129,7 +132,9 @@ export async function runOrchestratedBuild(
     : '';
 
   if (handoff) {
-    logger.info(`[orchestrator] Continuation handoff found for ${projectId} (${handoff.length} chars) — injecting into agents`);
+    logger.info(
+      `[orchestrator] Continuation handoff found for ${projectId} (${handoff.length} chars) — injecting into agents`,
+    );
     await emitEvent(
       supabase,
       jobId,
@@ -245,12 +250,7 @@ export async function runOrchestratedBuild(
        */
       if (role === 'researcher' && !hasWorklog) {
         logger.info('[orchestrator] Skipping Researcher (new project, nothing to read)');
-        await emitEvent(
-          supabase,
-          jobId,
-          'file_chunk' as any,
-          '⏭️ Skipping Researcher (new project)',
-        );
+        await emitEvent(supabase, jobId, 'file_chunk' as any, '⏭️ Skipping Researcher (new project)');
         continue;
       }
 
@@ -337,16 +337,24 @@ export async function runOrchestratedBuild(
         agentPrompt = `The Builder has finished creating the project. Here's the summary:\n${builderContext}\n\nNow verify the project works. The files are already written — just run the build, tests, and screenshot.`;
       }
 
+      /*
+       * Skills: user-enabled instruction playbooks. They are house rules the
+       * generation must honour, so we surface them to the roles that actually
+       * shape and write the app (Planner art-directs, Builder codes). Injected
+       * as a clearly-delimited block the model must follow.
+       */
+      if ((role === 'planner' || role === 'builder') && opts?.skills && opts.skills.length > 0) {
+        const skillsBlock = opts.skills.map((s) => `• ${s.name}: ${s.instructions}`).join('\n');
+        agentPrompt = `${agentPrompt}\n\n=== ACTIVE SKILLS (mandatory house rules — apply all of them) ===\n${skillsBlock}\n=== END SKILLS ===`;
+      }
+
       logger.info(`[orchestrator] Running ${config.name} agent (maxSteps=${config.maxSteps})`);
 
       // Emit agent_started — lets the activity stream UI open a new group for this agent.
-      await emitEvent(
-        supabase,
-        jobId,
-        'agent_started',
-        `🤖 ${config.name} agent starting...`,
-        { agent: config.name, role },
-      );
+      await emitEvent(supabase, jobId, 'agent_started', `🤖 ${config.name} agent starting...`, {
+        agent: config.name,
+        role,
+      });
 
       const agentStart = Date.now();
 
@@ -476,7 +484,10 @@ export async function runOrchestratedBuild(
 
       /* Flush only when the buffer is big enough or the interval elapsed. */
       const maybeFlush = async () => {
-        if (textBuffer.length >= FLUSH_CHARS || (textBuffer.length > 0 && Date.now() - lastFlushTime > FLUSH_INTERVAL_MS)) {
+        if (
+          textBuffer.length >= FLUSH_CHARS ||
+          (textBuffer.length > 0 && Date.now() - lastFlushTime > FLUSH_INTERVAL_MS)
+        ) {
           await flushText(false);
         }
       };
@@ -486,72 +497,48 @@ export async function runOrchestratedBuild(
        * We do NOT emit orchestrator-level events for these to avoid duplication.
        * Tools NOT in this set get an orchestrator-level event on tool-call.
        */
-      const SELF_EMITTING_TOOLS = new Set([
-        'write_file',
-        'edit_file',
-        'delete_file',
-        'update_todos',
-        'done',
-      ]);
+      const SELF_EMITTING_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'update_todos', 'done']);
 
       const emitToolEvent = async (toolName: string, args: any) => {
         try {
           if (toolName === 'read_file') {
-            await emitEvent(
-              supabase,
-              jobId,
-              'file_chunk',
-              `📖 [${config.name}] Read: ${args.path}`,
-              { agent: config.name, kind: 'read', path: args.path },
-            );
+            await emitEvent(supabase, jobId, 'file_chunk', `📖 [${config.name}] Read: ${args.path}`, {
+              agent: config.name,
+              kind: 'read',
+              path: args.path,
+            });
           } else if (toolName === 'search_code') {
-            await emitEvent(
-              supabase,
-              jobId,
-              'file_chunk',
-              `🔍 [${config.name}] Search: ${args.pattern}`,
-              { agent: config.name, kind: 'search', pattern: args.pattern },
-            );
+            await emitEvent(supabase, jobId, 'file_chunk', `🔍 [${config.name}] Search: ${args.pattern}`, {
+              agent: config.name,
+              kind: 'search',
+              pattern: args.pattern,
+            });
           } else if (toolName === 'list_files') {
-            await emitEvent(
-              supabase,
-              jobId,
-              'file_chunk',
-              `📋 [${config.name}] List files`,
-              { agent: config.name, kind: 'list' },
-            );
+            await emitEvent(supabase, jobId, 'file_chunk', `📋 [${config.name}] List files`, {
+              agent: config.name,
+              kind: 'list',
+            });
           } else if (toolName === 'list_uploads') {
-            await emitEvent(
-              supabase,
-              jobId,
-              'file_chunk',
-              `📤 [${config.name}] List uploads`,
-              { agent: config.name, kind: 'list_uploads' },
-            );
+            await emitEvent(supabase, jobId, 'file_chunk', `📤 [${config.name}] List uploads`, {
+              agent: config.name,
+              kind: 'list_uploads',
+            });
           } else if (toolName === 'run_shell') {
-            await emitEvent(
-              supabase,
-              jobId,
-              'file_chunk',
-              `⚡ [${config.name}] Run: ${args.command?.slice(0, 80)}`,
-              { agent: config.name, kind: 'shell', command: args.command },
-            );
+            await emitEvent(supabase, jobId, 'file_chunk', `⚡ [${config.name}] Run: ${args.command?.slice(0, 80)}`, {
+              agent: config.name,
+              kind: 'shell',
+              command: args.command,
+            });
           } else if (toolName === 'run_tests') {
-            await emitEvent(
-              supabase,
-              jobId,
-              'file_chunk',
-              `🧪 [${config.name}] Run tests`,
-              { agent: config.name, kind: 'tests' },
-            );
+            await emitEvent(supabase, jobId, 'file_chunk', `🧪 [${config.name}] Run tests`, {
+              agent: config.name,
+              kind: 'tests',
+            });
           } else if (toolName === 'take_screenshot') {
-            await emitEvent(
-              supabase,
-              jobId,
-              'file_chunk',
-              `📸 [${config.name}] Screenshot`,
-              { agent: config.name, kind: 'screenshot' },
-            );
+            await emitEvent(supabase, jobId, 'file_chunk', `📸 [${config.name}] Screenshot`, {
+              agent: config.name,
+              kind: 'screenshot',
+            });
           }
         } catch {
           /* best-effort */
@@ -715,9 +702,7 @@ export async function runOrchestratedBuild(
              */
             case 'error': {
               logger.error(`[orchestrator] Stream error in ${config.name}: ${part.error}`);
-              streamError = part.error instanceof Error
-                ? part.error
-                : new Error(String(part.error));
+              streamError = part.error instanceof Error ? part.error : new Error(String(part.error));
               break;
             }
 
@@ -741,7 +726,8 @@ export async function runOrchestratedBuild(
          * catch can fail the job.
          */
         const errName = (streamErr as any)?.name ?? '';
-        const isAbort = errName === 'AbortError' ||
+        const isAbort =
+          errName === 'AbortError' ||
           errName === 'AbortError2' ||
           /abort/i.test(String((streamErr as any)?.message ?? ''));
 
@@ -761,9 +747,7 @@ export async function runOrchestratedBuild(
           break; // exit the for-await loop
         }
 
-        streamError = streamErr instanceof Error
-          ? streamErr
-          : new Error(String(streamErr));
+        streamError = streamErr instanceof Error ? streamErr : new Error(String(streamErr));
       }
 
       if (streamError) {
@@ -820,9 +804,7 @@ export async function runOrchestratedBuild(
           .map((s: any) => s?.usage?.promptTokens ?? 0)
           .filter((n: number) => Number.isFinite(n) && n > 0);
         const aggUsage = await streamResult.usage;
-        const agentPeak = stepPromptTokens.length
-          ? Math.max(...stepPromptTokens)
-          : aggUsage?.promptTokens ?? 0;
+        const agentPeak = stepPromptTokens.length ? Math.max(...stepPromptTokens) : (aggUsage?.promptTokens ?? 0);
 
         if (agentPeak > peakPromptTokens) {
           peakPromptTokens = agentPeak;
@@ -849,9 +831,7 @@ export async function runOrchestratedBuild(
        */
       const madeToolCalls = (steps?.length ?? 0) > 0;
       const agentSuccess =
-        finishReason !== 'error' &&
-        finishReason !== 'length' &&
-        (finishReason !== 'tool-calls' || madeToolCalls);
+        finishReason !== 'error' && finishReason !== 'length' && (finishReason !== 'tool-calls' || madeToolCalls);
 
       if (finishReason === 'length') {
         logger.warn(
@@ -864,9 +844,7 @@ export async function runOrchestratedBuild(
           `⚠️ ${config.name} hit token cap — output may be truncated.`,
         );
       } else if (finishReason === 'tool-calls') {
-        logger.warn(
-          `[orchestrator] ${config.name} hit maxSteps (${config.maxSteps}) — agent did not call done().`,
-        );
+        logger.warn(`[orchestrator] ${config.name} hit maxSteps (${config.maxSteps}) — agent did not call done().`);
 
         /*
          * Only surface this warning when it is USER-ACTIONABLE.
@@ -1034,7 +1012,11 @@ export async function runOrchestratedBuild(
      */
     const ENTRY_POINT_PATTERNS: Record<string, RegExp[]> = {
       static: [/^index\.html$/i, /^src\/.*\.(js|ts)$/i],
-      react: [/^index\.html$/i, /^src\/(App|Main|main|app)\.(jsx|tsx|js|ts)$/i, /^src\/(main|index)\.(jsx|tsx|js|ts)$/i],
+      react: [
+        /^index\.html$/i,
+        /^src\/(App|Main|main|app)\.(jsx|tsx|js|ts)$/i,
+        /^src\/(main|index)\.(jsx|tsx|js|ts)$/i,
+      ],
       nextjs: [/^(app|pages)\/(page|index)\.(jsx|tsx|js|ts)$/i, /^src\/(app|pages)\//i],
       vue: [/^index\.html$/i, /^src\/(App|main)\.(vue|js|ts)$/i],
       python: [/^(app|main|server|run)\.py$/i],
@@ -1054,16 +1036,18 @@ export async function runOrchestratedBuild(
      * Now: for react/vue, we check that index.html exists AND at least
      * one src/ source file exists. If either is missing, fail.
      */
-    const hasEntryPoint = patterns.length === 0 || (() => {
-      if (effectiveAppType === 'react' || effectiveAppType === 'vue') {
-        // Need BOTH index.html AND a source file in src/
-        const hasIndexHtml = filePaths.some((p) => /^index\.html$/i.test(p));
-        const hasSourceFile = filePaths.some((p) => /^src\/.*(jsx|tsx|vue|js|ts)$/i.test(p));
-        return hasIndexHtml && hasSourceFile;
-      }
-      // For other app types, any single pattern match is enough
-      return filePaths.some((p) => patterns.some((re) => re.test(p)));
-    })();
+    const hasEntryPoint =
+      patterns.length === 0 ||
+      (() => {
+        if (effectiveAppType === 'react' || effectiveAppType === 'vue') {
+          // Need BOTH index.html AND a source file in src/
+          const hasIndexHtml = filePaths.some((p) => /^index\.html$/i.test(p));
+          const hasSourceFile = filePaths.some((p) => /^src\/.*(jsx|tsx|vue|js|ts)$/i.test(p));
+          return hasIndexHtml && hasSourceFile;
+        }
+        // For other app types, any single pattern match is enough
+        return filePaths.some((p) => patterns.some((re) => re.test(p)));
+      })();
 
     if (fileCount > 0 && !hasEntryPoint) {
       logger.error(
@@ -1154,9 +1138,7 @@ export async function runOrchestratedBuild(
         manifest.commands = smartManifest.commands;
         manifest.apiRoutes = smartManifest.apiRoutes;
         manifest.qualityGates = smartManifest.qualityGates;
-        manifest.lastKnownStatus = testerContext.includes('build pass')
-          ? 'build_passed'
-          : 'build_unknown';
+        manifest.lastKnownStatus = testerContext.includes('build pass') ? 'build_passed' : 'build_unknown';
         manifest.knownIssues = smartManifest.knownIssues;
         await writeManifest(manifest, supabase, userId);
 

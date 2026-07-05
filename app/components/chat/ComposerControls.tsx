@@ -6,6 +6,8 @@ import { toast } from 'react-toastify';
 import { classNames } from '~/utils/classNames';
 import { STARTER_TEMPLATES } from '~/utils/constants';
 import { reasoningEffortStore, setReasoningEffort, REASONING_LEVELS } from '~/lib/stores/model-roles';
+import { enabledSkillsStore } from '~/lib/stores/skills';
+import { SkillsDialog } from './SkillsDialog';
 
 /**
  * ThinkingMeter — the "thinking power" control (v3 Phase 5).
@@ -158,6 +160,8 @@ function MenuRow({
  */
 export function PlusMenu({ onAttach, tools }: { onAttach: () => void; tools: React.ReactNode }) {
   const [open, setOpen] = React.useState(false);
+  const [skillsOpen, setSkillsOpen] = React.useState(false);
+  const enabledSkills = useStore(enabledSkillsStore);
   const soon = (label: string) => () => {
     setOpen(false);
     toast.info(`${label} — coming soon`);
@@ -213,9 +217,15 @@ export function PlusMenu({ onAttach, tools }: { onAttach: () => void; tools: Rea
           <MenuRow
             icon="i-ph:sparkle"
             label="Skills"
-            hint="Reusable instructions models can invoke"
-            soon
-            onClick={soon('Skills')}
+            hint={
+              enabledSkills.length > 0
+                ? `${enabledSkills.length} active · injected into builds`
+                : 'Reusable instructions injected into builds'
+            }
+            onClick={() => {
+              setOpen(false);
+              setSkillsOpen(true);
+            }}
           />
           <MenuRow
             icon="i-ph:robot"
@@ -263,6 +273,7 @@ export function PlusMenu({ onAttach, tools }: { onAttach: () => void; tools: Rea
           </div>
         </Popover.Content>
       </Popover.Portal>
+      <SkillsDialog open={skillsOpen} onOpenChange={setSkillsOpen} />
     </Popover.Root>
   );
 }

@@ -172,12 +172,20 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
   try {
     // ─── Phase 0: FETCH + DECRYPT USER'S API KEY ──────────────────────
     await updateJobProgress(supabase, job.id, 5, 'fetch_api_key');
-    await emitEvent(supabase, job.id, 'job_created', 'Job started', { prompt: prompt.slice(0, 100), provider: providerName, model: modelName });
+    await emitEvent(supabase, job.id, 'job_created', 'Job started', {
+      prompt: prompt.slice(0, 100),
+      provider: providerName,
+      model: modelName,
+    });
 
     const apiKey = await getUserApiKey(supabase, job.user_id, providerName);
 
     if (!apiKey) {
-      await failJob(supabase, job.id, `No API key found for your account (provider: ${providerName}). Add one via Edit API Key in the UI.`);
+      await failJob(
+        supabase,
+        job.id,
+        `No API key found for your account (provider: ${providerName}). Add one via Edit API Key in the UI.`,
+      );
       return;
     }
 
@@ -216,7 +224,12 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
     if (editJobId) {
       await updateJobProgress(supabase, job.id, 10, 'load_existing_files');
       await emitEvent(supabase, job.id, 'edit_started', 'Loading existing project files...');
-      await recordStep(supabase, job.id, { type: 'plan', status: 'running', order: 1, inputSummary: `edit from job ${editJobId}` });
+      await recordStep(supabase, job.id, {
+        type: 'plan',
+        status: 'running',
+        order: 1,
+        inputSummary: `edit from job ${editJobId}`,
+      });
 
       /* Fetch existing job metadata (appType) */
       const { data: editJob } = await supabase
@@ -256,8 +269,19 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         return;
       }
 
-      await recordStep(supabase, job.id, { type: 'plan', status: 'completed', order: 1, outputSummary: `loaded ${existingFiles.length} files (${editAppType})` });
-      await emitEvent(supabase, job.id, 'planning_completed', `Loaded ${existingFiles.length} existing files, applying your changes...`, { fileCount: existingFiles.length, appType: editAppType });
+      await recordStep(supabase, job.id, {
+        type: 'plan',
+        status: 'completed',
+        order: 1,
+        outputSummary: `loaded ${existingFiles.length} files (${editAppType})`,
+      });
+      await emitEvent(
+        supabase,
+        job.id,
+        'planning_completed',
+        `Loaded ${existingFiles.length} existing files, applying your changes...`,
+        { fileCount: existingFiles.length, appType: editAppType },
+      );
 
       /* Generate edit (patch mode — LLM returns only changed files) */
       await updateJobProgress(supabase, job.id, 40, 'generate_edit');
@@ -291,14 +315,24 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           truncated: editResult.truncated,
         };
       } catch (editErr: any) {
-        await recordStep(supabase, job.id, { type: 'generate_file', status: 'failed', order: 2, error: editErr.message });
+        await recordStep(supabase, job.id, {
+          type: 'generate_file',
+          status: 'failed',
+          order: 2,
+          error: editErr.message,
+        });
         await emitEvent(supabase, job.id, 'job_failed', `Edit failed: ${editErr.message}`, { error: editErr.message });
         await failJob(supabase, job.id, `Edit generation failed: ${editErr.message}`);
         return;
       }
 
       await emitEvent(supabase, job.id, 'edit_completed', `Changes applied — ${mergedFiles.length} files in project`);
-      await recordStep(supabase, job.id, { type: 'generate_file', status: 'completed', order: 2, outputSummary: `${mergedFiles.length} merged files (${editAppType})` });
+      await recordStep(supabase, job.id, {
+        type: 'generate_file',
+        status: 'completed',
+        order: 2,
+        outputSummary: `${mergedFiles.length} merged files (${editAppType})`,
+      });
 
       result = { files: mergedFiles, complete: true, rawText: '', appType: editAppType };
       logger.info(`Job ${job.id}: edit complete → ${mergedFiles.length} files (${editAppType})`);
@@ -306,7 +340,12 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       // ─── Phase 1: PLAN ─────────────────────────────────────────────────
       await updateJobProgress(supabase, job.id, 10, 'plan');
       await emitEvent(supabase, job.id, 'planning_started', 'Planning app structure...');
-      await recordStep(supabase, job.id, { type: 'plan', status: 'running', order: 1, inputSummary: prompt.slice(0, 100) });
+      await recordStep(supabase, job.id, {
+        type: 'plan',
+        status: 'running',
+        order: 1,
+        inputSummary: prompt.slice(0, 100),
+      });
 
       const spec = planProject(prompt);
 
@@ -322,7 +361,10 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         order: 1,
         outputSummary: `spec: ${spec.appType}, ${spec.files.length} files`,
       });
-      await emitEvent(supabase, job.id, 'planning_completed', `Planned ${spec.files.length} files (${spec.appType})`, { fileCount: spec.files.length, appType: spec.appType });
+      await emitEvent(supabase, job.id, 'planning_completed', `Planned ${spec.files.length} files (${spec.appType})`, {
+        fileCount: spec.files.length,
+        appType: spec.appType,
+      });
 
       logger.info(`Job ${job.id}: plan complete → ${spec.appType}, ${spec.files.length} files`);
 
@@ -426,6 +468,11 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
         const reasoningEffort = job.validation_result?.reasoningEffort as 'off' | 'medium' | 'max' | undefined;
 
+        // Skills: user-enabled instruction playbooks injected into Planner/Builder.
+        const skills = Array.isArray(job.validation_result?.skills)
+          ? (job.validation_result.skills as { name: string; instructions: string }[])
+          : undefined;
+
         /*
          * Media pipeline: generate_image runs on OpenRouter's image endpoint,
          * which needs an OpenRouter key. We enable it only when the build's own
@@ -447,7 +494,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           spec.maxCompletionTokens, // dynamic maxTokens based on model limits
           spec.appType, // appType for manifest (so restore knows how to preview)
           contextWindow, // model context window → context-pressure measurement
-          { agentModels, reasoningEffort, media },
+          { agentModels, reasoningEffort, media, skills },
         );
 
         // Capture the server-measured context pressure for the fork nudge.
@@ -480,9 +527,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           const detectedAppType = detectAppTypeFromFiles(filesRecord);
 
           if (detectedAppType && detectedAppType !== result.appType) {
-            logger.info(
-              `Job ${job.id}: appType refined ${result.appType} → ${detectedAppType} (from generated files)`,
-            );
+            logger.info(`Job ${job.id}: appType refined ${result.appType} → ${detectedAppType} (from generated files)`);
             result.appType = detectedAppType;
           }
 
@@ -493,7 +538,9 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
            */
           filesAnnouncedDuringGeneration = true;
 
-          logger.info(`Job ${job.id}: agent build complete → ${agentResult.files.length} files (${agentResult.totalDuration}ms)`);
+          logger.info(
+            `Job ${job.id}: agent build complete → ${agentResult.files.length} files (${agentResult.totalDuration}ms)`,
+          );
         } else {
           /*
            * Orchestrator produced 0 files — fail cleanly with an actionable
@@ -512,7 +559,10 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
            * than the silent fallback that produced broken legacy output.
            */
           const agentSummaries = agentResult.agentResults
-            .map((a) => `${a.role}: ${a.success ? 'ok' : 'failed'} (${a.text.length} chars, ${Math.round(a.duration / 1000)}s)`)
+            .map(
+              (a) =>
+                `${a.role}: ${a.success ? 'ok' : 'failed'} (${a.text.length} chars, ${Math.round(a.duration / 1000)}s)`,
+            )
             .join('; ');
 
           const errorMsg =
@@ -537,7 +587,12 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         return;
       }
 
-      await emitEvent(supabase, job.id, 'file_generation_completed', `Generated ${result.files.length} files (${result.appType})`);
+      await emitEvent(
+        supabase,
+        job.id,
+        'file_generation_completed',
+        `Generated ${result.files.length} files (${result.appType})`,
+      );
 
       await recordStep(supabase, job.id, {
         type: 'generate_file',
@@ -557,7 +612,8 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
     // The old build-checker expects static files (styles.css, app.js) and
     // fails for React/TypeScript projects. Skip it entirely for orchestrator builds.
     const wasAgentBuilt = result.rawText?.includes('agent-build') ?? false;
-    const wasOrchestrated = result.rawText?.includes('orchestrator') || result.rawText?.includes('orchestrated') || true; // Always skip for orchestrator builds
+    const wasOrchestrated =
+      result.rawText?.includes('orchestrator') || result.rawText?.includes('orchestrated') || true; // Always skip for orchestrator builds
     const skipValidation = wasAgentBuilt || wasOrchestrated;
 
     if (!editJobId && !skipValidation) {
@@ -613,7 +669,13 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         }
 
         logger.warn(`Job ${job.id}: build check failed (pass ${pass + 1}): ${check.errors.slice(0, 200)}`);
-        await emitEvent(supabase, job.id, 'build_check_failed', `Build errors found (pass ${pass + 1}), attempting repair...`, { errors: check.errors.slice(0, 500) });
+        await emitEvent(
+          supabase,
+          job.id,
+          'build_check_failed',
+          `Build errors found (pass ${pass + 1}), attempting repair...`,
+          { errors: check.errors.slice(0, 500) },
+        );
 
         if (pass < 1) {
           /* Repair pass — ask LLM to fix the errors */
@@ -641,8 +703,14 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
             order: 4,
             error: check.errors.slice(0, 500),
           });
-          await emitEvent(supabase, job.id, 'job_failed', 'Build could not be repaired automatically', { errors: check.errors.slice(0, 500) });
-          await failJob(supabase, job.id, `Build errors after auto-repair. Download the project to fix locally:\n${check.errors.slice(0, 400)}`);
+          await emitEvent(supabase, job.id, 'job_failed', 'Build could not be repaired automatically', {
+            errors: check.errors.slice(0, 500),
+          });
+          await failJob(
+            supabase,
+            job.id,
+            `Build errors after auto-repair. Download the project to fix locally:\n${check.errors.slice(0, 400)}`,
+          );
           return;
         }
       }
@@ -650,7 +718,12 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       if (buildCheckPassed) {
         /* Use the (possibly repaired) file set for upload */
         result = { ...result, files: buildCheckFiles };
-        await recordStep(supabase, job.id, { type: 'build_check', status: 'completed', order: 4, outputSummary: 'build passed' });
+        await recordStep(supabase, job.id, {
+          type: 'build_check',
+          status: 'completed',
+          order: 4,
+          outputSummary: 'build passed',
+        });
         await emitEvent(supabase, job.id, 'build_check_passed', 'Build check passed ✓');
         logger.info(`Job ${job.id}: build check passed`);
       }
@@ -728,24 +801,20 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
       try {
         // Mirror workspace key (new — for /api/workspace)
-        const { error: sbWsError } = await supabase.storage
-          .from('palmkit-files')
-          .upload(sbWorkspaceKey, content, {
-            contentType: file.mime_type ?? 'text/plain',
-            upsert: true,
-          });
+        const { error: sbWsError } = await supabase.storage.from('palmkit-files').upload(sbWorkspaceKey, content, {
+          contentType: file.mime_type ?? 'text/plain',
+          upsert: true,
+        });
 
         if (sbWsError) {
           logger.warn(`Supabase Storage workspace mirror failed for ${file.path}: ${sbWsError.message} (non-fatal)`);
         }
 
         // Mirror legacy key (for /api/files backward compat)
-        const { error: sbUploadError } = await supabase.storage
-          .from('palmkit-files')
-          .upload(sbLegacyKey, content, {
-            contentType: file.mime_type ?? 'text/plain',
-            upsert: true,
-          });
+        const { error: sbUploadError } = await supabase.storage.from('palmkit-files').upload(sbLegacyKey, content, {
+          contentType: file.mime_type ?? 'text/plain',
+          upsert: true,
+        });
 
         if (sbUploadError) {
           logger.warn(`Supabase Storage legacy mirror failed for ${file.path}: ${sbUploadError.message} (non-fatal)`);
@@ -819,7 +888,9 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       throw new Error(`Failed to finalize job: ${finalizeError.message}`);
     }
 
-    await emitEvent(supabase, job.id, 'snapshot_uploaded', `Snapshot uploaded (${manifestEntries.length} files)`, { fileCount: manifestEntries.length });
+    await emitEvent(supabase, job.id, 'snapshot_uploaded', `Snapshot uploaded (${manifestEntries.length} files)`, {
+      fileCount: manifestEntries.length,
+    });
     await emitEvent(supabase, job.id, 'ready_for_preview', 'Preview ready');
 
     logger.info(`Job ${job.id} → ready_for_preview ✅`);

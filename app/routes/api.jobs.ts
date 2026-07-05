@@ -57,7 +57,7 @@ export async function action(args: ActionFunctionArgs) {
     return json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { prompt, model, provider, projectId, files, editJobId, reasoningEffort, modelRoles } = body;
+  const { prompt, model, provider, projectId, files, editJobId, reasoningEffort, modelRoles, skills } = body;
 
   if (!prompt || typeof prompt !== 'string') {
     return json({ error: 'prompt is required' }, { status: 400 });
@@ -143,6 +143,23 @@ export async function action(args: ActionFunctionArgs) {
          */
         ...(reasoningEffort && ['off', 'medium', 'max'].includes(reasoningEffort) ? { reasoningEffort } : {}),
         ...(modelRoles && typeof modelRoles === 'object' ? { modelRoles } : {}),
+
+        /*
+         * Skills: enabled instruction playbooks ({ name, instructions }) that
+         * the orchestrator injects into the Planner/Builder prompt. Cap to keep
+         * the row small and prevent prompt bloat from a runaway client.
+         */
+        ...(Array.isArray(skills) && skills.length > 0
+          ? {
+              skills: skills
+                .filter(
+                  (s: unknown): s is { name: string; instructions: string } =>
+                    !!s && typeof (s as any).name === 'string' && typeof (s as any).instructions === 'string',
+                )
+                .slice(0, 12)
+                .map((s) => ({ name: s.name.slice(0, 80), instructions: s.instructions.slice(0, 2000) })),
+            }
+          : {}),
       },
     })
     .select('id')

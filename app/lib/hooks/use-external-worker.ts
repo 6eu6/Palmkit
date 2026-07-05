@@ -542,6 +542,10 @@ export function useExternalWorker() {
           Object.entries(modelRolesStore.get()).filter(([, v]) => typeof v === 'string' && v.length > 0),
         );
 
+        // Skills: enabled instruction playbooks injected into the build models.
+        const { getActiveSkillPayload } = await import('~/lib/stores/skills');
+        const skills = getActiveSkillPayload();
+
         const resp = await fetch('/api/jobs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -551,6 +555,7 @@ export function useExternalWorker() {
             provider,
             reasoningEffort: reasoningEffortStore.get(),
             ...(Object.keys(roles).length > 0 ? { modelRoles: roles } : {}),
+            ...(skills.length > 0 ? { skills } : {}),
             ...(editFromJobId ? { editJobId: editFromJobId } : {}),
             ...(projectId ? { projectId } : {}),
           }),
