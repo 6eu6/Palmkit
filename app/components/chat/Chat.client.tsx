@@ -988,12 +988,33 @@ export const ChatImpl = memo(
          * chat id. Reusing that id makes the worker hydrate + continue that
          * workspace instead of starting an empty project under a new id.
          */
-        const continuedFrom = chatMetadata.get()?.continuedFrom;
+        /*
+         * Reuse the CURRENT chat's id for every follow-up/edit — mint a fresh id
+         * ONLY when there is no active chat (a brand-new conversation).
+         *
+         * The old code minted a new `Date.now()` id on EVERY send unless the chat
+         * was a "continue in a fresh chat" fork. That single line caused three
+         * reported bugs at once:
+         *   1. the follow-up prompt was saved under a DIFFERENT chat id than the
+         *      one on screen, so it vanished from the conversation on refresh;
+         *   2. one conversation fragmented into many sidebar entries;
+         *   3. the edit's workspace was keyed under a new projectId, detached from
+         *      the original build's files.
+         * "Start new chat" is a full page load (<a href="/">), which resets this
+         * atom, so a defined id here reliably means "continue this conversation".
+         */
         const existingChatId = chatId.get();
-        const workerChatId = continuedFrom && existingChatId ? existingChatId : `${Date.now()}`;
-        const workerDescription = finalMessageContent.slice(0, 50);
+        const workerChatId = existingChatId ?? `${Date.now()}`;
         chatId.set(workerChatId);
-        descriptionAtom.set(workerDescription);
+
+        /*
+         * Title the chat from its FIRST prompt only. Setting it on every send
+         * renamed the whole conversation to the latest edit prompt — so only
+         * derive a title when the chat doesn't have one yet, and never overwrite.
+         */
+        if (!descriptionAtom.get()) {
+          descriptionAtom.set(finalMessageContent.slice(0, 50));
+        }
 
         // Add user message to chat so the conversation is visible and persisted
         const extUserText = finalMessageContent;
