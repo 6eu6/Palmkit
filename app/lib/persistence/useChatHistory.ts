@@ -1406,8 +1406,22 @@ ${value.content}
       let shouldNavigateTo: string | null = null;
 
       if (!urlId) {
+        /*
+         * Key the urlId to the chat's OWN id so the local record has id === urlId.
+         *
+         * The account layer (accountSync) stores projects by url_id and, when it
+         * syncs one back, recreates the local record keyed by that url_id. If a
+         * chat's internal id and urlId diverge — which happened for worker chats,
+         * where id = workerChatId but the urlId was derived from the first
+         * message's id (a different Date.now()) — the sync-back created a SECOND
+         * local record keyed by the url_id: the duplicate 2-message "stub" chats
+         * that filled the sidebar with pairs. Deriving the urlId from chatId keeps
+         * them identical, so a round-trip updates the same record instead of
+         * forking a duplicate. Falls back to the old derivation only if chatId is
+         * somehow unset.
+         */
         const firstUserMessage = messages.find((m) => m.role === 'user');
-        const artifactId = workbenchStore.firstArtifact?.id || firstUserMessage?.id || 'chat';
+        const artifactId = chatId.get() || workbenchStore.firstArtifact?.id || firstUserMessage?.id || 'chat';
 
         const newUrlId = await getUrlId(db, artifactId);
         _urlId = newUrlId;
