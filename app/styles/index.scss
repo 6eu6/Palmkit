@@ -20,6 +20,23 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/*
+ * Neutralise the browser's default button chrome. presetUno ships no
+ * preflight, so a bare <button> paints the native UA ButtonFace surface
+ * (#efefef) via `appearance: auto`. It blends into light surfaces but reads
+ * as a glaring white pill on the v3 pure-black theme — this was the
+ * "white-on-white" chat-list rows (white title over ButtonFace grey).
+ * `appearance: none` removes the native surface (background-color alone does
+ * not — the fill is drawn by the widget, not the background property). An
+ * element selector (specificity 0,0,1) loses to any `bg-*` utility class
+ * (0,1,0), so buttons that set their own background are untouched.
+ */
+button {
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: transparent;
+}
+
 :root {
   --gradient-opacity: 0.8;
   --primary-color: rgba(20, 20, 20, var(--gradient-opacity));
