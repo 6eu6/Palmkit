@@ -235,7 +235,8 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
             {/* Brand + close */}
             <div className="flex items-center justify-between px-4 pt-4 pb-3">
               <div className="flex items-center gap-2">
-                <img src="/palmkit-mark.png" alt="" className="h-7 w-7 select-none" />
+                <img src="/palmkit-mark.png" alt="" className="h-7 w-7 select-none dark:hidden" />
+                <img src="/palmkit-mark-ondark.png" alt="" className="hidden h-7 w-7 select-none dark:block" />
                 <span className="text-[15px] font-semibold text-palmkit-elements-textPrimary">Palmkit</span>
               </div>
               <button
