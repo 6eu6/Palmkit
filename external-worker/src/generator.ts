@@ -688,20 +688,57 @@ export async function generateEdit(
   modelName: string,
   apiKey: string,
   worklog?: string | null,
+  projectMemory?: { projectMd?: string; decisionsMd?: string; manifestJson?: string } | null,
+  reasoningEffort?: 'off' | 'medium' | 'max',
 ): Promise<EditResult> {
   /*
-   * Feed WHOLE files up to a generous budget instead of a 12KB mid-file cut.
-   * The old slice(0, 12000) truncated the fileset — so on any project bigger
-   * than ~12KB the edit model literally could not see (or safely rewrite) the
-   * files past the cut. Now we pack complete files until the budget is hit and
-   * list any that didn't fit by name, so the model still knows they exist.
+   * Feed WHOLE files up to a generous budget. Raised from 100KB → 200KB:
+   * modern context windows (128K+ tokens) handle this comfortably, and the
+   * old 100KB cut dropped large files (e.g. a 20KB App.jsx) — the edit model
+   * literally couldn't see them and guessed. Files that still don't fit are
+   * listed by name so the model knows they exist.
    */
-  const FILE_BUDGET = 100 * 1024; // ~100KB of source is comfortable for modern context windows
+  const FILE_BUDGET = 200 * 1024; // ~200KB — fits modern context windows
   let used = 0;
   const included: string[] = [];
   const omitted: string[] = [];
 
-  for (const f of existingFiles) {
+  /*
+   * Priority ordering: if the .palmkit/manifest.json exposes importantFiles,
+   * include those FIRST (they're the entrypoints + key components the edit is
+   * most likely to touch). Then fill the remaining budget with the rest.
+   */
+  let importantPaths: string[] = [];
+
+  try {
+    if (projectMemory?.manifestJson) {
+      const manifest = JSON.parse(projectMemory.manifestJson);
+      importantPaths = manifest.importantFiles ?? [];
+    }
+  } catch {
+    // best-effort — fall back to original order
+  }
+
+  const sorted = [...existingFiles].sort((a, b) => {
+    const ai = importantPaths.indexOf(a.path);
+    const bi = importantPaths.indexOf(b.path);
+
+    if (ai >= 0 && bi < 0) {
+      return -1;
+    }
+
+    if (bi >= 0 && ai < 0) {
+      return 1;
+    }
+
+    if (ai >= 0 && bi >= 0) {
+      return ai - bi;
+    }
+
+    return 0;
+  });
+
+  for (const f of sorted) {
     const block = `=== ${f.path} ===\n${f.content}`;
 
     if (used + block.length <= FILE_BUDGET) {
@@ -719,16 +756,26 @@ export async function generateEdit(
       : '';
 
   /*
-   * Inject the project's worklog (its memory of past turns + decisions) so the
-   * edit is informed by history, not just the current file snapshot — the same
-   * continuity the orchestrated build path gets.
+   * Inject structured project memory (.palmkit/) + worklog. The worklog gives
+   * recent history; .palmkit/project.md gives the project's identity/stack/
+   * entrypoints, and .palmkit/decisions.md gives the WHY behind choices. This
+   * is the same context the orchestrator's Planner sees — the edit path was
+   * blind to it before, so edits contradicted earlier design decisions.
    */
   const worklogBlock = worklog
-    ? `\nPROJECT MEMORY (worklog.md — recent history & decisions):\n${worklog.slice(-4000)}\n`
+    ? `\nPROJECT MEMORY (worklog.md — recent history & decisions):\n${worklog.slice(-6000)}\n`
+    : '';
+
+  const projectMdBlock = projectMemory?.projectMd
+    ? `\nPROJECT IDENTITY (.palmkit/project.md):\n${projectMemory.projectMd.slice(0, 2000)}\n`
+    : '';
+
+  const decisionsBlock = projectMemory?.decisionsMd
+    ? `\nDESIGN DECISIONS (.palmkit/decisions.md — respect these choices):\n${projectMemory.decisionsMd.slice(0, 1500)}\n`
     : '';
 
   const systemPrompt = `You are Palmkit's code editor. You are modifying an existing ${appType} project.
-${worklogBlock}
+${projectMdBlock}${decisionsBlock}${worklogBlock}
 Current project files:
 ${fileDump}${omittedNote}
 
@@ -763,6 +810,26 @@ STRICT RULES:
 
   let result;
 
+  /*
+   * providerOptions — pass the user's thinking-power choice (off/medium/max)
+   * through to OpenRouter, same as the orchestrator does for builds. Without
+   * this the edit path ignored the ThinkingMeter entirely — edits always ran
+   * at the provider's default reasoning level.
+   */
+  const effort = reasoningEffort;
+  const editProviderOptions = {
+    openrouter: {
+      reasoning:
+        effort === 'off'
+          ? { enabled: false }
+          : effort === 'max'
+            ? { effort: 'high' }
+            : effort === 'medium'
+              ? { effort: 'medium' }
+              : { enabled: true },
+    },
+  } as any;
+
   try {
     result = await generateText({
       model,
@@ -771,6 +838,7 @@ STRICT RULES:
       maxTokens: 64000,
       temperature: 0.5,
       abortSignal: ac.signal,
+      providerOptions: editProviderOptions,
     });
   } catch (err: any) {
     if (ac.signal.aborted) {

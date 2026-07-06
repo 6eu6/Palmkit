@@ -32,7 +32,7 @@ import { runOrchestratedBuild } from './orchestrator';
 import { checkBuild, BUILD_CHECK_TYPES } from './build-checker';
 import { createRunner } from './build-runner';
 import { putFile, getFileText, buildKey, buildWorkspaceKey } from './r2-client';
-import { hydrateWorkspaceFromStorage, readWorklog } from './workspace-manager';
+import { hydrateWorkspaceFromStorage, readWorklog, readWorkspaceFile } from './workspace-manager';
 import { getUserApiKey } from './key-fetcher';
 import { DEFAULT_IMAGE_MODEL } from './image-gen';
 import { emitEvent, emitFileWritten } from './event-emitter';
@@ -388,11 +388,28 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
       try {
         /*
-         * Feed the project's worklog (memory) into the edit so it's informed by
-         * past turns, not just the current file snapshot.
+         * Feed the project's full memory into the edit: worklog (recent
+         * history) + .palmkit/ structured memory (project identity, design
+         * decisions, manifest with importantFiles). The edit path was blind
+         * to .palmkit/ before — edits contradicted earlier design decisions
+         * and missed the project's entrypoints. Now the edit LLM sees the
+         * same context the Planner sees on a fresh build.
          */
         const editProjectId = (job.validation_result as any)?.chatId ?? job.project_id ?? job.id;
         const editWorklog = await readWorklog(editProjectId).catch(() => null);
+
+        const [projectMd, decisionsMd, manifestJson] = await Promise.all([
+          readWorkspaceFile(editProjectId, '.palmkit/project.md').catch(() => null),
+          readWorkspaceFile(editProjectId, '.palmkit/decisions.md').catch(() => null),
+          readWorkspaceFile(editProjectId, 'manifest.json').catch(() => null),
+        ]);
+
+        const projectMemory =
+          projectMd || decisionsMd || manifestJson
+            ? { projectMd: projectMd ?? undefined, decisionsMd: decisionsMd ?? undefined, manifestJson: manifestJson ?? undefined }
+            : null;
+
+        const editReasoningEffort = job.validation_result?.reasoningEffort as 'off' | 'medium' | 'max' | undefined;
 
         const editResult = await generateEdit(
           existingFiles,
@@ -402,6 +419,8 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           modelName,
           apiKey,
           editWorklog,
+          projectMemory,
+          editReasoningEffort,
         );
         mergedFiles = editResult.files as typeof existingFiles;
 
