@@ -304,6 +304,17 @@ export function useExternalWorker() {
   const lastEventSeq = useRef(0);
   const liveEvents = useRef<JobEvent[]>([]);
 
+  /*
+   * Epoch guard — incremented on reset/restore/start. The polling loop
+   * captures the epoch at start; after each await, if the epoch changed (i.e.
+   * the user aborted or started a new job), it bails out instead of calling
+   * setState with stale data that would override the reset. Without this,
+   * clicking Stop calls reset() → setState(idle), but an in-flight poll
+   * resolves a moment later → setState(generating), undoing the reset and
+   * leaving the Send button stuck on "Stop".
+   */
+  const epochRef = useRef(0);
+
   // Get Supabase URL and anon key from root loader
   const rootData = useRouteLoaderData('root') as
     | {
@@ -497,6 +508,7 @@ export function useExternalWorker() {
 
   const startJob = useCallback(
     async (prompt: string, model: string, provider: string, editFromJobId?: string, projectId?: string) => {
+      epochRef.current++;
       setState({ ...initialState, status: 'pending', currentStep: 'queued' });
       fetchedPreview.current = false;
 
@@ -612,15 +624,29 @@ export function useExternalWorker() {
      * is added, for resilience.
      */
 
+    const myEpoch = epochRef.current;
+
     const poll = async () => {
+      if (epochRef.current !== myEpoch) {
+        return;
+      }
+
       try {
         const resp = await fetch(`/api/jobs?id=${jobId}`);
+
+        if (epochRef.current !== myEpoch) {
+          return;
+        }
 
         if (!resp.ok) {
           return;
         }
 
         const data = (await resp.json()) as Record<string, unknown>;
+
+        if (epochRef.current !== myEpoch) {
+          return;
+        }
 
         /*
          * Context pressure — server-measured (peak prompt tokens vs the model's
@@ -977,6 +1003,8 @@ export function useExternalWorker() {
   }, []);
 
   const reset = useCallback(() => {
+    epochRef.current++;
+
     if (pollTimer.current) {
       clearTimeout(pollTimer.current);
     }
@@ -1023,6 +1051,8 @@ export function useExternalWorker() {
       if (!jobId) {
         return;
       }
+
+      epochRef.current++;
 
       // Reset state for the restored job
       fetchedPreview.current = false;
