@@ -34,7 +34,8 @@ type Row =
   | { kind: 'screenshot'; text: string }
   | { kind: 'system'; text: string }
   | { kind: 'error'; text: string }
-  | { kind: 'progress'; text: string };
+  | { kind: 'progress'; text: string }
+  | { kind: 'summary'; text: string };
 
 interface Section {
   /** agent name, or 'System' for pre-agent / worker events */
@@ -167,6 +168,19 @@ function foldEvents(events: WorkerEvent[]): Section[] {
       }
       case 'file_chunk': {
         const m = ev.message ?? '';
+
+        /*
+         * RADICAL STREAM IMPROVEMENT — build_summary events carry the
+         * Builder agent's full final narration as the model's "response"
+         * to the user. Render as a prominent, expanded summary section
+         * (not a generic system row) so the user sees what was built,
+         * the files created, key features, and tech stack — exactly like
+         * Claude Code / Cursor / Super Z summarize their work.
+         */
+        if (p.kind === 'build_summary' && p.text) {
+          current.rows.push({ kind: 'summary', text: p.text as string });
+          break;
+        }
 
         if (/^🔧/.test(m) || /repair attempt/i.test(m)) {
           // Build-verification repair round kicking off.
@@ -337,6 +351,45 @@ const CommandRow = memo(({ text }: { text: string }) => (
   </div>
 ));
 
+/*
+ * RADICAL STREAM IMPROVEMENT — the model's final build summary, rendered as
+ * a prominent expanded section at the end of the Builder's timeline.
+ *
+ * This is the Builder agent's own narration of what it built: the files
+ * created, key features, and tech stack. It mirrors how Claude Code / Cursor /
+ * Super Z summarize their work at the end of a build — a real response, not
+ * a system event row.
+ *
+ * Always expanded (no truncation), with a subtle accent border so it stands
+ * apart from the per-file commentary above it.
+ */
+const SummaryRow = memo(({ text }: { text: string }) => {
+  const cleaned = text.trim();
+
+  return (
+    <div
+      className="mt-3 rounded-lg border p-3.5"
+      style={{
+        borderColor: 'color-mix(in srgb, var(--pk-accent) 30%, transparent)',
+        background: 'color-mix(in srgb, var(--pk-accent) 6%, transparent)',
+      }}
+    >
+      <div
+        className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide"
+        style={{ color: 'var(--pk-accent)' }}
+      >
+        <span className="i-ph:sparkle-bold" />
+        <span>Build summary</span>
+      </div>
+      <div className="whitespace-pre-wrap text-sm leading-relaxed text-palmkit-elements-textPrimary">
+        {cleaned}
+      </div>
+    </div>
+  );
+});
+
+SummaryRow.displayName = 'SummaryRow';
+
 const Todos = memo(({ todos, counts }: { todos: TodoItem[]; counts?: { done: number; total: number } }) => (
   <div className="rounded-md border border-palmkit-elements-borderColor/60 bg-palmkit-elements-background-depth-3/40 p-2">
     <div className="mb-1 flex items-center gap-1.5 text-xs text-palmkit-elements-textTertiary">
@@ -444,6 +497,8 @@ const SectionView = memo(({ section }: { section: Section }) => {
               return <FileRow key={i} row={row} />;
             case 'command':
               return <CommandRow key={i} text={row.text} />;
+            case 'summary':
+              return <SummaryRow key={i} text={row.text} />;
             case 'read':
               return (
                 <div key={i} className="flex items-center gap-2 font-mono text-sm text-palmkit-elements-textTertiary">

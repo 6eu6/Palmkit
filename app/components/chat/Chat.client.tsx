@@ -127,16 +127,19 @@ const processSampledMessages = createSampler(
 /**
  * Build the assistant message content from Oracle-worker events.
  *
- * IMPORTANT: This is a SHORT summary only — NOT a flat event log.
+ * IMPORTANT: This is the MODEL'S OWN SUMMARY — not a flat event log.
  * The detailed event information (reasoning, todos, file writes, shell
  * commands) is rendered inline in the conversation by the unified
  * BuildStream component (a single CLI-style timeline), not by this text.
  *
- * Previously this function dumped every event as a flat text line, which
- * flooded the chat with "+tailwind.config.js", "Todos: 4/10 done",
- * "Building... (50s)" etc. — making the chat unreadable.
+ * RADICAL STREAM IMPROVEMENT: When the build is done (ready_for_preview),
+ * we surface the Builder agent's full final narration as the assistant's
+ * response message — exactly like Claude Code / Cursor / Super Z summarize
+ * their work at the end of a build. The orchestrator emits a
+ * `build_summary` event (file_chunk with isBuildSummary=true in payload)
+ * carrying the Builder's narration text, and we use it here.
  *
- * Now: just the status header + file count. BuildStream does the rest.
+ * Fallback to a short status line if no summary event is present.
  */
 function buildWorkerStreamContent(state: import('~/lib/hooks/use-external-worker').ExternalWorkerState): string {
   if (state.status === 'failed_clean') {
@@ -147,6 +150,27 @@ function buildWorkerStreamContent(state: import('~/lib/hooks/use-external-worker
   const fileCount = state.files.length;
 
   if (isDone) {
+    /*
+     * Use the Builder's model-generated summary as the assistant's final
+     * response. This gives the user a real explanation of what was built,
+     * the files created, key features, and tech stack — not a generic stub.
+     *
+     * The summary event is emitted by the orchestrator after the Builder
+     * agent completes (see external-worker/src/orchestrator.ts).
+     */
+    const summaryEvent = [...state.events]
+      .reverse()
+      .find((e) => (e.payload as any)?.isBuildSummary === true);
+
+    if (summaryEvent) {
+      const summaryText = (summaryEvent.payload as any)?.text ?? '';
+
+      if (summaryText.trim().length > 30) {
+        return summaryText;
+      }
+    }
+
+    // Fallback to stub if no summary event was emitted
     return `✅ **Build complete** — ${fileCount} file${fileCount !== 1 ? 's' : ''} generated. Preview is loading…`;
   }
 

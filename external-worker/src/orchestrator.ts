@@ -1142,6 +1142,48 @@ export async function runOrchestratedBuild(
         }
       } else if (role === 'builder') {
         builderContext = agentText;
+
+        /*
+         * RADICAL STREAM IMPROVEMENT — emit a dedicated build_summary event
+         * carrying the Builder's full final narration.
+         *
+         * The frontend uses this text as the assistant's final response
+         * message (replacing the generic "Build complete — N files" stub),
+         * so the user sees a model-generated explanation of what was built,
+         * the files created, key features, and tech stack — exactly like
+         * Claude Code / Cursor / Super Z summarize their work at the end
+         * of a build.
+         *
+         * The Builder's narration naturally contains: an intro ("I'll
+         * build X for you"), per-file commentary, and a closing summary
+         * ("I've successfully built X. Here's what was created: ...
+         * Features: ..."). That closing summary is the user's "response"
+         * — not a system event row.
+         *
+         * Emitted as a file_chunk with kind='build_summary' + isBuildSummary
+         * flag so it flows through the existing dispatch logic without
+         * needing a new event type, and the frontend can detect it via
+         * payload.isBuildSummary.
+         */
+        if (agentText.trim().length > 30) {
+          try {
+            await emitEvent(
+              supabase,
+              jobId,
+              'file_chunk' as any,
+              `📋 Build summary ready`,
+              {
+                agent: config.name,
+                role,
+                kind: 'build_summary',
+                text: agentText,
+                isBuildSummary: true,
+              },
+            );
+          } catch (e) {
+            logger.warn(`[orchestrator] Failed to emit build_summary: ${e}`);
+          }
+        }
       } else if (role === 'tester') {
         testerContext = agentText;
       }

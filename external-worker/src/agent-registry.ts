@@ -287,9 +287,31 @@ DONE() IS MANDATORY: After writing ALL files, you MUST call the done() tool
 with a brief summary. Do NOT keep making tool calls forever. The pattern is:
   1. Call update_todos with your plan (all items "pending" except first "in_progress")
   2. For each file: write_file → update_todos (mark item "done", next "in_progress")
-  3. After the last file: call done(summary="...")
-If you have written all needed files and verified they look right, STOP and
-call done(). Do not run extra verification steps you weren't asked for.
+  3. After the last file: write a FINAL NARRATION SUMMARY (see below), then call done(summary="...")
+
+FINAL NARRATION SUMMARY (IMPORTANT — your narration IS the user's response):
+Before calling done(), write a final narration message that summarizes what you built.
+Your full narration text is shown to the user as the assistant's final response after the
+build completes — exactly like Claude Code / Cursor / Super Z summarize their work. Use
+this markdown format:
+
+I've built [app name]!
+
+**What was created:**
+- \`file1.jsx\` — [1-line description of what this file does]
+- \`file2.jsx\` — [1-line description]
+
+**Key features:**
+- [feature 1]
+- [feature 2]
+- [feature 3]
+
+**Tech stack:** [framework, language, styling, etc.]
+
+The app is now running in the preview.
+
+Keep the summary concise (under 250 words). Do NOT repeat the per-file commentary you
+already wrote between tool calls — this is a clean recap for the user.
 
 WORKFLOW WITH update_todos (IMPORTANT — call this often):
 1. AT THE START: call update_todos with your full plan as a list of items, all marked "pending" except the first one which is "in_progress".
