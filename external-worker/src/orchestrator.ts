@@ -1145,7 +1145,9 @@ export async function runOrchestratedBuild(
 
         /*
          * RADICAL STREAM IMPROVEMENT — emit a dedicated build_summary event
-         * carrying the Builder's full final narration.
+         * carrying the Builder's FINAL step narration only (not the full
+         * agentText, which includes per-file planning commentary like
+         * "I'll build X. Let me start by...").
          *
          * The frontend uses this text as the assistant's final response
          * message (replacing the generic "Build complete — N files" stub),
@@ -1154,19 +1156,46 @@ export async function runOrchestratedBuild(
          * Claude Code / Cursor / Super Z summarize their work at the end
          * of a build.
          *
-         * The Builder's narration naturally contains: an intro ("I'll
-         * build X for you"), per-file commentary, and a closing summary
-         * ("I've successfully built X. Here's what was created: ...
-         * Features: ..."). That closing summary is the user's "response"
-         * — not a system event row.
+         * We extract ONLY the last step's text because:
+         *   - Step 1's text is the intro/planning ("I'll build X...")
+         *   - Intermediate steps' text is per-file commentary ("Now the config...")
+         *   - The LAST step's text is the final summary ("I've built X!
+         *     What was created: ... Features: ... Tech stack: ...")
          *
          * Emitted as a file_chunk with kind='build_summary' + isBuildSummary
          * flag so it flows through the existing dispatch logic without
          * needing a new event type, and the frontend can detect it via
          * payload.isBuildSummary.
          */
-        if (agentText.trim().length > 30) {
-          try {
+        try {
+          /*
+           * Extract the last step's text. The AI SDK's StepResult.text is
+           * a Promise<string> — we await it. We scan backwards to find the
+           * last step with non-empty text (the final step might be just a
+           * tool call like done() with no narration).
+           */
+          let summaryText = '';
+          const allSteps = (await streamResult.steps) ?? [];
+
+          for (let i = allSteps.length - 1; i >= 0; i--) {
+            try {
+              const stepText = await allSteps[i].text;
+
+              if (stepText && stepText.trim().length >= 50) {
+                summaryText = stepText.trim();
+                break;
+              }
+            } catch {
+              // best-effort — try the next step
+            }
+          }
+
+          // Fall back to the full agentText if no step text was extractable
+          if (!summaryText && agentText.trim().length > 30) {
+            summaryText = agentText.trim();
+          }
+
+          if (summaryText.length > 30) {
             await emitEvent(
               supabase,
               jobId,
@@ -1176,13 +1205,13 @@ export async function runOrchestratedBuild(
                 agent: config.name,
                 role,
                 kind: 'build_summary',
-                text: agentText,
+                text: summaryText,
                 isBuildSummary: true,
               },
             );
-          } catch (e) {
-            logger.warn(`[orchestrator] Failed to emit build_summary: ${e}`);
           }
+        } catch (e) {
+          logger.warn(`[orchestrator] Failed to emit build_summary: ${e}`);
         }
       } else if (role === 'tester') {
         testerContext = agentText;

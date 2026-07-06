@@ -18,6 +18,7 @@ import { useStore } from '@nanostores/react';
 import { workerEventsStore, workerProgressStore, type WorkerEvent } from '~/lib/stores/build-status';
 import { classNames } from '~/utils/classNames';
 import { PalmkitLoader } from '~/components/ui/PalmkitLoader';
+import { Markdown } from './Markdown';
 
 /* ── Row + section model ────────────────────────────────────────────────── */
 
@@ -73,11 +74,32 @@ function isHeartbeat(ev: WorkerEvent): boolean {
  * Fold the ordered event log into agent sections with chronological rows.
  * Consecutive `reasoning` fragments are concatenated (they are token deltas)
  * and split into paragraphs on stepId changes.
+ *
+ * RADICAL STREAM IMPROVEMENT: only the LAST `build_summary` event is rendered
+ * as a `summary` row — earlier ones (from repair rounds or retry rounds) are
+ * skipped so the user sees exactly one clean summary at the end, not duplicates.
  */
 function foldEvents(events: WorkerEvent[]): Section[] {
   const sections: Section[] = [];
   let current: Section = { agent: 'System', role: 'system', rows: [], running: false };
   sections.push(current);
+
+  /*
+   * Pre-scan: find the seq of the LAST build_summary event. Only this one
+   * will be rendered as a `summary` row; earlier build_summary events are
+   * treated as no-ops (they were superseded by a later Builder run).
+   */
+  let lastBuildSummarySeq = -1;
+
+  for (let i = events.length - 1; i >= 0; i--) {
+    const ev = events[i];
+    const p = (ev.payload ?? {}) as Record<string, any>;
+
+    if (ev.type === 'file_chunk' && p.kind === 'build_summary' && p.isBuildSummary === true) {
+      lastBuildSummarySeq = ev.seq;
+      break;
+    }
+  }
 
   // reasoning accumulation state (per contiguous run)
   let reasoningBuf = '';
@@ -171,14 +193,21 @@ function foldEvents(events: WorkerEvent[]): Section[] {
 
         /*
          * RADICAL STREAM IMPROVEMENT — build_summary events carry the
-         * Builder agent's full final narration as the model's "response"
-         * to the user. Render as a prominent, expanded summary section
+         * Builder agent's final narration as the model's "response" to
+         * the user. Render as a prominent, expanded summary section
          * (not a generic system row) so the user sees what was built,
          * the files created, key features, and tech stack — exactly like
          * Claude Code / Cursor / Super Z summarize their work.
+         *
+         * Only the LAST build_summary event is rendered — earlier ones
+         * (from repair rounds or retries) are skipped to prevent
+         * duplicate summary sections.
          */
         if (p.kind === 'build_summary' && p.text) {
-          current.rows.push({ kind: 'summary', text: p.text as string });
+          if (ev.seq === lastBuildSummarySeq) {
+            current.rows.push({ kind: 'summary', text: p.text as string });
+          }
+
           break;
         }
 
@@ -361,7 +390,9 @@ const CommandRow = memo(({ text }: { text: string }) => (
  * a system event row.
  *
  * Always expanded (no truncation), with a subtle accent border so it stands
- * apart from the per-file commentary above it.
+ * apart from the per-file commentary above it. Renders markdown (bold, lists,
+ * code) via the existing Markdown component so **What was created:** shows as
+ * a real heading, not literal asterisks.
  */
 const SummaryRow = memo(({ text }: { text: string }) => {
   const cleaned = text.trim();
@@ -381,8 +412,8 @@ const SummaryRow = memo(({ text }: { text: string }) => {
         <span className="i-ph:sparkle-bold" />
         <span>Build summary</span>
       </div>
-      <div className="whitespace-pre-wrap text-sm leading-relaxed text-palmkit-elements-textPrimary">
-        {cleaned}
+      <div className="text-sm leading-relaxed text-palmkit-elements-textPrimary">
+        <Markdown limitedMarkdown>{cleaned}</Markdown>
       </div>
     </div>
   );
