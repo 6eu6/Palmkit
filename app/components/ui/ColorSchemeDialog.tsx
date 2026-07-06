@@ -1,10 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogTitle, DialogDescription, DialogRoot } from './Dialog';
-import { Button } from './Button';
-import { IconButton } from './IconButton';
+import * as Popover from '@radix-ui/react-popover';
+import { classNames } from '~/utils/classNames';
 import type { DesignScheme } from '~/types/design-scheme';
 import { defaultDesignScheme, designFeatures, designFonts, paletteRoles } from '~/types/design-scheme';
 
+/**
+ * ColorSchemeDialog — a compact, mobile-first popover for design customization.
+ *
+ * Redesigned from the old 480px-wide modal with tabs into a single elegant
+ * popover anchored to the palette icon. Everything is visible in one scroll:
+ * palette swatches (tap to edit), font chips (tap to toggle), feature chips.
+ * No tabs to hide content behind — the user sees and adjusts all three at once.
+ *
+ * The palette feeds the builder's system prompt as JSON (PALETTE / FONT /
+ * FEATURES), so every change here directly steers the next build.
+ */
 export interface ColorSchemeDialogProps {
   designScheme?: DesignScheme;
   setDesignScheme?: (scheme: DesignScheme) => void;
@@ -21,8 +31,8 @@ export const ColorSchemeDialog: React.FC<ColorSchemeDialogProps> = ({ setDesignS
 
   const [features, setFeatures] = useState<string[]>(designScheme?.features || defaultDesignScheme.features);
   const [font, setFont] = useState<string[]>(designScheme?.font || defaultDesignScheme.font);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState<'colors' | 'typography' | 'features'>('colors');
+  const [open, setOpen] = useState(false);
+  const [editingColor, setEditingColor] = useState<string | null>(null);
 
   useEffect(() => {
     if (designScheme) {
@@ -50,7 +60,7 @@ export const ColorSchemeDialog: React.FC<ColorSchemeDialogProps> = ({ setDesignS
 
   const handleSave = () => {
     setDesignScheme?.({ palette, features, font });
-    setIsDialogOpen(false);
+    setOpen(false);
   };
 
   const handleReset = () => {
@@ -59,324 +69,195 @@ export const ColorSchemeDialog: React.FC<ColorSchemeDialogProps> = ({ setDesignS
     setFont(defaultDesignScheme.font);
   };
 
-  const renderColorSection = () => (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold text-palmkit-elements-textPrimary flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-palmkit-elements-item-contentAccent"></div>
-          Color Palette
-        </h3>
-        <button
-          onClick={handleReset}
-          className="text-sm bg-transparent hover:bg-palmkit-elements-background-depth-2 text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary rounded-lg flex items-center gap-2 transition-all duration-200"
-        >
-          <span className="i-ph:arrow-clockwise text-sm" />
-          Reset
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
-        {paletteRoles.map((role) => (
-          <div
-            key={role.key}
-            className="group flex items-center gap-4 p-4 rounded-xl bg-palmkit-elements-background-depth-3 hover:bg-palmkit-elements-background-depth-2 border border-transparent hover:border-palmkit-elements-borderColor transition-all duration-200"
-          >
-            <div className="relative flex-shrink-0">
-              <div
-                className="w-12 h-12 rounded-xl shadow-md cursor-pointer transition-all duration-200 hover:scale-110 ring-2 ring-transparent hover:ring-palmkit-elements-borderColorActive"
-                style={{ backgroundColor: palette[role.key] }}
-                onClick={() => document.getElementById(`color-input-${role.key}`)?.click()}
-                role="button"
-                tabIndex={0}
-                aria-label={`Change ${role.label} color`}
-              />
-              <input
-                id={`color-input-${role.key}`}
-                type="color"
-                value={palette[role.key]}
-                onChange={(e) => handleColorChange(role.key, e.target.value)}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                tabIndex={-1}
-              />
-              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-palmkit-elements-background-depth-1 rounded-full flex items-center justify-center shadow-sm">
-                <span className="i-ph:pencil-simple text-xs text-palmkit-elements-textSecondary" />
-              </div>
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold text-palmkit-elements-textPrimary transition-colors">{role.label}</div>
-              <div className="text-sm text-palmkit-elements-textSecondary line-clamp-2 leading-relaxed">
-                {role.description}
-              </div>
-              <div className="text-xs text-palmkit-elements-textTertiary font-mono mt-1 px-2 py-1 bg-palmkit-elements-background-depth-1 rounded-md inline-block">
-                {palette[role.key]}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  const renderTypographySection = () => (
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-palmkit-elements-textPrimary flex items-center gap-2">
-        <div className="w-2 h-2 rounded-full bg-palmkit-elements-item-contentAccent"></div>
-        Typography
-      </h3>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
-        {designFonts.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            onClick={() => handleFontToggle(f.key)}
-            className={`group p-4 rounded-xl border-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-palmkit-elements-borderColorActive ${
-              font.includes(f.key)
-                ? 'bg-palmkit-elements-item-backgroundAccent border-palmkit-elements-borderColorActive shadow-lg'
-                : 'bg-palmkit-elements-background-depth-3 border-palmkit-elements-borderColor hover:border-palmkit-elements-borderColorActive hover:bg-palmkit-elements-background-depth-2'
-            }`}
-          >
-            <div className="text-center space-y-2">
-              <div
-                className={`text-2xl font-medium transition-colors ${
-                  font.includes(f.key)
-                    ? 'text-palmkit-elements-item-contentAccent'
-                    : 'text-palmkit-elements-textPrimary'
-                }`}
-                style={{ fontFamily: f.key }}
-              >
-                {f.preview}
-              </div>
-              <div
-                className={`text-sm font-medium transition-colors ${
-                  font.includes(f.key)
-                    ? 'text-palmkit-elements-item-contentAccent'
-                    : 'text-palmkit-elements-textSecondary'
-                }`}
-              >
-                {f.label}
-              </div>
-              {font.includes(f.key) && (
-                <div className="w-6 h-6 mx-auto bg-palmkit-elements-item-contentAccent rounded-full flex items-center justify-center">
-                  <span className="i-ph:check text-white text-sm" />
-                </div>
-              )}
-            </div>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-
-  const renderFeaturesSection = () => (
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-palmkit-elements-textPrimary flex items-center gap-2">
-        <div className="w-2 h-2 rounded-full bg-palmkit-elements-item-contentAccent"></div>
-        Design Features
-      </h3>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
-        {designFeatures.map((f) => {
-          const isSelected = features.includes(f.key);
-
-          return (
-            <div key={f.key} className="feature-card-container p-2">
-              <button
-                type="button"
-                onClick={() => handleFeatureToggle(f.key)}
-                className={`group relative w-full p-6 text-sm font-medium transition-all duration-200 bg-palmkit-elements-background-depth-3 text-palmkit-elements-item-textSecondary ${
-                  f.key === 'rounded'
-                    ? isSelected
-                      ? 'rounded-3xl'
-                      : 'rounded-xl'
-                    : f.key === 'border'
-                      ? 'rounded-lg'
-                      : 'rounded-xl'
-                } ${
-                  f.key === 'border'
-                    ? isSelected
-                      ? 'border-3 border-palmkit-elements-borderColorActive bg-palmkit-elements-item-backgroundAccent text-palmkit-elements-item-contentAccent'
-                      : 'border-2 border-palmkit-elements-borderColor hover:border-palmkit-elements-borderColorActive text-palmkit-elements-textSecondary'
-                    : f.key === 'gradient'
-                      ? ''
-                      : isSelected
-                        ? 'bg-palmkit-elements-item-backgroundAccent text-palmkit-elements-item-contentAccent shadow-lg'
-                        : 'bg-palmkit-elements-background-depth-3 hover:bg-palmkit-elements-background-depth-2 text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary'
-                } ${f.key === 'shadow' ? (isSelected ? 'shadow-xl' : 'shadow-lg') : 'shadow-md'}`}
-                style={{
-                  ...(f.key === 'gradient' && {
-                    background: isSelected
-                      ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-                      : 'var(--palmkit-elements-bg-depth-3)',
-                    color: isSelected ? 'white' : 'var(--palmkit-elements-textSecondary)',
-                  }),
-                }}
-              >
-                <div className="flex flex-col items-center gap-4">
-                  <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-palmkit-elements-background-depth-1 bg-opacity-20">
-                    {f.key === 'rounded' && (
-                      <div
-                        className={`w-6 h-6 bg-current transition-all duration-200 ${
-                          isSelected ? 'rounded-full' : 'rounded'
-                        } opacity-80`}
-                      />
-                    )}
-                    {f.key === 'border' && (
-                      <div
-                        className={`w-6 h-6 rounded-lg transition-all duration-200 ${
-                          isSelected ? 'border-3 border-current opacity-90' : 'border-2 border-current opacity-70'
-                        }`}
-                      />
-                    )}
-                    {f.key === 'gradient' && (
-                      <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-gray-400 via-pink-400 to-indigo-400 opacity-90" />
-                    )}
-                    {f.key === 'shadow' && (
-                      <div className="relative">
-                        <div
-                          className={`w-6 h-6 bg-current rounded-lg transition-all duration-200 ${
-                            isSelected ? 'opacity-90' : 'opacity-70'
-                          }`}
-                        />
-                        <div
-                          className={`absolute top-1 left-1 w-6 h-6 bg-current rounded-lg transition-all duration-200 ${
-                            isSelected ? 'opacity-40' : 'opacity-30'
-                          }`}
-                        />
-                      </div>
-                    )}
-                    {f.key === 'frosted-glass' && (
-                      <div className="relative">
-                        <div
-                          className={`w-6 h-6 rounded-lg transition-all duration-200 backdrop-blur-sm bg-white/20 border border-white/30 ${
-                            isSelected ? 'opacity-90' : 'opacity-70'
-                          }`}
-                        />
-                        <div
-                          className={`absolute inset-0 w-6 h-6 rounded-lg transition-all duration-200 backdrop-blur-md bg-gradient-to-br from-white/10 to-transparent ${
-                            isSelected ? 'opacity-60' : 'opacity-40'
-                          }`}
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="text-center">
-                    <div className="font-semibold">{f.label}</div>
-                    {isSelected && <div className="mt-2 w-8 h-1 bg-current rounded-full mx-auto opacity-60" />}
-                  </div>
-                </div>
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-
   return (
-    <div>
-      <IconButton title="Design Palette" className="transition-all" onClick={() => setIsDialogOpen(!isDialogOpen)}>
-        <div className="i-ph:palette text-xl"></div>
-      </IconButton>
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          title="Design palette"
+          aria-label="Design palette"
+          className={classNames(
+            'shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150 active:scale-90',
+            open
+              ? 'bg-palmkit-elements-item-backgroundActive text-palmkit-elements-textPrimary'
+              : 'text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary hover:bg-palmkit-elements-item-backgroundActive',
+          )}
+        >
+          <div className="i-ph:palette text-[18px]" />
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          side="top"
+          align="center"
+          sideOffset={10}
+          collisionPadding={12}
+          className={classNames(
+            'pk-no-fullscreen z-[9999] w-[min(340px,calc(100vw-1.5rem))]',
+            'rounded-2xl border border-palmkit-elements-borderColor',
+            'bg-palmkit-elements-background-depth-2 shadow-2xl',
+            'max-h-[70vh] flex flex-col',
+          )}
+          style={{ animation: 'pk-palette-in 0.16s cubic-bezier(0.16, 1, 0.3, 1)', transformOrigin: 'bottom center' }}
+        >
+          <style>
+            {
+              '@keyframes pk-palette-in{from{opacity:0;transform:translateY(6px) scale(0.98)}to{opacity:1;transform:none}}'
+            }
+          </style>
 
-      <DialogRoot open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <Dialog>
-          <div className="py-4 px-4 min-w-[480px] max-w-[90vw] max-h-[85vh] flex flex-col gap-6 overflow-hidden">
-            <div className="">
-              <DialogTitle className="text-2xl font-bold text-palmkit-elements-textPrimary">
-                Design Palette & Features
-              </DialogTitle>
-              <DialogDescription className="text-palmkit-elements-textSecondary leading-relaxed">
-                Customize your color palette, typography, and design features. These preferences will guide the AI in
-                creating designs that match your style.
-              </DialogDescription>
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 pt-3.5 pb-2.5 border-b border-palmkit-elements-borderColor/70">
+            <div className="flex items-center gap-2">
+              <div className="i-ph:palette text-base text-palmkit-elements-textSecondary" />
+              <span className="text-[13px] font-semibold text-palmkit-elements-textPrimary">Design</span>
             </div>
+            <button
+              onClick={handleReset}
+              className="flex items-center gap-1 text-[11px] text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary transition-colors"
+            >
+              <span className="i-ph:arrow-counter-clockwise text-[12px]" />
+              Reset
+            </button>
+          </div>
 
-            {/* Navigation Tabs */}
-            <div className="flex gap-1 p-1 bg-palmkit-elements-background-depth-3 rounded-xl">
-              {[
-                { key: 'colors', label: 'Colors', icon: 'i-ph:palette' },
-                { key: 'typography', label: 'Typography', icon: 'i-ph:text-aa' },
-                { key: 'features', label: 'Features', icon: 'i-ph:magic-wand' },
-              ].map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveSection(tab.key as any)}
-                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all duration-200 ${
-                    activeSection === tab.key
-                      ? 'bg-palmkit-elements-background-depth-3 text-palmkit-elements-textPrimary shadow-md'
-                      : 'bg-palmkit-elements-background-depth-2 text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary hover:bg-palmkit-elements-background-depth-2'
-                  }`}
-                >
-                  <span className={`${tab.icon} text-lg`} />
-                  <span>{tab.label}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Content Area */}
-            <div className=" min-h-92 overflow-y-auto">
-              {activeSection === 'colors' && renderColorSection()}
-              {activeSection === 'typography' && renderTypographySection()}
-              {activeSection === 'features' && renderFeaturesSection()}
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex justify-between items-center">
-              <div className="text-sm text-palmkit-elements-textSecondary">
-                {Object.keys(palette).length} colors • {font.length} fonts • {features.length} features
+          {/* Scrollable body */}
+          <div className="flex-1 overflow-y-auto modern-scrollbar px-4 py-3 space-y-4">
+            {/* Palette — compact swatch grid */}
+            <div>
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <span className="i-ph:swatches text-[13px] text-palmkit-elements-textSecondary" />
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-palmkit-elements-textTertiary">
+                  Palette
+                </span>
               </div>
-              <div className="flex gap-3">
-                <Button variant="secondary" onClick={() => setIsDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={handleSave}
-                  className="bg-palmkit-elements-button-primary-background hover:bg-palmkit-elements-button-primary-backgroundHover text-palmkit-elements-button-primary-text"
-                >
-                  Save Changes
-                </Button>
+              <div className="grid grid-cols-3 gap-1.5">
+                {paletteRoles.map((role) => {
+                  const isEditing = editingColor === role.key;
+                  return (
+                    <div key={role.key} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setEditingColor(isEditing ? null : role.key)}
+                        title={`${role.label} — ${role.description}`}
+                        className={classNames(
+                          'w-full flex flex-col items-center gap-1 p-2 rounded-lg border transition-all',
+                          isEditing
+                            ? 'border-[var(--pk-glass-border-hi)] bg-palmkit-elements-item-backgroundActive'
+                            : 'border-palmkit-elements-borderColor hover:border-[var(--pk-glass-border-hi)]',
+                        )}
+                      >
+                        <span
+                          className="w-7 h-7 rounded-full ring-1 ring-black/10 dark:ring-white/10"
+                          style={{ backgroundColor: palette[role.key] }}
+                        />
+                        <span className="text-[10px] font-medium text-palmkit-elements-textSecondary truncate w-full text-center">
+                          {role.label}
+                        </span>
+                      </button>
+
+                      {isEditing && (
+                        <div className="absolute z-10 top-full left-1/2 -translate-x-1/2 mt-1 p-2 rounded-lg border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-1 shadow-xl">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="color"
+                              value={palette[role.key]}
+                              onChange={(e) => handleColorChange(role.key, e.target.value)}
+                              className="w-8 h-8 rounded cursor-pointer border-0 p-0 bg-transparent"
+                            />
+                            <input
+                              type="text"
+                              value={palette[role.key]}
+                              onChange={(e) => handleColorChange(role.key, e.target.value)}
+                              className="w-20 text-[11px] font-mono px-1.5 py-1 rounded border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 text-palmkit-elements-textPrimary focus:outline-none focus:border-[var(--pk-glass-border-hi)]"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Typography — horizontal font chips */}
+            <div>
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <span className="i-ph:text-aa text-[13px] text-palmkit-elements-textSecondary" />
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-palmkit-elements-textTertiary">
+                  Typography
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {designFonts.map((f) => {
+                  const isOn = font.includes(f.key);
+                  return (
+                    <button
+                      key={f.key}
+                      type="button"
+                      onClick={() => handleFontToggle(f.key)}
+                      className={classNames(
+                        'px-2.5 py-1.5 rounded-lg text-[12px] border transition-all active:scale-95',
+                        isOn
+                          ? 'bg-[var(--pk-accent-dim)] text-palmkit-elements-textPrimary border-[var(--pk-glass-border-hi)]'
+                          : 'bg-palmkit-elements-background-depth-1 text-palmkit-elements-textTertiary border-palmkit-elements-borderColor hover:text-palmkit-elements-textPrimary',
+                      )}
+                      style={{ fontFamily: f.key }}
+                    >
+                      {f.preview} {f.label}
+                      {isOn && <span className="i-ph:check text-[10px] ml-1 inline" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Features — toggle chips */}
+            <div>
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <span className="i-ph:magic-wand text-[13px] text-palmkit-elements-textSecondary" />
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-palmkit-elements-textTertiary">
+                  Features
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {designFeatures.map((f) => {
+                  const isOn = features.includes(f.key);
+                  return (
+                    <button
+                      key={f.key}
+                      type="button"
+                      onClick={() => handleFeatureToggle(f.key)}
+                      className={classNames(
+                        'px-2.5 py-1.5 rounded-lg text-[12px] font-medium border transition-all active:scale-95',
+                        isOn
+                          ? 'bg-[var(--pk-accent-dim)] text-palmkit-elements-textPrimary border-[var(--pk-glass-border-hi)]'
+                          : 'bg-palmkit-elements-background-depth-1 text-palmkit-elements-textTertiary border-palmkit-elements-borderColor hover:text-palmkit-elements-textPrimary',
+                      )}
+                    >
+                      {isOn && <span className="i-ph:check text-[10px] mr-1 inline" />}
+                      {f.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
-        </Dialog>
-      </DialogRoot>
 
-      <style>{`
-        .custom-scrollbar {
-          scrollbar-width: thin;
-          scrollbar-color: var(--palmkit-elements-textTertiary) transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background-color: var(--palmkit-elements-textTertiary);
-          border-radius: 3px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background-color: var(--palmkit-elements-textSecondary);
-        }
-        .line-clamp-2 {
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-        .feature-card-container {
-          min-height: 140px;
-          display: flex;
-          align-items: stretch;
-        }
-        .feature-card-container button {
-          flex: 1;
-        }
-      `}</style>
-    </div>
+          {/* Footer */}
+          <div className="flex items-center justify-between px-4 py-2.5 border-t border-palmkit-elements-borderColor/70">
+            <span className="text-[10px] text-palmkit-elements-textTertiary">
+              {font.length + features.length} active
+            </span>
+            <button
+              onClick={handleSave}
+              className="px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[var(--pk-accent)] text-[var(--pk-on-accent)] hover:opacity-90 active:scale-95 transition"
+            >
+              Apply
+            </button>
+          </div>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 };
