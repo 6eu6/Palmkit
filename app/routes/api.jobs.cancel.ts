@@ -34,36 +34,34 @@ async function cancelJobAction({ request, context }: ActionFunctionArgs) {
   }
 
   /*
-   * Verify the job belongs to this user before cancelling — prevents a user
-   * from cancelling another user's job by guessing the ID. The PATCH's WHERE
-   * clause also carries user_id as a belt-and-suspenders guard.
+   * Write 'cancel_requested' directly. The WHERE clause (id + user_id) is the
+   * security guard — RLS + user_id match ensures a user can only cancel their
+   * own jobs. We skip the pre-check SELECT (it was failing under RLS even for
+   * the job owner due to a policy quirk). The PATCH returns the updated row
+   * so we can tell the caller whether it was already terminal.
    */
-  const { data: job, error: jobErr } = await authed.supabase
-    .from('build_jobs')
-    .select('id, user_id, status')
-    .eq('id', jobId)
-    .eq('user_id', authed.user.id)
-    .single();
-
-  if (jobErr || !job) {
-    return Response.json({ error: 'Job not found' }, { status: 404 });
-  }
-
-  // Already terminal — nothing to cancel.
-  if (job.status === 'ready_for_preview' || job.status === 'failed_clean' || job.status === 'cancelled') {
-    return Response.json({ ok: true, reason: `already ${job.status}` });
-  }
-
-  const { error: updateErr } = await authed.supabase
+  const { data: updated, error: updateErr } = await authed.supabase
     .from('build_jobs')
     .update({ status: 'cancel_requested' })
     .eq('id', jobId)
-    .eq('user_id', authed.user.id);
+    .eq('user_id', authed.user.id)
+    .in('status', ['pending', 'generating'])
+    .select('id, status')
+    .maybeSingle();
 
   if (updateErr) {
     logger.error(`Failed to write cancel_requested for job ${jobId}:`, updateErr.message);
 
-    return Response.json({ error: 'Failed to cancel job' }, { status: 500 });
+    return Response.json({ error: 'Failed to cancel job', detail: updateErr.message }, { status: 500 });
+  }
+
+  if (!updated) {
+    /*
+     * Either the job doesn't exist, belongs to another user, or is already
+     * terminal (ready_for_preview / failed_clean / cancelled). All three are
+     * safe to report as "already done" — the caller proceeds either way.
+     */
+    return Response.json({ ok: true, reason: 'already terminal or not found' });
   }
 
   logger.info(`Job ${jobId} cancel_requested by user ${authed.user.id}`);
