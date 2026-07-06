@@ -802,8 +802,19 @@ export const ChatImpl = memo(
        * completion in the background; its result is ignored (the front-end
        * stopped polling that jobId). A proper cancel endpoint is future
        * work — for now this unblocks the user immediately.
+       *
+       * Also clear palmkitJobId from chat metadata — without this, the
+       * restore effect (which fires when status drops to 'idle' + a jobId
+       * exists in metadata) would immediately re-attach to the aborted job
+       * and re-poll it, undoing the reset.
        */
       resetExtWorker();
+
+      const currentMeta = chatMetadata.get();
+
+      if (currentMeta?.palmkitJobId) {
+        chatMetadata.set({ ...currentMeta, palmkitJobId: undefined });
+      }
 
       logStore.logProvider('Chat response aborted', {
         component: 'Chat',
