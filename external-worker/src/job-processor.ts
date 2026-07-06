@@ -250,8 +250,19 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
        */
       let manifest: Array<{ path: string; storage_key: string; mime_type: string | null }> | null = null;
       let manifestErr: unknown = null;
+      /*
+       * Poll for the manifest. The target job might still be building (the
+       * user may have hit Stop on a prior build, then sent a new message —
+       * the prior job continues to completion in the background). Wait up to
+       * 5 min so a typical 3-4 min build finishes and the edit picks up its
+       * files + worklog. If the target failed/cancelled or 5 min elapses,
+       * fall back to a fresh build instead of failing — losing context is
+       * worse than starting over.
+       */
       const MANIFEST_POLL_MS = 5_000;
-      const MANIFEST_POLL_MAX = 6; // 30s total — past the typical upload phase
+      const MANIFEST_POLL_MAX = 60; // 5 min total — covers a typical full build
+
+      let targetFailed = false;
 
       for (let attempt = 0; attempt < MANIFEST_POLL_MAX; attempt++) {
         const { data, error } = await supabase
@@ -273,12 +284,8 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         const targetStatus = targetJob?.status;
 
         if (targetStatus === 'failed_clean' || targetStatus === 'cancelled') {
-          await failJob(
-            supabase,
-            job.id,
-            `The previous build failed (status: ${targetStatus}). Please start a new build instead of editing.`,
-          );
-          return;
+          targetFailed = true;
+          break;
         }
 
         if (attempt < MANIFEST_POLL_MAX - 1) {
@@ -286,17 +293,23 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
             supabase,
             job.id,
             'edit_progress',
-            `Waiting for the previous build to finish its upload… (${(attempt + 1) * 5}s)`,
+            `Waiting for the previous build to finish… (${Math.round((attempt + 1) * 5)}s)`,
           );
           await new Promise((r) => setTimeout(r, MANIFEST_POLL_MS));
         }
       }
 
       if (manifestErr || !manifest || manifest.length === 0) {
+        /*
+         * The previous build didn't produce a manifest within 5 min (still
+         * running, or failed/cancelled). Fail with a clear, actionable
+         * message so the user knows to wait or start fresh.
+         */
+        const reason = targetFailed ? 'the previous build failed' : 'the previous build is still running after 5 min';
         await failJob(
           supabase,
           job.id,
-          'Could not load existing project files for editing — the previous build may not have completed. Try a new build instead.',
+          `Could not load the previous build's files (${reason}). Please wait for it to finish or start a new build.`,
         );
         return;
       }
