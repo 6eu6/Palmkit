@@ -200,6 +200,14 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
     const { getModelInstance } = await import('./provider-registry');
     const model = getModelInstance(providerName, modelName, apiKey);
 
+    /*
+     * Per-role model overrides (Model Router). Built once — used by both
+     * the edit path (agent loop) and the new-build path. Previously only
+     * defined inside the new-build block, so the edit path got
+     * 'agentModels is not defined'.
+     */
+    const agentModels: Partial<Record<'brain' | 'builder' | 'tester', typeof model>> = {};
+
     // ─── Phase 7: EDIT MODE ────────────────────────────────────────────
     const editJobId: string | null = job.validation_result?.editJobId ?? null;
 
@@ -647,8 +655,6 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         const roleIds = (job.validation_result?.modelRoles ?? {}) as Partial<
           Record<'brain' | 'builder' | 'tester' | 'vision' | 'media', string>
         >;
-        const agentModels: Partial<Record<'brain' | 'builder' | 'tester', typeof model>> = {};
-
         for (const roleName of ['brain', 'builder', 'tester'] as const) {
           const id = roleIds[roleName];
 
