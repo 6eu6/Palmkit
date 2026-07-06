@@ -507,7 +507,14 @@ export function useExternalWorker() {
   );
 
   const startJob = useCallback(
-    async (prompt: string, model: string, provider: string, editFromJobId?: string, projectId?: string) => {
+    async (
+      prompt: string,
+      model: string,
+      provider: string,
+      editFromJobId?: string,
+      projectId?: string,
+      designScheme?: { palette: Record<string, string>; font: string[]; features: string[] },
+    ) => {
       epochRef.current++;
       setState({ ...initialState, status: 'pending', currentStep: 'queued' });
       fetchedPreview.current = false;
@@ -580,6 +587,7 @@ export function useExternalWorker() {
             ...(agentConfig ? { agentConfig } : {}),
             ...(editFromJobId ? { editJobId: editFromJobId } : {}),
             ...(projectId ? { projectId } : {}),
+            ...(designScheme ? { designScheme } : {}),
           }),
         });
 

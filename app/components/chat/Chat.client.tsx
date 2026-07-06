@@ -1131,7 +1131,7 @@ export const ChatImpl = memo(
          * files, worklog, and manifest under projects/{projectId}/workspace/.
          * This links the chat to its R2 workspace for restore-on-reload.
          */
-        await startExtJob(finalMessageContent, model, provider.name, editFromJobId, workerChatId);
+        await startExtJob(finalMessageContent, model, provider.name, editFromJobId, workerChatId, designScheme);
 
         /*
          * Save the chat to IndexedDB IMMEDIATELY with the NEW messages array.

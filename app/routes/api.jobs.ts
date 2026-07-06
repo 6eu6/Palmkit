@@ -69,6 +69,7 @@ export async function action(args: ActionFunctionArgs) {
     skills,
     libraries,
     agentConfig,
+    designScheme,
   } = body;
 
   if (!prompt || typeof prompt !== 'string') {
@@ -155,6 +156,22 @@ export async function action(args: ActionFunctionArgs) {
          */
         ...(reasoningEffort && ['off', 'medium', 'max'].includes(reasoningEffort) ? { reasoningEffort } : {}),
         ...(modelRoles && typeof modelRoles === 'object' ? { modelRoles } : {}),
+
+        /*
+         * Design scheme (palette + fonts + features) — feeds the builder's
+         * system prompt so the AI uses the user's chosen colors/fonts instead
+         * of inventing its own. Passed through validation_result (jsonb) to
+         * the Oracle worker, which injects it into the Planner/Builder.
+         */
+        ...(designScheme && typeof designScheme === 'object'
+          ? {
+              designScheme: {
+                palette: designScheme.palette ?? {},
+                font: Array.isArray(designScheme.font) ? designScheme.font : [],
+                features: Array.isArray(designScheme.features) ? designScheme.features : [],
+              },
+            }
+          : {}),
 
         /*
          * Skills: enabled instruction playbooks ({ name, instructions }) that

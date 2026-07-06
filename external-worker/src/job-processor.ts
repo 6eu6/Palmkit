@@ -568,6 +568,10 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
             ? { apiKey, model: roleIds.media || DEFAULT_IMAGE_MODEL }
             : undefined;
 
+        const designScheme = job.validation_result?.designScheme as
+          | { palette: Record<string, string>; font: string[]; features: string[] }
+          | undefined;
+
         const agentResult = await runOrchestratedBuild(
           prompt,
           model,
@@ -578,7 +582,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           spec.maxCompletionTokens, // dynamic maxTokens based on model limits
           spec.appType, // appType for manifest (so restore knows how to preview)
           contextWindow, // model context window → context-pressure measurement
-          { agentModels, reasoningEffort, media, skills, libraries, agentConfig },
+          { agentModels, reasoningEffort, media, skills, libraries, agentConfig, designScheme },
         );
 
         // Capture the server-measured context pressure for the fork nudge.

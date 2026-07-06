@@ -100,6 +100,9 @@ export async function runOrchestratedBuild(
 
     /** Optional pipeline phases the user toggled (Researcher / Tester). */
     agentConfig?: { researcher: boolean; tester: boolean };
+
+    /** User-chosen design scheme (palette + fonts + features) — injected into Planner/Builder. */
+    designScheme?: { palette: Record<string, string>; font: string[]; features: string[] };
   },
 ): Promise<OrchestratorResult> {
   const startTime = Date.now();
@@ -364,6 +367,23 @@ export async function runOrchestratedBuild(
       if ((role === 'planner' || role === 'builder') && opts?.skills && opts.skills.length > 0) {
         const skillsBlock = opts.skills.map((s) => `• ${s.name}: ${s.instructions}`).join('\n');
         agentPrompt = `${agentPrompt}\n\n=== ACTIVE SKILLS (mandatory house rules — apply all of them) ===\n${skillsBlock}\n=== END SKILLS ===`;
+      }
+
+      /*
+       * Design scheme (palette + fonts + features) — the user's explicit
+       * design choices from the toolbar. Injected into Planner + Builder so
+       * the Planner's DESIGN SYSTEM uses these exact colors/fonts, and the
+       * Builder applies them in code. Without this the palette popover was a
+       * no-op on the external-worker path.
+       */
+      if ((role === 'planner' || role === 'builder') && opts?.designScheme) {
+        const ds = opts.designScheme;
+        const paletteLines = Object.entries(ds.palette)
+          .map(([role, hex]) => `- ${role}: ${hex}`)
+          .join('\n');
+        const fontLine = ds.font.length > 0 ? ds.font.join(', ') : 'not specified (pick a fitting pair)';
+        const featuresLine = ds.features.length > 0 ? ds.features.join(', ') : 'none specified';
+        agentPrompt = `${agentPrompt}\n\n=== USER DESIGN SCHEME (MANDATORY — use these exact values, do not invent your own) ===\nPALETTE:\n${paletteLines}\n\nFONTS: ${fontLine}\n\nDESIGN FEATURES: ${featuresLine}\n=== END USER DESIGN SCHEME ===`;
       }
 
       /*
