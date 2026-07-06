@@ -33,7 +33,8 @@ type Row =
   | { kind: 'read'; text: string }
   | { kind: 'screenshot'; text: string }
   | { kind: 'system'; text: string }
-  | { kind: 'error'; text: string };
+  | { kind: 'error'; text: string }
+  | { kind: 'progress'; text: string };
 
 interface Section {
   /** agent name, or 'System' for pre-agent / worker events */
@@ -201,6 +202,26 @@ function foldEvents(events: WorkerEvent[]): Section[] {
       case 'edit_completed':
       case 'ready_for_preview': {
         current.rows.push({ kind: 'system', text: ev.message });
+        break;
+      }
+
+      /*
+       * Edit heartbeat — generateEdit is one synchronous LLM call (no file
+       * streaming), so without these periodic "still working…" pings the chat
+       * would look frozen for the whole edit window. Render the heartbeat as a
+       * subtle progress line (not a new section) so it doesn't clutter the log.
+       */
+      case 'edit_progress': {
+        const rows = current.rows;
+        const last = rows[rows.length - 1];
+
+        if (last && last.kind === 'progress') {
+          // Replace the previous heartbeat so we don't stack one per ping.
+          rows[rows.length - 1] = { kind: 'progress', text: ev.message };
+        } else {
+          rows.push({ kind: 'progress', text: ev.message });
+        }
+
         break;
       }
       default:
@@ -440,6 +461,16 @@ const SectionView = memo(({ section }: { section: Section }) => {
               return (
                 <div key={i} className="flex items-center gap-2 text-xs text-palmkit-elements-textTertiary">
                   <span className="i-ph:dot-outline-fill shrink-0" />
+                  <span>{row.text}</span>
+                </div>
+              );
+            case 'progress':
+              return (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 text-xs text-palmkit-elements-textTertiary animate-pulse"
+                >
+                  <span className="i-svg-spinners:90-ring-with-bg shrink-0 text-sm" />
                   <span>{row.text}</span>
                 </div>
               );

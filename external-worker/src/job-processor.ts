@@ -290,9 +290,32 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
       let mergedFiles: typeof existingFiles;
 
+      /*
+       * Edit heartbeat.
+       *
+       * Unlike the create path (which streams file_chunk events in real time),
+       * generateEdit is ONE synchronous generateText call — so the UI sees no
+       * progress for up to the full edit window and the chat looks frozen.
+       * Emit a heartbeat every 25s so the front-end can show "still working…"
+       * and the user knows the edit is in flight, not dead.
+       */
+      const editStart = Date.now();
+      const heartbeat = setInterval(async () => {
+        const elapsed = Math.round((Date.now() - editStart) / 1000);
+        await emitEvent(
+          supabase,
+          job.id,
+          'edit_progress',
+          `Still applying changes with ${providerName}… (${elapsed}s)`,
+          { elapsed },
+        ).catch(() => undefined);
+      }, 25_000);
+
       try {
-        // Feed the project's worklog (memory) into the edit so it's informed by
-        // past turns, not just the current file snapshot.
+        /*
+         * Feed the project's worklog (memory) into the edit so it's informed by
+         * past turns, not just the current file snapshot.
+         */
         const editProjectId = (job.validation_result as any)?.chatId ?? job.project_id ?? job.id;
         const editWorklog = await readWorklog(editProjectId).catch(() => null);
 
@@ -324,6 +347,8 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         await emitEvent(supabase, job.id, 'job_failed', `Edit failed: ${editErr.message}`, { error: editErr.message });
         await failJob(supabase, job.id, `Edit generation failed: ${editErr.message}`);
         return;
+      } finally {
+        clearInterval(heartbeat);
       }
 
       await emitEvent(supabase, job.id, 'edit_completed', `Changes applied — ${mergedFiles.length} files in project`);
