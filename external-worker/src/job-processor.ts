@@ -940,8 +940,17 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       });
     }
 
-    // Insert all manifest entries.
-    const { error: manifestError } = await supabase.from('project_files_manifest').insert(manifestEntries);
+    /*
+     * Upsert (not insert) — a cancelled job may have already written partial
+     * manifest rows (integrity='partial') from finalizePartial() in the
+     * orchestrator. The normal upload phase then writes the complete rows,
+     * which would hit the unique constraint (job_id, path) and fail the job.
+     * Upsert replaces the partial rows with complete ones. Safe either way:
+     * if no partial row exists, upsert = insert.
+     */
+    const { error: manifestError } = await supabase
+      .from('project_files_manifest')
+      .upsert(manifestEntries, { onConflict: 'job_id,path' });
 
     if (manifestError) {
       await recordStep(supabase, job.id, {
