@@ -259,15 +259,12 @@ export async function runOrchestratedBuild(
       }));
 
       /*
-       * Upsert (not insert) — if the normal upload phase already wrote a row
-       * for this (job_id, path) before the cancel landed, the partial insert
-       * would hit the unique constraint and fail. Upsert replaces it with the
-       * 'partial' tag so the edit path knows the state is partial. The unique
-       * constraint is project_files_manifest_job_path_uniq (job_id, path).
+       * Insert partial manifest rows. If rows already exist for this
+       * (job_id, path) the insert will fail with a duplicate-key error —
+       * that's fine, it means the normal upload phase already wrote them, so
+       * the edit path will find them. Log the error but don't fail.
        */
-      const { error: manifestErr } = await supabase
-        .from('project_files_manifest')
-        .upsert(manifestRows, { onConflict: 'job_id,path' });
+      const { error: manifestErr } = await supabase.from('project_files_manifest').insert(manifestRows);
 
       if (manifestErr) {
         logger.warn(`[orchestrator] partial manifest insert failed: ${manifestErr.message}`);
