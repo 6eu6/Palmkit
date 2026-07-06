@@ -560,16 +560,31 @@ export const ChatImpl = memo(
         const appType = extWorkerState.appType ?? currentMetadata?.palmkitAppType;
 
         /*
-         * Only update palmkitJobId when the job SUCCEEDS (ready_for_preview).
-         * Previously it was updated on every status change — so a failed
-         * edit job would overwrite the jobId of the successful build, and
-         * the next edit would try to edit the failed job (no manifest →
-         * "Could not load the previous build's files").
+         * Save palmkitJobId so the next message can resolve priorJobId.
+         *
+         * Save on TWO occasions:
+         *   1. When the job STARTS (status='pending' or 'generating') — so a
+         *      cancelled build still has its jobId saved. Without this, a user
+         *      who cancels before ready_for_preview, reloads, and sends a
+         *      follow-up message has NO palmkitJobId → the system starts a
+         *      fresh build instead of an edit (losing all context).
+         *   2. When the job SUCCEEDS (status='ready_for_preview') — confirms
+         *      the job and updates the appType.
+         *
+         * Do NOT overwrite on 'failed_clean' with a non-cancel error — that
+         * would replace a successful build's jobId with a failed edit's jobId.
+         * Cancelled jobs (error_summary='Cancelled by user') are fine — they
+         * may complete in the background and produce a manifest.
          */
-        if (
-          extWorkerState.status === 'ready_for_preview' &&
-          (currentMetadata?.palmkitJobId !== extWorkerState.jobId || currentMetadata?.palmkitAppType !== appType)
-        ) {
+        const shouldSaveJobId =
+          (extWorkerState.jobId &&
+            (extWorkerState.status === 'pending' ||
+              extWorkerState.status === 'generating' ||
+              extWorkerState.status === 'ready_for_preview') &&
+            currentMetadata?.palmkitJobId !== extWorkerState.jobId) ||
+          (extWorkerState.status === 'ready_for_preview' && currentMetadata?.palmkitAppType !== appType);
+
+        if (shouldSaveJobId && extWorkerState.jobId) {
           chatMetadata.set({
             ...currentMetadata,
             gitUrl: currentMetadata?.gitUrl ?? '',

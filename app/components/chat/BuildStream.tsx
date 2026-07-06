@@ -530,21 +530,36 @@ export const BuildStreamView = memo(
     const sections = useMemo(() => foldEvents(events), [events]);
 
     const done = currentStep === 'done' || events.some((e) => e.type === 'ready_for_preview');
-    const failed = events.some((e) => e.type === 'job_failed');
+
+    /*
+     * If the build reached ready_for_preview AFTER a cancel (the worker
+     * completed in the background), DON'T show the cancel/failure card —
+     * the build succeeded. The cancel event is stale; the completion
+     * supersedes it. Without this, the user sees "Build stopped" even
+     * though the logs show "Build complete" and "Preview ready" — confusing.
+     */
+    const buildCompletedAfterCancel = done && events.some((e) => e.type === 'ready_for_preview');
+
+    const failed = !buildCompletedAfterCancel && events.some((e) => e.type === 'job_failed');
 
     /*
      * Is this a user-initiated cancel (not a real failure)? The orchestrator
      * emits 'job_failed' with "cancelled by user" for cancels — we detect it
      * here so the failure card shows a neutral "Build stopped" instead of a
      * scary red "Build failed". The user CHOSE to stop — no error to fix.
+     *
+     * BUT: if the build completed after the cancel (ready_for_preview arrived),
+     * we treat it as done, not cancelled — the cancel is stale.
      */
-    const cancelEvent = [...events]
-      .reverse()
-      .find(
-        (e) =>
-          e.type === 'job_failed' &&
-          (e.message.includes('cancelled by user') || e.message.includes('saving partial state')),
-      );
+    const cancelEvent = buildCompletedAfterCancel
+      ? undefined
+      : [...events]
+          .reverse()
+          .find(
+            (e) =>
+              e.type === 'job_failed' &&
+              (e.message.includes('cancelled by user') || e.message.includes('saving partial state')),
+          );
     const isCancelled = Boolean(cancelEvent);
 
     if (events.length === 0 && progress === 0) {
