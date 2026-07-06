@@ -76,6 +76,121 @@ const SummaryMarkdown = memo(({ text }: { text: string }) => {
 SummaryMarkdown.displayName = 'SummaryMarkdown';
 
 /*
+ * ScreenshotRow — shows the actual screenshot the model captured, inline
+ * in the stream. This is the "eye" the agent was missing. The user sees
+ * EXACTLY what the model sees, and the model's visual reasoning follows
+ * in a VisionRow.
+ */
+const ScreenshotRow = memo(({ dataUrl, viewport }: { dataUrl: string; viewport?: string }) => {
+  const [expanded, setExpanded] = useState(true);
+
+  return (
+    <div className="rounded-lg border border-palmkit-elements-borderColor overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="flex w-full items-center gap-2 bg-palmkit-elements-background-depth-2 px-3 py-2 text-xs font-medium text-palmkit-elements-textSecondary hover:bg-palmkit-elements-background-depth-3"
+      >
+        <span className="i-ph:camera shrink-0" />
+        <span>Screenshot{viewport ? ` (${viewport})` : ''}</span>
+        <span className="ml-auto i-ph:caret-down shrink-0 transition-transform" style={{ transform: expanded ? 'rotate(180deg)' : 'none' }} />
+      </button>
+      {expanded && (
+        <div className="bg-black/30 p-2">
+          <img
+            src={dataUrl}
+            alt={`Preview screenshot${viewport ? ` (${viewport})` : ''}`}
+            className="max-w-full rounded-md"
+            style={{ maxHeight: '400px', objectFit: 'contain', margin: '0 auto', display: 'block' }}
+          />
+        </div>
+      )}
+    </div>
+  );
+});
+
+ScreenshotRow.displayName = 'ScreenshotRow';
+
+/*
+ * VisionRow — the VLM's analysis of the screenshot. Shown as a distinct
+ * "vision" row with an eye icon so the user can see the model's visual
+ * reasoning: "The hero is centered, colors are consistent, but the headline
+ * is clipped at the top."
+ */
+const VisionRow = memo(({ text }: { text: string }) => {
+  const [expanded, setExpanded] = useState(true);
+
+  return (
+    <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-2.5">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="flex w-full items-center gap-2 text-xs font-medium text-blue-300"
+      >
+        <span className="i-ph:eye shrink-0" />
+        <span>Vision analysis</span>
+        <span className="ml-auto i-ph:caret-down shrink-0 transition-transform" style={{ transform: expanded ? 'rotate(180deg)' : 'none' }} />
+      </button>
+      {expanded && (
+        <div className="mt-2 text-xs leading-relaxed text-palmkit-elements-textSecondary whitespace-pre-wrap">
+          {text}
+        </div>
+      )}
+    </div>
+  );
+});
+
+VisionRow.displayName = 'VisionRow';
+
+/*
+ * VideoRow — shows the video generation lifecycle inline. When ready,
+ * embeds the actual MP4 so the user can preview the generated video asset.
+ */
+const VideoRow = memo(({ name, url, status }: { name: string; url?: string; status: 'generating' | 'ready' | 'error' }) => {
+  if (status === 'generating') {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/5 p-2.5 text-sm text-purple-300">
+        <span className="i-svg-spinners:90-ring-with-bg shrink-0" />
+        <span>Generating video "{name}"…</span>
+      </div>
+    );
+  }
+
+  if (status === 'error') {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/5 p-2.5 text-sm text-red-300">
+        <span className="i-ph:warning-circle shrink-0" />
+        <span>Video "{name}" failed — falling back to image</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-purple-300">
+        <span className="i-ph:video shrink-0" />
+        <span>Video "{name}" ready</span>
+      </div>
+      {url && (
+        <div className="bg-black/30 p-2">
+          <video
+            src={url}
+            autoPlay
+            muted
+            loop
+            playsInline
+            className="max-w-full rounded-md"
+            style={{ maxHeight: '300px', margin: '0 auto', display: 'block' }}
+          />
+        </div>
+      )}
+    </div>
+  );
+});
+
+VideoRow.displayName = 'VideoRow';
+
+/*
  * Render inline markdown: **bold**, `code`, and plain text.
  * Splits on a regex that captures the three patterns, then maps each piece
  * to the right React element.
@@ -134,7 +249,9 @@ type Row =
   | { kind: 'file'; path: string; lines?: number; chars?: number; changeKind?: string }
   | { kind: 'command'; text: string }
   | { kind: 'read'; text: string }
-  | { kind: 'screenshot'; text: string }
+  | { kind: 'screenshot'; dataUrl: string; analysis?: string; viewport?: string }
+  | { kind: 'vision'; text: string }
+  | { kind: 'video'; url?: string; name: string; status: 'generating' | 'ready' | 'error' }
   | { kind: 'system'; text: string }
   | { kind: 'error'; text: string }
   | { kind: 'progress'; text: string }
@@ -313,6 +430,58 @@ function foldEvents(events: WorkerEvent[]): Section[] {
           break;
         }
 
+        /*
+         * VISION — screenshot captured. The model took a screenshot of
+         * the running preview AND it's shown inline so the user sees
+         * exactly what the model sees. This is the "eyes" the agent was
+         * missing before the radical rebuild.
+         */
+        if (p.kind === 'screenshot_captured' && p.dataUrl) {
+          current.rows.push({
+            kind: 'screenshot',
+            dataUrl: p.dataUrl as string,
+            viewport: p.viewport as string | undefined,
+          });
+          break;
+        }
+
+        /*
+         * VISION — the VLM's analysis of the screenshot. Rendered as a
+         * distinct "vision" row so the user can see the model's visual
+         * reasoning: "The hero is centered, colors are consistent, but
+         * the headline is clipped at the top."
+         */
+        if (p.kind === 'vision_analysis' && p.text) {
+          current.rows.push({ kind: 'vision', text: p.text as string });
+          break;
+        }
+
+        /*
+         * VIDEO — generation lifecycle. Three states:
+         *   - video_start: model is calling generate_video, show "generating"
+         *   - video_ready: MP4 is ready, show inline with the URL
+         *   - video_error: generation failed, show the error
+         */
+        if (p.kind === 'video_start' && p.name) {
+          current.rows.push({ kind: 'video', name: p.name as string, status: 'generating' });
+          break;
+        }
+
+        if (p.kind === 'video_ready' && p.name) {
+          current.rows.push({
+            kind: 'video',
+            name: p.name as string,
+            url: p.url as string | undefined,
+            status: 'ready',
+          });
+          break;
+        }
+
+        if (p.kind === 'video_error' && p.name) {
+          current.rows.push({ kind: 'video', name: p.name as string, status: 'error' });
+          break;
+        }
+
         if (/^🔧/.test(m) || /repair attempt/i.test(m)) {
           // Build-verification repair round kicking off.
           current.rows.push({ kind: 'system', text: m.replace(/^🔧\s*/, '') });
@@ -326,9 +495,12 @@ function foldEvents(events: WorkerEvent[]): Section[] {
         } else if (/Read:/.test(m) || /^📖/.test(m)) {
           current.rows.push({ kind: 'read', text: m.replace(/^📖\s*/, '') });
         } else if (/Screenshot/i.test(m) || /^📸/.test(m)) {
-          current.rows.push({ kind: 'screenshot', text: m.replace(/^📸\s*/, '') });
+          // Don't render the text-only screenshot messages here — they're
+          // either the old broken take_screenshot or the new analyze_screenshot
+          // which emits its own screenshot_captured/vision_analysis events.
+          // Skip to avoid duplicate rows.
+          break;
         }
-
         break;
       }
       case 'job_failed':
@@ -632,6 +804,12 @@ const SectionView = memo(({ section }: { section: Section }) => {
               return <CommandRow key={i} text={row.text} />;
             case 'summary':
               return <SummaryRow key={i} text={row.text} />;
+            case 'screenshot':
+              return <ScreenshotRow key={i} dataUrl={row.dataUrl} viewport={row.viewport} />;
+            case 'vision':
+              return <VisionRow key={i} text={row.text} />;
+            case 'video':
+              return <VideoRow key={i} name={row.name} url={row.url} status={row.status} />;
             case 'read':
               return (
                 <div key={i} className="flex items-center gap-2 font-mono text-sm text-palmkit-elements-textTertiary">
@@ -640,12 +818,11 @@ const SectionView = memo(({ section }: { section: Section }) => {
                 </div>
               );
             case 'screenshot':
-              return (
-                <div key={i} className="flex items-center gap-2 text-sm text-palmkit-elements-textTertiary">
-                  <span className="i-ph:camera shrink-0" />
-                  <span>{row.text}</span>
-                </div>
-              );
+              return <ScreenshotRow key={i} dataUrl={row.dataUrl} viewport={row.viewport} />;
+            case 'vision':
+              return <VisionRow key={i} text={row.text} />;
+            case 'video':
+              return <VideoRow key={i} name={row.name} url={row.url} status={row.status} />;
             case 'error':
               return (
                 <div

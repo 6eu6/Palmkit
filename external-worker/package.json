@@ -23,7 +23,8 @@
     "ai": "^4.0.0",
     "e2b": "^2.31.0",
     "hono": "^4.6.0",
-    "jimp": "^1.6.1"
+    "jimp": "^1.6.1",
+    "z-ai-web-dev-sdk": "^0.0.18"
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",

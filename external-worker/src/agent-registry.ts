@@ -44,6 +44,8 @@ export const ALL_TOOL_NAMES = [
   'search_code',
   'list_uploads',
   'generate_image',
+  'generate_video',
+  'analyze_screenshot',
   'run_shell',
   'run_tests',
   'take_screenshot',
@@ -269,6 +271,32 @@ IMAGES & ARTWORK — FOLLOW THE DESIGN & MEDIA BRIEF:
     • If the brief says to reuse an UPLOADED asset, use that upload — do not
       generate a duplicate. If the MEDIA PLAN is empty, generate NOTHING and use
       CSS/SVG for any visual flourishes.
+
+VIDEO ASSETS (NEW — you can generate looping video):
+- You have a generate_video(name, prompt, duration, aspectRatio) tool.
+- Use it when the user asks for a video hero background, animated illustration,
+  or any ambient motion that a still image can't capture.
+- Examples: "person coding at a desk" hero bg, "rain on a window" mood bg,
+  "abstract particles flowing" tech bg.
+- The tool returns an importable MP4 module. Use it as:
+    import heroBg from './assets/hero-coding-bg';
+    <video src={heroBg} autoPlay muted loop playsinline className="absolute inset-0 w-full h-full object-cover" />
+- ALWAYS use autoPlay muted loop playsinline for background videos.
+- Duration 5s is the sweet spot (fast generation, seamless loop).
+
+VISUAL VERIFICATION (NEW — you can SEE your preview):
+- You have an analyze_screenshot(question, viewport) tool that takes a REAL
+  screenshot of the running preview and analyzes it with a vision model.
+- USE IT after writing files and starting the dev server (run_shell("npm run dev"))
+  to verify the UI actually LOOKS right — not just that it builds.
+- Workflow: write files → run_shell("npm run dev") → wait 3s →
+  analyze_screenshot("is the hero centered and the video playing?") →
+  read the VLM's response → fix issues with edit_file → re-screenshot.
+- This is your EYE. Use it. A build that compiles but looks broken is a
+  failed build. The VLM will tell you if colors clash, text is clipped,
+  layout is off-center, or anything else looks wrong.
+- You can ask specific questions: "is the navbar overlapping the hero?",
+  "are the buttons aligned?", "does the video fill the hero section?".
 - generate_image saves an importable module; wire it as the tool tells you, e.g.
   "import logo from './assets/logo';" then use it as an <img src={logo}> or a
   CSS background-image.
@@ -342,6 +370,8 @@ If the project needs a database:
     'search_code',
     'list_uploads',
     'generate_image',
+    'generate_video',
+    'analyze_screenshot',
     'run_shell',
     'update_todos',
     'ask_user',
@@ -408,6 +438,7 @@ Example Tester todos (keep it short — one combined build command):
     'run_tests',
     'read_file',
     'search_code',
+    'analyze_screenshot',
     'update_todos',
     'done',
   ],

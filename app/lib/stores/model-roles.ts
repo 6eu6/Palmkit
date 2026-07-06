@@ -22,8 +22,8 @@ export const MODEL_ROLE_META: Record<ModelRole, { label: string; hint: string; w
   brain: { label: 'Brain · Planning', hint: 'Orchestrates & plans — use your smartest model', wired: true },
   builder: { label: 'Builder agents', hint: 'Writes the code — fast + capable', wired: true },
   tester: { label: 'Tester · Checks', hint: 'Build verification, security & QA', wired: true },
-  vision: { label: 'Vision · Design', hint: 'Visual reasoning & design review', wired: false },
-  media: { label: 'Media · Image/Video', hint: 'Generates images & video assets', wired: false },
+  vision: { label: 'Vision · Design', hint: 'Visual reasoning & design review', wired: true },
+  media: { label: 'Media · Image/Video', hint: 'Generates images & video assets', wired: true },
 };
 
 const ROLES_KEY = 'palmkit_model_roles';

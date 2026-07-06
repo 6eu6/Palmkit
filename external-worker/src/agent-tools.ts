@@ -36,6 +36,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { emitEvent } from './event-emitter';
 import { runInE2B } from './e2b-runner';
 import { generateImage, DEFAULT_IMAGE_MODEL } from './image-gen';
+import { analyzeScreenshot } from './vision';
+import { generateVideo } from './video-gen';
 
 /**
  * Max file-content size inlined into a file_written event. Files at/under this
@@ -46,10 +48,16 @@ import { generateImage, DEFAULT_IMAGE_MODEL } from './image-gen';
  */
 const MAX_INLINE_CONTENT = 300 * 1024;
 
-/** Media config for generate_image — the OpenRouter key + the image model. */
+/** Media config for generate_image AND generate_video AND analyze_screenshot. */
 export interface MediaConfig {
   apiKey: string;
   model: string;
+  /** Video generation: Z.ai key + model (e.g. cogvideox-2b). */
+  videoApiKey?: string;
+  videoModel?: string;
+  videoProvider?: 'zai' | 'openrouter';
+  /** Vision: Z.ai key for analyze_screenshot (VLM). Falls back to apiKey. */
+  visionApiKey?: string;
 }
 
 /*
@@ -1057,6 +1065,288 @@ export function createAgentTools(
           counts: { total: sanitized.length, done, inProgress, pending },
           message: `Todos updated: ${done}/${sanitized.length} done, ${inProgress} in progress`,
         };
+      },
+    }),
+
+    // ═══════════════════════════════════════════════════════════════════
+    // analyze_screenshot — Take a screenshot AND analyze it with a VLM (RADICAL REBUILD)
+    // ═══════════════════════════════════════════════════════════════════
+    // The old `take_screenshot` tool returned a 300-char text dump of
+    // document.body.textContent — the model was BLIND. It could read the
+    // DOM text but couldn't see a single pixel. So it couldn't tell whether
+    // the hero was centered, whether colors clashed, or whether the layout
+    // was broken.
+    //
+    // This new tool:
+    //   1. Captures a REAL screenshot as base64 PNG via Playwright in E2B
+    //   2. Emits a `screenshot_captured` event so the UI shows the image inline
+    //   3. Sends the image to the Z.ai vision model (VLM) with the user's question
+    //   4. Returns the VLM's natural-language description to the model
+    //
+    // Now the agent can: build → screenshot → "is the hero centered?" →
+    // VLM says "no, the headline is clipped" → edit_file → re-screenshot → done.
+    analyze_screenshot: tool({
+      description:
+        'Take a screenshot of the running preview (http://localhost:3000) and ANALYZE it visually ' +
+        'with a vision model. Returns a description of what is rendered and any visual issues. ' +
+        'Use this AFTER writing files and starting the dev server to verify the UI actually LOOKS ' +
+        'right — not just that it builds. You can ask specific questions via the `question` parameter. ' +
+        'Examples: "is the hero section centered?", "are the colors consistent?", "is anything clipped?".',
+      parameters: z.object({
+        question: z
+          .string()
+          .optional()
+          .describe(
+            'Optional specific question about the screenshot, e.g. "is the navbar overlapping the hero?" ' +
+              'If omitted, the VLM describes the layout and flags any visual problems.',
+          ),
+        viewport: z
+          .enum(['desktop', 'mobile'])
+          .optional()
+          .describe('Viewport to capture. Default: desktop (1280x720). Use mobile for responsive checks.'),
+      }),
+      execute: async ({ question, viewport }) => {
+        const vp = viewport ?? 'desktop';
+        const dims = vp === 'mobile' ? '390x844' : '1280x720';
+
+        try {
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk' as any,
+            `📸 Capturing screenshot (${vp})…`,
+            { agent: 'Builder', kind: 'screenshot_start', viewport: vp },
+          );
+
+          // Playwright script that prints BASE64:<data> on its own line
+          const script = `npx playwright install chromium 2>/dev/null; node -e "
+const { chromium } = require('playwright');
+(async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: ${dims.split('x')[0]}, height: ${dims.split('x')[1]} } });
+  try {
+    await page.goto('http://localhost:3000', { timeout: 15000, waitUntil: 'networkidle' });
+    const buf = await page.screenshot({ type: 'png', fullPage: false });
+    console.log('BASE64:' + buf.toString('base64'));
+    console.log('SCREENSHOT_OK');
+  } catch(e) { console.log('ERROR:' + e.message); }
+  await browser.close();
+})();
+"`;
+
+          const result = await runInE2B(jobId, script, undefined as any);
+          const output = (result as any)?.stdout ?? '';
+
+          if (!output.includes('SCREENSHOT_OK')) {
+            return {
+              ok: false,
+              error: 'Screenshot capture failed. Make sure the dev server is running (run_shell("npm run dev") first).',
+              rawOutput: output.slice(0, 1000),
+            };
+          }
+
+          const base64Match = output.match(/BASE64:([A-Za-z0-9+/=]+)/);
+          const base64 = base64Match?.[1];
+
+          if (!base64 || base64.length < 100) {
+            return {
+              ok: false,
+              error: 'Screenshot captured but no image data returned.',
+              rawOutput: output.slice(0, 1000),
+            };
+          }
+
+          // Emit the screenshot to the UI so the user sees what the model sees
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk' as any,
+            `📸 Screenshot captured (${vp})`,
+            {
+              agent: 'Builder',
+              kind: 'screenshot_captured',
+              dataUrl: `data:image/png;base64,${base64}`,
+              viewport: vp,
+              isScreenshot: true,
+            },
+          );
+
+          // Analyze with the VLM
+          const visionKey = media?.visionApiKey ?? media?.apiKey ?? '';
+
+          if (!visionKey) {
+            return {
+              ok: true,
+              screenshot: '<shown in stream>',
+              analysis: '(No vision API key configured — screenshot was captured but not analyzed. Configure a Z.ai key in Settings to enable visual analysis.)',
+              viewport: vp,
+            };
+          }
+
+          // Use the z-ai-web-dev-sdk for VLM analysis
+          const analysis = await analyzeScreenshot(base64, question);
+
+          if (!analysis.ok) {
+            return {
+              ok: true,
+              screenshot: '<shown in stream>',
+              analysis: `(Vision analysis failed: ${analysis.raw}. Screenshot was captured and is visible in the stream.)`,
+              viewport: vp,
+            };
+          }
+
+          // Emit the analysis to the UI
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk' as any,
+            `👁️ Vision: ${analysis.description.slice(0, 150)}…`,
+            {
+              agent: 'Builder',
+              kind: 'vision_analysis',
+              text: analysis.description,
+              isVisionAnalysis: true,
+              viewport: vp,
+            },
+          );
+
+          return {
+            ok: true,
+            screenshot: '<shown in stream>',
+            analysis: analysis.description,
+            viewport: vp,
+          };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.warn(`[agent] analyze_screenshot failed: ${msg}`);
+          return { ok: false, error: msg };
+        }
+      },
+    }),
+
+    // ═══════════════════════════════════════════════════════════════════
+    // generate_video — Generate a looping video asset for hero backgrounds (RADICAL REBUILD)
+    // ═══════════════════════════════════════════════════════════════════
+    // There was NO video generation capability in Palmkit. The user asked
+    // for "a video of a person coding as a hero background, looped" and
+    // the model couldn't even attempt it.
+    //
+    // This tool calls the Z.ai video generation API (or OpenRouter fallback)
+    // and returns an importable MP4 module. The Builder writes:
+    //   import heroBg from './assets/hero-coding-bg';
+    //   <video src={heroBg} autoPlay muted loop playsinline />
+    generate_video: tool({
+      description:
+        'Generate a short looping video asset (2-10s) for use as a hero background, animated illustration, ' +
+        'or ambient motion. Provide a detailed prompt describing the scene, camera motion, lighting, and mood. ' +
+        'The video is saved as an importable MP4 module — use it as ' +
+        '<video src={importedVideo} autoPlay muted loop playsinline>. ' +
+        'Use this for hero backgrounds (e.g. "person coding at a desk"), ambient motion, or anywhere a still image would feel static. ' +
+        'Requires a Z.ai API key configured in Settings.',
+      parameters: z.object({
+        name: z
+          .string()
+          .describe('kebab-case asset name, e.g. "hero-coding-bg". The file is saved as src/assets/{name}.ts'),
+        prompt: z
+          .string()
+          .describe(
+            'Detailed video description: subject, camera motion, lighting, mood. ' +
+              'Example: "A developer typing code on a laptop in a dimly-lit room, slow cinematic dolly forward, warm amber light, 16:9".',
+          ),
+        duration: z
+          .number()
+          .min(2)
+          .max(10)
+          .optional()
+          .describe('Duration in seconds (2-10). Default: 5. Shorter = faster generation.'),
+        aspectRatio: z
+          .enum(['16:9', '9:16', '1:1'])
+          .optional()
+          .describe('Aspect ratio. Use 16:9 for hero backgrounds, 9:16 for mobile, 1:1 for squares.'),
+      }),
+      execute: async ({ name, prompt, duration, aspectRatio }) => {
+        const safe = name.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
+
+        if (!media?.videoApiKey) {
+          return {
+            ok: false,
+            error:
+              'Video generation requires a Z.ai API key. Configure it in Settings → Media · Image/Video. ' +
+                'If you do not have one, use generate_image for a still hero background instead, or use a CSS animation.',
+          };
+        }
+
+        await emitEvent(supabase, jobId, 'file_chunk' as any, `🎬 Generating video "${safe}"…`, {
+          agent: 'Builder',
+          kind: 'video_start',
+          name: safe,
+        });
+
+        try {
+          const video = await generateVideo({
+            apiKey: media.videoApiKey,
+            model: media.videoModel,
+            prompt,
+            duration: duration ?? 5,
+            aspectRatio: aspectRatio ?? '16:9',
+            provider: media.videoProvider ?? 'zai',
+          });
+
+          // Fetch the MP4 bytes and store as a base64 data-URI ES module
+          // (same pattern as generate_image — the asset is bundled into the app)
+          const resp = await fetch(video.url);
+
+          if (!resp.ok) {
+            throw new Error(`Failed to fetch video: ${resp.status}`);
+          }
+
+          const buf = Buffer.from(await resp.arrayBuffer());
+          const dataUri = `data:video/mp4;base64,${buf.toString('base64')}`;
+          const modulePath = `src/assets/${safe}.ts`;
+          const mod = `const src = ${JSON.stringify(dataUri)};\nexport default src;\n`;
+
+          await registerFile(modulePath, mod);
+
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk' as any,
+            `🎬 Video "${safe}" ready (${(buf.length / 1024 / 1024).toFixed(1)}MB, ${video.duration}s)`,
+            {
+              agent: 'Builder',
+              kind: 'video_ready',
+              name: safe,
+              url: video.url,
+              sizeBytes: buf.length,
+              duration: video.duration,
+              isVideo: true,
+            },
+          );
+
+          return {
+            ok: true,
+            path: modulePath,
+            importAs: safe,
+            duration: video.duration,
+            aspectRatio: video.aspectRatio,
+            usage: `import ${safe.replace(/-/g, '_')} from './assets/${safe}';\n// then: <video src={${safe.replace(/-/g, '_')}} autoPlay muted loop playsinline />`,
+          };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.warn(`[agent] generate_video "${safe}" failed: ${msg}`);
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk' as any,
+            `⚠️ Video "${safe}" failed: ${msg.slice(0, 120)}`,
+            { agent: 'Builder', kind: 'video_error', name: safe, error: msg },
+          );
+          return {
+            ok: false,
+            error: msg,
+            fallback: 'Use generate_image for a still hero background, or use a CSS/SVG animation.',
+          };
+        }
       },
     }),
 
