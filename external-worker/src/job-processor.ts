@@ -208,6 +208,38 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
      */
     const agentModels: Partial<Record<'brain' | 'builder' | 'tester', typeof model>> = {};
 
+    /*
+     * Skills, libraries, agentConfig, media, designScheme — all extracted
+     * from validation_result ONCE at the top level so BOTH the edit path
+     * and the new-build path can use them. Previously they were defined
+     * only inside the new-build block.
+     */
+    const roleIds = (job.validation_result?.modelRoles ?? {}) as Partial<
+      Record<'brain' | 'builder' | 'tester' | 'vision' | 'media', string>
+    >;
+
+    const skills = Array.isArray(job.validation_result?.skills)
+      ? (job.validation_result.skills as { name: string; instructions: string }[])
+      : undefined;
+
+    const libraries = Array.isArray(job.validation_result?.libraries)
+      ? (job.validation_result.libraries as { name: string; kind: string; content: string }[])
+      : undefined;
+
+    const agentConfig =
+      job.validation_result?.agentConfig && typeof job.validation_result.agentConfig === 'object'
+        ? (job.validation_result.agentConfig as { researcher: boolean; tester: boolean })
+        : undefined;
+
+    const media =
+      providerName.toLowerCase() === 'openrouter' && apiKey
+        ? { apiKey, model: roleIds.media || DEFAULT_IMAGE_MODEL }
+        : undefined;
+
+    const designScheme = job.validation_result?.designScheme as
+      | { palette: Record<string, string>; font: string[]; features: string[] }
+      | undefined;
+
     // ─── Phase 7: EDIT MODE ────────────────────────────────────────────
     const editJobId: string | null = job.validation_result?.editJobId ?? null;
 
@@ -652,9 +684,6 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
          * the main model; a missing role falls back to the main model.
          * reasoningEffort tunes how hard reasoning models think (off/medium/max).
          */
-        const roleIds = (job.validation_result?.modelRoles ?? {}) as Partial<
-          Record<'brain' | 'builder' | 'tester' | 'vision' | 'media', string>
-        >;
         for (const roleName of ['brain', 'builder', 'tester'] as const) {
           const id = roleIds[roleName];
 
@@ -669,37 +698,6 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         }
 
         const reasoningEffort = job.validation_result?.reasoningEffort as 'off' | 'medium' | 'max' | undefined;
-
-        // Skills: user-enabled instruction playbooks injected into Planner/Builder.
-        const skills = Array.isArray(job.validation_result?.skills)
-          ? (job.validation_result.skills as { name: string; instructions: string }[])
-          : undefined;
-
-        // Libraries: user-enabled reference material injected into the Builder.
-        const libraries = Array.isArray(job.validation_result?.libraries)
-          ? (job.validation_result.libraries as { name: string; kind: string; content: string }[])
-          : undefined;
-
-        // Agents: optional pipeline phases (Researcher/Tester) the user toggled off.
-        const agentConfig =
-          job.validation_result?.agentConfig && typeof job.validation_result.agentConfig === 'object'
-            ? (job.validation_result.agentConfig as { researcher: boolean; tester: boolean })
-            : undefined;
-
-        /*
-         * Media pipeline: generate_image runs on OpenRouter's image endpoint,
-         * which needs an OpenRouter key. We enable it only when the build's own
-         * provider is OpenRouter (so we reuse the user's key). The image model
-         * is the user's Media role choice, else a sensible default.
-         */
-        const media =
-          providerName.toLowerCase() === 'openrouter' && apiKey
-            ? { apiKey, model: roleIds.media || DEFAULT_IMAGE_MODEL }
-            : undefined;
-
-        const designScheme = job.validation_result?.designScheme as
-          | { palette: Record<string, string>; font: string[]; features: string[] }
-          | undefined;
 
         const agentResult = await runOrchestratedBuild(
           prompt,
