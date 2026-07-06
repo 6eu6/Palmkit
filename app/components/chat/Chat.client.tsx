@@ -1443,6 +1443,8 @@ export const ChatImpl = memo(
         <Clarifier
           open={clarifyPrompt !== null}
           prompt={clarifyPrompt ?? ''}
+          model={model}
+          provider={provider}
           onBuild={(expanded) => {
             setClarifyPrompt(null);
             setInput(expanded);
