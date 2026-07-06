@@ -18,7 +18,109 @@ import { useStore } from '@nanostores/react';
 import { workerEventsStore, workerProgressStore, type WorkerEvent } from '~/lib/stores/build-status';
 import { classNames } from '~/utils/classNames';
 import { PalmkitLoader } from '~/components/ui/PalmkitLoader';
-import { Markdown } from './Markdown';
+
+/*
+ * Lightweight inline markdown renderer for the build summary.
+ *
+ * We intentionally do NOT use the full <Markdown> component here because it
+ * pulls in shiki (syntax highlighter) + Artifact + CodeBlock + ThoughtBox —
+ * heavy modules that would inflate the BuildStream bundle (which is mounted
+ * on every chat view). The summary is simple markdown (bold, bullets, inline
+ * code, paragraphs), so a minimal regex-based renderer is enough and keeps
+ * the bundle lean.
+ */
+const SummaryMarkdown = memo(({ text }: { text: string }) => {
+  const lines = (text ?? '').split('\n');
+
+  return (
+    <div className="space-y-1.5">
+      {lines.map((line, i) => {
+        // Empty line → spacer
+        if (!line.trim()) {
+          return <div key={i} className="h-1" />;
+        }
+
+        // Bullet list item (- or *)
+        const bulletMatch = line.match(/^\s*[-*]\s+(.*)$/);
+
+        if (bulletMatch) {
+          return (
+            <div key={i} className="flex gap-2 pl-2">
+              <span className="text-palmkit-elements-textTertiary">•</span>
+              <span className="flex-1">{renderInline(bulletMatch[1])}</span>
+            </div>
+          );
+        }
+
+        // Heading (**text** on its own line, or ## text)
+        if (/^#{1,3}\s+/.test(line)) {
+          const headingText = line.replace(/^#{1,3}\s+/, '');
+          return (
+            <div key={i} className="font-semibold text-palmkit-elements-textPrimary">
+              {renderInline(headingText)}
+            </div>
+          );
+        }
+
+        // Regular paragraph
+        return (
+          <div key={i} className="text-palmkit-elements-textPrimary">
+            {renderInline(line)}
+          </div>
+        );
+      })}
+    </div>
+  );
+});
+
+SummaryMarkdown.displayName = 'SummaryMarkdown';
+
+/*
+ * Render inline markdown: **bold**, `code`, and plain text.
+ * Splits on a regex that captures the three patterns, then maps each piece
+ * to the right React element.
+ */
+function renderInline(text: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  // Match **bold**, `code`, or any other text
+  const regex = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+
+    const token = match[0];
+
+    if (token.startsWith('**')) {
+      parts.push(
+        <strong key={key++} className="font-semibold text-palmkit-elements-textPrimary">
+          {token.slice(2, -2)}
+        </strong>,
+      );
+    } else if (token.startsWith('`')) {
+      parts.push(
+        <code
+          key={key++}
+          className="rounded bg-palmkit-elements-background-depth-3 px-1 py-0.5 font-mono text-xs text-palmkit-elements-textPrimary"
+        >
+          {token.slice(1, -1)}
+        </code>,
+      );
+    }
+
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts;
+}
 
 /* ── Row + section model ────────────────────────────────────────────────── */
 
@@ -413,7 +515,7 @@ const SummaryRow = memo(({ text }: { text: string }) => {
         <span>Build summary</span>
       </div>
       <div className="text-sm leading-relaxed text-palmkit-elements-textPrimary">
-        <Markdown limitedMarkdown>{cleaned}</Markdown>
+        <SummaryMarkdown text={cleaned} />
       </div>
     </div>
   );
