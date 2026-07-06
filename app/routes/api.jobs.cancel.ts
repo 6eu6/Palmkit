@@ -34,15 +34,21 @@ async function cancelJobAction({ request, context }: ActionFunctionArgs) {
   }
 
   /*
-   * Write 'cancel_requested' directly. The WHERE clause (id + user_id) is the
+   * Write status='cancelled' + error_summary='Cancelled by user' directly.
+   * (We can't use a 'cancel_requested' status — the DB has a CHECK constraint
+   * on the status column that only allows the original 5 values. 'cancelled'
+   * IS in the allowed set, so we reuse it. The orchestrator checks for
+   * status='cancelled' + error_summary='Cancelled by user' to distinguish a
+   * user-initiated cancel from a system failure.)
+   *
+   * The WHERE clause (id + user_id + status-in-[pending,generating]) is the
    * security guard — RLS + user_id match ensures a user can only cancel their
-   * own jobs. We skip the pre-check SELECT (it was failing under RLS even for
-   * the job owner due to a policy quirk). The PATCH returns the updated row
-   * so we can tell the caller whether it was already terminal.
+   * own jobs, and the status filter prevents cancelling an already-terminal
+   * job.
    */
   const { data: updated, error: updateErr } = await authed.supabase
     .from('build_jobs')
-    .update({ status: 'cancel_requested' })
+    .update({ status: 'cancelled', error_summary: 'Cancelled by user' })
     .eq('id', jobId)
     .eq('user_id', authed.user.id)
     .in('status', ['pending', 'generating'])
