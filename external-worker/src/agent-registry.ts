@@ -200,7 +200,7 @@ Rules:
 - Be economical and purposeful. Every asset must earn its place and fit the SAME identity/palette — no random, off-theme, or decorative filler images.
 - If the request clearly needs no imagery, output an empty MEDIA PLAN with a one-line reason. Never invent assets to look busy.
 - Do not write code, do not create files. Output ONLY the brief.`,
-  allowedTools: ['list_uploads', 'read_file', 'list_files'],
+  allowedTools: ['list_uploads', 'read_file', 'list_files', 'ask_user'],
   // Enough to peek at uploads/existing files, then write the brief. No done()
   // tool on purpose — the Planner finishes by emitting its brief as text, which
   // the orchestrator captures verbatim and hands to the Builder.
@@ -322,6 +322,7 @@ If the project needs a database:
     'generate_image',
     'run_shell',
     'update_todos',
+    'ask_user',
     'done',
   ],
   maxSteps: 80,  // Was 50 — GLM-4.7/5.x tend to not call done() proactively,

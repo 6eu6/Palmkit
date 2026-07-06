@@ -26,7 +26,9 @@ import { cubicEasingFn } from '~/utils/easings';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
 import { BaseChat } from './BaseChat';
 import { Clarifier } from './Clarifier';
-import { shouldClarify } from '~/lib/clarify-rules';
+
+/* shouldClarify is disabled — the Planner now asks questions in-stream via ask_user. */
+// import { shouldClarify } from '~/lib/clarify-rules';
 import { PENDING_PROMPT_KEY } from '~/components/landing/LandingPromptBox';
 import Cookies from 'js-cookie';
 import { debounce } from '~/utils/debounce';
@@ -1031,17 +1033,16 @@ export const ChatImpl = memo(
       }
 
       /*
-       * Pre-build clarifier gate: for a SHORT, hand-typed prompt on a fresh
-       * chat, surface quick questions BEFORE building (zero LLM cost — pure
-       * keyword heuristics). Skipped when the prompt came from ExamplePrompts
-       * (messageInput is set — already a full spec) or on follow-up turns
-       * (chatStarted). When the user finishes the sheet, sendMessage is
-       * re-invoked with the expanded prompt via messageInput.
+       * The pre-build clarifier popup is REMOVED. The Planner/Builder now
+       * asks clarifying questions INSIDE the stream via the ask_user tool —
+       * the user sees the question in the BuildStream and can answer or let
+       * the agent proceed with defaults. This is more natural than a modal
+       * that blocks the build.
+       *
+       * The shouldClarify gate + Clarifier component are kept for now (not
+       * deleted) in case we need to re-enable the popup, but the gate is
+       * disabled — the stream starts immediately on every send.
        */
-      if (!messageInput && !chatStarted && shouldClarify(messageContent)) {
-        setClarifyPrompt(messageContent);
-        return;
-      }
 
       let finalMessageContent = messageContent;
 

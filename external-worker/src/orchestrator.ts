@@ -680,7 +680,7 @@ export async function runOrchestratedBuild(
        * We do NOT emit orchestrator-level events for these to avoid duplication.
        * Tools NOT in this set get an orchestrator-level event on tool-call.
        */
-      const SELF_EMITTING_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'update_todos', 'done']);
+      const SELF_EMITTING_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'update_todos', 'done', 'ask_user']);
 
       const emitToolEvent = async (toolName: string, args: any) => {
         try {

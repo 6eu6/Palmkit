@@ -1059,5 +1059,57 @@ export function createAgentTools(
         };
       },
     }),
+
+    /*
+     * ask_user — let the agent ask the user a question mid-stream.
+     *
+     * This replaces the pre-build clarifier popup. Instead of blocking the
+     * build with a modal, the Planner/Builder can ask a question INSIDE the
+     * stream. The question appears as a special event in the BuildStream;
+     * the user sees it and can answer. If the user hasn't answered by the
+     * time the tool returns (a few seconds), the agent proceeds with sensible
+     * defaults — the question is a hint, not a hard gate.
+     *
+     * Why not a hard pause: streamText's tool execution is synchronous within
+     * a step — we can't block the stream waiting for user input without a
+     * complex pause/resume mechanism. The "proceed with defaults" approach is
+     * simpler and still valuable: the user SEES the question (transparency)
+     * and can correct course in the next message if the defaults were wrong.
+     */
+    ask_user: tool({
+      description:
+        'Ask the user a clarifying question. Use sparingly — only when a missing detail would make the build fail or produce a wrong result. The user sees the question in the chat stream. If they do not answer in time, proceed with sensible defaults.',
+      parameters: z.object({
+        question: z.string().describe('The question to ask the user (keep it short, one sentence).'),
+        options: z
+          .array(z.string())
+          .optional()
+          .describe('Optional list of suggested answers the user can pick from.'),
+        default_choice: z
+          .string()
+          .describe('What you will do if the user does not answer. Proceed with this.'),
+      }),
+      execute: async (args) => {
+        const { question, options, default_choice } = args;
+
+        try {
+          await emitEvent(supabase, jobId, 'file_chunk', `❓ ${question}`, {
+            agent: 'Planner',
+            kind: 'question',
+            question,
+            options: options ?? [],
+            defaultChoice: default_choice,
+          });
+        } catch {
+          /* best-effort */
+        }
+
+        return {
+          answered: false,
+          answer: default_choice,
+          message: `User has not answered yet. Proceeding with: ${default_choice}`,
+        };
+      },
+    }),
   };
 }
