@@ -8,7 +8,7 @@ import { APIKeyManager } from './APIKeyManager';
 import { LOCAL_PROVIDERS } from '~/lib/stores/settings';
 import FilePreview from './FilePreview';
 import { ScreenshotStateManager } from './ScreenshotStateManager';
-import { toast } from 'react-toastify';
+
 import { SpeechRecognitionButton } from '~/components/chat/SpeechRecognition';
 import { SupabaseConnection } from './SupabaseConnection';
 import { ExpoQrModal } from '~/components/workbench/ExpoQrModal';
@@ -56,8 +56,6 @@ interface ChatBoxProps {
   setImageDataList?: ((dataList: string[]) => void) | undefined;
   handleInputChange?: ((event: React.ChangeEvent<HTMLTextAreaElement>) => void) | undefined;
   handleStop?: (() => void) | undefined;
-  enhancingPrompt?: boolean | undefined;
-  enhancePrompt?: (() => void) | undefined;
   onWebSearchResult?: (result: string) => void;
   chatMode?: 'discuss' | 'build';
   setChatMode?: (mode: 'discuss' | 'build') => void;
@@ -65,46 +63,6 @@ interface ChatBoxProps {
   setDesignScheme?: (scheme: DesignScheme) => void;
   selectedElement?: ElementInfo | null;
   setSelectedElement?: ((element: ElementInfo | null) => void) | undefined;
-}
-
-/* A single ghost icon button used across the in-box toolbar. */
-function ToolButton({
-  icon,
-  title,
-  onClick,
-  disabled,
-  loading,
-  active,
-}: {
-  icon: string;
-  title: string;
-  onClick: () => void;
-  disabled?: boolean;
-  loading?: boolean;
-  active?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      onClick={onClick}
-      disabled={disabled}
-      className={classNames(
-        'shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150 active:scale-90',
-        active
-          ? 'bg-palmkit-elements-item-backgroundActive text-palmkit-elements-textPrimary'
-          : 'text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary hover:bg-palmkit-elements-item-backgroundActive',
-        disabled && 'opacity-40 cursor-not-allowed hover:bg-transparent',
-      )}
-    >
-      {loading ? (
-        <div className="i-svg-spinners:90-ring-with-bg text-[18px]" />
-      ) : (
-        <div className={`${icon} text-[18px]`} />
-      )}
-    </button>
-  );
 }
 
 /* Prominent send / stop button — brand accent (Design v2). */
@@ -456,17 +414,6 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                 <SupabaseConnection />
               </>
             }
-          />
-
-          <ToolButton
-            icon="i-palmkit:stars"
-            title="Enhance prompt"
-            onClick={() => {
-              props.enhancePrompt?.();
-              toast.success('Prompt enhanced!');
-            }}
-            disabled={props.input.length === 0 || props.enhancingPrompt}
-            loading={props.enhancingPrompt}
           />
         </div>
 

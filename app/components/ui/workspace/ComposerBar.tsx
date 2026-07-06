@@ -45,14 +45,8 @@ interface ComposerBarProps {
   /** Web search button click */
   onWebSearch?: () => void;
 
-  /** Enhance prompt button click */
-  onEnhance?: () => void;
-
   /** Mic button click */
   onMic?: () => void;
-
-  /** Is enhance in progress */
-  enhancing?: boolean;
 
   /** Is mic active */
   isListening?: boolean;
@@ -73,9 +67,7 @@ export const ComposerBar = memo(
     onStop,
     onAttach,
     onWebSearch,
-    onEnhance,
     onMic,
-    enhancing,
     isListening,
     actionsSlot,
     className,
@@ -154,17 +146,6 @@ export const ComposerBar = memo(
             {/* Web search */}
             {onWebSearch && (
               <ComposerIconButton icon="i-ph:globe" label="Search" onClick={onWebSearch} disabled={isStreaming} />
-            )}
-
-            {/* Enhance */}
-            {onEnhance && (
-              <ComposerIconButton
-                icon={enhancing ? 'i-svg-spinners:90-ring-with-bg' : 'i-palmkit:stars'}
-                label="Enhance"
-                onClick={onEnhance}
-                disabled={isStreaming}
-                spinning={enhancing}
-              />
             )}
 
             {/* Mic */}

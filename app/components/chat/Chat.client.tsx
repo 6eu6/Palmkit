@@ -4,7 +4,7 @@ import { useChat } from '@ai-sdk/react';
 import { useAnimate } from 'framer-motion';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
-import { useMessageParser, usePromptEnhancer, useShortcuts, finalizeMessageParser } from '~/lib/hooks';
+import { useMessageParser, useShortcuts, finalizeMessageParser } from '~/lib/hooks';
 import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { description as descriptionAtom, useChatHistory, chatMetadata, chatId } from '~/lib/persistence';
 import { chatStore } from '~/lib/stores/chat';
@@ -395,8 +395,6 @@ export const ChatImpl = memo(
       }
     }, [isLoading, fakeLoading, files]);
 
-    const { enhancingPrompt, promptEnhanced, enhancePrompt, resetEnhancer } = usePromptEnhancer();
-
     // Phase 2: External Worker feature flag + hook.
     const externalWorkerEnabled = useExternalWorkerFlag();
     const { state: extWorkerState, startJob: startExtJob, restoreJob: restoreExtJob } = useExternalWorker();
@@ -775,14 +773,6 @@ export const ChatImpl = memo(
       return () => clearTimeout(t);
     }, [isLoading, messages, takeDebouncedSnapshot]);
 
-    const scrollTextArea = () => {
-      const textarea = textareaRef.current;
-
-      if (textarea) {
-        textarea.scrollTop = textarea.scrollHeight;
-      }
-    };
-
     const abort = () => {
       stop();
       chatStore.setKey('aborted', true);
@@ -1080,7 +1070,6 @@ export const ChatImpl = memo(
         Cookies.remove(PROMPT_COOKIE_KEY);
         setUploadedFiles([]);
         setImageDataList([]);
-        resetEnhancer();
         textareaRef.current?.blur();
 
         /* Edit the existing project (same-session build OR a reopened chat). */
@@ -1187,8 +1176,6 @@ export const ChatImpl = memo(
               setUploadedFiles([]);
               setImageDataList([]);
 
-              resetEnhancer();
-
               textareaRef.current?.blur();
               setFakeLoading(false);
 
@@ -1217,8 +1204,6 @@ export const ChatImpl = memo(
 
         setUploadedFiles([]);
         setImageDataList([]);
-
-        resetEnhancer();
 
         textareaRef.current?.blur();
 
@@ -1271,8 +1256,6 @@ export const ChatImpl = memo(
 
       setUploadedFiles([]);
       setImageDataList([]);
-
-      resetEnhancer();
 
       textareaRef.current?.blur();
     };
@@ -1380,8 +1363,6 @@ export const ChatImpl = memo(
           onStreamingChange={(streaming) => {
             streamingState.set(streaming);
           }}
-          enhancingPrompt={enhancingPrompt}
-          promptEnhanced={promptEnhanced}
           sendMessage={sendMessage}
           model={model}
           setModel={handleModelChange}
@@ -1406,18 +1387,6 @@ export const ChatImpl = memo(
               content: parsedMessages[i] || '',
             };
           })}
-          enhancePrompt={() => {
-            enhancePrompt(
-              input,
-              (input) => {
-                setInput(input);
-                scrollTextArea();
-              },
-              model,
-              provider,
-              apiKeys,
-            );
-          }}
           uploadedFiles={uploadedFiles}
           setUploadedFiles={setUploadedFiles}
           imageDataList={imageDataList}
