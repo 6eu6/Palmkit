@@ -421,6 +421,7 @@ export const ChatImpl = memo(
       startJob: startExtJob,
       restoreJob: restoreExtJob,
       reset: resetExtWorker,
+      cancelJob: cancelExtJob,
     } = useExternalWorker();
 
     // Subscribe to chat metadata so the restore effect re-runs when it loads on refresh.
@@ -839,16 +840,17 @@ export const ChatImpl = memo(
       resetExtWorker();
 
       /*
-       * Mark this job as aborted so the restore effect doesn't immediately
-       * re-attach to it (which would undo the Stop). palmkitJobId stays in
-       * metadata — when the user sends a new message, priorJobId resolves
-       * to it and the worker treats the message as an edit on this job's
-       * workspace. Cleared in sendMessage when a new message starts.
+       * Write 'cancel_requested' to Supabase. The orchestrator polls the
+       * job's status between agent steps; when it sees cancel_requested it
+       * fires its AbortController (cancels the in-flight LLM stream) and
+       * writes a PARTIAL manifest from the files written so far. This is the
+       * Supabase-native cancel path — no public worker URL needed.
        */
       const currentMeta = chatMetadata.get();
 
       if (currentMeta?.palmkitJobId) {
         abortedJobIdRef.current = currentMeta.palmkitJobId;
+        cancelExtJob(currentMeta.palmkitJobId).catch((e) => console.warn('[abort] cancelJob failed:', e));
       }
 
       logStore.logProvider('Chat response aborted', {

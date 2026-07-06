@@ -118,6 +118,21 @@ app.post('/admin/update', async (c) => {
 });
 
 /*
+ * Cancel-via-Supabase (no public HTTP endpoint needed).
+ *
+ * The front-end writes status='cancel_requested' to build_jobs. The
+ * orchestrator polls the job's status between agent steps (see
+ * orchestrator.ts → checkCancelRequested); when it sees cancel_requested it
+ * fires the AbortController (cancels the in-flight LLM stream) and writes a
+ * PARTIAL manifest from the files written so far.
+ *
+ * This avoids opening the worker to the internet (no Cloudflare Tunnel, no
+ * public port). The worker already reads its jobs from Supabase, so reading
+ * the cancel flag from the same source is the natural fit — and it scales to
+ * multiple worker boxes without any coordination.
+ */
+
+/*
  * Main poll loop — concurrent job processing.
  *
  * Each tick checks for a pending job and fires it off without blocking.

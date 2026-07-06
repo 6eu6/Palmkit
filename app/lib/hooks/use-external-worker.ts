@@ -1084,7 +1084,48 @@ export function useExternalWorker() {
     [subscribeRealtime, pollJob],
   );
 
-  return { state, startJob, reset, restoreJob };
+  /*
+   * cancelJob — writes status='cancel_requested' to build_jobs in Supabase.
+   *
+   * The orchestrator polls the job's status between agent steps; when it sees
+   * 'cancel_requested' it fires its AbortController (cancels the in-flight LLM
+   * stream), writes a PARTIAL manifest from the files written so far, and
+   * marks the job 'cancelled'. This is the Supabase-native cancel path — no
+   * public worker URL needed, scales to multiple worker boxes.
+   *
+   * Returns true if the cancel request was written, false on error.
+   */
+  const cancelJob = useCallback(
+    async (jobId: string): Promise<boolean> => {
+      const supabaseUrl = rootData?.supabaseUrl;
+      const supabaseKey = rootData?.supabaseAnonKey;
+
+      if (!supabaseUrl || !supabaseKey || !jobId) {
+        return false;
+      }
+
+      try {
+        const resp = await fetch(`${supabaseUrl}/rest/v1/build_jobs?id=eq.${jobId}`, {
+          method: 'PATCH',
+          headers: {
+            apikey: supabaseKey,
+            Authorization: `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json',
+            Prefer: 'return=minimal',
+          },
+          body: JSON.stringify({ status: 'cancel_requested' }),
+        });
+
+        return resp.ok;
+      } catch (err) {
+        console.warn('[Palmkit] cancelJob failed:', err);
+        return false;
+      }
+    },
+    [rootData?.supabaseUrl, rootData?.supabaseAnonKey],
+  );
+
+  return { state, startJob, reset, restoreJob, cancelJob };
 }
 
 /**

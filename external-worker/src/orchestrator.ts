@@ -42,6 +42,7 @@ import {
   generateSmartManifest,
   writePalmkitMemory,
 } from './workspace-manager';
+import { registerJobAbort, unregisterJobAbort } from './abort-registry';
 
 export interface OrchestratorResult {
   success: boolean;
@@ -204,6 +205,82 @@ export async function runOrchestratedBuild(
     logger.error(`[orchestrator] Hard timeout (${HARD_TIMEOUT_MS}ms) reached for job ${jobId} — aborting stream`);
     abortController.abort();
   }, HARD_TIMEOUT_MS);
+
+  /*
+   * Register an abort handle so the /jobs/:id/cancel endpoint can stop this
+   * build on user demand. abort() fires the AbortController (cancels the
+   * in-flight LLM fetch). finalize() writes a PARTIAL manifest from the files
+   * written so far so the user's next message can edit the partial state
+   * instead of waiting or starting fresh. Both must be safe to call from
+   * outside the orchestrator's normal flow.
+   */
+  let finalizeCalled = false;
+
+  const finalizePartial = async () => {
+    if (finalizeCalled) {
+      return;
+    }
+
+    finalizeCalled = true;
+
+    try {
+      const files = getProjectFiles(jobId) as Record<string, string>;
+      const pathCount = Object.keys(files).length;
+
+      if (pathCount === 0) {
+        logger.info(`[orchestrator] Job ${jobId} cancelled with 0 files — no partial manifest`);
+        return;
+      }
+
+      // Upload partial files to the workspace (same keying as the normal upload).
+      for (const [path, content] of Object.entries(files)) {
+        const workspaceKey = buildWorkspaceKey(projectId, path);
+
+        try {
+          await putFile(workspaceKey, content);
+        } catch (e) {
+          logger.warn(`[orchestrator] partial upload failed for ${path}: ${e}`);
+        }
+      }
+
+      // Insert partial manifest rows so the edit path finds them.
+      const manifestRows = Object.entries(files).map(([path, content]) => ({
+        job_id: jobId,
+        project_id: null,
+        user_id: userId,
+        path,
+        version: 1,
+        hash: '',
+        size_bytes: new TextEncoder().encode(content).length,
+        mime_type: 'text/plain',
+        storage_provider: 'r2',
+        storage_key: buildWorkspaceKey(projectId, path),
+        integrity: 'partial',
+      }));
+
+      const { error: manifestErr } = await supabase.from('project_files_manifest').insert(manifestRows);
+
+      if (manifestErr) {
+        logger.warn(`[orchestrator] partial manifest insert failed: ${manifestErr.message}`);
+      } else {
+        logger.info(`[orchestrator] Job ${jobId}: wrote partial manifest (${manifestRows.length} files)`);
+      }
+
+      // Append a worklog note so the next build/edit knows it was interrupted.
+      try {
+        await appendToWorklog(projectId, `\n## Build interrupted by user\nPartial state saved (${manifestRows.length} files). The next message should continue from here.\n`).catch(() => undefined);
+      } catch {
+        // best-effort
+      }
+    } catch (e) {
+      logger.warn(`[orchestrator] finalizePartial error: ${e}`);
+    }
+  };
+
+  registerJobAbort(jobId, {
+    abort: () => abortController.abort(),
+    finalize: finalizePartial,
+  });
 
   const agentResults: OrchestratorResult['agentResults'] = [];
   let researcherContext = '';
@@ -396,6 +473,41 @@ export async function runOrchestratedBuild(
       }
 
       logger.info(`[orchestrator] Running ${config.name} agent (maxSteps=${config.maxSteps})`);
+
+      /*
+       * Cancel check — between agent steps, poll the job's status in Supabase.
+       * The front-end writes status='cancel_requested' when the user hits Stop.
+       * If we see it, fire the AbortController (cancels the in-flight LLM
+       * stream) and write a partial manifest from the files written so far,
+       * then break out of the agent loop. The orchestrator's finally{} does
+       * the rest (cleanup + unregister).
+       *
+       * Polling between agents (not mid-stream) is enough for UX — a single
+       * agent step is 5-30s, so the cancel lands within that window. Mid-
+       * stream polling would need abortSignal checks inside the for-await
+       * loop (already handled by streamText's abortSignal).
+       */
+      const { data: cancelCheck } = await supabase
+        .from('build_jobs')
+        .select('status')
+        .eq('id', jobId)
+        .single();
+
+      if (cancelCheck?.status === 'cancel_requested') {
+        logger.info(`[orchestrator] Job ${jobId} cancelled by user — aborting before ${config.name} agent`);
+        await emitEvent(supabase, jobId, 'job_failed', 'Build cancelled by user — saving partial state...');
+        abortController.abort();
+
+        // Write partial manifest immediately (don't wait for finally{} — the
+        // file map is still populated here).
+        await finalizePartial();
+
+        // Mark the job cancelled (terminal state — reaper skips it).
+        await supabase.from('build_jobs').update({ status: 'cancelled', error_summary: 'Cancelled by user' }).eq('id', jobId);
+
+        overallSuccess = false;
+        break;
+      }
 
       // Emit agent_started — lets the activity stream UI open a new group for this agent.
       await emitEvent(supabase, jobId, 'agent_started', `🤖 ${config.name} agent starting...`, {
@@ -1254,5 +1366,7 @@ export async function runOrchestratedBuild(
     // run_shell). This is the ONLY place it's torn down, so it must run on
     // every exit path — success, failure, timeout, or abort.
     await disposeSandbox(jobId);
+    // Remove from the abort registry — the job is no longer cancellable.
+    unregisterJobAbort(jobId);
   }
 }
