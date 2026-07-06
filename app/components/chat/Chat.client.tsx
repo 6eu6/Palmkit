@@ -198,6 +198,14 @@ export const ChatImpl = memo(
     useShortcuts();
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    /*
+     * Tracks the jobId the user aborted (Stop button). The restore effect
+     * skips re-attaching to this job so the UI stays idle after abort — but
+     * palmkitJobId stays in chat metadata so the NEXT message resolves to an
+     * edit on this job's workspace (preserving context).
+     */
+    const abortedJobIdRef = useRef<string | null>(null);
     const [chatStarted, setChatStarted] = useState(initialMessages.length > 0);
 
     /*
@@ -444,11 +452,21 @@ export const ChatImpl = memo(
        * re-ran once the metadata arrived, so the job was never restored and the
        * BuildStream stayed blank.
        */
-      if (activeChatMeta?.palmkitJobId && extWorkerState.status === 'idle' && !extWorkerState.jobId) {
+      if (
+        activeChatMeta?.palmkitJobId &&
+        extWorkerState.status === 'idle' &&
+        !extWorkerState.jobId &&
+        activeChatMeta.palmkitJobId !== abortedJobIdRef.current
+      ) {
         /*
          * Restore the job — this starts polling which processes ALL events
          * through dispatchJobEvent, repopulating workerEventsStore so the live
          * BuildStream comes back exactly where it was.
+         *
+         * Skips the job the user just aborted (abortedJobIdRef) — without
+         * this, the restore effect would immediately re-attach to the
+         * aborted job and re-poll it, undoing the Stop. palmkitJobId stays
+         * in metadata so the next message still resolves to an edit.
          */
         restoreExtJob(activeChatMeta.palmkitJobId);
       }
@@ -795,25 +813,42 @@ export const ChatImpl = memo(
       workbenchStore.abortAllActions();
 
       /*
-       * For external-worker builds, stop() (useChat) is a no-op — the build
-       * runs on the Oracle worker, not via the AI SDK stream. Reset the
-       * external worker state so the UI drops back to 'idle' and the user
-       * can send a new message. The orphaned worker job continues to
-       * completion in the background; its result is ignored (the front-end
-       * stopped polling that jobId). A proper cancel endpoint is future
-       * work — for now this unblocks the user immediately.
+       * Stop button — "pause and let me tell you something".
        *
-       * Also clear palmkitJobId from chat metadata — without this, the
-       * restore effect (which fires when status drops to 'idle' + a jobId
-       * exists in metadata) would immediately re-attach to the aborted job
-       * and re-poll it, undoing the reset.
+       * The user wants to interrupt the build to add a correction, fix, or
+       * new instruction. The RIGHT behavior (vs the old "cancel + start
+       * fresh" which lost all context):
+       *
+       *   1. Stop polling the current job — the UI drops to 'idle' so the
+       *      Send button reverts and the user can type.
+       *   2. KEEP palmkitJobId in chat metadata. The orphaned worker job
+       *      continues to completion in the background (writes files +
+       *      worklog + manifest). This is the CONTEXT the next message
+       *      will build on.
+       *   3. When the user sends a new message, `priorJobId` resolves to
+       *      this saved jobId → the worker treats it as an EDIT (not a new
+       *      build): it reads the worklog + files + the new message, and
+       *      the LLM reasons about what to change. The worker's edit path
+       *      polls the manifest for up to 30s, so even if the previous job
+       *      hasn't finished uploading yet, the edit waits for it.
+       *
+       * The epoch guard in useExternalWorker ensures the old polling loop
+       * doesn't override the reset. We do NOT clear palmkitJobId — that
+       * would sever the context link and force a from-scratch rebuild.
        */
       resetExtWorker();
 
+      /*
+       * Mark this job as aborted so the restore effect doesn't immediately
+       * re-attach to it (which would undo the Stop). palmkitJobId stays in
+       * metadata — when the user sends a new message, priorJobId resolves
+       * to it and the worker treats the message as an edit on this job's
+       * workspace. Cleared in sendMessage when a new message starts.
+       */
       const currentMeta = chatMetadata.get();
 
       if (currentMeta?.palmkitJobId) {
-        chatMetadata.set({ ...currentMeta, palmkitJobId: undefined });
+        abortedJobIdRef.current = currentMeta.palmkitJobId;
       }
 
       logStore.logProvider('Chat response aborted', {
@@ -1065,6 +1100,14 @@ export const ChatImpl = memo(
         const existingChatId = chatId.get();
         const workerChatId = existingChatId ?? `${Date.now()}`;
         chatId.set(workerChatId);
+
+        /*
+         * Clear the aborted-job marker — the user is sending a new message,
+         * which (if palmkitJobId exists from a prior build/abort) will be
+         * treated as an edit on that job's workspace. The restore effect is
+         * now allowed to re-attach if this build also gets aborted later.
+         */
+        abortedJobIdRef.current = null;
 
         /*
          * Title the chat from its FIRST prompt only. Setting it on every send
