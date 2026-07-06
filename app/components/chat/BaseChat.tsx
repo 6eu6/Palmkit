@@ -17,6 +17,7 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import styles from './BaseChat.module.scss';
 import { ImportButtons } from '~/components/chat/chatExportAndImport/ImportButtons';
 import { ExamplePrompts } from '~/components/chat/ExamplePrompts';
+import { PromptSuggestions } from '~/components/chat/PromptSuggestions';
 import GitCloneButton from './GitCloneButton';
 import type { ProviderInfo } from '~/types/model';
 import type { ActionAlert, SupabaseAlert, DeployAlert, LlmErrorAlertType } from '~/types/actions';
@@ -53,6 +54,7 @@ interface BaseChatProps {
   messages?: Message[];
   description?: string;
   input?: string;
+  setInput?: (value: string | ((prev: string) => string)) => void;
   model?: string;
   setModel?: (model: string) => void;
   provider?: ProviderInfo;
@@ -104,6 +106,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       setProvider,
       providerList,
       input = '',
+      setInput,
       handleInputChange,
 
       sendMessage,
@@ -561,6 +564,9 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                       handleSendMessage?.(event, messageInput);
                     }}
                   />
+                )}
+                {!chatStarted && setInput && (
+                  <PromptSuggestions input={input} onAppend={(text) => setInput((prev) => `${prev}${text}`)} />
                 )}
               </div>
             </div>
