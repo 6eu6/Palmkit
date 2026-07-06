@@ -145,9 +145,27 @@ export async function appendToWorklog(
     const timestamp = new Date().toISOString();
     const newEntry = `\n## ${timestamp}\n\n${entry}\n`;
 
-    const updated = existing
+    let updated = existing
       ? existing + newEntry
       : `# Project Worklog\n\nThis file is the project's memory. The AI agent reads it at the start of every build to understand context.\n${newEntry}`;
+
+    /*
+     * MEMORY COMPACTION — when the worklog exceeds 12KB, compact the oldest
+     * entries into a one-line summary each. This keeps the worklog useful for
+     * long conversations (20+ edits) without overflowing the edit path's
+     * context budget (6000 chars). Only the most recent 3 entries keep their
+     * full text; everything older is reduced to a single line.
+     *
+     * Without this, a 20-edit conversation would produce a ~30KB worklog,
+     * and the edit path (which slices the last 6000 chars) would lose ALL
+     * early context. With compaction, the edit sees a one-line summary of
+     * every past edit + full text of the last 3.
+     */
+    const COMPACTION_THRESHOLD = 12 * 1024;
+
+    if (updated.length > COMPACTION_THRESHOLD) {
+      updated = compactWorklog(updated);
+    }
 
     await putFile(key, updated);
 
@@ -156,10 +174,40 @@ export async function appendToWorklog(
       await mirrorToSupabaseStorage(supabase, userId, projectId, 'worklog.md', updated, 'text/markdown');
     }
 
-    logger.info(`[workspace] Appended to worklog for ${projectId} (${entry.length} chars)`);
+    logger.info(`[workspace] Appended to worklog for ${projectId} (${entry.length} chars, total ${updated.length})`);
   } catch (e) {
     logger.warn(`[workspace] Failed to append to worklog for ${projectId}: ${e}`);
   }
+}
+
+/*
+ * Compact a worklog: keep the header + the last 3 entries in full, reduce
+ * every older entry to its first non-empty line (the summary). This preserves
+ * the "what was done" for every turn while dropping the verbose details that
+ * only mattered at the time.
+ */
+function compactWorklog(worklog: string): string {
+  const sections = worklog.split(/\n(?=## )/);
+
+  if (sections.length <= 4) {
+    return worklog; // header + 3 entries — nothing to compact
+  }
+
+  const header = sections[0];
+  const entries = sections.slice(1);
+  const keepFull = entries.slice(-3);
+  const toCompact = entries.slice(0, -3);
+
+  const compacted = toCompact
+    .map((entry) => {
+      const lines = entry.split('\n').filter((l) => l.trim().length > 0);
+      const summary = lines.find((l) => !l.startsWith('## ')) || lines[0] || '(no summary)';
+
+      return summary.slice(0, 120);
+    })
+    .join('\n');
+
+  return `${header}\n\n## Compacted history (one line per edit):\n${compacted}\n\n${keepFull.join('\n\n')}`;
 }
 
 /**

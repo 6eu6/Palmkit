@@ -371,6 +371,20 @@ export async function runOrchestratedBuild(
         continue;
       }
 
+      /*
+       * Skip the Planner for SIMPLE new builds (prompt < 80 chars). The
+       * Planner's value is art direction — identity, palette, media plan.
+       * For a "build a counter" or "make a todo app" the Builder doesn't
+       * need a design brief; it can pick sensible defaults directly. This
+       * saves ~30s (Planner's LLM call) on the simplest builds. Complex
+       * prompts (≥80 chars) still get the full Planner treatment.
+       */
+      if (role === 'planner' && !hasWorklog && prompt.trim().length < 80) {
+        logger.info(`[orchestrator] Skipping Planner (simple build, prompt=${prompt.trim().length} chars)`);
+        await emitEvent(supabase, jobId, 'file_chunk' as any, '⏭️ Skipping Planner (simple build)');
+        continue;
+      }
+
       const agentTools = filterTools(allTools as unknown as ToolSet, config.allowedTools);
 
       // Build the agent's prompt (includes context from previous agents)

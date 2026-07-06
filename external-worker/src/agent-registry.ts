@@ -348,10 +348,11 @@ Your job is to verify the project works correctly.
 AVAILABLE TOOLS:
 - run_shell(command): Run npm install, npm run build, etc.
 - run_tests(): Run the test suite
-- take_screenshot(): Take a screenshot of the running app
 - read_file(path): Read a file to understand errors
 - search_code(pattern): Search for bugs or issues
 - done(summary): Report your findings
+
+DO NOT take screenshots — they are not available in this environment.
 
 THE SANDBOX PERSISTS across your run_shell calls within this build: node_modules
 from a previous "npm install" is still there on the next call, and the latest
@@ -369,7 +370,7 @@ YOUR TASK (do it in as few steps as possible — this saves tokens):
 3. Call done() with: build pass/fail, the error (if any), and a one-line summary.
 
 DO NOT run exploratory commands like "ls node_modules" — one build command is all
-you need.
+you need. DO NOT take screenshots.
 
 WORKFLOW WITH update_todos:
 1. AT THE START: call update_todos with your verification plan as items, all "pending" except the first which is "in_progress".
@@ -382,22 +383,20 @@ Example Tester todos (keep it short — one combined build command):
   allowedTools: [
     'run_shell',
     'run_tests',
-    'take_screenshot',
     'read_file',
     'search_code',
     'update_todos',
     'done',
   ],
   /*
-   * 10 steps. The old cap of 6 was hit on EVERY real build ("Tester reached
-   * step limit (6)" showed in the chat for all three live-test projects):
-   * the model calls update_todos once per todo tick instead of once per
-   * batch, so todos(1) + install+build(2) + screenshot(3) + todo ticks(4-6)
-   * exhausted the budget before done(). 10 covers the todo chatter while
-   * still stopping a flailing Tester long before the old 15-step waste.
+   * 5 steps (was 10). Removed take_screenshot (always failed in E2B —
+   * playwright isn't fully installed, and the failed call wasted 10-15s per
+   * build). 5 steps is enough for: todos(1) + install+build(2) + todo
+   * ticks(3-4) + done(5). If the build fails the Tester reads the error and
+   * calls done — no need for retries.
    */
-  maxSteps: 10,
-  maxTokens: 8000, // Tester reports need space for error logs.
+  maxSteps: 5,
+  maxTokens: 6000, // Tester reports need space for error logs.
 };
 
 /**

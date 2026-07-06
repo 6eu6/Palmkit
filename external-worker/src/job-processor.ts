@@ -328,12 +328,19 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         return;
       }
 
-      /* Fetch file contents from R2 */
+      /*
+       * Fetch file contents from R2 in PARALLEL (was sequential — 9 files ×
+       * ~200ms = 1.8s wasted per edit). Promise.all cuts that to a single
+       * round-trip's latency (~200ms for all files). Order is preserved by
+       * mapping back to the manifest's row order.
+       */
       const existingFiles: Array<{ op: 'write_file'; path: string; content: string; mime_type?: string }> = [];
 
-      for (const row of manifest) {
-        const content = await getFileText(row.storage_key);
+      const contents = await Promise.all(
+        manifest.map((row) => getFileText(row.storage_key).then((c) => ({ row, c }))),
+      );
 
+      for (const { row, c: content } of contents) {
         if (content !== null) {
           existingFiles.push({ op: 'write_file', path: row.path, content, mime_type: row.mime_type ?? undefined });
         }
