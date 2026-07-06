@@ -494,12 +494,13 @@ export async function runOrchestratedBuild(
         .single();
 
       /*
-       * The front-end writes status='cancelled' + error_summary='Cancelled by
-       * user' when the user hits Stop. We can't use a 'cancel_requested'
-       * status because the DB's CHECK constraint only allows the original 5
-       * values. So we detect a user cancel by the error_summary tag.
+       * The front-end writes status='failed_clean' + error_summary='Cancelled
+       * by user' when the user hits Stop (the DB's CHECK constraint only
+       * allows pending/generating/ready_for_preview/failed_clean — no
+       * 'cancelled' or 'cancel_requested'). We detect a user cancel by the
+       * error_summary tag.
        */
-      if (cancelCheck?.status === 'cancelled' && cancelCheck?.error_summary === 'Cancelled by user') {
+      if (cancelCheck?.status === 'failed_clean' && cancelCheck?.error_summary === 'Cancelled by user') {
         logger.info(`[orchestrator] Job ${jobId} cancelled by user — aborting before ${config.name} agent`);
         await emitEvent(supabase, jobId, 'job_failed', 'Build cancelled by user — saving partial state...');
         abortController.abort();

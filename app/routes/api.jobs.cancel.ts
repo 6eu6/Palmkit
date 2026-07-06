@@ -34,12 +34,14 @@ async function cancelJobAction({ request, context }: ActionFunctionArgs) {
   }
 
   /*
-   * Write status='cancelled' + error_summary='Cancelled by user' directly.
-   * (We can't use a 'cancel_requested' status — the DB has a CHECK constraint
-   * on the status column that only allows the original 5 values. 'cancelled'
-   * IS in the allowed set, so we reuse it. The orchestrator checks for
-   * status='cancelled' + error_summary='Cancelled by user' to distinguish a
-   * user-initiated cancel from a system failure.)
+   * Write status='failed_clean' + error_summary='Cancelled by user'.
+   *
+   * The DB's CHECK constraint on build_jobs.status only allows: pending,
+   * generating, ready_for_preview, failed_clean (NOT 'cancelled' or
+   * 'cancel_requested' — those were never added to the constraint). So we
+   * reuse 'failed_clean' (which IS allowed) and tag it with
+   * error_summary='Cancelled by user'. The orchestrator checks for this
+   * exact tag to detect a user-initiated cancel vs a system failure.
    *
    * The WHERE clause (id + user_id + status-in-[pending,generating]) is the
    * security guard — RLS + user_id match ensures a user can only cancel their
@@ -48,7 +50,7 @@ async function cancelJobAction({ request, context }: ActionFunctionArgs) {
    */
   const { data: updated, error: updateErr } = await authed.supabase
     .from('build_jobs')
-    .update({ status: 'cancelled', error_summary: 'Cancelled by user' })
+    .update({ status: 'failed_clean', error_summary: 'Cancelled by user' })
     .eq('id', jobId)
     .eq('user_id', authed.user.id)
     .in('status', ['pending', 'generating'])
