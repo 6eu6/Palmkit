@@ -17,7 +17,6 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import styles from './BaseChat.module.scss';
 import { ImportButtons } from '~/components/chat/chatExportAndImport/ImportButtons';
 import { ExamplePrompts } from '~/components/chat/ExamplePrompts';
-import { PromptSuggestions } from '~/components/chat/PromptSuggestions';
 import GitCloneButton from './GitCloneButton';
 import type { ProviderInfo } from '~/types/model';
 import type { ActionAlert, SupabaseAlert, DeployAlert, LlmErrorAlertType } from '~/types/actions';
@@ -555,18 +554,11 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
               <div className="flex flex-col gap-3 sm:gap-4">
                 {!chatStarted && (
                   <ExamplePrompts
-                    sendMessage={(event, messageInput) => {
-                      if (isStreaming) {
-                        handleStop?.();
-                        return;
-                      }
-
-                      handleSendMessage?.(event, messageInput);
+                    onSelect={(text) => {
+                      setInput?.(text);
+                      textareaRef?.current?.focus();
                     }}
                   />
-                )}
-                {!chatStarted && setInput && (
-                  <PromptSuggestions input={input} onAppend={(text) => setInput((prev) => `${prev}${text}`)} />
                 )}
               </div>
             </div>

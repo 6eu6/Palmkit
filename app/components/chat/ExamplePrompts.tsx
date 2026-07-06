@@ -139,11 +139,7 @@ const CATEGORIES = [
 
 type Category = (typeof CATEGORIES)[number]['key'];
 
-export function ExamplePrompts({
-  sendMessage,
-}: {
-  sendMessage?: (event: React.UIEvent, messageInput?: string) => void;
-}) {
+export function ExamplePrompts({ onSelect }: { onSelect?: (text: string) => void }) {
   const [activeCategory, setActiveCategory] = useState<Category>('all');
 
   const filtered =
@@ -179,8 +175,8 @@ export function ExamplePrompts({
         {mobileFiltered.slice(0, 4).map((examplePrompt, index) => (
           <button
             key={index}
-            onClick={(event) => {
-              sendMessage?.(event, examplePrompt.text);
+            onClick={() => {
+              onSelect?.(examplePrompt.text);
             }}
             className={classNames(
               'flex items-center gap-1.5',
@@ -203,8 +199,8 @@ export function ExamplePrompts({
         {desktopPrompts.map((examplePrompt, index) => (
           <button
             key={`${activeCategory}-${index}`}
-            onClick={(event) => {
-              sendMessage?.(event, examplePrompt.text);
+            onClick={() => {
+              onSelect?.(examplePrompt.text);
             }}
             className={classNames(
               'group relative overflow-hidden',
