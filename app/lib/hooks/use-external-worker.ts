@@ -514,6 +514,7 @@ export function useExternalWorker() {
       editFromJobId?: string,
       projectId?: string,
       designScheme?: { palette: Record<string, string>; font: string[]; features: string[] },
+      conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
     ) => {
       epochRef.current++;
       setState({ ...initialState, status: 'pending', currentStep: 'queued' });
@@ -588,6 +589,7 @@ export function useExternalWorker() {
             ...(editFromJobId ? { editJobId: editFromJobId } : {}),
             ...(projectId ? { projectId } : {}),
             ...(designScheme ? { designScheme } : {}),
+            ...(conversationHistory && conversationHistory.length > 0 ? { conversationHistory } : {}),
           }),
         });
 

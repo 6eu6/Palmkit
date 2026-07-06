@@ -441,6 +441,10 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           }
         };
 
+        const conversationHistory = job.validation_result?.conversationHistory as
+          | Array<{ role: string; content: string }>
+          | undefined;
+
         const editResult = await generateEdit(
           existingFiles,
           editAppType,
@@ -452,6 +456,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           projectMemory,
           editReasoningEffort,
           streamCallback,
+          conversationHistory,
         );
         mergedFiles = editResult.files as typeof existingFiles;
 

@@ -70,6 +70,7 @@ export async function action(args: ActionFunctionArgs) {
     libraries,
     agentConfig,
     designScheme,
+    conversationHistory,
   } = body;
 
   if (!prompt || typeof prompt !== 'string') {
@@ -170,6 +171,25 @@ export async function action(args: ActionFunctionArgs) {
                 font: Array.isArray(designScheme.font) ? designScheme.font : [],
                 features: Array.isArray(designScheme.features) ? designScheme.features : [],
               },
+            }
+          : {}),
+
+        /*
+         * Conversation history — the last few user+assistant messages from the
+         * chat. Passed to the edit path so the LLM understands references like
+         * "no, make it blue instead of red" (where "red" was mentioned in a
+         * prior message the edit wouldn't otherwise see). Capped at 10 messages
+         * and 500 chars each to keep the row small.
+         */
+        ...(Array.isArray(conversationHistory) && conversationHistory.length > 0
+          ? {
+              conversationHistory: conversationHistory
+                .filter(
+                  (m: unknown): m is { role: string; content: string } =>
+                    !!m && typeof (m as any).role === 'string' && typeof (m as any).content === 'string',
+                )
+                .slice(-10)
+                .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) })),
             }
           : {}),
 

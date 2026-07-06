@@ -691,6 +691,7 @@ export async function generateEdit(
   projectMemory?: { projectMd?: string; decisionsMd?: string; manifestJson?: string } | null,
   reasoningEffort?: 'off' | 'medium' | 'max',
   streamCallback?: (delta: string) => Promise<void>,
+  conversationHistory?: Array<{ role: string; content: string }> | null,
 ): Promise<EditResult> {
   /*
    * Feed WHOLE files up to a generous budget. Raised from 100KB → 200KB:
@@ -775,8 +776,22 @@ export async function generateEdit(
     ? `\nDESIGN DECISIONS (.palmkit/decisions.md — respect these choices):\n${projectMemory.decisionsMd.slice(0, 1500)}\n`
     : '';
 
+  /*
+   * Conversation history — the last few user+assistant messages. This lets
+   * the edit LLM understand references like "no, make it blue instead of
+   * red" (where "red" was in a prior message). Without this the edit was
+   * blind to the conversation — it only saw the current files + the latest
+   * message, missing all context about WHY the user is asking for this change.
+   */
+  const conversationBlock =
+    conversationHistory && conversationHistory.length > 0
+      ? `\nCONVERSATION HISTORY (recent messages — understand references and intent):\n${conversationHistory
+          .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 1000)}`)
+          .join('\n')}\n`
+      : '';
+
   const systemPrompt = `You are Palmkit's code editor. You are modifying an existing ${appType} project.
-${projectMdBlock}${decisionsBlock}${worklogBlock}
+${projectMdBlock}${decisionsBlock}${worklogBlock}${conversationBlock}
 Current project files:
 ${fileDump}${omittedNote}
 

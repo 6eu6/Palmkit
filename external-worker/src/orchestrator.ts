@@ -274,7 +274,11 @@ export async function runOrchestratedBuild(
 
       // Append a worklog note so the next build/edit knows it was interrupted.
       try {
-        await appendToWorklog(projectId, `\n## Build interrupted by user\nPartial state saved (${manifestRows.length} files). The next message should continue from here.\n`).catch(() => undefined);
+        const fileList = Object.keys(files).join(', ');
+        await appendToWorklog(
+          projectId,
+          `\n## Build interrupted by user\nPartial state saved (${manifestRows.length} files: ${fileList}). The next message should continue from here.\n`,
+        ).catch(() => undefined);
       } catch {
         // best-effort
       }

@@ -1198,7 +1198,30 @@ export const ChatImpl = memo(
          * files, worklog, and manifest under projects/{projectId}/workspace/.
          * This links the chat to its R2 workspace for restore-on-reload.
          */
-        await startExtJob(finalMessageContent, model, provider.name, editFromJobId, workerChatId, designScheme);
+        /*
+         * Pass the last 5 messages (user + assistant) as conversation history.
+         * This lets the edit LLM understand references like "no, make it blue
+         * instead of red" — where "red" was in a prior message the edit
+         * wouldn't otherwise see. Only text content (no metadata) is sent.
+         */
+        const conversationHistory = messages
+          .slice(-5)
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .map((m) => ({
+            role: m.role as 'user' | 'assistant',
+            content: typeof m.content === 'string' ? m.content.slice(0, 2000) : '',
+          }))
+          .filter((m) => m.content.length > 0);
+
+        await startExtJob(
+          finalMessageContent,
+          model,
+          provider.name,
+          editFromJobId,
+          workerChatId,
+          designScheme,
+          conversationHistory,
+        );
 
         /*
          * Save the chat to IndexedDB IMMEDIATELY with the NEW messages array.
