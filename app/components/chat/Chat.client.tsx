@@ -408,7 +408,12 @@ export const ChatImpl = memo(
 
     // Phase 2: External Worker feature flag + hook.
     const externalWorkerEnabled = useExternalWorkerFlag();
-    const { state: extWorkerState, startJob: startExtJob, restoreJob: restoreExtJob } = useExternalWorker();
+    const {
+      state: extWorkerState,
+      startJob: startExtJob,
+      restoreJob: restoreExtJob,
+      reset: resetExtWorker,
+    } = useExternalWorker();
 
     // Subscribe to chat metadata so the restore effect re-runs when it loads on refresh.
     const activeChatMeta = useStore(chatMetadata);
@@ -788,6 +793,17 @@ export const ChatImpl = memo(
       stop();
       chatStore.setKey('aborted', true);
       workbenchStore.abortAllActions();
+
+      /*
+       * For external-worker builds, stop() (useChat) is a no-op — the build
+       * runs on the Oracle worker, not via the AI SDK stream. Reset the
+       * external worker state so the UI drops back to 'idle' and the user
+       * can send a new message. The orphaned worker job continues to
+       * completion in the background; its result is ignored (the front-end
+       * stopped polling that jobId). A proper cancel endpoint is future
+       * work — for now this unblocks the user immediately.
+       */
+      resetExtWorker();
 
       logStore.logProvider('Chat response aborted', {
         component: 'Chat',
@@ -1384,7 +1400,9 @@ export const ChatImpl = memo(
           setInput={setInput}
           showChat={showChat}
           chatStarted={chatStarted}
-          isStreaming={isLoading || fakeLoading}
+          isStreaming={
+            isLoading || fakeLoading || extWorkerState.status === 'pending' || extWorkerState.status === 'generating'
+          }
           onStreamingChange={(streaming) => {
             streamingState.set(streaming);
           }}

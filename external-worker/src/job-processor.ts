@@ -241,15 +241,63 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
       const editAppType = (editJob?.validation_result?.appType as GenerationResult['appType']) ?? 'static';
 
-      /* Fetch the file manifest for the original job */
-      const { data: manifest, error: manifestErr } = await supabase
-        .from('project_files_manifest')
-        .select('path, storage_key, mime_type')
-        .eq('job_id', editJobId)
-        .order('path');
+      /*
+       * Fetch the file manifest for the original job. The target job might
+       * still be building (the front-end now blocks this via the Stop button,
+       * but be defensive): if the manifest isn't there yet, poll a few times
+       * before failing — an in-flight build will write it on completion. This
+       * turns a hard failure into a graceful wait for the common race.
+       */
+      let manifest: Array<{ path: string; storage_key: string; mime_type: string | null }> | null = null;
+      let manifestErr: unknown = null;
+      const MANIFEST_POLL_MS = 5_000;
+      const MANIFEST_POLL_MAX = 6; // 30s total — past the typical upload phase
+
+      for (let attempt = 0; attempt < MANIFEST_POLL_MAX; attempt++) {
+        const { data, error } = await supabase
+          .from('project_files_manifest')
+          .select('path, storage_key, mime_type')
+          .eq('job_id', editJobId)
+          .order('path');
+
+        manifest = data;
+        manifestErr = error;
+
+        if (!error && data && data.length > 0) {
+          break;
+        }
+
+        // Manifest not ready — is the target job still building?
+        const { data: targetJob } = await supabase.from('build_jobs').select('status').eq('id', editJobId).single();
+
+        const targetStatus = targetJob?.status;
+
+        if (targetStatus === 'failed_clean' || targetStatus === 'cancelled') {
+          await failJob(
+            supabase,
+            job.id,
+            `The previous build failed (status: ${targetStatus}). Please start a new build instead of editing.`,
+          );
+          return;
+        }
+
+        if (attempt < MANIFEST_POLL_MAX - 1) {
+          await emitEvent(
+            supabase,
+            job.id,
+            'edit_progress',
+            `Waiting for the previous build to finish its upload… (${(attempt + 1) * 5}s)`,
+          );
+          await new Promise((r) => setTimeout(r, MANIFEST_POLL_MS));
+        }
+      }
 
       if (manifestErr || !manifest || manifest.length === 0) {
-        await failJob(supabase, job.id, 'Could not load existing project files for editing — try a new build instead');
+        await failJob(
+          supabase,
+          job.id,
+          'Could not load existing project files for editing — the previous build may not have completed. Try a new build instead.',
+        );
         return;
       }
 

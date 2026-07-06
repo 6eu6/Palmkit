@@ -396,6 +396,14 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
           {/* Thinking power — volume-style meter (Off / Medium / Max) */}
           <ClientOnly>{() => <ThinkingMeter />}</ClientOnly>
 
+          {/*
+           * Design theme — palette icon directly in the toolbar (before "+"),
+           * so the most-used design control is one tap away on both mobile and
+           * desktop. "+" stays the last icon (the catch-all for everything
+           * else: attach, connectors, skills, templates).
+           */}
+          <ColorSchemeDialog designScheme={props.designScheme} setDesignScheme={props.setDesignScheme} />
+
           {/* "+" — attach, connectors, product surfaces, starter stack */}
           <PlusMenu
             onAttach={props.handleFileUpload}
@@ -409,7 +417,6 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                     />
                   )}
                 </ClientOnly>
-                <ColorSchemeDialog designScheme={props.designScheme} setDesignScheme={props.setDesignScheme} />
                 <McpTools />
                 <SupabaseConnection />
               </>
