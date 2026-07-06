@@ -418,6 +418,29 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
         const editReasoningEffort = job.validation_result?.reasoningEffort as 'off' | 'medium' | 'max' | undefined;
 
+        /*
+         * Stream callback — forward edit text deltas as 'edit_progress' events
+         * so the UI shows the edit happening live (same as build streaming).
+         * Throttle to avoid flooding Supabase: emit every ~500ms or on
+         * meaningful chunks (line breaks).
+         */
+        let lastEmit = 0;
+        let deltaBuffer = '';
+        const streamCallback = async (delta: string) => {
+          deltaBuffer += delta;
+          const now = Date.now();
+
+          if (now - lastEmit > 500 || deltaBuffer.includes('\n')) {
+            const snippet = deltaBuffer.slice(-200);
+
+            await emitEvent(supabase, job.id, 'edit_progress', `Editing… ${snippet}`, {
+              delta: snippet,
+            }).catch(() => undefined);
+            lastEmit = now;
+            deltaBuffer = '';
+          }
+        };
+
         const editResult = await generateEdit(
           existingFiles,
           editAppType,
@@ -428,6 +451,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           editWorklog,
           projectMemory,
           editReasoningEffort,
+          streamCallback,
         );
         mergedFiles = editResult.files as typeof existingFiles;
 

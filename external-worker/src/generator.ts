@@ -690,6 +690,7 @@ export async function generateEdit(
   worklog?: string | null,
   projectMemory?: { projectMd?: string; decisionsMd?: string; manifestJson?: string } | null,
   reasoningEffort?: 'off' | 'medium' | 'max',
+  streamCallback?: (delta: string) => Promise<void>,
 ): Promise<EditResult> {
   /*
    * Feed WHOLE files up to a generous budget. Raised from 100KB → 200KB:
@@ -831,7 +832,15 @@ STRICT RULES:
   } as any;
 
   try {
-    result = await generateText({
+    /*
+     * Use streamText (not generateText) so the edit emits real-time progress.
+     * The streamCallback fires on every text-delta — the caller (job-processor)
+     * forwards each delta as an 'edit_progress' event to Supabase, so the UI
+     * shows the edit happening live instead of a frozen "Applying changes..."
+     * for 80-130s. We collect the full text from the stream (same result as
+     * generateText, just streamed).
+     */
+    const streamResult = streamText({
       model,
       system: systemPrompt,
       prompt: editPrompt,
@@ -840,6 +849,30 @@ STRICT RULES:
       abortSignal: ac.signal,
       providerOptions: editProviderOptions,
     });
+
+    let collectedText = '';
+
+    for await (const part of streamResult.fullStream) {
+      if (part.type === 'text-delta') {
+        collectedText += part.textDelta;
+
+        if (streamCallback) {
+          await streamCallback(part.textDelta).catch(() => undefined);
+        }
+      } else if (part.type === 'reasoning') {
+        collectedText += part.textDelta;
+
+        if (streamCallback) {
+          await streamCallback(part.textDelta).catch(() => undefined);
+        }
+      }
+    }
+
+    result = {
+      text: collectedText,
+      usage: streamResult.usage,
+      finishReason: streamResult.finishReason,
+    } as any;
   } catch (err: any) {
     if (ac.signal.aborted) {
       throw new Error(
