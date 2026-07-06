@@ -240,6 +240,13 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         inputSummary: `edit from job ${editJobId}`,
       });
 
+      /*
+       * projectId for the edit — same as the upload phase's projectId.
+       * Defined here (not at the upload phase) because runOrchestratedBuild
+       * needs it when called from the edit path.
+       */
+      const editProjectId = (job.validation_result as any)?.chatId ?? job.project_id ?? job.id;
+
       /* Fetch existing job metadata (appType) */
       const { data: editJob } = await supabase
         .from('build_jobs')
@@ -474,7 +481,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           model,
           job.id,
           supabase,
-          projectId,
+          editProjectId,
           job.user_id,
           spec.maxCompletionTokens,
           editAppType,
