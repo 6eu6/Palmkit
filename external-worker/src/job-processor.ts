@@ -476,6 +476,8 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
          */
         const preloadFiles = existingFiles.map((f) => ({ path: f.path, content: f.content }));
 
+        const editMaxTokens = job.validation_result?.maxCompletionTokens as number | undefined;
+
         const editAgentResult = await runOrchestratedBuild(
           prompt,
           model,
@@ -483,7 +485,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           supabase,
           editProjectId,
           job.user_id,
-          spec.maxCompletionTokens,
+          editMaxTokens,
           editAppType,
           contextWindow,
           {
