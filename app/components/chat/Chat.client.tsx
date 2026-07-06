@@ -559,7 +559,17 @@ export const ChatImpl = memo(
         const currentMetadata = chatMetadata.get();
         const appType = extWorkerState.appType ?? currentMetadata?.palmkitAppType;
 
-        if (currentMetadata?.palmkitJobId !== extWorkerState.jobId || currentMetadata?.palmkitAppType !== appType) {
+        /*
+         * Only update palmkitJobId when the job SUCCEEDS (ready_for_preview).
+         * Previously it was updated on every status change — so a failed
+         * edit job would overwrite the jobId of the successful build, and
+         * the next edit would try to edit the failed job (no manifest →
+         * "Could not load the previous build's files").
+         */
+        if (
+          extWorkerState.status === 'ready_for_preview' &&
+          (currentMetadata?.palmkitJobId !== extWorkerState.jobId || currentMetadata?.palmkitAppType !== appType)
+        ) {
           chatMetadata.set({
             ...currentMetadata,
             gitUrl: currentMetadata?.gitUrl ?? '',
