@@ -3,6 +3,7 @@ import { motion, useMotionValue, animate } from 'framer-motion';
 import { memo, useEffect, useRef, useState } from 'react';
 import { chatStore } from '~/lib/stores/chat';
 import { workbenchStore } from '~/lib/stores/workbench';
+import { buildStatusStore } from '~/lib/stores/build-status';
 import { mobileActiveTab } from '~/lib/stores/mobile';
 import { previewFilesStore } from '~/lib/stores/build-status';
 import { classNames } from '~/utils/classNames';
@@ -46,6 +47,7 @@ function loadPos(w: number, h: number) {
 
 export const FloatingViewToggle = memo(() => {
   const showWorkbench = useStore(workbenchStore.showWorkbench);
+  const buildStatus = useStore(buildStatusStore);
   const chat = useStore(chatStore);
   const previewFiles = useStore(previewFilesStore);
 
@@ -83,6 +85,18 @@ export const FloatingViewToggle = memo(() => {
 
   // Only meaningful when there's an app to look at (or we're already in it).
   if (!hasPreview && !showWorkbench) {
+    return null;
+  }
+
+  /*
+   * Hide while the build is actively generating — the floating play button
+   * appearing mid-build is confusing (there's no preview to switch to yet,
+   * and it overlaps the BuildStream). Show it only once the build reaches
+   * ready_for_preview (or fails) — then the user can switch to the preview.
+   */
+  const isBuilding = buildStatus.jobStatus === 'generating' || buildStatus.jobStatus === 'incomplete_retrying';
+
+  if (isBuilding && !showWorkbench) {
     return null;
   }
 

@@ -189,7 +189,18 @@ function foldEvents(events: WorkerEvent[]): Section[] {
       case 'job_failed':
       case 'validation_failed':
       case 'build_check_failed': {
-        current.rows.push({ kind: 'error', text: ev.message });
+        /*
+         * Cancel messages (from the orchestrator's cancel path) use
+         * "Build cancelled by user" — these are NOT errors. Render them as
+         * 'system' rows (neutral), not 'error' rows (red). The failure card
+         * below also checks for cancel vs real failure.
+         */
+        if (ev.message.includes('cancelled by user') || ev.message.includes('saving partial state')) {
+          current.rows.push({ kind: 'system', text: ev.message });
+        } else {
+          current.rows.push({ kind: 'error', text: ev.message });
+        }
+
         break;
       }
       case 'planning_started':
@@ -521,6 +532,21 @@ export const BuildStreamView = memo(
     const done = currentStep === 'done' || events.some((e) => e.type === 'ready_for_preview');
     const failed = events.some((e) => e.type === 'job_failed');
 
+    /*
+     * Is this a user-initiated cancel (not a real failure)? The orchestrator
+     * emits 'job_failed' with "cancelled by user" for cancels — we detect it
+     * here so the failure card shows a neutral "Build stopped" instead of a
+     * scary red "Build failed". The user CHOSE to stop — no error to fix.
+     */
+    const cancelEvent = [...events]
+      .reverse()
+      .find(
+        (e) =>
+          e.type === 'job_failed' &&
+          (e.message.includes('cancelled by user') || e.message.includes('saving partial state')),
+      );
+    const isCancelled = Boolean(cancelEvent);
+
     if (events.length === 0 && progress === 0) {
       return null;
     }
@@ -674,26 +700,42 @@ export const BuildStreamView = memo(
           </div>
         )}
 
-        {/* Unified failure alert — human reason + Retry + Show logs. */}
+        {/* Unified failure/cancel alert — different styling for cancel vs real failure. */}
         {failed && (
-          <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/5 px-3.5 py-3">
+          <div
+            className={classNames(
+              'mt-3 rounded-lg border px-3.5 py-3',
+              isCancelled ? 'border-amber-500/30 bg-amber-500/5' : 'border-red-500/30 bg-red-500/5',
+            )}
+          >
             <div className="flex items-start gap-2.5">
-              <span className="i-ph:warning-circle-fill text-red-400 text-base shrink-0 mt-0.5" />
+              <span
+                className={classNames(
+                  'text-base shrink-0 mt-0.5',
+                  isCancelled ? 'i-ph:pause-circle-fill text-amber-400' : 'i-ph:warning-circle-fill text-red-400',
+                )}
+              />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-palmkit-elements-textPrimary">Build failed</p>
+                <p className="text-sm font-medium text-palmkit-elements-textPrimary">
+                  {isCancelled ? 'Build stopped' : 'Build failed'}
+                </p>
                 <p className="mt-0.5 text-xs text-palmkit-elements-textSecondary break-words">
-                  {failureReason ?? 'Something went wrong while building. You can retry or open the logs.'}
+                  {isCancelled
+                    ? 'You stopped this build. Partial files were saved — your next message will continue from here.'
+                    : (failureReason ?? 'Something went wrong while building. You can retry or open the logs.')}
                 </p>
                 <div className="mt-2.5 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => window.dispatchEvent(new CustomEvent('palmkit:retry-build'))}
-                    className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all active:scale-95"
-                    style={{ background: 'var(--pk-accent)', color: 'var(--pk-on-accent)' }}
-                  >
-                    <span className="i-ph:arrow-clockwise text-sm" />
-                    Retry
-                  </button>
+                  {!isCancelled && (
+                    <button
+                      type="button"
+                      onClick={() => window.dispatchEvent(new CustomEvent('palmkit:retry-build'))}
+                      className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all active:scale-95"
+                      style={{ background: 'var(--pk-accent)', color: 'var(--pk-on-accent)' }}
+                    >
+                      <span className="i-ph:arrow-clockwise text-sm" />
+                      Retry
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setOpen(true)}
