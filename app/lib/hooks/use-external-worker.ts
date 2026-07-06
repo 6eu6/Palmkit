@@ -1085,7 +1085,9 @@ export function useExternalWorker() {
   );
 
   /*
-   * cancelJob — writes status='cancel_requested' to build_jobs in Supabase.
+   * cancelJob — writes status='cancel_requested' to build_jobs via the CF
+   * Pages /api/jobs.cancel endpoint (which carries the user's JWT so RLS
+   * allows the write; the anon key the front-end holds is read-blocked).
    *
    * The orchestrator polls the job's status between agent steps; when it sees
    * 'cancel_requested' it fires its AbortController (cancels the in-flight LLM
@@ -1095,35 +1097,24 @@ export function useExternalWorker() {
    *
    * Returns true if the cancel request was written, false on error.
    */
-  const cancelJob = useCallback(
-    async (jobId: string): Promise<boolean> => {
-      const supabaseUrl = rootData?.supabaseUrl;
-      const supabaseKey = rootData?.supabaseAnonKey;
+  const cancelJob = useCallback(async (jobId: string): Promise<boolean> => {
+    if (!jobId) {
+      return false;
+    }
 
-      if (!supabaseUrl || !supabaseKey || !jobId) {
-        return false;
-      }
+    try {
+      const resp = await fetch('/api/jobs.cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId }),
+      });
 
-      try {
-        const resp = await fetch(`${supabaseUrl}/rest/v1/build_jobs?id=eq.${jobId}`, {
-          method: 'PATCH',
-          headers: {
-            apikey: supabaseKey,
-            Authorization: `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json',
-            Prefer: 'return=minimal',
-          },
-          body: JSON.stringify({ status: 'cancel_requested' }),
-        });
-
-        return resp.ok;
-      } catch (err) {
-        console.warn('[Palmkit] cancelJob failed:', err);
-        return false;
-      }
-    },
-    [rootData?.supabaseUrl, rootData?.supabaseAnonKey],
-  );
+      return resp.ok;
+    } catch (err) {
+      console.warn('[Palmkit] cancelJob failed:', err);
+      return false;
+    }
+  }, []);
 
   return { state, startJob, reset, restoreJob, cancelJob };
 }
