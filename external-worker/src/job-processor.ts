@@ -191,6 +191,15 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
     logger.info(`Job ${job.id}: API key fetched for provider ${providerName}`);
 
+    /*
+     * Create the model instance ONCE — used by both the edit path (agent
+     * loop via runOrchestratedBuild) and the new-build path. Previously it
+     * was created only inside the new-build block, so the edit path got
+     * 'model is not defined'.
+     */
+    const { getModelInstance } = await import('./provider-registry');
+    const model = getModelInstance(providerName, modelName, apiKey);
+
     // ─── Phase 7: EDIT MODE ────────────────────────────────────────────
     const editJobId: string | null = job.validation_result?.editJobId ?? null;
 
@@ -570,8 +579,6 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
        * The LLM writes files directly and calls done() when finished.
        */
       try {
-        const { getModelInstance } = await import('./provider-registry');
-        const model = getModelInstance(providerName, modelName, apiKey);
         /*
          * Use the chatId from validation_result as the projectId for the
          * agent-builder. This ensures the agent writes files to the SAME
