@@ -445,27 +445,52 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           | Array<{ role: string; content: string }>
           | undefined;
 
-        const editResult = await generateEdit(
-          existingFiles,
-          editAppType,
+        /*
+         * Edit via agent loop (Builder agent with preloaded files).
+         *
+         * The old generateEdit was a single LLM call — no read_file, no
+         * run_shell, no verify. Now we reuse runOrchestratedBuild in edit
+         * mode: the Builder gets preloaded files + worklog + conversation
+         * history, and can read_file to inspect, edit_file to modify,
+         * run_shell to verify the build, and fix errors — a full agent
+         * loop, same as a new build but starting from existing files.
+         *
+         * Planner + Researcher are skipped (edit mode). Tester still runs
+         * to verify the edit didn't break the build.
+         */
+        const preloadFiles = existingFiles.map((f) => ({ path: f.path, content: f.content }));
+
+        const editAgentResult = await runOrchestratedBuild(
           prompt,
-          providerName,
-          modelName,
-          apiKey,
-          editWorklog,
-          projectMemory,
-          editReasoningEffort,
-          streamCallback,
-          conversationHistory,
+          model,
+          job.id,
+          supabase,
+          projectId,
+          job.user_id,
+          spec.maxCompletionTokens,
+          editAppType,
+          contextWindow,
+          {
+            agentModels,
+            reasoningEffort: editReasoningEffort,
+            media,
+            skills,
+            libraries,
+            agentConfig,
+            designScheme,
+            preloadFiles,
+            conversationHistory,
+          },
         );
-        mergedFiles = editResult.files as typeof existingFiles;
+
+        mergedFiles = editAgentResult.files as typeof existingFiles;
 
         const win = contextWindow && contextWindow > 0 ? contextWindow : 128_000;
         contextPressure = {
-          tokens: editResult.contextTokens,
+          tokens: editAgentResult.contextTokens,
           window: win,
-          ratio: win > 0 ? editResult.contextTokens / win : 0,
-          truncated: editResult.truncated,
+          ratio: win > 0 ? editAgentResult.contextTokens / win : 0,
+          truncated: editAgentResult.truncated,
         };
       } catch (editErr: any) {
         await recordStep(supabase, job.id, {

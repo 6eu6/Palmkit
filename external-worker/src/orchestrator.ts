@@ -104,10 +104,34 @@ export async function runOrchestratedBuild(
 
     /** User-chosen design scheme (palette + fonts + features) — injected into Planner/Builder. */
     designScheme?: { palette: Record<string, string>; font: string[]; features: string[] };
+
+    /** Preload existing files into the agent workspace (edit mode). */
+    preloadFiles?: Array<{ path: string; content: string }>;
+
+    /** Conversation history (last few messages) — for edit context references. */
+    conversationHistory?: Array<{ role: string; content: string }>;
   },
 ): Promise<OrchestratorResult> {
   const startTime = Date.now();
   resetProjectFiles(jobId);
+
+  /*
+   * Edit mode: preload existing files into the agent's workspace map so the
+   * Builder agent can read_file, edit_file, and run_shell against them.
+   * Without this, the Builder starts from an empty workspace and rebuilds
+   * from scratch — losing all the user's existing work.
+   */
+  const isEditMode = opts?.preloadFiles && opts.preloadFiles.length > 0;
+
+  if (isEditMode) {
+    const projectFiles = getProjectFiles(jobId);
+
+    for (const f of opts!.preloadFiles!) {
+      projectFiles.set(f.path, f.content);
+    }
+
+    logger.info(`[orchestrator] Edit mode: preloaded ${opts!.preloadFiles!.length} files into workspace`);
+  }
 
   /*
    * Context-pressure tracking. We measure the PEAK single-request prompt-token
@@ -350,6 +374,18 @@ export async function runOrchestratedBuild(
         continue;
       }
 
+      /*
+       * Edit mode: skip Researcher AND Planner — the files are already
+       * preloaded in the workspace, and the Planner's design brief already
+       * exists in the worklog. The Builder reads the preloaded files +
+       * worklog + conversation history and makes targeted edits directly.
+       */
+      if (isEditMode && (role === 'researcher' || role === 'planner')) {
+        logger.info(`[orchestrator] Skipping ${role} (edit mode — files preloaded)`);
+        await emitEvent(supabase, jobId, 'file_chunk' as any, `⏭️ Skipping ${role} (edit mode)`);
+        continue;
+      }
+
       // Agents setting: user turned this optional phase off.
       if (role === 'researcher' && opts?.agentConfig && opts.agentConfig.researcher === false) {
         logger.info('[orchestrator] Skipping Researcher (disabled by Agents setting)');
@@ -425,6 +461,25 @@ export async function runOrchestratedBuild(
         // No researcher context (e.g. Researcher skipped) but this IS a
         // continuation — make sure the Builder still sees the handoff.
         agentPrompt = `${prompt}${handoffBlock}\n\nThis is a continuation of an existing project. Use read_file/list_files to inspect the carried-over files before changing them; do not rebuild from scratch.`;
+      }
+
+      /*
+       * Edit mode: the Builder has preloaded files + worklog + conversation
+       * history. Inject all of it so the agent understands WHAT to change
+       * and WHY (references from prior messages). The agent uses read_file
+       * to inspect, write_file/edit_file to modify, and run_shell to verify
+       * the build — a full agent loop, not a single LLM call.
+       */
+      if (role === 'builder' && isEditMode) {
+        const editWorklogBlock = worklog ? `\nPROJECT MEMORY (worklog.md):\n${worklog.slice(0, 4000)}\n` : '';
+        const editConvBlock =
+          opts?.conversationHistory && opts.conversationHistory.length > 0
+            ? `\nCONVERSATION HISTORY (understand references and intent):\n${opts.conversationHistory
+                .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 1000)}`)
+                .join('\n')}\n`
+            : '';
+
+        agentPrompt = `${prompt}${editWorklogBlock}${editConvBlock}\n\nThis is an EDIT of an existing project. The project files are already in your workspace — use read_file and list_files to inspect them. Make ONLY the changes the user requested. Use edit_file for targeted changes, write_file only for new files. After making changes, run "cd /home/user/project && npm run build" to verify, then call done().`;
       }
 
       /*
