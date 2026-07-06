@@ -279,11 +279,25 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         }
 
         // Manifest not ready — is the target job still building?
-        const { data: targetJob } = await supabase.from('build_jobs').select('status').eq('id', editJobId).single();
+        const { data: targetJob } = await supabase
+          .from('build_jobs')
+          .select('status, error_summary')
+          .eq('id', editJobId)
+          .single();
 
         const targetStatus = targetJob?.status;
+        const targetError = targetJob?.error_summary;
 
-        if (targetStatus === 'failed_clean' || targetStatus === 'cancelled') {
+        /*
+         * A cancelled job uses status='failed_clean' + error_summary='Cancelled
+         * by user' (the DB CHECK constraint doesn't allow 'cancelled'). That's
+         * NOT a real failure — the orchestrator wrote a partial manifest. So
+         * only treat it as failed if error_summary is something else. If the
+         * manifest is already there (partial), the loop above already broke;
+         * if not yet, keep waiting — the partial manifest lands shortly after
+         * the cancel.
+         */
+        if (targetStatus === 'failed_clean' && targetError !== 'Cancelled by user') {
           targetFailed = true;
           break;
         }
