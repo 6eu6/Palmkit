@@ -66,7 +66,7 @@ export interface MediaConfig {
  */
 const jobFileMaps = new Map<string, Map<string, string>>();
 
-function getJobFiles(jobId: string): Map<string, string> {
+export function getJobFiles(jobId: string): Map<string, string> {
   let m = jobFileMaps.get(jobId);
 
   if (!m) {

@@ -21,6 +21,7 @@ import {
   createAgentTools,
   resetProjectFiles,
   getProjectFiles,
+  getJobFiles,
   disposeProjectFiles,
   getBuildResult,
   disposeBuildResult,
@@ -124,7 +125,7 @@ export async function runOrchestratedBuild(
   const isEditMode = opts?.preloadFiles && opts.preloadFiles.length > 0;
 
   if (isEditMode) {
-    const projectFiles = getProjectFiles(jobId);
+    const projectFiles = getJobFiles(jobId);
 
     for (const f of opts!.preloadFiles!) {
       projectFiles.set(f.path, f.content);
