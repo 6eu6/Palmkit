@@ -1103,7 +1103,7 @@ export function useExternalWorker() {
     }
 
     try {
-      const resp = await fetch('/api/jobs.cancel', {
+      const resp = await fetch('/api/jobs/cancel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jobId }),
