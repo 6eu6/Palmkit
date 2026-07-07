@@ -871,7 +871,44 @@ export function createAgentTools(
          */
         await emitEvent(supabase, jobId, 'shell_command' as any, `$ ${command}`, { command, running: true });
 
-        const result = await runInE2B(jobId, command, files);
+        let result: { stdout: string; stderr: string; exitCode: number };
+
+        try {
+          result = await runInE2B(jobId, command, files);
+        } catch (e2bErr: any) {
+          const errMsg = e2bErr?.message ?? String(e2bErr);
+
+          /*
+           * E2B BILLING BLOCK — surface the clear actionable error to the
+           * model AND the user. The model can't fix this; the user must
+           * increase the spending limit. Emit a job_failed event so the
+           * UI shows the error prominently.
+           */
+          if (/billing spending limit|team is blocked|Billing limit/i.test(errMsg)) {
+            await emitEvent(
+              supabase,
+              jobId,
+              'job_failed',
+              `❌ E2B billing limit reached. ${errMsg}`,
+              { fatal: true, billing: true },
+            );
+
+            return {
+              command,
+              exitCode: -1,
+              stdout: '',
+              stderr: errMsg,
+              success: false,
+              fatal: true,
+              message:
+                'E2B sandbox creation is blocked due to billing spending limit. ' +
+                'The user must increase the spending limit at https://e2b.dev/dashboard?tab=billing. ' +
+                'Stop retrying — this cannot be fixed by code changes.',
+            };
+          }
+
+          result = { stdout: '', stderr: errMsg, exitCode: -1 };
+        }
 
         logger.info(`[agent] run_shell (E2B): "${command}" → exit ${result.exitCode}`);
 

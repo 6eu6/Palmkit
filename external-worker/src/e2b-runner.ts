@@ -77,7 +77,39 @@ async function getOrCreateSandbox(jobId: string): Promise<JobSandbox> {
   }
 
   const promise = (async () => {
-    const sandbox = await Sandbox.create({ apiKey: E2B_API_KEY, timeoutMs: SANDBOX_TTL_MS });
+    let sandbox: Sandbox;
+
+    try {
+      sandbox = await Sandbox.create({ apiKey: E2B_API_KEY, timeoutMs: SANDBOX_TTL_MS });
+    } catch (createErr: any) {
+      const errMsg = createErr?.message ?? String(createErr);
+
+      /*
+       * E2B BILLING BLOCK — the clearest failure mode. The E2B API returns
+       * 403: "team is blocked: Billing limit reached" when the team's
+       * SPENDING LIMIT is reached. This is NOT the balance — the balance
+       * can be $104 but if the spending limit is set to $5, all sandbox
+       * creation is blocked.
+       *
+       * The user must increase the spending limit at:
+       *   https://e2b.dev/dashboard?tab=billing
+       *
+       * We throw a clear, actionable error so the orchestrator can surface
+       * it to the user instead of retrying silently.
+       */
+      if (/team is blocked|Billing limit/i.test(errMsg)) {
+        throw new Error(
+          `E2B sandbox creation blocked: billing spending limit reached. ` +
+            `Your E2B team has a spending limit that's been hit. ` +
+            `Go to https://e2b.dev/dashboard?tab=billing and increase the spending limit ` +
+            `(this is separate from your balance — you may have $104 balance but a $5 limit). ` +
+            `Original error: ${errMsg}`,
+        );
+      }
+
+      throw createErr;
+    }
+
     const entry: JobSandbox = { sandbox, createdAt: Date.now(), synced: new Map() };
     jobSandboxes.set(jobId, entry);
     logger.info(`[e2b] Sandbox created for job ${jobId}: ${sandbox.sandboxId} (TTL ${SANDBOX_TTL_MS / 1000}s)`);
