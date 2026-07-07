@@ -1314,19 +1314,24 @@ export async function runOrchestratedBuild(
         }
 
         /*
-         * AUTOMATIC VISUAL VERIFICATION — if the build PASSED, take a
-         * screenshot and analyze it with the VLM. The Tester model often
-         * doesn't call analyze_screenshot on its own (GLM-4.7 ignores the
-         * strict prompt), so we do it here automatically after the Tester
+         * AUTOMATIC VISUAL VERIFICATION — take a screenshot and analyze it
+         * with the VLM. The Tester model often doesn't call
+         * analyze_screenshot on its own (GLM-4.7 ignores the strict
+         * prompt), so we do it here automatically after the Tester
          * finishes. This guarantees the 📸 Screenshot + 👁️ Vision analysis
-         * rows appear in the stream for every successful build.
+         * rows appear in the stream for every build.
          *
          * We call the same createAgentTools.analyze_screenshot tool that
          * the Tester has access to, but directly (not via the LLM).
+         *
+         * NOTE: we run this REGARDLESS of br?.passed — even if the build
+         * check didn't record a result (br is null), the dev server might
+         * still be running and we want to capture it. The visionApiKey
+         * check is the only gate (no key = no VLM analysis).
          */
-        if (br?.passed && opts?.media?.visionApiKey) {
+        if (opts?.media?.visionApiKey || opts?.media?.apiKey) {
           try {
-            logger.info(`[orchestrator] Auto-running analyze_screenshot after Tester success`);
+            logger.info(`[orchestrator] Auto-running analyze_screenshot after Tester`);
 
             await emitEvent(
               supabase,

@@ -1227,66 +1227,115 @@ export function createAgentTools(
             { agent: 'Builder', kind: 'screenshot_start', viewport: vp },
           );
 
-          // Use chromium-browser --headless --screenshot to capture the page.
+          // Use headless chromium to capture the page.
           //
           // RADICAL REBUILD FIX: 'npx playwright install chromium' was failing
-          // in the E2B sandbox with 'encountered an issue downloading Chrome
-          // dependencies'. Instead, install chromium via apt-get (the system
-          // package manager) which is faster and more reliable in E2B's
-          // Ubuntu-based sandbox.
+          // in the E2B sandbox. 'apt-get install chromium-browser' also failed.
+          // The most reliable approach in E2B's Ubuntu sandbox is to install
+          // Chromium via snap or use the pre-installed google-chrome if available.
+          //
+          // We try multiple approaches in order:
+          //   1. Check if chromium-browser / chromium / google-chrome already exists
+          //   2. Try apt-get install chromium-browser (Ubuntu package)
+          //   3. Try apt-get install chromium (alternative package name)
+          //   4. Fall back to npx puppeteer with bundled chromium
           //
           // The sandbox URL pattern is: https://3000-<sandboxId>.e2b.app/preview/
           // But we don't have the sandboxId here. Instead, try localhost:5173
           // (Vite default) AND localhost:3000 — whichever responds.
           const width = dims.split('x')[0];
           const height = dims.split('x')[1];
-          const script = `# Install chromium via apt (faster + more reliable than npx playwright install)
-if ! command -v chromium-browser >/dev/null 2>&1 && ! command -v chromium >/dev/null 2>&1; then
-  echo "INSTALLING_CHROMIUM..."
-  apt-get update -qq 2>/dev/null && apt-get install -y -qq chromium-browser 2>/dev/null || apt-get install -y -qq chromium 2>/dev/null || true
-fi
-
+          const script = `# Find or install a chromium browser
 CHROMIUM_BIN=""
-if command -v chromium-browser >/dev/null 2>&1; then CHROMIUM_BIN="chromium-browser"; fi
-if command -v chromium >/dev/null 2>&1; then CHROMIUM_BIN="chromium"; fi
+for bin in chromium-browser chromium google-chrome google-chrome-stable; do
+  if command -v \$bin >/dev/null 2>&1; then
+    CHROMIUM_BIN=\$bin
+    break
+  fi
+done
 
-if [ -z "$CHROMIUM_BIN" ]; then
-  echo "CHROMIUM_NOT_FOUND"
-  exit 1
+if [ -z "\$CHROMIUM_BIN" ]; then
+  echo "INSTALLING_CHROMIUM..."
+  # Try multiple package names — different Ubuntu versions use different names
+  apt-get update -qq 2>/dev/null
+  apt-get install -y -qq chromium-browser 2>/dev/null || \\
+    apt-get install -y -qq chromium 2>/dev/null || \\
+    apt-get install -y -qq google-chrome-stable 2>/dev/null || \\
+    (wget -q -O - https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb > /tmp/chrome.deb 2>/dev/null && apt-get install -y -qq /tmp/chrome.deb 2>/dev/null) || true
+
+  for bin in chromium-browser chromium google-chrome google-chrome-stable; do
+    if command -v \$bin >/dev/null 2>&1; then
+      CHROMIUM_BIN=\$bin
+      break
+    fi
+  done
 fi
 
-echo "USING_CHROMIUM=$CHROMIUM_BIN"
+if [ -z "\$CHROMIUM_BIN" ]; then
+  echo "CHROMIUM_NOT_FOUND"
+  echo "FALLBACK_PUPPETEER"
+  # Last resort: use puppeteer which downloads its own chromium
+  npm install puppeteer 2>/dev/null
+  node -e "
+const puppeteer = require('puppeteer');
+(async () => {
+  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+  const page = await browser.newPage();
+  await page.setViewport({ width: ${width}, height: ${height} });
+  const ports = [5173, 3000, 4173];
+  for (const port of ports) {
+    try {
+      console.log('TRYING_PORT:' + port);
+      await page.goto('http://localhost:' + port, { timeout: 8000, waitUntil: 'networkidle0' });
+      const buf = await page.screenshot({ type: 'png' });
+      console.log('BASE64:' + buf.toString('base64'));
+      console.log('SCREENSHOT_OK');
+      console.log('USED_PORT:' + port);
+      await browser.close();
+      process.exit(0);
+    } catch(e) {
+      console.log('PORT_FAILED:' + port + ':' + e.message.slice(0, 100));
+    }
+  }
+  console.log('ALL_PORTS_FAILED');
+  await browser.close();
+})();
+" 2>/dev/null
+  exit 0
+fi
+
+echo "USING_CHROMIUM=\$CHROMIUM_BIN"
 
 # Try multiple ports — Vite defaults to 5173, some configs use 3000.
 PORTS="5173 3000 4173"
 CAPTURED=false
 
-for PORT in $PORTS; do
-  echo "TRYING_PORT:$PORT"
+for PORT in \$PORTS; do
+  echo "TRYING_PORT:\$PORT"
   # Check if the port is responding
-  if curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://localhost:$PORT" | grep -q "^[23]"; then
-    echo "PORT_ALIVE:$PORT"
+  if curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://localhost:\$PORT" | grep -q "^[23]"; then
+    echo "PORT_ALIVE:\$PORT"
     # Take a screenshot with headless chromium
-    $CHROMIUM_BIN --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \\
+    \$CHROMIUM_BIN --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \\
       --screenshot=/tmp/screenshot.png \\
       --window-size=${width},${height} \\
-      "http://localhost:$PORT" 2>/dev/null
+      "http://localhost:\$PORT" 2>/dev/null
 
     if [ -f /tmp/screenshot.png ] && [ -s /tmp/screenshot.png ]; then
       echo "SCREENSHOT_OK"
-      echo "USED_PORT:$PORT"
-      echo "BASE64:$(base64 -w0 /tmp/screenshot.png)"
+      echo "USED_PORT:\$PORT"
+      echo "BASE64:\$(base64 -w0 /tmp/screenshot.png)"
       CAPTURED=true
       break
     else
-      echo "PORT_FAILED:$PORT:no_screenshot"
+      echo "PORT_FAILED:\$PORT:no_screenshot"
     fi
   else
-    echo "PORT_FAILED:$PORT:not_responding"
+    echo "PORT_FAILED:\$PORT:not_responding"
   fi
 done
 
-if [ "$CAPTURED" = "false" ]; then
+if [ "\$CAPTURED" = "false" ]; then
   echo "ALL_PORTS_FAILED"
 fi
 `;
