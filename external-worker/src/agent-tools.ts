@@ -1206,7 +1206,12 @@ const { chromium } = require('playwright');
 })();
 "`;
 
-          const result = await runInE2B(jobId, script, undefined as any);
+          /*
+           * runInE2B requires a files map (it syncs files to the sandbox).
+           * Pass an empty object — the files are already in the sandbox from
+           * the Builder's write_file calls. We don't need to re-sync.
+           */
+          const result = await runInE2B(jobId, script, {} as Record<string, string>);
           const output = (result as any)?.stdout ?? '';
 
           if (!output.includes('SCREENSHOT_OK')) {
