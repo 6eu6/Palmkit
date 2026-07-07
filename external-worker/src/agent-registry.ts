@@ -380,13 +380,10 @@ Use your judgment — match the complexity to the request.
 ## Rules
 
 - Write COMPLETE file content. No placeholders.
-- Create ALL files before calling done().
+- Create ALL files the app needs before calling done().
 - After writing, run "npm install && npm run build" to verify.
 - If the build fails, read the error, fix it, rebuild.
 - Be honest in done() — say what completed and what didn't.
-- Do NOT rewrite a file you already wrote unless it has an error. Move on to the next file.
-- **PRIORITY ORDER**: Write entry points FIRST (index.html, src/main.jsx, src/App.jsx), then config files, then backend, then styles. This ensures the project always has a working preview even if you run out of steps.
-- For full-stack projects: write the frontend completely BEFORE starting the backend. A working frontend with a mock API is better than a complete backend with no frontend.
 
 ## Database Support
 
