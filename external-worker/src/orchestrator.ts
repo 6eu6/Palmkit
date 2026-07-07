@@ -447,6 +447,28 @@ export async function runOrchestratedBuild(
           agentPrompt += `\n\n=== DESIGN BRIEF (from previous build — keep the design consistent) ===\n${existingBrief}\n=== END BRIEF ===`;
         }
 
+        /*
+         * EXISTING FILES — show the brain WHAT files exist (names only,
+         * NOT content). The brain reads the actual content via read_file
+         * when it needs to — exactly like Super Z reads files from disk.
+         *
+         * This is the KEY difference from before: instead of injecting
+         * all file content into the prompt (consuming tokens and making
+         * the brain lazy), we give it a FILE LIST and let it decide
+         * which files to read. This makes edits PRECISE because the
+         * brain sees the actual code before editing, not a summary.
+         */
+        const existingFiles = getProjectFiles(jobId);
+        const existingPaths = Object.keys(existingFiles);
+        if (existingPaths.length > 0) {
+          const fileListBlock = existingPaths.sort().map((p) => {
+            const content = existingFiles[p] || '';
+            const lines = content.split('\n').length;
+            return `  - ${p} (${lines} lines)`;
+          }).join('\n');
+          agentPrompt += `\n\n=== EXISTING PROJECT FILES ===\nThe following files are already in your workspace. Use read_file(path) to inspect any file before editing it. Use list_files() to see the full list.\n${fileListBlock}\n=== END FILES ===\n`;
+        }
+
         if (isEditMode) {
           const editConvBlock =
             opts?.conversationHistory && opts.conversationHistory.length > 0
@@ -454,7 +476,7 @@ export async function runOrchestratedBuild(
                   .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
                   .join('\n\n')}\n`
               : '';
-          agentPrompt += `${editConvBlock}\n\nThis is an EDIT of an existing project. The project files are already in your workspace. Use list_files to see what files exist, then use read_file to inspect any files you need to understand before making changes. Make ONLY the changes the user requested. If the user asks a question (not a build request), answer it directly — don't rebuild the project unless asked.`;
+          agentPrompt += `${editConvBlock}\n\nThis is an EDIT of an existing project. The project files are already in your workspace — you can see the file list above. Use read_file to inspect the specific files you need to modify BEFORE making changes. Make ONLY the changes the user requested. If the user asks a question (not a build request), answer it directly — don't rebuild the project unless asked.`;
         }
 
         // Skills
