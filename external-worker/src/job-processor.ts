@@ -769,17 +769,23 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
         const reasoningEffort = job.validation_result?.reasoningEffort as 'off' | 'medium' | 'max' | undefined;
 
+        // Also pass conversation history for new builds — the brain needs context
+        // from prior messages to understand references like "make it blue instead"
+        const newBuildConversationHistory = job.validation_result?.conversationHistory as
+          | Array<{ role: string; content: string }>
+          | undefined;
+
         const agentResult = await runOrchestratedBuild(
           prompt,
           model,
           job.id,
           supabase,
-          projectId, // chatId — links workspace to the IndexedDB chat
-          job.user_id, // userId — for Supabase Storage mirroring
-          spec.maxCompletionTokens, // dynamic maxTokens based on model limits
-          spec.appType, // appType for manifest (so restore knows how to preview)
-          contextWindow, // model context window → context-pressure measurement
-          { agentModels, reasoningEffort, media, skills, libraries, agentConfig, designScheme },
+          projectId,
+          job.user_id,
+          spec.maxCompletionTokens,
+          spec.appType,
+          contextWindow,
+          { agentModels, reasoningEffort, media, skills, libraries, agentConfig, designScheme, conversationHistory: newBuildConversationHistory },
         );
 
         // Capture the server-measured context pressure for the fork nudge.
