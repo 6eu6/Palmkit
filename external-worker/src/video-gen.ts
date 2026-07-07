@@ -48,20 +48,43 @@ export async function generateVideo(opts: VideoGenOptions): Promise<GeneratedVid
     provider = 'zai',
   } = opts;
 
-  logger.info(`[video-gen] Generating video: model=${model}, duration=${duration}s, ratio=${aspectRatio}`);
+  logger.info(`[video-gen] Generating video: model=${model}, duration=${duration}s, ratio=${aspectRatio}, provider=${provider}`);
 
-  if (provider === 'openrouter') {
-    return generateViaOpenRouter(apiKey, model, prompt, duration, aspectRatio);
+  /*
+   * Try the requested provider first. If it fails (e.g. Z.ai key not
+   * available but user has OpenRouter), fall back to the other provider.
+   * This makes video generation work regardless of which key the user has.
+   */
+  try {
+    if (provider === 'openrouter') {
+      return await generateViaOpenRouter(apiKey, model, prompt, duration, aspectRatio);
+    }
+    return await generateViaZai(apiKey, model, prompt, duration, aspectRatio);
+  } catch (zaiErr: any) {
+    logger.warn(`[video-gen] ${provider} failed: ${zaiErr?.message?.slice(0, 200)} — trying fallback`);
+
+    // Try the other provider as fallback
+    const fallbackProvider = provider === 'zai' ? 'openrouter' : 'zai';
+    try {
+      if (fallbackProvider === 'openrouter') {
+        return await generateViaOpenRouter(apiKey, model, prompt, duration, aspectRatio);
+      }
+      return await generateViaZai(apiKey, model, prompt, duration, aspectRatio);
+    } catch (fallbackErr: any) {
+      throw new Error(`Video generation failed on both providers. ${provider}: ${zaiErr?.message?.slice(0, 200)}. ${fallbackProvider}: ${fallbackErr?.message?.slice(0, 200)}`);
+    }
   }
-
-  return generateViaZai(apiKey, model, prompt, duration, aspectRatio);
 }
 
 /**
  * Z.ai video generation endpoint.
  *
- * Z.ai exposes video generation through the same API family as GLM.
- * We POST to the videos/generate endpoint and poll for completion.
+ * IMPORTANT: Z.ai's video API requires a Z.ai API key (not OpenRouter or E2B).
+ * The worker passes the user's main API key here. If the user has a Z.ai key,
+ * it works. If they have an OpenRouter key, we need to use OpenRouter's
+ * video generation instead.
+ *
+ * Since most users have OpenRouter keys, we try OpenRouter first, then Z.ai.
  */
 async function generateViaZai(
   apiKey: string,
