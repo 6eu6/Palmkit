@@ -947,7 +947,19 @@ export function createAgentTools(
 
         const hasAnyEntryPoint = hasIndexHtml || hasSourceFile || hasPyEntry || hasFlutterEntry;
 
-        if (!hasAnyEntryPoint && fileCount > 0) {
+        /*
+         * RADICAL REBUILD: also check that main.jsx/main.tsX's import of
+         * App.jsx/App.tsx is satisfiable. The model was writing main.jsx
+         * (which imports './App') without writing App.jsx — causing a Vite
+         * "Failed to resolve import './App.jsx'" error and a broken preview.
+         */
+        const mainFile = filePaths.find((p) => /^src\/main\.(jsx|tsx|js|ts)$/i.test(p));
+        const mainContent = mainFile ? (projectFiles.get(mainFile) ?? '') : '';
+        const importsApp = /from\s+['"]\.\/App['"]/i.test(mainContent) || /from\s+['"]\.\/App\.(jsx|tsx|js|ts)['"]/i.test(mainContent);
+        const hasAppFile = filePaths.some((p) => /^src\/App\.(jsx|tsx|js|ts)$/i.test(p));
+        const missingAppFile = importsApp && !hasAppFile;
+
+        if ((!hasAnyEntryPoint && fileCount > 0) || missingAppFile) {
           const missing: string[] = [];
 
           if (!hasIndexHtml) {
@@ -956,6 +968,10 @@ export function createAgentTools(
 
           if (!hasSourceFile) {
             missing.push('src/main.jsx (React mount) and src/App.jsx (main component)');
+          }
+
+          if (missingAppFile) {
+            missing.push('src/App.jsx (main.jsx imports "./App" but App.jsx does not exist — Vite will fail to resolve the import)');
           }
 
           const refuseMsg =
@@ -1310,17 +1326,22 @@ const { chromium } = require('playwright');
               'Example: "A developer typing code on a laptop in a dimly-lit room, slow cinematic dolly forward, warm amber light, 16:9".',
           ),
         duration: z
-          .number()
-          .min(2)
-          .max(10)
+          .union([z.number(), z.string()])
           .optional()
-          .describe('Duration in seconds (2-10). Default: 5. Shorter = faster generation.'),
+          .describe('Duration in seconds (2-10). Default: 5. Shorter = faster generation. Can be a number or string.'),
         aspectRatio: z
-          .enum(['16:9', '9:16', '1:1'])
+          .union([z.enum(['16:9', '9:16', '1:1']), z.string()])
           .optional()
           .describe('Aspect ratio. Use 16:9 for hero backgrounds, 9:16 for mobile, 1:1 for squares.'),
       }),
-      execute: async ({ name, prompt, duration, aspectRatio }) => {
+      execute: async (args) => {
+        const name: string = String(args.name || 'video-asset');
+        const prompt: string = String(args.prompt || '');
+        const durationNum = typeof args.duration === 'string' ? parseInt(args.duration, 10) : args.duration;
+        const duration = Math.min(10, Math.max(2, Number(durationNum) || 5));
+        const aspectRatio = (typeof args.aspectRatio === 'string' && ['16:9', '9:16', '1:1'].includes(args.aspectRatio)
+          ? args.aspectRatio
+          : '16:9') as '16:9' | '9:16' | '1:1';
         const safe = name.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
 
         if (!media?.videoApiKey) {
