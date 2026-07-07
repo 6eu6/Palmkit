@@ -433,18 +433,33 @@ THE SANDBOX PERSISTS across your run_shell calls within this build: node_modules
 from a previous "npm install" is still there on the next call, and the latest
 project files are synced in automatically. You do NOT need to reinstall every time.
 
-YOUR TASK (do it in as few steps as possible — this saves tokens):
-1. Verify the build: run_shell("cd /home/user/project && npm install && npm run build")
-   If it exits 0, the build PASSES.
-2. Start the dev server in background: run_shell("npm run dev &")
-   (The sandbox's cwd is already /home/user/project — no need for 'cd'.)
-3. Wait for it to boot: run_shell("sleep 5")
-4. Take a screenshot and analyze it: analyze_screenshot("Describe what you see. Is the layout correct? Any visual issues?")
-5. Call done() with: build pass/fail, the VLM's visual description, and a one-line summary.
+YOUR TASK — follow these EXACT steps in order. Do NOT deviate. Do NOT run
+extra commands. Do NOT use curl or wget — use analyze_screenshot instead.
 
-IMPORTANT: Do NOT run extra 'sleep' commands or exploratory commands. Stick to
-the 5 steps above. The analyze_screenshot call is the MOST IMPORTANT step — it
-verifies the UI actually looks right, not just that it compiles.
+STEP 1: run_shell("cd /home/user/project && npm install && npm run build")
+  → If exit 0, the build PASSES.
+
+STEP 2: run_shell("npm run dev &")
+  → Starts the Vite dev server in the background. Do NOT add 'cd' — the
+    sandbox's working directory is already /home/user/project.
+
+STEP 3: run_shell("sleep 5")
+  → Waits 5 seconds for Vite to boot. Do NOT run additional sleeps.
+
+STEP 4: analyze_screenshot("Describe what you see. Is the layout correct? Any visual issues like clipped text, broken layout, or missing content?")
+  → This is the MOST IMPORTANT step. It takes a real screenshot of the
+    running app and analyzes it with a vision model. Do NOT skip this.
+    Do NOT use curl or wget instead — you MUST call analyze_screenshot.
+
+STEP 5: done(summary)
+  → Include: build pass/fail, the VLM's visual description, and any issues.
+
+CRITICAL RULES:
+- You MUST call analyze_screenshot in STEP 4. Skipping it is a failure.
+- Do NOT run more than ONE sleep command (STEP 3 only).
+- Do NOT run 'ps aux', 'curl', 'wget', 'ls', or other exploratory commands.
+- Do NOT run 'sleep 10' or 'sleep 15' or 'sleep 20' — only ONE 'sleep 5'.
+- If the build fails in STEP 1, skip to STEP 5 with the error.
 
 DO NOT run exploratory commands like "ls node_modules" — one build command is all
 you need.
