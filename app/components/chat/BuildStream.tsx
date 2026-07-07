@@ -770,30 +770,22 @@ function fmtDur(ms?: number): string {
 }
 
 const SectionView = memo(({ section }: { section: Section }) => {
-  const accent = AGENT_ACCENT[section.agent] ?? 'text-palmkit-elements-textSecondary';
-  const icon = AGENT_ICON[section.agent] ?? 'i-ph:robot';
-
+  /*
+   * RADICAL REBUILD: hide the per-agent section headers (System/Planner/
+   * Builder/Tester). The user complained the stream looked like a hardcoded
+   * pipeline. Now it's ONE continuous flow — thinking, files, commands,
+   * screenshots, videos, vision, summary — all in a single timeline with
+   * NO role labels or section dividers. The agent's identity is invisible;
+   * only its actions are shown.
+   *
+   * The timeline rail is kept (visual continuity) but the icon + agent name
+   * + duration badge are removed. Past turns still show a collapsed summary.
+   */
   return (
     <div className="relative pl-5">
-      {/* timeline rail */}
-      <div className="absolute left-[7px] top-6 bottom-0 w-px bg-palmkit-elements-borderColor/60" />
-      <div className="mb-2 flex items-center gap-2">
-        <span className={classNames('z-10 -ml-5 shrink-0', icon, accent)} />
-        <span className={classNames('text-sm font-medium', accent)}>{section.agent}</span>
-        {section.running ? (
-          <PalmkitLoader bare size={12} className="text-[var(--pk-accent)]" />
-        ) : (
-          <span className="flex items-center gap-1 text-xs text-palmkit-elements-textTertiary">
-            <span
-              className={classNames(
-                section.success === false ? 'i-ph:x-circle-fill text-red-400' : 'i-ph:check-circle-fill text-green-400',
-              )}
-            />
-            {fmtDur(section.durationMs)}
-          </span>
-        )}
-      </div>
-      <div className="space-y-1.5 pb-4">
+      {/* timeline rail — kept for visual continuity */}
+      <div className="absolute left-[7px] top-0 bottom-0 w-px bg-palmkit-elements-borderColor/40" />
+      <div className="space-y-1.5 pb-3">
         {section.rows.map((row, i) => {
           switch (row.kind) {
             case 'thinking':

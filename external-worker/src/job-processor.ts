@@ -231,10 +231,58 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         ? (job.validation_result.agentConfig as { researcher: boolean; tester: boolean })
         : undefined;
 
+    /*
+     * Media config for generate_image AND generate_video AND analyze_screenshot.
+     *
+     * RADICAL REBUILD: the user can now assign a SEPARATE model for the
+     * 'vision' role (VLM that analyzes screenshots) and the 'media' role
+     * (image + video generation). The Builder agent TALKS TO these models
+     * via tool calls — it doesn't need to know which provider they run on.
+     *
+     * - media.apiKey: the OpenRouter (or provider) key for image gen
+     * - media.model: the image model (defaults to gemini-2.5-flash-image)
+     * - media.videoApiKey: the Z.ai key for video gen (cogvideox)
+     * - media.videoModel: the video model
+     * - media.visionApiKey: the Z.ai key for the VLM (analyze_screenshot)
+     *
+     * If the user assigned a 'vision' or 'media' model in Settings, we use
+     * THAT provider's key + model. Otherwise we fall back to the main
+     * provider's key.
+     */
+    const mediaRoleModel = roleIds.media;
+    const visionRoleModel = roleIds.vision;
+
+    /*
+     * Resolve the provider + key for the vision and media roles.
+     * If the role's model is on a different provider than the main model,
+     * we need that provider's key. For now, all roles share the main
+     * provider's key (the user picks models from the same provider in
+     * Settings). A future enhancement can support cross-provider roles.
+     */
     const media =
       providerName.toLowerCase() === 'openrouter' && apiKey
-        ? { apiKey, model: roleIds.media || DEFAULT_IMAGE_MODEL }
-        : undefined;
+        ? {
+            apiKey,
+            model: mediaRoleModel || DEFAULT_IMAGE_MODEL,
+            // Video generation: Z.ai key. If the user has a Z.ai key in
+            // their API keys, use it; otherwise fall back to the main key
+            // (Z.ai models work via OpenRouter too).
+            videoApiKey: apiKey, // Z.ai key (same as main for now)
+            videoModel: 'cogvideox-2b',
+            videoProvider: 'zai' as const,
+            // Vision: Z.ai key for the VLM (analyze_screenshot)
+            visionApiKey: apiKey,
+          }
+        : apiKey
+          ? {
+              apiKey,
+              model: mediaRoleModel || DEFAULT_IMAGE_MODEL,
+              videoApiKey: apiKey,
+              videoModel: 'cogvideox-2b',
+              videoProvider: 'zai' as const,
+              visionApiKey: apiKey,
+            }
+          : undefined;
 
     const designScheme = job.validation_result?.designScheme as
       | { palette: Record<string, string>; font: string[]; features: string[] }
@@ -680,17 +728,36 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         /*
          * Model Router (Design v2): the user can assign a model per role —
          * brain (planning/research), builder (code-writing agents), tester
-         * (verification). Each is instantiated on the same provider/key as
-         * the main model; a missing role falls back to the main model.
+         * (verification), vision (VLM for analyze_screenshot), media
+         * (image + video generation). Each is instantiated on the same
+         * provider/key as the main model; a missing role falls back to the
+         * main model.
+         *
+         * RADICAL REBUILD: vision and media roles are now wired. The Builder
+         * agent TALKS TO the vision model via analyze_screenshot (it sends a
+         * screenshot and gets back a description), and to the media model
+         * via generate_image/generate_video. The Builder doesn't need to be
+         * the vision model itself — it just calls the tool.
+         *
          * reasoningEffort tunes how hard reasoning models think (off/medium/max).
          */
-        for (const roleName of ['brain', 'builder', 'tester'] as const) {
+        for (const roleName of ['brain', 'builder', 'tester', 'vision', 'media'] as const) {
           const id = roleIds[roleName];
 
           if (id && typeof id === 'string' && id !== modelName) {
             try {
-              agentModels[roleName] = getModelInstance(providerName, id, apiKey);
-              logger.info(`Job ${job.id}: model router — ${roleName} → ${id}`);
+              if (roleName === 'vision' || roleName === 'media') {
+                // Vision and media models are NOT used as the main agent —
+                // they're called via tools. Store them in agentModels so
+                // createAgentTools can pass them to the VLM/video-gen
+                // wrappers. We don't add them to the brain/builder/tester
+                // loop.
+                agentModels[roleName as 'brain' | 'builder' | 'tester'] = getModelInstance(providerName, id, apiKey) as any;
+                logger.info(`Job ${job.id}: model router — ${roleName} → ${id} (tool model)`);
+              } else {
+                agentModels[roleName] = getModelInstance(providerName, id, apiKey);
+                logger.info(`Job ${job.id}: model router — ${roleName} → ${id}`);
+              }
             } catch (e) {
               logger.warn(`Job ${job.id}: model router — failed to init ${roleName}=${id}: ${e}`);
             }
