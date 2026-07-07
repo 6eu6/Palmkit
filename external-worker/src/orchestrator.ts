@@ -342,7 +342,7 @@ export async function runOrchestratedBuild(
    * blunt "stop planning, write the files now" directive.
    */
   let builderEmptyRetries = 0;
-  const MAX_BUILDER_EMPTY_RETRIES = 1;
+  const MAX_BUILDER_EMPTY_RETRIES = 3;
   let forceBuild = false;
   let incompleteBuild = false; // Vite build finished but is missing scaffolding (e.g. package.json)
 
@@ -1247,19 +1247,44 @@ export async function runOrchestratedBuild(
         const isViteType = builtType === 'react' || builtType === 'vue' || builtType === 'nextjs';
         const missingPkg = isViteType && !curPaths.some((p) => /(^|\/)package\.json$/i.test(p));
 
-        if (zeroFiles || missingPkg) {
+        /*
+         * NO-ENTRY-POINT gate (RADICAL REBUILD fix). The model was writing
+         * ONLY config files (package.json, vite.config.js, etc.) without
+         * index.html or src/App.jsx — producing a 404 preview. This gate
+         * catches that case and re-prompts the Builder to write the missing
+         * entry files BEFORE moving on to the Tester.
+         */
+        const hasIndexHtml = curPaths.some((p) => /^index\.html$/i.test(p));
+        const hasSourceFile = curPaths.some((p) => /^src\/.*(jsx|tsx|vue|js|ts)$/i.test(p));
+        const hasPyEntry = curPaths.some((p) => /^(app|main|server|run)\.py$/i);
+        const hasFlutterEntry = curPaths.some((p) => /^lib\/(main|app)\.dart$/i);
+        const hasAnyEntryPoint = hasIndexHtml || hasSourceFile || hasPyEntry || hasFlutterEntry;
+        const missingEntryPoint = !zeroFiles && !missingPkg && curPaths.length > 0 && !hasAnyEntryPoint;
+
+        if (zeroFiles || missingPkg || missingEntryPoint) {
           builderEmptyRetries++;
           forceBuild = true;
-          incompleteBuild = !zeroFiles && missingPkg;
+          incompleteBuild = !zeroFiles && (missingPkg || missingEntryPoint);
           agentQueue.unshift('builder'); // run the Builder again next, before the Tester
+
+          const reason = zeroFiles
+            ? 'empty_builder_retry'
+            : missingPkg
+              ? 'incomplete_build_retry'
+              : 'no_entry_point_retry';
+
+          const msg = zeroFiles
+            ? `⚠️ No files written yet — re-prompting the Builder to build now (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`
+            : missingPkg
+              ? `⚠️ Build is missing package.json — a Vite app can't run without it. Asking the Builder to finish the scaffolding (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`
+              : `⚠️ Build has ${curPaths.length} files but NO entry point (no index.html, no src/App.jsx). The preview will 404. Re-prompting the Builder to write the missing entry files (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`;
+
           await emitEvent(
             supabase,
             jobId,
             'file_chunk' as any,
-            zeroFiles
-              ? `⚠️ No files written yet — re-prompting the Builder to build now (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`
-              : `⚠️ Build is missing package.json — a Vite app can't run without it. Asking the Builder to finish the scaffolding (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`,
-            { reason: zeroFiles ? 'empty_builder_retry' : 'incomplete_build_retry', attempt: builderEmptyRetries },
+            msg,
+            { reason, attempt: builderEmptyRetries, currentFiles: curPaths },
           );
         }
       }
