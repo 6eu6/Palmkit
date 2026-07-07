@@ -385,7 +385,8 @@ Use your judgment — match the complexity to the request.
 - If the build fails, read the error, fix it, rebuild.
 - Be honest in done() — say what completed and what didn't.
 - Do NOT rewrite a file you already wrote unless it has an error. Move on to the next file.
-- Write files in order: config files first, then entry points (index.html, src/main.jsx), then the main app (src/App.jsx), then styles.
+- **PRIORITY ORDER**: Write entry points FIRST (index.html, src/main.jsx, src/App.jsx), then config files, then backend, then styles. This ensures the project always has a working preview even if you run out of steps.
+- For full-stack projects: write the frontend completely BEFORE starting the backend. A working frontend with a mock API is better than a complete backend with no frontend.
 
 ## Database Support
 
@@ -451,7 +452,7 @@ Never claim something works if it doesn't. The user trusts your honesty.`,
     'spawn_subagent',
     'done',
   ],
-  maxSteps: 120,
+  maxSteps: 200, // Complex projects (e-commerce, SaaS) need many steps: ~15 files × ~5 tool calls each + build + verify
   maxTokens: 32000,
 };
 
