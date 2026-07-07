@@ -964,7 +964,7 @@ export async function runOrchestratedBuild(
                    * if there's no valid entry point. A looping model that had
                    * already written a working app shouldn't lose the whole build.
                    */
-                  const LOOP_ABORT_AT = 6; // tolerate legitimate iteration on complex projects
+                  const LOOP_ABORT_AT = 8; // tolerate iteration on complex multi-file projects
 
                   if (writes >= LOOP_ABORT_AT) {
                     logger.warn(

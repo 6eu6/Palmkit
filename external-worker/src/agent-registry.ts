@@ -384,6 +384,8 @@ Use your judgment — match the complexity to the request.
 - After writing, run "npm install && npm run build" to verify.
 - If the build fails, read the error, fix it, rebuild.
 - Be honest in done() — say what completed and what didn't.
+- Do NOT rewrite a file you already wrote unless it has an error. Move on to the next file.
+- Write files in order: config files first, then entry points (index.html, src/main.jsx), then the main app (src/App.jsx), then styles.
 
 ## Database Support
 
