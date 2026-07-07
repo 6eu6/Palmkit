@@ -624,58 +624,6 @@ export function createAgentTools(
     }),
 
     // ═══════════════════════════════════════════════════════════════════
-    // take_screenshot — Take a screenshot of the running app (via E2B)
-    // ═══════════════════════════════════════════════════════════════════
-    take_screenshot: tool({
-      description:
-        'Take a screenshot of the running dev server to visually verify the app. ' +
-        'The screenshot is taken from the E2B sandbox at http://localhost:3000. ' +
-        'Use this to check if the UI renders correctly after building.',
-      parameters: z.object({}),
-      execute: async () => {
-        const files = Object.fromEntries(projectFiles);
-
-        if (Object.keys(files).length === 0) {
-          return { error: 'No files written yet. Build the project first.' };
-        }
-
-        // Run a screenshot command in E2B
-        // Install playwright in the sandbox and take a screenshot
-        const result = await runInE2B(
-          jobId,
-          'npx playwright install chromium 2>/dev/null; node -e "' +
-            'const { chromium } = require(\"playwright\");' +
-            '(async () => {' +
-            '  const browser = await chromium.launch();' +
-            '  const page = await browser.newPage();' +
-            '  try {' +
-            '    await page.goto(\"http://localhost:3000\", { timeout: 10000 });' +
-            '    const title = await page.title();' +
-            '    const bodyText = await page.textContent(\"body\");' +
-            '    console.log(\"TITLE:\" + title);' +
-            '    console.log(\"BODY:\" + (bodyText || \"\").slice(0, 500));' +
-            '    console.log(\"SCREENSHOT_OK\");' +
-            '  } catch(e) { console.log(\"ERROR:\" + e.message); }' +
-            '  await browser.close();' +
-            '})();"',
-          files,
-        );
-
-        logger.info(`[agent] take_screenshot: exit ${result.exitCode}`);
-
-        const output = result.stdout + result.stderr;
-
-        return {
-          success: output.includes('SCREENSHOT_OK'),
-          title: output.match(/TITLE:(.*)/)?.[1] || 'Unknown',
-          bodyText: output.match(/BODY:(.*)/)?.[1]?.slice(0, 300) || '',
-          error: output.includes('ERROR:') ? output.match(/ERROR:(.*)/)?.[1] : undefined,
-          rawOutput: output.substring(0, 2000),
-        };
-      },
-    }),
-
-    // ═══════════════════════════════════════════════════════════════════
     // list_uploads — List files uploaded by the user (in uploads/ folder)
     // ═══════════════════════════════════════════════════════════════════
     list_uploads: tool({

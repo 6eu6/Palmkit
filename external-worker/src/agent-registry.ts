@@ -17,7 +17,7 @@
 
 import type { ToolSet } from 'ai';
 
-export type AgentRole = 'orchestrator' | 'researcher' | 'planner' | 'builder' | 'tester';
+export type AgentRole = 'researcher' | 'planner' | 'builder' | 'tester';
 
 export interface AgentConfig {
   role: AgentRole;
@@ -48,7 +48,6 @@ export const ALL_TOOL_NAMES = [
   'analyze_screenshot',
   'run_shell',
   'run_tests',
-  'take_screenshot',
   'update_todos',
   'done',
 ] as const;
@@ -67,51 +66,6 @@ export function filterTools(allTools: ToolSet, allowedNames: string[]): ToolSet 
 
   return filtered;
 }
-
-/**
- * Orchestrator — the manager.
- *
- * Does NOT have file/shell tools. Instead it has a single "delegate" tool
- * that lets it call subagents. It reads the user prompt, decides which
- * agents to call and in what order, then merges results.
- *
- * In Phase 1, the orchestrator is simplified: it runs a single generateText
- * call that decides the plan, then we execute the plan sequentially.
- */
-export const ORCHESTRATOR_CONFIG: AgentConfig = {
-  role: 'orchestrator',
-  name: 'Orchestrator',
-  description: 'Manages the build: understands the task, plans steps, delegates to specialists',
-  systemPrompt: `You are the Orchestrator — the project manager of a development team.
-
-Your job is to understand the user's request and create a build plan.
-You do NOT write code yourself. You delegate to specialists.
-
-AVAILABLE SPECIALISTS:
-1. Researcher — reads the project, understands structure, finds files
-2. Builder — writes and edits code files
-3. Tester — runs builds, tests, takes screenshots, verifies quality
-
-YOUR OUTPUT:
-Respond with a JSON plan (no other text):
-{
-  "steps": [
-    { "agent": "researcher", "task": "Read existing files and understand project structure" },
-    { "agent": "builder", "task": "Create React counter app with increment/decrement" },
-    { "agent": "tester", "task": "Run npm install && npm run build to verify" }
-  ]
-}
-
-RULES:
-- Always start with Researcher (understand before building)
-- Always end with Tester (verify before delivering)
-- Builder handles ALL file creation and editing
-- Tester handles ALL verification (build, test, screenshot)
-- Output ONLY the JSON plan, nothing else`,
-  allowedTools: [], // Orchestrator has no direct tools — it plans only
-  maxSteps: 1,
-  maxTokens: 2000,
-};
 
 /**
  * Researcher — read-only agent.
@@ -374,8 +328,6 @@ export const TESTER_CONFIG: AgentConfig = {
  */
 export function getAgentConfig(role: AgentRole): AgentConfig {
   switch (role) {
-    case 'orchestrator':
-      return ORCHESTRATOR_CONFIG;
     case 'researcher':
       return RESEARCHER_CONFIG;
     case 'planner':

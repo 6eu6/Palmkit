@@ -20,16 +20,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { logger } from './logger';
 import {
   planProject,
-  generateStaticFiles,
-  validateGeneration,
-  repairGeneration,
-  generateEdit,
   detectAppTypeFromFiles,
   type GenerationResult,
 } from './generator';
-import { runAgentBuild } from './agent-builder';
 import { runOrchestratedBuild } from './orchestrator';
-import { checkBuild, BUILD_CHECK_TYPES } from './build-checker';
 import { createRunner } from './build-runner';
 import { putFile, getFileText, buildKey, buildWorkspaceKey } from './r2-client';
 import { hydrateWorkspaceFromStorage, readWorklog, readWorkspaceFile } from './workspace-manager';
@@ -889,127 +883,10 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
     // Initialise the correct runner for this app type.
     const runner = createRunner(result.appType);
 
-    // ─── Phase 3: VALIDATE (skip for ALL agent/orchestrator builds) ─────
-    // Orchestrator builds use their own Tester agent for verification.
-    // The old build-checker expects static files (styles.css, app.js) and
-    // fails for React/TypeScript projects. Skip it entirely for orchestrator builds.
-    const wasAgentBuilt = result.rawText?.includes('agent-build') ?? false;
-    const wasOrchestrated =
-      result.rawText?.includes('orchestrator') || result.rawText?.includes('orchestrated') || true; // Always skip for orchestrator builds
-    const skipValidation = wasAgentBuilt || wasOrchestrated;
-
-    if (!editJobId && !skipValidation) {
-      await updateJobProgress(supabase, job.id, 50, 'validate');
-      await emitEvent(supabase, job.id, 'validation_started', 'Validating output...');
-      await recordStep(supabase, job.id, { type: 'validate', status: 'running', order: 3 });
-
-      const issues = validateGeneration(result);
-
-      if (issues.length > 0) {
-        await recordStep(supabase, job.id, {
-          type: 'validate',
-          status: 'failed',
-          order: 3,
-          error: issues.join('; '),
-        });
-        await emitEvent(supabase, job.id, 'validation_failed', `Validation failed: ${issues[0]}`, { issues });
-        await failJob(supabase, job.id, `Validation failed: ${issues.join('; ')}`);
-        return;
-      }
-
-      await recordStep(supabase, job.id, {
-        type: 'validate',
-        status: 'completed',
-        order: 3,
-        outputSummary: 'all checks passed',
-      });
-      await emitEvent(supabase, job.id, 'validation_passed', 'Validation passed');
-
-      logger.info(`Job ${job.id}: validation passed`);
-    } else if (skipValidation) {
-      await updateJobProgress(supabase, job.id, 50, 'validate');
-      await emitEvent(supabase, job.id, 'validation_passed', 'Validation skipped (orchestrator build)');
-      logger.info(`Job ${job.id}: validation skipped (orchestrator build)`);
-    }
-
-    // ─── Phase 3.5: BUILD CHECK (react / vue / nextjs only; skip for edits) ─
-    // Skip build check for agent builds — they use their own file structure
-    if (!editJobId && !skipValidation && BUILD_CHECK_TYPES.has(result.appType)) {
-      await updateJobProgress(supabase, job.id, 55, 'build_check');
-      await emitEvent(supabase, job.id, 'build_check_started', `Running build check for ${result.appType}...`);
-      await recordStep(supabase, job.id, { type: 'build_check', status: 'running', order: 4 });
-
-      let buildCheckFiles = result.files;
-      let buildCheckPassed = false;
-
-      for (let pass = 0; pass < 2; pass++) {
-        const check = await checkBuild(buildCheckFiles, result.appType);
-
-        if (check.success) {
-          buildCheckPassed = true;
-          break;
-        }
-
-        logger.warn(`Job ${job.id}: build check failed (pass ${pass + 1}): ${check.errors.slice(0, 200)}`);
-        await emitEvent(
-          supabase,
-          job.id,
-          'build_check_failed',
-          `Build errors found (pass ${pass + 1}), attempting repair...`,
-          { errors: check.errors.slice(0, 500) },
-        );
-
-        if (pass < 1) {
-          /* Repair pass — ask LLM to fix the errors */
-          await updateJobProgress(supabase, job.id, 58 + pass * 3, `repair_pass_${pass + 1}`);
-          await emitEvent(supabase, job.id, 'repair_started', `Repairing build errors (attempt ${pass + 1})...`);
-
-          try {
-            buildCheckFiles = await repairGeneration(
-              buildCheckFiles,
-              result.appType,
-              check.errors,
-              providerName,
-              modelName,
-              apiKey,
-            );
-            logger.info(`Job ${job.id}: repair pass ${pass + 1} complete`);
-          } catch (repairErr: any) {
-            logger.warn(`Job ${job.id}: repair pass ${pass + 1} failed: ${repairErr.message}`);
-          }
-        } else {
-          /* Second pass failed — fail the job with a clear message */
-          await recordStep(supabase, job.id, {
-            type: 'build_check',
-            status: 'failed',
-            order: 4,
-            error: check.errors.slice(0, 500),
-          });
-          await emitEvent(supabase, job.id, 'job_failed', 'Build could not be repaired automatically', {
-            errors: check.errors.slice(0, 500),
-          });
-          await failJob(
-            supabase,
-            job.id,
-            `Build errors after auto-repair. Download the project to fix locally:\n${check.errors.slice(0, 400)}`,
-          );
-          return;
-        }
-      }
-
-      if (buildCheckPassed) {
-        /* Use the (possibly repaired) file set for upload */
-        result = { ...result, files: buildCheckFiles };
-        await recordStep(supabase, job.id, {
-          type: 'build_check',
-          status: 'completed',
-          order: 4,
-          outputSummary: 'build passed',
-        });
-        await emitEvent(supabase, job.id, 'build_check_passed', 'Build check passed ✓');
-        logger.info(`Job ${job.id}: build check passed`);
-      }
-    }
+    // ─── Phase 3: VALIDATION (skipped — the orchestrator handles verification) ─
+    await updateJobProgress(supabase, job.id, 50, 'validate');
+    await emitEvent(supabase, job.id, 'validation_passed', 'Validation skipped (orchestrator build)');
+    logger.info(`Job ${job.id}: validation skipped (orchestrator build)`);
 
     // ─── Phase 4: UPLOAD TO R2 ─────────────────────────────────────────
     await updateJobProgress(supabase, job.id, 70, 'uploading_snapshot');

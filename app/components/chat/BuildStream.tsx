@@ -829,12 +829,6 @@ const SectionView = memo(({ section }: { section: Section }) => {
                   <span className="truncate">{row.text}</span>
                 </div>
               );
-            case 'screenshot':
-              return <ScreenshotRow key={i} dataUrl={row.dataUrl} viewport={row.viewport} />;
-            case 'vision':
-              return <VisionRow key={i} text={row.text} />;
-            case 'video':
-              return <VideoRow key={i} name={row.name} url={row.url} status={row.status} />;
             case 'error':
               return (
                 <div
