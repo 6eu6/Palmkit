@@ -927,6 +927,62 @@ export function createAgentTools(
       execute: async ({ summary }) => {
         const fileCount = projectFiles.size;
         const totalSize = Array.from(projectFiles.values()).reduce((sum, c) => sum + c.length, 0);
+        const filePaths = Array.from(projectFiles.keys());
+
+        /*
+         * CRITICAL GATE: refuse done() if the project has no entry point.
+         * The model was calling done() after writing ONLY config files
+         * (package.json, vite.config.js, tailwind.config.js, postcss.config.js)
+         * without index.html or src/App.jsx — producing a 404 preview.
+         *
+         * Now: if there's no index.html AND no src/App.* / src/main.*,
+         * REFUSE done() and tell the model exactly what's missing. The model
+         * gets the message back as the tool result and (usually) writes the
+         * missing files in its next step.
+         */
+        const hasIndexHtml = filePaths.some((p) => /^index\.html$/i.test(p));
+        const hasSourceFile = filePaths.some((p) => /^src\/.*(jsx|tsx|vue|js|ts)$/i.test(p));
+        const hasPyEntry = filePaths.some((p) => /^(app|main|server|run)\.py$/i);
+        const hasFlutterEntry = filePaths.some((p) => /^lib\/(main|app)\.dart$/i);
+
+        const hasAnyEntryPoint = hasIndexHtml || hasSourceFile || hasPyEntry || hasFlutterEntry;
+
+        if (!hasAnyEntryPoint && fileCount > 0) {
+          const missing: string[] = [];
+
+          if (!hasIndexHtml) {
+            missing.push('index.html (Vite entry with <div id="root"> and <script src="/src/main.jsx">)');
+          }
+
+          if (!hasSourceFile) {
+            missing.push('src/main.jsx (React mount) and src/App.jsx (main component)');
+          }
+
+          const refuseMsg =
+            `REFUSED: you called done() but the project has NO entry point. ` +
+            `You wrote ${fileCount} files (${filePaths.join(', ')}) but none of them is an actual app entry. ` +
+            `Missing: ${missing.join('; ')}. ` +
+            `Do NOT call done() again until you have written these files. ` +
+            `Use write_file to create them NOW, then call done().`;
+
+          logger.warn(`[agent] done() REFUSED: no entry point. Files: ${filePaths.join(', ')}`);
+
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk' as any,
+            `⚠️ done() refused — missing entry point. Writing the missing files now…`,
+            { agent: 'Builder', kind: 'done_refused', missing },
+          );
+
+          return {
+            success: false,
+            refused: true,
+            fileCount,
+            missing,
+            message: refuseMsg,
+          };
+        }
 
         logger.info(`[agent] done: ${fileCount} files, ${totalSize} chars total`);
 
