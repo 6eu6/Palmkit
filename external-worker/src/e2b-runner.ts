@@ -272,11 +272,41 @@ export async function runInE2B(
      * budget for the first run.
      */
     const isInstallCommand = /^(npm|pnpm|yarn|bunx|npx)\s+(install|i|add|ci|playwright install)/.test(command.trim());
-    const timeoutMs = isInstallCommand ? 300_000 : 180_000;
+    const isDevCommand = /npm\s+run\s+dev|npm\s+run\s+start|vite\s*$|vite\s+--host/.test(command.trim());
 
-    let result = await entry.sandbox.commands.run(command, { cwd: PROJECT_DIR, timeoutMs });
+    /*
+     * Timeout strategy:
+     * - npm install: 5 minutes (cold install can be slow)
+     * - npm run dev / vite (long-running servers): use background execution
+     *   with a long timeout — the dev server needs to stay alive for the
+     *   Tester's screenshot step
+     * - other commands: 3 minutes
+     */
+    const timeoutMs = isDevCommand ? 600_000 : isInstallCommand ? 300_000 : 180_000;
 
-    logger.info(`[e2b] job ${jobId}: "${command.slice(0, 80)}" → exit ${result.exitCode}`);
+    let result;
+
+    if (isDevCommand) {
+      /*
+       * DEV SERVER — run in BACKGROUND so it doesn't block.
+       * The Tester starts `npm run dev &` to boot Vite, then calls
+       * analyze_screenshot. If we run synchronously, E2B kills it at
+       * timeoutMs. Instead, use background mode (nohup + &) so the dev
+       * server stays alive after the command "returns".
+       *
+       * The command already has `&` from the Tester, but E2B's commands.run
+       * waits for the process to exit anyway. We wrap it in nohup + redirect
+       * output + sleep briefly to let it boot, then return immediately.
+       */
+      const bgCommand = command.replace(/&\s*$/, '').trim();
+      const wrappedCmd = `nohup ${bgCommand} > /tmp/devserver.log 2>&1 & echo "DEV_SERVER_PID=$!"; sleep 5; echo "--- dev server starting (PID $!) ---"; head -20 /tmp/devserver.log 2>/dev/null || true`;
+
+      result = await entry.sandbox.commands.run(wrappedCmd, { cwd: PROJECT_DIR, timeoutMs: 30_000 });
+      logger.info(`[e2b] job ${jobId}: dev server (background): "${command.slice(0, 60)}" → exit ${result.exitCode}`);
+    } else {
+      result = await entry.sandbox.commands.run(command, { cwd: PROJECT_DIR, timeoutMs });
+      logger.info(`[e2b] job ${jobId}: "${command.slice(0, 80)}" → exit ${result.exitCode}`);
+    }
 
     /*
      * NPM REGISTRY 403 RETRY — if npm install fails with '403' / 'team is
