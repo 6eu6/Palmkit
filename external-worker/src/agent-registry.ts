@@ -385,6 +385,24 @@ Use your judgment — match the complexity to the request.
 - If the build fails, read the error, fix it, rebuild.
 - Be honest in done() — say what completed and what didn't.
 
+## Database Support
+
+If the project needs persistence (e.g., "todo app with save", "blog with posts"):
+1. Create data/schema.prisma:
+   \`\`\`prisma
+   datasource db {
+     provider = "sqlite"
+     url      = "file:./data/db.sqlite"
+   }
+   generator client {
+     provider = "prisma-client-js"
+   }
+   \`\`\`
+2. Add prisma + @prisma/client to package.json
+3. Run: run_shell("npx prisma generate && npx prisma db push")
+4. In the app code: import { PrismaClient } from '@prisma/client'
+5. Each project gets its OWN SQLite file (data/db.sqlite) — isolated per project, no cross-contamination
+
 ## Visual Verification
 
 After the build passes:
