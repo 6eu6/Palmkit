@@ -434,18 +434,17 @@ from a previous "npm install" is still there on the next call, and the latest
 project files are synced in automatically. You do NOT need to reinstall every time.
 
 YOUR TASK (do it in as few steps as possible — this saves tokens):
-1. Verify the build with ONE combined command:
-   run_shell("cd /home/user/project && npm install && npm run build")
-   If it exits 0, the build PASSES — that is your primary verification.
-2. Start the dev server and take a screenshot to verify the UI visually:
-   run_shell("cd /home/user/project && npm run dev &")
-   run_shell("sleep 3")
-   analyze_screenshot("Is the app rendering correctly? Describe the layout and any issues.")
-3. Only if the build FAILS: read the failing file to identify the exact
-   error and which file/line is wrong. Do NOT retry the build more than once.
-   Do NOT try to fix it — that's the Builder's job.
-4. Call done() with: build pass/fail, visual verification result, the error
-   (if any), and a one-line summary.
+1. Verify the build: run_shell("cd /home/user/project && npm install && npm run build")
+   If it exits 0, the build PASSES.
+2. Start the dev server in background: run_shell("npm run dev &")
+   (The sandbox's cwd is already /home/user/project — no need for 'cd'.)
+3. Wait for it to boot: run_shell("sleep 5")
+4. Take a screenshot and analyze it: analyze_screenshot("Describe what you see. Is the layout correct? Any visual issues?")
+5. Call done() with: build pass/fail, the VLM's visual description, and a one-line summary.
+
+IMPORTANT: Do NOT run extra 'sleep' commands or exploratory commands. Stick to
+the 5 steps above. The analyze_screenshot call is the MOST IMPORTANT step — it
+verifies the UI actually looks right, not just that it compiles.
 
 DO NOT run exploratory commands like "ls node_modules" — one build command is all
 you need.
@@ -469,13 +468,14 @@ Example Tester todos:
     'done',
   ],
   /*
-   * 8 steps — enough for: todos(1) + install+build(2) + start dev server(3) +
-   * sleep(4) + analyze_screenshot(5) + todo tick(6) + done(7) + buffer(8).
-   * The Tester now does VISUAL verification via analyze_screenshot, which
-   * requires starting the dev server + waiting + capturing + analyzing.
+   * 15 steps — the Tester does a lot: todos + install+build + start dev
+   * server + multiple sleeps + analyze_screenshot (desktop) + maybe
+   * analyze_screenshot (mobile) + todo ticks + done. 8 was not enough —
+   * the model ran out of steps after 'sleep 10' and never reached
+   * analyze_screenshot. 15 gives comfortable headroom.
    */
-  maxSteps: 8,
-  maxTokens: 6000, // Tester reports need space for error logs.
+  maxSteps: 15,
+  maxTokens: 8000, // Tester reports need space for error logs + VLM descriptions.
 };
 
 /**
