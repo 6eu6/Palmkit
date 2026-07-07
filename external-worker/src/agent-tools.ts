@@ -1190,18 +1190,52 @@ export function createAgentTools(
             { agent: 'Builder', kind: 'screenshot_start', viewport: vp },
           );
 
-          // Playwright script that prints BASE64:<data> on its own line
+          // Playwright script that prints BASE64:<data> on its own line.
+          //
+          // RADICAL REBUILD FIX: the Tester was starting the dev server with
+          // `timeout 10 npm run dev &` (dies after 10s) then sleeping 3s before
+          // calling analyze_screenshot — so by the time we get here, the dev
+          // server is already dead. The screenshot would fail with ECONNREFUSED.
+          //
+          // Now: use the DURABLE preview URL (the E2B sandbox's public URL)
+          // instead of localhost. The E2B sandbox is already running the dev
+          // server (the worker-sandbox hook started it). We just need to find
+          // the sandbox ID and construct the URL.
+          //
+          // The sandbox URL pattern is: https://3000-<sandboxId>.e2b.app/preview/
+          // But we don't have the sandboxId here. Instead, try localhost:5173
+          // (Vite default) AND localhost:3000 — whichever responds.
           const script = `npx playwright install chromium 2>/dev/null; node -e "
 const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: ${dims.split('x')[0]}, height: ${dims.split('x')[1]} } });
-  try {
-    await page.goto('http://localhost:3000', { timeout: 15000, waitUntil: 'networkidle' });
-    const buf = await page.screenshot({ type: 'png', fullPage: false });
-    console.log('BASE64:' + buf.toString('base64'));
-    console.log('SCREENSHOT_OK');
-  } catch(e) { console.log('ERROR:' + e.message); }
+
+  // Try multiple ports — Vite defaults to 5173, some configs use 3000.
+  const ports = [5173, 3000, 4173];
+  let captured = false;
+
+  for (const port of ports) {
+    try {
+      console.log('TRYING_PORT:' + port);
+      await page.goto('http://localhost:' + port, { timeout: 8000, waitUntil: 'domcontentloaded' });
+      // Give it a moment to render
+      await page.waitForTimeout(2000);
+      const buf = await page.screenshot({ type: 'png', fullPage: false });
+      console.log('BASE64:' + buf.toString('base64'));
+      console.log('SCREENSHOT_OK');
+      console.log('USED_PORT:' + port);
+      captured = true;
+      break;
+    } catch(e) {
+      console.log('PORT_FAILED:' + port + ':' + e.message.slice(0, 100));
+    }
+  }
+
+  if (!captured) {
+    console.log('ALL_PORTS_FAILED');
+  }
+
   await browser.close();
 })();
 "`;
