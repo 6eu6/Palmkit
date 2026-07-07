@@ -95,5 +95,5 @@ Every phase must be verified with:
 - [x] Phase 1: Unified Brain (single 'brain' agent replaces 4-agent pipeline, live test pass)
 - [x] Phase 2: Dynamic Sub-Agents (spawn_subagent tool + subagent rows in stream)
 - [x] Phase 3: Clean Stream (subagent rows + Brain icon + continuous flow)
-- [ ] Phase 4: Honest Completion
-- [ ] Phase 5: Typed Events
+- [x] Phase 4: Honest Completion (done() accepts structured completion data)
+- [x] Phase 5: Provider-Agnostic Media Layer (user's model choices respected)
