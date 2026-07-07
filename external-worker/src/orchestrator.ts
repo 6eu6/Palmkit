@@ -92,7 +92,7 @@ export async function runOrchestratedBuild(
     reasoningEffort?: 'off' | 'medium' | 'max';
 
     /** Media config for generate_image (OpenRouter key + image model). */
-    media?: { apiKey: string; model: string };
+    media?: { apiKey: string; model: string; videoApiKey?: string; videoModel?: string; videoProvider?: 'zai' | 'openrouter'; visionApiKey?: string };
 
     /** User-enabled Skills — instruction playbooks injected into Planner/Builder. */
     skills?: { name: string; instructions: string }[];
@@ -1311,6 +1311,47 @@ export async function runOrchestratedBuild(
           );
         } else {
           repairContext = '';
+        }
+
+        /*
+         * AUTOMATIC VISUAL VERIFICATION — if the build PASSED, take a
+         * screenshot and analyze it with the VLM. The Tester model often
+         * doesn't call analyze_screenshot on its own (GLM-4.7 ignores the
+         * strict prompt), so we do it here automatically after the Tester
+         * finishes. This guarantees the 📸 Screenshot + 👁️ Vision analysis
+         * rows appear in the stream for every successful build.
+         *
+         * We call the same createAgentTools.analyze_screenshot tool that
+         * the Tester has access to, but directly (not via the LLM).
+         */
+        if (br?.passed && opts?.media?.visionApiKey) {
+          try {
+            logger.info(`[orchestrator] Auto-running analyze_screenshot after Tester success`);
+
+            await emitEvent(
+              supabase,
+              jobId,
+              'file_chunk' as any,
+              `📸 Auto-capturing screenshot for visual verification…`,
+              { agent: 'Tester', kind: 'auto_screenshot_start' },
+            );
+
+            // Build the analyze_screenshot tool and call it directly
+            const tools = createAgentTools(jobId, supabase, projectId, opts.media);
+            const screenshotResult = await (tools.analyze_screenshot as any).execute({
+              question: 'Describe what you see. Is the layout correct? Any visual issues like clipped text, broken layout, or missing content?',
+              viewport: 'desktop',
+            });
+
+            if (screenshotResult?.ok) {
+              logger.info(`[orchestrator] analyze_screenshot succeeded — VLM analysis captured`);
+            } else {
+              logger.warn(`[orchestrator] analyze_screenshot failed: ${screenshotResult?.error ?? 'unknown'}`);
+            }
+          } catch (screenshotErr: any) {
+            const msg = screenshotErr?.message ?? String(screenshotErr);
+            logger.warn(`[orchestrator] Auto analyze_screenshot error: ${msg}`);
+          }
         }
       }
     }
