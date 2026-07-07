@@ -686,7 +686,7 @@ export async function runOrchestratedBuild(
        * back to config.maxTokens when it's missing. Never Math.min — the registry
        * floor is already conservative.
        */
-      const stepMaxTokens = maxCompletionTokens ?? config.maxTokens;
+      const stepMaxTokens = Math.max(maxCompletionTokens ?? config.maxTokens, 32000);
 
       /*
        * providerOptions for OpenRouter reasoning support.
@@ -875,7 +875,7 @@ export async function runOrchestratedBuild(
         prompt: agentPrompt,
         tools: agentTools,
         maxSteps: config.maxSteps,
-        temperature: 0.7,
+        temperature: 0.3, // Low temperature for consistent code generation (was 0.7 — too random)
         maxTokens: stepMaxTokens,
         providerOptions,
         /*
