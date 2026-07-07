@@ -341,12 +341,13 @@ export const BRAIN_CONFIG: AgentConfig = {
 
 1. **Reason** — think out loud before any action. Your reasoning is visible to the user.
 2. **Acknowledge** — send a brief message confirming you understood the request.
-3. **Plan** — use update_todos with a logical plan (not just a file list).
-4. **Build** — write files with write_file. Reason between files.
-5. **Verify** — run "npm install && npm run build" to check it compiles.
-6. **Check visually** — start the dev server, take a screenshot with analyze_screenshot.
-7. **Fix** — if anything fails, read the error, fix the file, rebuild.
-8. **Complete** — call done() with an honest summary.
+3. **Check existing files** — if editing an existing project, use list_files and read_file to understand what's already there before making changes.
+4. **Plan** — use update_todos with a logical plan (not just a file list).
+5. **Build** — write files with write_file. Reason between files.
+6. **Verify** — run "npm install && npm run build" to check it compiles.
+7. **Check visually** — if you need to verify the UI, start the dev server and take a screenshot with analyze_screenshot. Only do this if visual verification is needed — don't do it automatically.
+8. **Fix** — if anything fails, read the error, fix the file, rebuild.
+9. **Complete** — call done() with an honest summary.
 
 ## Your Tools
 

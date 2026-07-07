@@ -450,11 +450,11 @@ export async function runOrchestratedBuild(
         if (isEditMode) {
           const editConvBlock =
             opts?.conversationHistory && opts.conversationHistory.length > 0
-              ? `\nCONVERSATION HISTORY (understand references and intent):\n${opts.conversationHistory
-                  .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 1000)}`)
-                  .join('\n')}\n`
+              ? `\n\nCONVERSATION HISTORY (full context from prior messages — understand references and intent):\n${opts.conversationHistory
+                  .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+                  .join('\n\n')}\n`
               : '';
-          agentPrompt += `${editConvBlock}\n\nThis is an EDIT of an existing project. Use read_file and list_files to inspect the existing files before making changes. Make ONLY the changes the user requested.`;
+          agentPrompt += `${editConvBlock}\n\nThis is an EDIT of an existing project. The project files are already in your workspace. Use list_files to see what files exist, then use read_file to inspect any files you need to understand before making changes. Make ONLY the changes the user requested. If the user asks a question (not a build request), answer it directly — don't rebuild the project unless asked.`;
         }
 
         // Skills

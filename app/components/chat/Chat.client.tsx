@@ -1248,17 +1248,23 @@ export const ChatImpl = memo(
          * This links the chat to its R2 workspace for restore-on-reload.
          */
         /*
-         * Pass the last 5 messages (user + assistant) as conversation history.
-         * This lets the edit LLM understand references like "no, make it blue
-         * instead of red" — where "red" was in a prior message the edit
-         * wouldn't otherwise see. Only text content (no metadata) is sent.
+         * Pass conversation history to the brain.
+         *
+         * Like Super Z: the brain needs full context from prior messages to
+         * understand references like "make it blue instead" or "add a decrease
+         * button like the increase one". We pass the last 20 messages with
+         * full content (no truncation at 2000 chars — that was losing context).
+         *
+         * The brain's context window (200K+ tokens) can easily handle 20
+         * messages. Truncating to 5 messages × 2000 chars was artificially
+         * crippling the brain's understanding.
          */
         const conversationHistory = messages
-          .slice(-5)
+          .slice(-20)
           .filter((m) => m.role === 'user' || m.role === 'assistant')
           .map((m) => ({
             role: m.role as 'user' | 'assistant',
-            content: typeof m.content === 'string' ? m.content.slice(0, 2000) : '',
+            content: typeof m.content === 'string' ? m.content.slice(0, 8000) : '',
           }))
           .filter((m) => m.content.length > 0);
 
