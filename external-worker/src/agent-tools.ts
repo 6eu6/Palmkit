@@ -1227,55 +1227,69 @@ export function createAgentTools(
             { agent: 'Builder', kind: 'screenshot_start', viewport: vp },
           );
 
-          // Playwright script that prints BASE64:<data> on its own line.
+          // Use chromium-browser --headless --screenshot to capture the page.
           //
-          // RADICAL REBUILD FIX: the Tester was starting the dev server with
-          // `timeout 10 npm run dev &` (dies after 10s) then sleeping 3s before
-          // calling analyze_screenshot — so by the time we get here, the dev
-          // server is already dead. The screenshot would fail with ECONNREFUSED.
-          //
-          // Now: use the DURABLE preview URL (the E2B sandbox's public URL)
-          // instead of localhost. The E2B sandbox is already running the dev
-          // server (the worker-sandbox hook started it). We just need to find
-          // the sandbox ID and construct the URL.
+          // RADICAL REBUILD FIX: 'npx playwright install chromium' was failing
+          // in the E2B sandbox with 'encountered an issue downloading Chrome
+          // dependencies'. Instead, install chromium via apt-get (the system
+          // package manager) which is faster and more reliable in E2B's
+          // Ubuntu-based sandbox.
           //
           // The sandbox URL pattern is: https://3000-<sandboxId>.e2b.app/preview/
           // But we don't have the sandboxId here. Instead, try localhost:5173
           // (Vite default) AND localhost:3000 — whichever responds.
-          const script = `npx playwright install chromium 2>/dev/null; node -e "
-const { chromium } = require('playwright');
-(async () => {
-  const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: ${dims.split('x')[0]}, height: ${dims.split('x')[1]} } });
+          const width = dims.split('x')[0];
+          const height = dims.split('x')[1];
+          const script = `# Install chromium via apt (faster + more reliable than npx playwright install)
+if ! command -v chromium-browser >/dev/null 2>&1 && ! command -v chromium >/dev/null 2>&1; then
+  echo "INSTALLING_CHROMIUM..."
+  apt-get update -qq 2>/dev/null && apt-get install -y -qq chromium-browser 2>/dev/null || apt-get install -y -qq chromium 2>/dev/null || true
+fi
 
-  // Try multiple ports — Vite defaults to 5173, some configs use 3000.
-  const ports = [5173, 3000, 4173];
-  let captured = false;
+CHROMIUM_BIN=""
+if command -v chromium-browser >/dev/null 2>&1; then CHROMIUM_BIN="chromium-browser"; fi
+if command -v chromium >/dev/null 2>&1; then CHROMIUM_BIN="chromium"; fi
 
-  for (const port of ports) {
-    try {
-      console.log('TRYING_PORT:' + port);
-      await page.goto('http://localhost:' + port, { timeout: 8000, waitUntil: 'domcontentloaded' });
-      // Give it a moment to render
-      await page.waitForTimeout(2000);
-      const buf = await page.screenshot({ type: 'png', fullPage: false });
-      console.log('BASE64:' + buf.toString('base64'));
-      console.log('SCREENSHOT_OK');
-      console.log('USED_PORT:' + port);
-      captured = true;
-      break;
-    } catch(e) {
-      console.log('PORT_FAILED:' + port + ':' + e.message.slice(0, 100));
-    }
-  }
+if [ -z "$CHROMIUM_BIN" ]; then
+  echo "CHROMIUM_NOT_FOUND"
+  exit 1
+fi
 
-  if (!captured) {
-    console.log('ALL_PORTS_FAILED');
-  }
+echo "USING_CHROMIUM=$CHROMIUM_BIN"
 
-  await browser.close();
-})();
-"`;
+# Try multiple ports — Vite defaults to 5173, some configs use 3000.
+PORTS="5173 3000 4173"
+CAPTURED=false
+
+for PORT in $PORTS; do
+  echo "TRYING_PORT:$PORT"
+  # Check if the port is responding
+  if curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://localhost:$PORT" | grep -q "^[23]"; then
+    echo "PORT_ALIVE:$PORT"
+    # Take a screenshot with headless chromium
+    $CHROMIUM_BIN --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \\
+      --screenshot=/tmp/screenshot.png \\
+      --window-size=${width},${height} \\
+      "http://localhost:$PORT" 2>/dev/null
+
+    if [ -f /tmp/screenshot.png ] && [ -s /tmp/screenshot.png ]; then
+      echo "SCREENSHOT_OK"
+      echo "USED_PORT:$PORT"
+      echo "BASE64:$(base64 -w0 /tmp/screenshot.png)"
+      CAPTURED=true
+      break
+    else
+      echo "PORT_FAILED:$PORT:no_screenshot"
+    fi
+  else
+    echo "PORT_FAILED:$PORT:not_responding"
+  fi
+done
+
+if [ "$CAPTURED" = "false" ]; then
+  echo "ALL_PORTS_FAILED"
+fi
+`;
 
           /*
            * runInE2B requires a files map (it syncs files to the sandbox).
