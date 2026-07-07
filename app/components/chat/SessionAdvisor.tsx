@@ -64,7 +64,7 @@ function collectProjectFiles(preview: Record<string, string>): Record<string, st
  * handoff instead of a long history) is a genuine win. We only advise — never
  * block — and a hard truncation (the model ran OUT of room) always qualifies.
  */
-const RATIO_THRESHOLD = 0.6;
+const RATIO_THRESHOLD = 0.5;
 
 function dismissKey(): string {
   if (typeof window === 'undefined') {
@@ -155,12 +155,29 @@ export function SessionAdvisor() {
 
   return (
     <div className="flex items-start gap-3">
-      {/* Assistant-style avatar so this reads as a message in the thread. */}
-      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-palmkit-elements-background-depth-3 text-palmkit-elements-textSecondary">
+      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-amber-400">
         <span className="i-ph:git-fork text-[15px]" />
       </div>
 
-      <div className="min-w-0 flex-1 rounded-2xl rounded-tl-sm border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 px-4 py-3 text-sm">
+      <div className="min-w-0 flex-1 rounded-2xl rounded-tl-sm border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm">
+        <div className="mb-2 flex items-center gap-2">
+          <span className="i-ph:warning-circle text-amber-400 text-base" />
+          <span className="font-semibold text-amber-300">Context is getting full</span>
+          {pressure?.tokens && pressure?.window && (
+            <span className="ml-auto text-xs text-amber-400/60 tabular-nums">
+              {Math.round(pressure.tokens / 1000)}K / {Math.round(pressure.window / 1000)}K tokens
+            </span>
+          )}
+        </div>
+
+        {/* Visual context bar */}
+        <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-amber-500/10">
+          <div
+            className="h-full rounded-full bg-amber-400 transition-all duration-500"
+            style={{ width: `${Math.min(100, pct)}%` }}
+          />
+        </div>
+
         <p className="leading-relaxed text-palmkit-elements-textSecondary">
           {truncated ? (
             <>
@@ -170,14 +187,13 @@ export function SessionAdvisor() {
             </>
           ) : (
             <>
-              This chat is getting long — the last change already used{' '}
-              <span className="font-medium text-palmkit-elements-textPrimary tabular-nums">~{pct}%</span> of the
-              model&apos;s context window.
+              This chat is using{' '}
+              <span className="font-medium text-amber-300 tabular-nums">~{pct}%</span> of the
+              model&apos;s context window. Each further edit sends more data, which slows the model down.
             </>
           )}{' '}
-          Each further edit sends more of that window, which slows the model down and dulls its focus. Continue in a
-          fresh chat with a <span className="font-medium">full copy of the project and its memory</span> — clean, fast
-          context, nothing lost.
+          Continue in a fresh chat with a <span className="font-medium">full copy of the project and its memory</span> —
+          clean context, nothing lost.
         </p>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -186,9 +202,8 @@ export function SessionAdvisor() {
             onClick={handleFork}
             disabled={busy}
             className={classNames(
-              'inline-flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium transition-colors',
-              'bg-palmkit-elements-button-primary-background text-palmkit-elements-button-primary-text',
-              'hover:bg-palmkit-elements-button-primary-backgroundHover disabled:opacity-60',
+              'inline-flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium transition-all active:scale-95',
+              'bg-amber-400 text-black hover:bg-amber-300 disabled:opacity-60',
             )}
           >
             <span className={busy ? 'i-svg-spinners:90-ring-with-bg text-[15px]' : 'i-ph:git-fork text-[15px]'} />

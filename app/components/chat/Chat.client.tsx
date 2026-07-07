@@ -1252,19 +1252,19 @@ export const ChatImpl = memo(
          *
          * Like Super Z: the brain needs full context from prior messages to
          * understand references like "make it blue instead" or "add a decrease
-         * button like the increase one". We pass the last 20 messages with
-         * full content (no truncation at 2000 chars — that was losing context).
+         * button like the increase one".
          *
-         * The brain's context window (200K+ tokens) can easily handle 20
-         * messages. Truncating to 5 messages × 2000 chars was artificially
-         * crippling the brain's understanding.
+         * We pass the last 50 messages with generous content limits. The brain's
+         * context window (200K+ tokens) can easily handle this. When the context
+         * genuinely gets too full, the SessionAdvisor offers "Continue in a fresh
+         * chat" — that's the real signal, not an arbitrary message count.
          */
         const conversationHistory = messages
-          .slice(-20)
+          .slice(-50)
           .filter((m) => m.role === 'user' || m.role === 'assistant')
           .map((m) => ({
             role: m.role as 'user' | 'assistant',
-            content: typeof m.content === 'string' ? m.content.slice(0, 8000) : '',
+            content: typeof m.content === 'string' ? m.content.slice(0, 12000) : '',
           }))
           .filter((m) => m.content.length > 0);
 
