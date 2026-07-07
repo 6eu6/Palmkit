@@ -289,17 +289,28 @@ export async function runInE2B(
     if (isDevCommand) {
       /*
        * DEV SERVER — run in BACKGROUND so it doesn't block.
+       *
        * The Tester starts `npm run dev &` to boot Vite, then calls
        * analyze_screenshot. If we run synchronously, E2B kills it at
        * timeoutMs. Instead, use background mode (nohup + &) so the dev
        * server stays alive after the command "returns".
        *
-       * The command already has `&` from the Tester, but E2B's commands.run
-       * waits for the process to exit anyway. We wrap it in nohup + redirect
-       * output + sleep briefly to let it boot, then return immediately.
+       * IMPORTANT: `nohup` cannot exec shell builtins like `cd`. So we
+       * must NOT wrap `cd /home/user/project && npm run dev` with nohup
+       * directly — that fails with "nohup: failed to run command 'cd'".
+       * Instead, we run `cd` in the shell first (via the cwd param), then
+       * nohup the actual command. We also strip any leading `cd ... &&`
+       * from the command since E2B's cwd param already handles that.
+       *
+       * We also strip the trailing `&` (we add our own) and wrap with
+       * `sh -c` to handle compound commands safely.
        */
-      const bgCommand = command.replace(/&\s*$/, '').trim();
-      const wrappedCmd = `nohup ${bgCommand} > /tmp/devserver.log 2>&1 & echo "DEV_SERVER_PID=$!"; sleep 5; echo "--- dev server starting (PID $!) ---"; head -20 /tmp/devserver.log 2>/dev/null || true`;
+      const bgCommand = command
+        .replace(/^cd\s+\S+\s*&&\s*/, '')  // strip leading "cd /path && "
+        .replace(/&\s*$/, '')               // strip trailing &
+        .trim();
+
+      const wrappedCmd = `nohup sh -c '${bgCommand.replace(/'/g, "'\\''")}' > /tmp/devserver.log 2>&1 & echo "DEV_SERVER_PID=$!"; sleep 5; echo "--- dev server starting (PID $!) ---"; head -20 /tmp/devserver.log 2>/dev/null || true`;
 
       result = await entry.sandbox.commands.run(wrappedCmd, { cwd: PROJECT_DIR, timeoutMs: 30_000 });
       logger.info(`[e2b] job ${jobId}: dev server (background): "${command.slice(0, 60)}" → exit ${result.exitCode}`);
