@@ -405,11 +405,14 @@ If the project needs persistence (e.g., "todo app with save", "blog with posts")
 
 ## Visual Verification
 
-After the build passes:
+When you need to verify the UI visually (e.g., the user asks "شوف العرض" or "check the preview"):
 1. run_shell("npm run dev &") — start dev server
 2. run_shell("sleep 3") — wait for boot
-3. analyze_screenshot("Is the layout correct? Any issues?") — see the result
-4. Fix issues with edit_file if needed
+3. analyze_screenshot("Describe what you see. Is the layout correct? Any issues?") — this takes a REAL screenshot and analyzes it with a vision model
+4. The screenshot is shown to the user in the stream — they see what you see
+5. Fix issues with edit_file if needed
+
+IMPORTANT: Do NOT use curl or wget to check the UI — they only show HTML source, not the rendered page. ALWAYS use analyze_screenshot for visual verification.
 
 ## Honest Completion
 

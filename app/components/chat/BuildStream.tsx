@@ -691,25 +691,30 @@ function foldEvents(events: WorkerEvent[]): Section[] {
  * tapping; very long ones start folded so a single huge thought doesn't dominate.
  */
 const Thinking = memo(({ text }: { text: string }) => {
-  const [open, setOpen] = useState(text.length <= 1200);
-  const preview = text.length > 220 ? `${text.slice(0, 220)}…` : text;
+  const [open, setOpen] = useState(text.length <= 800);
+  const preview = text.length > 300 ? `${text.slice(0, 300)}…` : text;
 
   return (
-    <button
-      type="button"
-      onClick={() => setOpen((o) => !o)}
-      className="group flex w-full items-start gap-2 bg-transparent text-left"
-    >
-      <span className="i-ph:brain mt-0.5 shrink-0 text-palmkit-elements-textTertiary" />
-      <span
-        className={classNames(
-          'whitespace-pre-wrap text-sm leading-relaxed text-palmkit-elements-textSecondary',
-          open ? '' : 'line-clamp-2',
-        )}
+    <div className="group relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-start gap-2 rounded-lg bg-palmkit-elements-background-depth-2/50 px-2.5 py-2 text-left transition-colors hover:bg-palmkit-elements-background-depth-2"
       >
-        {open ? text : preview}
-      </span>
-    </button>
+        <span className="i-ph:brain mt-0.5 shrink-0 text-[var(--pk-accent)] opacity-60" />
+        <span
+          className={classNames(
+            'whitespace-pre-wrap text-sm leading-relaxed text-palmkit-elements-textSecondary',
+            open ? '' : 'line-clamp-3',
+          )}
+        >
+          {open ? text : preview}
+        </span>
+        {text.length > 800 && (
+          <span className={classNames('ml-auto shrink-0 text-xs text-palmkit-elements-textTertiary transition-transform', open ? 'i-ph:caret-up' : 'i-ph:caret-down')} />
+        )}
+      </button>
+    </div>
   );
 });
 
@@ -764,8 +769,8 @@ const FileRow = memo(({ row }: { row: Extract<Row, { kind: 'file' }> }) => {
 });
 
 const CommandRow = memo(({ text }: { text: string }) => (
-  <div className="flex items-start gap-2 font-mono text-sm">
-    <span className="i-ph:terminal-window mt-0.5 shrink-0 text-palmkit-elements-textTertiary" />
+  <div className="flex items-start gap-2 rounded-md bg-palmkit-elements-background-depth-2/40 px-2 py-1.5 font-mono text-sm">
+    <span className="i-ph:terminal-window mt-0.5 shrink-0 text-green-400/70" />
     <span className="break-all text-palmkit-elements-textSecondary">
       <span className="text-green-400">$ </span>
       {text}
@@ -1199,12 +1204,12 @@ export const BuildStreamView = memo(
           )}
         </div>
 
-        {/* a hair-thin progress line under the status while building */}
+        {/* progress bar while building — smooth gradient */}
         {!done && !failed && (
-          <div className="mt-2 h-px w-full overflow-hidden bg-palmkit-elements-borderColor/50">
+          <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-palmkit-elements-borderColor/30">
             <div
-              className="h-full bg-[var(--pk-accent)] transition-all duration-700 ease-out"
-              style={{ width: `${displayProgress}%` }}
+              className="h-full rounded-full bg-gradient-to-r from-[var(--pk-accent)] to-[var(--pk-accent)] transition-all duration-700 ease-out"
+              style={{ width: `${displayProgress}%`, opacity: 0.8 }}
             />
           </div>
         )}

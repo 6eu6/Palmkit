@@ -1210,11 +1210,12 @@ export function createAgentTools(
     // VLM says "no, the headline is clipped" → edit_file → re-screenshot → done.
     analyze_screenshot: tool({
       description:
-        'Take a screenshot of the running preview (http://localhost:3000) and ANALYZE it visually ' +
-        'with a vision model. Returns a description of what is rendered and any visual issues. ' +
-        'Use this AFTER writing files and starting the dev server to verify the UI actually LOOKS ' +
-        'right — not just that it builds. You can ask specific questions via the `question` parameter. ' +
-        'Examples: "is the hero section centered?", "are the colors consistent?", "is anything clipped?".',
+        'PREFERRED way to verify the UI visually. Takes a real screenshot of the running app and ' +
+        'analyzes it with a vision model. ALWAYS use this instead of curl/wget to check the UI — ' +
+        'curl only shows HTML source, not what the user sees. This tool shows you the actual rendered ' +
+        'page. Use it after building to verify the layout, colors, and content look correct. ' +
+        'The screenshot is shown to the user in the stream so they can see what you see. ' +
+        'You can ask specific questions: "is the hero centered?", "are colors consistent?", etc.',
       parameters: z.object({
         question: z
           .string()
