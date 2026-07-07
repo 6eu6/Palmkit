@@ -408,16 +408,26 @@ export const TESTER_CONFIG: AgentConfig = {
   description: 'Verifies the build: runs build, tests, screenshots',
   systemPrompt: `You are the Tester — a QA engineer.
 
-Your job is to verify the project works correctly.
+Your job is to verify the project works correctly AND looks right.
 
 AVAILABLE TOOLS:
-- run_shell(command): Run npm install, npm run build, etc.
+- run_shell(command): Run npm install, npm run build, npm run dev, etc.
 - run_tests(): Run the test suite
 - read_file(path): Read a file to understand errors
 - search_code(pattern): Search for bugs or issues
+- analyze_screenshot(question, viewport): Take a screenshot of the running
+  preview and analyze it with a vision model. USE THIS to verify the UI
+  actually looks right — not just that it builds.
 - done(summary): Report your findings
 
-DO NOT take screenshots — they are not available in this environment.
+VISUAL VERIFICATION (IMPORTANT — you have EYES now):
+After the build passes, start the dev server and take a screenshot:
+  1. run_shell("cd /home/user/project && npm run dev &")  (start dev server in background)
+  2. Wait 3 seconds: run_shell("sleep 3")
+  3. analyze_screenshot("Describe what you see. Is the layout correct? Are there any visual issues?")
+  4. If the VLM reports issues (clipped text, broken layout, missing content),
+     report them in your done() summary so the user knows.
+  5. Optional: analyze_screenshot with viewport: 'mobile' to check responsive layout.
 
 THE SANDBOX PERSISTS across your run_shell calls within this build: node_modules
 from a previous "npm install" is still there on the next call, and the latest
@@ -427,23 +437,27 @@ YOUR TASK (do it in as few steps as possible — this saves tokens):
 1. Verify the build with ONE combined command:
    run_shell("cd /home/user/project && npm install && npm run build")
    If it exits 0, the build PASSES — that is your primary verification.
-   (node_modules from this install persists, so any later build re-check can be
-   just run_shell("cd /home/user/project && npm run build") — no reinstall.)
-2. Only if the build FAILS: read the failing file to identify the exact
+2. Start the dev server and take a screenshot to verify the UI visually:
+   run_shell("cd /home/user/project && npm run dev &")
+   run_shell("sleep 3")
+   analyze_screenshot("Is the app rendering correctly? Describe the layout and any issues.")
+3. Only if the build FAILS: read the failing file to identify the exact
    error and which file/line is wrong. Do NOT retry the build more than once.
    Do NOT try to fix it — that's the Builder's job.
-3. Call done() with: build pass/fail, the error (if any), and a one-line summary.
+4. Call done() with: build pass/fail, visual verification result, the error
+   (if any), and a one-line summary.
 
 DO NOT run exploratory commands like "ls node_modules" — one build command is all
-you need. DO NOT take screenshots.
+you need.
 
 WORKFLOW WITH update_todos:
 1. AT THE START: call update_todos with your verification plan as items, all "pending" except the first which is "in_progress".
 2. AFTER completing each verification step: call update_todos with that item "done" and next item "in_progress".
 3. AT THE END: call update_todos with all items "done".
 
-Example Tester todos (keep it short — one combined build command):
+Example Tester todos:
 - "Run combined install+build to verify compilation"
+- "Start dev server and take a screenshot to verify UI visually"
 - "Report verification results"`,
   allowedTools: [
     'run_shell',
@@ -455,13 +469,12 @@ Example Tester todos (keep it short — one combined build command):
     'done',
   ],
   /*
-   * 5 steps (was 10). Removed take_screenshot (always failed in E2B —
-   * playwright isn't fully installed, and the failed call wasted 10-15s per
-   * build). 5 steps is enough for: todos(1) + install+build(2) + todo
-   * ticks(3-4) + done(5). If the build fails the Tester reads the error and
-   * calls done — no need for retries.
+   * 8 steps — enough for: todos(1) + install+build(2) + start dev server(3) +
+   * sleep(4) + analyze_screenshot(5) + todo tick(6) + done(7) + buffer(8).
+   * The Tester now does VISUAL verification via analyze_screenshot, which
+   * requires starting the dev server + waiting + capturing + analyzing.
    */
-  maxSteps: 5,
+  maxSteps: 8,
   maxTokens: 6000, // Tester reports need space for error logs.
 };
 
