@@ -92,7 +92,7 @@ Every phase must be verified with:
 
 ## Status
 - [x] Phase 0: Cleanup (350 lines deleted, typecheck pass, worker deployed)
-- [ ] Phase 1: Unified Brain
+- [x] Phase 1: Unified Brain (single 'brain' agent replaces 4-agent pipeline, live test pass)
 - [ ] Phase 2: Dynamic Sub-Agents
 - [ ] Phase 3: Clean Stream
 - [ ] Phase 4: Honest Completion
