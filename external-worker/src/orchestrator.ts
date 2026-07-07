@@ -1343,6 +1343,29 @@ export async function runOrchestratedBuild(
               { agent: 'Tester', kind: 'auto_screenshot_start' },
             );
 
+            /*
+             * Ensure the dev server is running before taking a screenshot.
+             * The Tester may have started it but it might have died, or the
+             * Tester never started it. We start it fresh here (nohup +
+             * background) and wait for it to boot.
+             */
+            const projectFiles = getProjectFiles(jobId) as Record<string, string>;
+            const hasPackageJson = Object.keys(projectFiles).some((p) => /(^|\/)package\.json$/.test(p));
+
+            if (hasPackageJson) {
+              logger.info(`[orchestrator] Ensuring dev server is running for screenshot`);
+              try {
+                const { runInE2B } = await import('./e2b-runner');
+                // Start dev server in background if not already running
+                await runInE2B(jobId, 'npm run dev &', projectFiles);
+                // Wait for it to boot
+                await runInE2B(jobId, 'sleep 5', projectFiles);
+                logger.info(`[orchestrator] Dev server should be running now`);
+              } catch (devErr: any) {
+                logger.warn(`[orchestrator] Dev server start failed (may already be running): ${devErr?.message}`);
+              }
+            }
+
             // Build the analyze_screenshot tool and call it directly
             const tools = createAgentTools(jobId, supabase, projectId, opts.media);
             logger.info(`[orchestrator] Calling analyze_screenshot.execute() directly`);
