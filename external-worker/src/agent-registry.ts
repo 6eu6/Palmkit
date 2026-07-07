@@ -258,6 +258,18 @@ source file (src/App.jsx or src/App.tsx). Without these, the preview CANNOT
 work. If you call done() after only writing package.json + config files,
 the build will be REJECTED as incomplete.
 
+⚠️ STOP AND READ THIS BEFORE CALLING done() ⚠️
+Before you call done(), verify you have written ALL of these files:
+  ☐ index.html (Vite entry with <div id="root"> and <script src="/src/main.jsx">)
+  ☐ src/main.jsx (React mount: ReactDOM.createRoot)
+  ☐ src/App.jsx (Main component with ALL requested features)
+  ☐ src/index.css (Tailwind directives)
+If ANY of these is missing, do NOT call done() — write the missing files first.
+A build with only package.json + vite.config.js + tailwind.config.js + postcss.config.js
+is INCOMPLETE and will be REJECTED. The user will see a blank 404 preview.
+You MUST write the actual application code (index.html + src/App.jsx + src/main.jsx)
+before calling done().
+
 IMAGES & ARTWORK — FOLLOW THE DESIGN & MEDIA BRIEF:
 - If a "DESIGN & MEDIA BRIEF" is included in your prompt, it is your art
   direction. Apply its DESIGN SYSTEM (palette, type, style) across the whole UI,

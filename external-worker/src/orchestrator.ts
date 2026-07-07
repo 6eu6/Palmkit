@@ -1340,28 +1340,30 @@ export async function runOrchestratedBuild(
 
     const patterns = (effectiveAppType && ENTRY_POINT_PATTERNS[effectiveAppType]) || [];
     const filePaths = Object.keys(files);
+
     /*
-     * Check that AT LEAST ONE entry point pattern matches.
-     * For React: need index.html AND a src/App.* or src/main.* file.
-     * The previous code used .some() on the patterns array which meant
-     * index.html ALONE (without src/App.jsx) would pass. That's wrong —
-     * Vite needs BOTH index.html (entry) and src/main.jsx (React mount).
+     * CRITICAL FIX: if the model wrote config files (package.json, vite.config.js,
+     * etc.) but NO source files, detectAppTypeFromFiles returns null (no entry
+     * point exists to detect from). The old code treated null as "patterns.length
+     * === 0 → hasEntryPoint = true" — which meant a build with ONLY 4 config files
+     * and ZERO source code was falsely marked "complete". The preview 404'd.
      *
-     * Now: for react/vue, we check that index.html exists AND at least
-     * one src/ source file exists. If either is missing, fail.
+     * Now: if fileCount > 0 but we couldn't detect an app type, that means the
+     * model wrote config-only files without any entry point. FAIL the build.
      */
     const hasEntryPoint =
-      patterns.length === 0 ||
-      (() => {
-        if (effectiveAppType === 'react' || effectiveAppType === 'vue') {
-          // Need BOTH index.html AND a source file in src/
-          const hasIndexHtml = filePaths.some((p) => /^index\.html$/i.test(p));
-          const hasSourceFile = filePaths.some((p) => /^src\/.*(jsx|tsx|vue|js|ts)$/i.test(p));
-          return hasIndexHtml && hasSourceFile;
-        }
-        // For other app types, any single pattern match is enough
-        return filePaths.some((p) => patterns.some((re) => re.test(p)));
-      })();
+      patterns.length === 0
+        ? false // ← was true; null app type with files = no entry point = FAIL
+        : (() => {
+            if (effectiveAppType === 'react' || effectiveAppType === 'vue') {
+              // Need BOTH index.html AND a source file in src/
+              const hasIndexHtml = filePaths.some((p) => /^index\.html$/i.test(p));
+              const hasSourceFile = filePaths.some((p) => /^src\/.*(jsx|tsx|vue|js|ts)$/i.test(p));
+              return hasIndexHtml && hasSourceFile;
+            }
+            // For other app types, any single pattern match is enough
+            return filePaths.some((p) => patterns.some((re) => re.test(p)));
+          })();
 
     if (fileCount > 0 && !hasEntryPoint) {
       logger.error(
