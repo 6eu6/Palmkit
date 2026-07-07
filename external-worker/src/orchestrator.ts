@@ -1298,6 +1298,8 @@ export async function runOrchestratedBuild(
       if (role === 'tester') {
         const br = getBuildResult(jobId);
 
+        logger.info(`[orchestrator] Tester finished. br=${br ? JSON.stringify({ passed: br.passed, command: br.command?.slice(0, 50) }) : 'null'}. media=${opts?.media ? 'present' : 'MISSING'}. visionApiKey=${opts?.media?.visionApiKey ? 'present' : 'MISSING'}. apiKey=${opts?.media?.apiKey ? 'present' : 'MISSING'}`);
+
         if (br && !br.passed && repairRounds < MAX_REPAIR_ROUNDS) {
           repairRounds++;
           repairContext = `Failed build command: ${br.command}\n\nBuild error output (tail):\n${br.output}`;
@@ -1331,7 +1333,7 @@ export async function runOrchestratedBuild(
          */
         if (opts?.media?.visionApiKey || opts?.media?.apiKey) {
           try {
-            logger.info(`[orchestrator] Auto-running analyze_screenshot after Tester`);
+            logger.info(`[orchestrator] Auto-running analyze_screenshot after Tester — STARTING`);
 
             await emitEvent(
               supabase,
@@ -1343,20 +1345,41 @@ export async function runOrchestratedBuild(
 
             // Build the analyze_screenshot tool and call it directly
             const tools = createAgentTools(jobId, supabase, projectId, opts.media);
+            logger.info(`[orchestrator] Calling analyze_screenshot.execute() directly`);
             const screenshotResult = await (tools.analyze_screenshot as any).execute({
               question: 'Describe what you see. Is the layout correct? Any visual issues like clipped text, broken layout, or missing content?',
               viewport: 'desktop',
             });
 
+            logger.info(`[orchestrator] analyze_screenshot result: ok=${screenshotResult?.ok}, error=${screenshotResult?.error ?? 'none'}`);
+
             if (screenshotResult?.ok) {
               logger.info(`[orchestrator] analyze_screenshot succeeded — VLM analysis captured`);
             } else {
               logger.warn(`[orchestrator] analyze_screenshot failed: ${screenshotResult?.error ?? 'unknown'}`);
+              // Emit the failure as an event so the user sees it
+              await emitEvent(
+                supabase,
+                jobId,
+                'file_chunk' as any,
+                `⚠️ Screenshot capture failed: ${screenshotResult?.error ?? 'unknown error'}`,
+                { agent: 'Tester', kind: 'screenshot_failed', error: screenshotResult?.error },
+              );
             }
           } catch (screenshotErr: any) {
             const msg = screenshotErr?.message ?? String(screenshotErr);
-            logger.warn(`[orchestrator] Auto analyze_screenshot error: ${msg}`);
+            logger.error(`[orchestrator] Auto analyze_screenshot EXCEPTION: ${msg}`);
+            // Emit the exception as an event so the user sees it
+            await emitEvent(
+              supabase,
+              jobId,
+              'file_chunk' as any,
+              `⚠️ Screenshot capture error: ${msg.slice(0, 200)}`,
+              { agent: 'Tester', kind: 'screenshot_error', error: msg },
+            );
           }
+        } else {
+          logger.warn(`[orchestrator] Skipping auto-screenshot: no media key (visionApiKey=${opts?.media?.visionApiKey ? 'yes' : 'no'}, apiKey=${opts?.media?.apiKey ? 'yes' : 'no'})`);
         }
       }
     }
