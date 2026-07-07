@@ -93,7 +93,7 @@ Every phase must be verified with:
 ## Status
 - [x] Phase 0: Cleanup (350 lines deleted, typecheck pass, worker deployed)
 - [x] Phase 1: Unified Brain (single 'brain' agent replaces 4-agent pipeline, live test pass)
-- [ ] Phase 2: Dynamic Sub-Agents
-- [ ] Phase 3: Clean Stream
+- [x] Phase 2: Dynamic Sub-Agents (spawn_subagent tool + subagent rows in stream)
+- [x] Phase 3: Clean Stream (subagent rows + Brain icon + continuous flow)
 - [ ] Phase 4: Honest Completion
 - [ ] Phase 5: Typed Events
