@@ -243,40 +243,49 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
      * THAT provider's key + model. Otherwise we fall back to the main
      * provider's key.
      */
-    const mediaRoleModel = roleIds.media;
-    const visionRoleModel = roleIds.vision;
-
     /*
-     * Resolve the provider + key for the vision and media roles.
-     * If the role's model is on a different provider than the main model,
-     * we need that provider's key. For now, all roles share the main
-     * provider's key (the user picks models from the same provider in
-     * Settings). A future enhancement can support cross-provider roles.
+     * MEDIA CONFIG — provider-agnostic.
+     *
+     * The user picks models for each role in Settings:
+     *   - Media role → image + video generation model
+     *   - Vision role → VLM for analyze_screenshot
+     *
+     * We resolve the provider from the model name and build a MediaConfig
+     * that carries the right API keys + models for each task.
      */
-    const media =
-      providerName.toLowerCase() === 'openrouter' && apiKey
-        ? {
-            apiKey,
-            model: mediaRoleModel || DEFAULT_IMAGE_MODEL,
-            // Video generation: Z.ai key. If the user has a Z.ai key in
-            // their API keys, use it; otherwise fall back to the main key
-            // (Z.ai models work via OpenRouter too).
-            videoApiKey: apiKey, // Z.ai key (same as main for now)
-            videoModel: 'cogvideox-2b',
-            videoProvider: 'zai' as const,
-            // Vision: Z.ai key for the VLM (analyze_screenshot)
-            visionApiKey: apiKey,
-          }
-        : apiKey
-          ? {
-              apiKey,
-              model: mediaRoleModel || DEFAULT_IMAGE_MODEL,
-              videoApiKey: apiKey,
-              videoModel: 'cogvideox-2b',
-              videoProvider: 'zai' as const,
-              visionApiKey: apiKey,
-            }
-          : undefined;
+    const mediaRoleModel = roleIds.media || '';
+    const visionRoleModel = roleIds.vision || '';
+
+    // Determine provider from model name
+    const getProvider = (modelName: string): 'zai' | 'openrouter' | 'google' => {
+      if (/glm|cogvideo/i.test(modelName)) return 'zai';
+      if (/gemini|veo/i.test(modelName)) return 'google';
+      return 'openrouter'; // default for everything else
+    };
+
+    const imageProvider = getProvider(mediaRoleModel || DEFAULT_IMAGE_MODEL);
+    const videoProvider = getProvider(mediaRoleModel || 'cogvideox-2b');
+    const visionProvider = getProvider(visionRoleModel || 'glm-4.6v');
+
+    const media = apiKey
+      ? {
+          // Image generation
+          imageApiKey: apiKey,
+          imageModel: mediaRoleModel || DEFAULT_IMAGE_MODEL,
+          imageProvider,
+          // Video generation
+          videoApiKey: apiKey,
+          videoModel: mediaRoleModel || 'cogvideox-2b',
+          videoProvider,
+          // Vision (VLM)
+          visionApiKey: apiKey,
+          visionModel: visionRoleModel || 'glm-4.6v',
+          visionProvider,
+          // Legacy compat
+          apiKey,
+          model: mediaRoleModel || DEFAULT_IMAGE_MODEL,
+        }
+      : undefined;
 
     const designScheme = job.validation_result?.designScheme as
       | { palette: Record<string, string>; font: string[]; features: string[] }

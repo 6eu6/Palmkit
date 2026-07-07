@@ -92,7 +92,7 @@ export async function runOrchestratedBuild(
     reasoningEffort?: 'off' | 'medium' | 'max';
 
     /** Media config for generate_image (OpenRouter key + image model). */
-    media?: { apiKey: string; model: string; videoApiKey?: string; videoModel?: string; videoProvider?: 'zai' | 'openrouter'; visionApiKey?: string };
+    media?: import('./agent-tools').MediaConfig;
 
     /** User-enabled Skills — instruction playbooks injected into Planner/Builder. */
     skills?: { name: string; instructions: string }[];

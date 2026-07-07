@@ -20,7 +20,7 @@ export interface VideoGenOptions {
   prompt: string;
   duration?: number; // seconds, 2-10
   aspectRatio?: '16:9' | '9:16' | '1:1';
-  provider?: 'zai' | 'openrouter';
+  provider?: 'zai' | 'openrouter' | 'google';
 }
 
 export interface GeneratedVideo {

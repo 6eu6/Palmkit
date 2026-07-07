@@ -49,16 +49,30 @@ import { generateVideo } from './video-gen';
  */
 const MAX_INLINE_CONTENT = 300 * 1024;
 
-/** Media config for generate_image AND generate_video AND analyze_screenshot. */
+/**
+ * Media config — provider-agnostic. The user picks models for each role
+ * (vision, media) in Settings. This config carries those choices so the
+ * tools can route to the right API.
+ */
 export interface MediaConfig {
+  // Image generation
+  imageApiKey: string;
+  imageModel: string;
+  imageProvider: 'openrouter' | 'zai' | 'google';
+
+  // Video generation
+  videoApiKey: string;
+  videoModel: string;
+  videoProvider: 'zai' | 'openrouter' | 'google';
+
+  // Vision (VLM for analyze_screenshot)
+  visionApiKey: string;
+  visionModel: string;
+  visionProvider: 'zai' | 'openrouter' | 'google';
+
+  // Legacy compat (some code still reads these)
   apiKey: string;
   model: string;
-  /** Video generation: Z.ai key + model (e.g. cogvideox-2b). */
-  videoApiKey?: string;
-  videoModel?: string;
-  videoProvider?: 'zai' | 'openrouter';
-  /** Vision: Z.ai key for analyze_screenshot (VLM). Falls back to apiKey. */
-  visionApiKey?: string;
 }
 
 /*
@@ -674,12 +688,12 @@ export function createAgentTools(
         prompt: z.string().describe('Detailed image description: subject, style, colors, background.'),
       }),
       execute: async ({ name, prompt }) => {
-        if (!media?.apiKey) {
+        if (!media?.imageApiKey && !media?.apiKey) {
           return {
             ok: false,
             error:
-              'Image generation is not available for this build (no OpenRouter key). ' +
-              'Use a tasteful CSS/SVG placeholder instead.',
+              'Image generation is not available (no API key configured). ' +
+              'Configure a Media model in Settings, or use a CSS/SVG placeholder.',
           };
         }
 
@@ -696,9 +710,10 @@ export function createAgentTools(
           // Logos/icons need alpha (keep PNG); heroes/photos compress to JPEG.
           const transparent = /logo|icon|mark|avatar|badge|transparent/i.test(`${safe} ${prompt}`);
 
+          // Use the user's chosen image model from Settings (Media role)
           const img = await generateImage({
-            apiKey: media.apiKey,
-            model: media.model || DEFAULT_IMAGE_MODEL,
+            apiKey: media.imageApiKey || media.apiKey,
+            model: media.imageModel || media.model || DEFAULT_IMAGE_MODEL,
             prompt,
             transparent,
           });
@@ -1363,19 +1378,20 @@ fi
             },
           );
 
-          // Analyze with the VLM
-          const visionKey = media?.visionApiKey ?? media?.apiKey ?? '';
+          // Analyze with the VLM — use the user's chosen Vision model
+          const visionKey = media?.visionApiKey || media?.apiKey || '';
 
           if (!visionKey) {
             return {
               ok: true,
               screenshot: '<shown in stream>',
-              analysis: '(No vision API key configured — screenshot was captured but not analyzed. Configure a Z.ai key in Settings to enable visual analysis.)',
+              analysis: '(No vision API key configured — screenshot was captured but not analyzed. Configure a Vision model in Settings to enable visual analysis.)',
               viewport: vp,
             };
           }
 
-          // Use the z-ai-web-dev-sdk for VLM analysis
+          // Use the z-ai-web-dev-sdk for VLM analysis (Z.ai vision models)
+          // For non-Z.ai vision models, the SDK still works via OpenRouter
           const analysis = await analyzeScreenshot(base64, question);
 
           if (!analysis.ok) {
@@ -1464,11 +1480,11 @@ fi
           : '16:9') as '16:9' | '9:16' | '1:1';
         const safe = name.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
 
-        if (!media?.videoApiKey) {
+        if (!media?.videoApiKey && !media?.apiKey) {
           return {
             ok: false,
             error:
-              'Video generation requires a Z.ai API key. Configure it in Settings → Media · Image/Video. ' +
+              'Video generation requires an API key. Configure a Media model in Settings. ' +
                 'If you do not have one, use generate_image for a still hero background instead, or use a CSS animation.',
           };
         }
@@ -1481,12 +1497,12 @@ fi
 
         try {
           const video = await generateVideo({
-            apiKey: media.videoApiKey,
-            model: media.videoModel,
+            apiKey: media.videoApiKey || media.apiKey,
+            model: media.videoModel || 'cogvideox-2b',
             prompt,
             duration: duration ?? 5,
             aspectRatio: aspectRatio ?? '16:9',
-            provider: media.videoProvider ?? 'zai',
+            provider: media.videoProvider || 'zai',
           });
 
           // Fetch the MP4 bytes and store as a base64 data-URI ES module
