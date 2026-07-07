@@ -390,7 +390,25 @@ After the build passes:
 1. run_shell("npm run dev &") — start dev server
 2. run_shell("sleep 3") — wait for boot
 3. analyze_screenshot("Is the layout correct? Any issues?") — see the result
-4. Fix issues with edit_file if needed`,
+4. Fix issues with edit_file if needed
+
+## Honest Completion
+
+When you call done(), be HONEST:
+- summary: what you built (1-2 sentences)
+- completed: list of features that work
+- incomplete: what did NOT complete + why + what the user can do
+- next_steps: optional suggestions
+
+Example:
+  done({
+    summary: "Built a counter app with React + Tailwind",
+    completed: ["counter with increment/decrement", "reset button", "dark theme"],
+    incomplete: [{ item: "video background", reason: "video API returned error", suggestion: "add a Z.ai API key in Settings" }],
+    next_steps: ["Add sound effects", "Deploy to Vercel"]
+  })
+
+Never claim something works if it doesn't. The user trusts your honesty.`,
   allowedTools: [
     'write_file',
     'edit_file',

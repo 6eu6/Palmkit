@@ -904,14 +904,31 @@ export function createAgentTools(
     done: tool({
       description:
         'Signal that you have finished building the project. Call this ONLY when all files ' +
-        'have been written and verified. This marks the build as complete and triggers preview generation.',
+        'have been written and verified. This marks the build as complete and triggers preview generation. ' +
+        'Be HONEST in your summary — say what completed and what did not.',
       parameters: z.object({
         summary: z
           .string()
+          .describe('A brief summary of what was built (1-2 sentences).'),
+        completed: z
+          .array(z.string())
           .optional()
-          .describe('A brief summary of what was built, e.g. "Space travel landing page with React, Tailwind, and Framer Motion"'),
+          .describe('List of features/components that were successfully built. Example: ["counter with increment", "reset button", "dark theme"]'),
+        incomplete: z
+          .array(z.object({
+            item: z.string().describe('What did not complete'),
+            reason: z.string().describe('Why it did not complete'),
+            suggestion: z.string().describe('What the user can do to fix it'),
+          }))
+          .optional()
+          .describe('Things that did not complete, with reasons and suggestions. Be honest — if video generation failed, say so.'),
+        next_steps: z
+          .array(z.string())
+          .optional()
+          .describe('Optional suggestions for what the user could do next. Example: ["Add a database for persistence", "Deploy to Vercel"]'),
       }),
-      execute: async ({ summary }) => {
+      execute: async (args) => {
+        const { summary, completed, incomplete, next_steps } = args;
         const fileCount = projectFiles.size;
         const totalSize = Array.from(projectFiles.values()).reduce((sum, c) => sum + c.length, 0);
         const filePaths = Array.from(projectFiles.keys());
@@ -989,9 +1006,23 @@ export function createAgentTools(
 
         logger.info(`[agent] done: ${fileCount} files, ${totalSize} chars total`);
 
+        /*
+         * HONEST COMPLETION — emit a build_summary event with structured
+         * completion data: what completed, what didn't, and next steps.
+         * The frontend uses this to render an honest summary card.
+         */
+        const fullSummary = [
+          summary || '',
+          completed && completed.length > 0 ? `\n\n✅ Completed:\n${completed.map((c: string) => `- ${c}`).join('\n')}` : '',
+          incomplete && incomplete.length > 0
+            ? `\n\n⚠️ Incomplete:\n${incomplete.map((i: { item: string; reason: string; suggestion: string }) => `- ${i.item}: ${i.reason} → ${i.suggestion}`).join('\n')}`
+            : '',
+          next_steps && next_steps.length > 0 ? `\n\n💡 Next steps:\n${next_steps.map((s: string) => `- ${s}`).join('\n')}` : '',
+        ].join('');
+
         await emitEvent(supabase, jobId, 'file_generation_completed' as any,
-          `✅ Build complete! ${fileCount} files, ${totalSize} chars${summary ? ' — ' + summary : ''}`,
-          { fileCount, totalSize, summary },
+          `✅ Build complete! ${fileCount} files, ${totalSize} chars`,
+          { fileCount, totalSize, summary: fullSummary, completed, incomplete, next_steps },
         );
 
         return {
