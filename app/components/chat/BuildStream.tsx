@@ -770,22 +770,42 @@ function fmtDur(ms?: number): string {
 }
 
 const SectionView = memo(({ section }: { section: Section }) => {
+  const accent = AGENT_ACCENT[section.agent] ?? 'text-palmkit-elements-textSecondary';
+  const icon = AGENT_ICON[section.agent] ?? 'i-ph:robot';
+
   /*
-   * RADICAL REBUILD: hide the per-agent section headers (System/Planner/
-   * Builder/Tester). The user complained the stream looked like a hardcoded
-   * pipeline. Now it's ONE continuous flow — thinking, files, commands,
-   * screenshots, videos, vision, summary — all in a single timeline with
-   * NO role labels or section dividers. The agent's identity is invisible;
-   * only its actions are shown.
-   *
-   * The timeline rail is kept (visual continuity) but the icon + agent name
-   * + duration badge are removed. Past turns still show a collapsed summary.
+   * RADICAL REBUILD: the stream shows a clean continuous timeline. The
+   * agent section header is shown as a SUBTLE badge (small icon + name +
+   * duration) only when the section has content — NOT as a big divider.
+   * This gives context (which agent is acting) without making the stream
+   * look like a segmented pipeline. The rows flow continuously below.
    */
+  const hasRows = section.rows.length > 0 || (section.todos && section.todos.length > 0);
+
   return (
-    <div className="relative pl-5">
-      {/* timeline rail — kept for visual continuity */}
-      <div className="absolute left-[7px] top-0 bottom-0 w-px bg-palmkit-elements-borderColor/40" />
-      <div className="space-y-1.5 pb-3">
+    <div className="relative">
+      {hasRows && (
+        <div className="flex items-center gap-1.5 mb-1.5 text-xs">
+          <span className={classNames('shrink-0 text-[13px]', icon, accent)} />
+          <span className={classNames('font-medium', accent)}>{section.agent}</span>
+          {section.running ? (
+            <PalmkitLoader bare size={10} className="text-[var(--pk-accent)]" />
+          ) : (
+            <span className="flex items-center gap-0.5 text-palmkit-elements-textTertiary">
+              <span
+                className={classNames(
+                  'text-[11px]',
+                  section.success === false ? 'i-ph:x-circle-fill text-red-400' : 'i-ph:check-circle-fill text-green-400',
+                )}
+              />
+              {fmtDur(section.durationMs) && <span className="tabular-nums">{fmtDur(section.durationMs)}</span>}
+            </span>
+          )}
+        </div>
+      )}
+      <div className="relative pl-5 space-y-1.5 pb-3">
+        {/* timeline rail */}
+        <div className="absolute left-[7px] top-0 bottom-0 w-px bg-palmkit-elements-borderColor/40" />
         {section.rows.map((row, i) => {
           switch (row.kind) {
             case 'thinking':
