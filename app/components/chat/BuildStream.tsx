@@ -143,6 +143,56 @@ const VisionRow = memo(({ text }: { text: string }) => {
 VisionRow.displayName = 'VisionRow';
 
 /*
+ * SubagentRow — shows a sub-agent's task and result inline.
+ * When running: spinner + task description.
+ * When done: collapsible with the sub-agent's findings.
+ * When error: red warning with the error.
+ */
+const SubagentRow = memo(({ task, result, status }: { task: string; result?: string; status: 'running' | 'done' | 'error' }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  if (status === 'running') {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/5 p-2.5 text-sm text-cyan-300">
+        <span className="i-svg-spinners:90-ring-with-bg shrink-0" />
+        <span className="truncate">Sub-agent: {task}</span>
+      </div>
+    );
+  }
+
+  if (status === 'error') {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/5 p-2.5 text-sm text-red-300">
+        <span className="i-ph:warning-circle shrink-0" />
+        <span className="truncate">Sub-agent failed: {task}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/5 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-cyan-300"
+      >
+        <span className="i-ph:robot shrink-0" />
+        <span className="truncate">Sub-agent: {task}</span>
+        <span className="i-ph:check-circle-fill ml-auto shrink-0 text-green-400" />
+        <span className="i-ph:caret-down shrink-0 transition-transform" style={{ transform: expanded ? 'rotate(180deg)' : 'none' }} />
+      </button>
+      {expanded && result && (
+        <div className="border-t border-cyan-500/20 px-3 py-2 text-xs leading-relaxed text-palmkit-elements-textSecondary whitespace-pre-wrap">
+          {result}
+        </div>
+      )}
+    </div>
+  );
+});
+
+SubagentRow.displayName = 'SubagentRow';
+
+/*
  * VideoRow — shows the video generation lifecycle inline. When ready,
  * embeds the actual MP4 so the user can preview the generated video asset.
  */
@@ -252,6 +302,7 @@ type Row =
   | { kind: 'screenshot'; dataUrl: string; analysis?: string; viewport?: string }
   | { kind: 'vision'; text: string }
   | { kind: 'video'; url?: string; name: string; status: 'generating' | 'ready' | 'error' }
+  | { kind: 'subagent'; task: string; result?: string; status: 'running' | 'done' | 'error' }
   | { kind: 'system'; text: string }
   | { kind: 'error'; text: string }
   | { kind: 'progress'; text: string }
@@ -270,6 +321,7 @@ interface Section {
 }
 
 const AGENT_ICON: Record<string, string> = {
+  Brain: 'i-ph:brain-bold',
   Builder: 'i-ph:hammer-bold',
   Tester: 'i-ph:flask-bold',
   Researcher: 'i-ph:magnifying-glass-bold',
@@ -277,6 +329,7 @@ const AGENT_ICON: Record<string, string> = {
 };
 
 const AGENT_ACCENT: Record<string, string> = {
+  Brain: 'text-[var(--pk-accent)]',
   Builder: 'text-blue-400',
   Tester: 'text-purple-400',
   Researcher: 'text-amber-400',
@@ -479,6 +532,30 @@ function foldEvents(events: WorkerEvent[]): Section[] {
 
         if (p.kind === 'video_error' && p.name) {
           current.rows.push({ kind: 'video', name: p.name as string, status: 'error' });
+          break;
+        }
+
+        /*
+         * SUB-AGENT — the brain delegated a focused task to a sub-agent.
+         * Shows the task being worked on and the result when done.
+         */
+        if (p.kind === 'subagent_start' && p.task) {
+          current.rows.push({ kind: 'subagent', task: p.task as string, status: 'running' });
+          break;
+        }
+
+        if (p.kind === 'subagent_complete' && p.task) {
+          current.rows.push({
+            kind: 'subagent',
+            task: p.task as string,
+            result: p.result as string | undefined,
+            status: 'done',
+          });
+          break;
+        }
+
+        if (p.kind === 'subagent_error' && p.task) {
+          current.rows.push({ kind: 'subagent', task: p.task as string, status: 'error' });
           break;
         }
 
@@ -822,6 +899,8 @@ const SectionView = memo(({ section }: { section: Section }) => {
               return <VisionRow key={i} text={row.text} />;
             case 'video':
               return <VideoRow key={i} name={row.name} url={row.url} status={row.status} />;
+            case 'subagent':
+              return <SubagentRow key={i} task={row.task} result={row.result} status={row.status} />;
             case 'read':
               return (
                 <div key={i} className="flex items-center gap-2 font-mono text-sm text-palmkit-elements-textTertiary">

@@ -189,7 +189,8 @@ export async function runOrchestratedBuild(
   const existingBrief = await readWorkspaceFile(projectId, '.palmkit/design-brief.md');
 
   // Create all tools (shared across agents, filtered per agent)
-  const allTools = createAgentTools(jobId, supabase, projectId, opts?.media);
+  // Pass the model so spawn_subagent can create sub-agents
+  const allTools = createAgentTools(jobId, supabase, projectId, opts?.media, model);
 
   // Keep-alive timer (every 10s instead of 5s to reduce Realtime events)
   const keepAlive = setInterval(async () => {
@@ -1405,7 +1406,7 @@ export async function runOrchestratedBuild(
           }
 
           // Call analyze_screenshot directly
-          const tools = createAgentTools(jobId, supabase, projectId, opts.media);
+          const tools = createAgentTools(jobId, supabase, projectId, opts.media, model);
           const screenshotResult = await (tools.analyze_screenshot as any).execute({
             question: 'Describe what you see. Is the layout correct? Any visual issues like clipped text, broken layout, or missing content?',
             viewport: 'desktop',

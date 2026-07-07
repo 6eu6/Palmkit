@@ -30,6 +30,7 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
+import { streamText, type LanguageModelV1 } from 'ai';
 import { putFile, getFileText, buildWorkspaceKey } from './r2-client';
 import { logger } from './logger';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -172,6 +173,7 @@ export function createAgentTools(
   supabase: SupabaseClient,
   projectId: string,
   media?: MediaConfig,
+  model?: LanguageModelV1,
 ) {
   // Per-job file map — isolated from any other build running concurrently.
   const projectFiles = getJobFiles(jobId);
@@ -1566,6 +1568,234 @@ fi
           answer: default_choice,
           message: `User has not answered yet. Proceeding with: ${default_choice}`,
         };
+      },
+    }),
+
+    // ═══════════════════════════════════════════════════════════════════
+    // spawn_subagent — Launch a sub-agent with a specific task (RADICAL REBUILD)
+    // ═══════════════════════════════════════════════════════════════════
+    // The brain can delegate focused tasks to sub-agents. Each sub-agent
+    // runs independently with its own context, then returns a text result
+    // to the brain. The brain decides WHEN and WHETHER to use sub-agents.
+    //
+    // Use cases:
+    //   - "Analyze this error and suggest a fix" (complex error diagnosis)
+    //   - "Read all files and summarize the architecture" (codebase understanding)
+    //   - "Design the data model for this e-commerce app" (planning)
+    //   - "Test these specific features and report issues" (focused testing)
+    //
+    // Sub-agents have READ-ONLY tools (read_file, list_files, search_code,
+    // run_shell) — they CANNOT write or edit files. They return analysis/
+    // suggestions as text. The brain acts on their findings.
+    spawn_subagent: tool({
+      description:
+        'Launch a sub-agent to handle a focused task. The sub-agent runs independently and returns a text result. ' +
+        'Use this for complex analysis, codebase understanding, error diagnosis, or design planning. ' +
+        'The sub-agent has read-only tools (read_file, list_files, search_code, run_shell) — it analyzes and reports, but cannot write files. ' +
+        'Do NOT use this for simple tasks — only delegate when the task benefits from focused analysis.',
+      parameters: z.object({
+        task: z
+          .string()
+          .describe('A clear, specific task for the sub-agent. Example: "Read all source files and summarize the component structure and data flow."'),
+        context: z
+          .string()
+          .optional()
+          .describe('Additional context for the task — e.g. an error message to analyze, or a specific file to focus on.'),
+      }),
+      execute: async ({ task, context }) => {
+        if (!model) {
+          return {
+            ok: false,
+            error: 'Sub-agent requires a model instance. This should not happen — report it.',
+          };
+        }
+
+        const subAgentId = `subagent-${Date.now()}`;
+        logger.info(`[agent] spawn_subagent: ${task.slice(0, 100)}`);
+
+        // Emit start event so the UI shows the sub-agent in the stream
+        await emitEvent(
+          supabase,
+          jobId,
+          'file_chunk' as any,
+          `🔄 Sub-agent: ${task.slice(0, 120)}`,
+          {
+            agent: 'Brain',
+            kind: 'subagent_start',
+            task,
+            subAgentId,
+          },
+        );
+
+        try {
+          // Build a focused read-only toolset for the sub-agent.
+          // These are standalone implementations that don't depend on the
+          // outer tool object — they read from the same projectFiles map.
+          const subTools = {
+            read_file: tool({
+              description: 'Read a file from the project',
+              parameters: z.object({ path: z.string() }),
+              execute: async (args: any) => {
+                const path = args.path;
+                let content: string | undefined = projectFiles.get(path);
+                if (!content) {
+                  try {
+                    const fetched = await getFileText(buildWorkspaceKey(projectId, path));
+                    if (fetched) {
+                      content = fetched;
+                      projectFiles.set(path, content);
+                    }
+                  } catch { /* not found */ }
+                }
+                return {
+                  path,
+                  content: content || '',
+                  size: content?.length || 0,
+                  lines: content?.split('\n').length || 0,
+                };
+              },
+            }),
+            list_files: tool({
+              description: 'List all files in the project',
+              parameters: z.object({}),
+              execute: async () => {
+                const files = Array.from(projectFiles.entries()).map(([path, content]) => ({
+                  path,
+                  size: content.length,
+                  lines: content.split('\n').length,
+                }));
+                return { totalFiles: files.length, files };
+              },
+            }),
+            search_code: tool({
+              description: 'Search for a pattern across all files',
+              parameters: z.object({ pattern: z.string() }),
+              execute: async (args: any) => {
+                const pattern = args.pattern;
+                const results: any[] = [];
+                let regex: RegExp;
+                try {
+                  regex = new RegExp(pattern, 'gi');
+                } catch {
+                  const lower = pattern.toLowerCase();
+                  for (const [path, content] of projectFiles) {
+                    const lines = content.split('\n');
+                    for (let i = 0; i < lines.length; i++) {
+                      if (lines[i].toLowerCase().includes(lower)) {
+                        results.push({ path, line: i + 1, text: lines[i].trim().slice(0, 200) });
+                        if (results.length >= 50) break;
+                      }
+                    }
+                    if (results.length >= 50) break;
+                  }
+                  return { pattern, totalMatches: results.length, results };
+                }
+                for (const [path, content] of projectFiles) {
+                  const lines = content.split('\n');
+                  for (let i = 0; i < lines.length; i++) {
+                    regex.lastIndex = 0;
+                    if (regex.test(lines[i])) {
+                      results.push({ path, line: i + 1, text: lines[i].trim().slice(0, 200) });
+                      if (results.length >= 50) break;
+                    }
+                  }
+                  if (results.length >= 50) break;
+                }
+                return { pattern, totalMatches: results.length, results };
+              },
+            }),
+            run_shell: tool({
+              description: 'Run a shell command in the sandbox',
+              parameters: z.object({ command: z.string() }),
+              execute: async (args: any) => {
+                const files = Object.fromEntries(projectFiles);
+                const result = await runInE2B(jobId, args.command, files);
+                return {
+                  command: args.command,
+                  exitCode: result.exitCode,
+                  stdout: (result.stdout || '').slice(0, 3000),
+                  stderr: (result.stderr || '').slice(0, 2000),
+                  success: result.exitCode === 0,
+                };
+              },
+            }),
+          };
+
+          const subSystemPrompt = `You are a focused sub-agent. You have been given a specific task by the main agent.
+
+Your task: ${task}
+${context ? `\nAdditional context:\n${context}` : ''}
+
+You have read-only tools: read_file, list_files, search_code, run_shell.
+You CANNOT write or edit files — you analyze and report.
+
+Do your task thoroughly, then return a clear, concise report with your findings.
+Do NOT call done() — just return your findings as your final message.`;
+
+          const result = await streamText({
+            model,
+            system: subSystemPrompt,
+            prompt: task,
+            tools: subTools as any,
+            maxSteps: 10,
+            maxTokens: 8000,
+            temperature: 0.3,
+          });
+
+          const subAgentText = await result.text;
+          const subAgentSteps = await result.steps;
+          const subAgentDuration = Date.now();
+
+          logger.info(`[agent] spawn_subagent completed: ${subAgentText.length} chars, ${subAgentSteps?.length || 0} steps`);
+
+          // Emit completion event with the result
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk' as any,
+            `✅ Sub-agent done: ${task.slice(0, 80)}`,
+            {
+              agent: 'Brain',
+              kind: 'subagent_complete',
+              task,
+              subAgentId,
+              result: subAgentText.slice(0, 2000),
+              steps: subAgentSteps?.length || 0,
+            },
+          );
+
+          return {
+            ok: true,
+            task,
+            result: subAgentText,
+            steps: subAgentSteps?.length || 0,
+            message: `Sub-agent completed: ${task}`,
+          };
+        } catch (err: any) {
+          const msg = err?.message ?? String(err);
+          logger.error(`[agent] spawn_subagent failed: ${msg}`);
+
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk' as any,
+            `⚠️ Sub-agent failed: ${msg.slice(0, 120)}`,
+            {
+              agent: 'Brain',
+              kind: 'subagent_error',
+              task,
+              subAgentId,
+              error: msg,
+            },
+          );
+
+          return {
+            ok: false,
+            task,
+            error: msg,
+            message: `Sub-agent failed: ${msg}`,
+          };
+        }
       },
     }),
   };

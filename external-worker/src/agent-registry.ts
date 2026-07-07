@@ -49,6 +49,8 @@ export const ALL_TOOL_NAMES = [
   'run_shell',
   'run_tests',
   'update_todos',
+  'ask_user',
+  'spawn_subagent',
   'done',
 ] as const;
 
@@ -361,6 +363,7 @@ export const BRAIN_CONFIG: AgentConfig = {
 - analyze_screenshot(question, viewport) — take a screenshot and analyze it visually
 - update_todos(items) — update the task checklist
 - ask_user(question, options, default_choice) — ask the user a clarifying question
+- spawn_subagent(task, context) — launch a focused sub-agent for complex analysis (optional)
 - done(summary) — signal you're finished
 
 ## What Files to Create
@@ -403,6 +406,7 @@ After the build passes:
     'run_tests',
     'update_todos',
     'ask_user',
+    'spawn_subagent',
     'done',
   ],
   maxSteps: 120,
