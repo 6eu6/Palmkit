@@ -1421,7 +1421,10 @@ const { chromium } = require('playwright');
           return {
             ok: false,
             error: msg,
-            fallback: 'Use generate_image for a still hero background, or use a CSS/SVG animation.',
+            fallback:
+              'Video generation failed. Use generate_image to create a still hero background instead, ' +
+              'then apply a CSS animation (e.g. ken-burns zoom, parallax, or gradient shift) to give it motion. ' +
+              'Example: <div className="hero-bg" style={{backgroundImage: `url(${heroImg})`, animation: "kenburns 20s infinite alternate"}} />',
           };
         }
       },
