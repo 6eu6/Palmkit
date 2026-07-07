@@ -1248,25 +1248,30 @@ export const ChatImpl = memo(
          * This links the chat to its R2 workspace for restore-on-reload.
          */
         /*
-         * Pass conversation history to the brain.
+         * Pass FULL conversation history to the brain — no truncation.
          *
-         * Like Super Z: the brain needs full context from prior messages to
-         * understand references like "make it blue instead" or "add a decrease
-         * button like the increase one".
+         * Like Super Z: I see every message in full, no slicing, no truncation.
+         * The brain should too. The model's context window (200K+ tokens) IS
+         * the limit — not an arbitrary number we impose.
          *
-         * We pass the last 50 messages with generous content limits. The brain's
-         * context window (200K+ tokens) can easily handle this. When the context
-         * genuinely gets too full, the SessionAdvisor offers "Continue in a fresh
-         * chat" — that's the real signal, not an arbitrary message count.
+         * When the context genuinely gets too full, the SessionAdvisor offers
+         * "Continue in a fresh chat" with a compact handoff. That's the real
+         * signal — not an artificial message count or character limit.
+         *
+         * We DO filter out hidden messages (annotations: ['hidden']) and empty
+         * content, but we do NOT truncate or slice.
          */
         const conversationHistory = messages
-          .slice(-50)
-          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .filter((m) => {
+            if (m.role !== 'user' && m.role !== 'assistant') return false;
+            if (m.annotations?.includes('hidden')) return false;
+            const content = typeof m.content === 'string' ? m.content : '';
+            return content.length > 0;
+          })
           .map((m) => ({
             role: m.role as 'user' | 'assistant',
-            content: typeof m.content === 'string' ? m.content.slice(0, 12000) : '',
-          }))
-          .filter((m) => m.content.length > 0);
+            content: typeof m.content === 'string' ? m.content : '',
+          }));
 
         await startExtJob(
           finalMessageContent,

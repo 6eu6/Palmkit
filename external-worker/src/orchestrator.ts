@@ -440,7 +440,7 @@ export async function runOrchestratedBuild(
         agentPrompt = `${prompt}${handoffBlock}`;
 
         if (hasWorklog) {
-          agentPrompt += `\n\nPROJECT MEMORY (worklog.md):\n${worklog.slice(0, 4000)}`;
+          agentPrompt += `\n\nPROJECT MEMORY (worklog.md):\n${worklog}`;
         }
 
         if (existingBrief) {
@@ -544,15 +544,15 @@ export async function runOrchestratedBuild(
        * the build — a full agent loop, not a single LLM call.
        */
       if (role === 'builder' && isEditMode) {
-        const editWorklogBlock = worklog ? `\nPROJECT MEMORY (worklog.md):\n${worklog.slice(0, 4000)}\n` : '';
+        const editWorklogBlock = worklog ? `\nPROJECT MEMORY (worklog.md):\n${worklog}\n` : '';
         const editConvBlock =
           opts?.conversationHistory && opts.conversationHistory.length > 0
-            ? `\nCONVERSATION HISTORY (understand references and intent):\n${opts.conversationHistory
-                .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 1000)}`)
-                .join('\n')}\n`
+            ? `\nCONVERSATION HISTORY (full context from prior messages):\n${opts.conversationHistory
+                .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+                .join('\n\n')}\n`
             : '';
 
-        agentPrompt = `${prompt}${editWorklogBlock}${editConvBlock}\n\nThis is an EDIT of an existing project. The project files are already in your workspace — use read_file and list_files to inspect them. Make ONLY the changes the user requested. Use edit_file for targeted changes, write_file only for new files. After making changes, run "cd /home/user/project && npm run build" to verify, then call done().`;
+        agentPrompt = `${prompt}${editWorklogBlock}${editConvBlock}\n\nThis is an EDIT of an existing project. The project files are already in your workspace — use list_files to see what files exist, then read_file to inspect the specific files you need to modify BEFORE making changes. Make ONLY the changes the user requested. If the user asks a question (not a build request), answer it directly — don't rebuild the project unless asked.`;
       }
 
       /*
