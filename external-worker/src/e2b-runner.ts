@@ -82,6 +82,37 @@ async function getOrCreateSandbox(jobId: string): Promise<JobSandbox> {
     jobSandboxes.set(jobId, entry);
     logger.info(`[e2b] Sandbox created for job ${jobId}: ${sandbox.sandboxId} (TTL ${SANDBOX_TTL_MS / 1000}s)`);
 
+    /*
+     * NPM REGISTRY FIX — E2B sandbox IPs are sometimes blocked by the npm
+     * registry with '403: team is blocked: Billing limit reached' (the IPs
+     * are shared and hit npm's abuse/rate limits). This is NOT an E2B key
+     * problem — it's npm registry blocking the sandbox's IP.
+     *
+     * Fix: write a .npmrc to the sandbox that:
+     *   1. Uses the official registry (explicit, in case a global config
+     *      redirected to a blocked mirror)
+     *   2. Disables the audit/fund noise (faster, fewer requests)
+     *   3. Sets a generous timeout + retries
+     *   4. Disables the strict-ssl check (some E2B network setups intercept)
+     *
+     * This .npmrc is written ONCE at sandbox creation and applies to every
+     * npm install / npm run build in this sandbox.
+     */
+    try {
+      const npmrc = `# Palmkit auto-generated .npmrc — fixes E2B IP blocks
+registry=https://registry.npmjs.org/
+audit=false
+fund=false
+timeout=120000
+retries=5
+strict-ssl=false
+`;
+      await sandbox.files.write('/home/user/.npmrc', npmrc);
+      logger.info(`[e2b] job ${jobId}: wrote .npmrc to /home/user/.npmrc`);
+    } catch (e) {
+      logger.warn(`[e2b] job ${jobId}: failed to write .npmrc: ${e}`);
+    }
+
     return entry;
   })();
 
@@ -211,9 +242,39 @@ export async function runInE2B(
     const isInstallCommand = /^(npm|pnpm|yarn|bunx|npx)\s+(install|i|add|ci|playwright install)/.test(command.trim());
     const timeoutMs = isInstallCommand ? 300_000 : 180_000;
 
-    const result = await entry.sandbox.commands.run(command, { cwd: PROJECT_DIR, timeoutMs });
+    let result = await entry.sandbox.commands.run(command, { cwd: PROJECT_DIR, timeoutMs });
 
     logger.info(`[e2b] job ${jobId}: "${command.slice(0, 80)}" → exit ${result.exitCode}`);
+
+    /*
+     * NPM REGISTRY 403 RETRY — if npm install fails with '403' / 'team is
+     * blocked' / 'Billing limit reached' (E2B shared IPs sometimes get
+     * blocked by npm), retry with the Yarn registry mirror as a fallback.
+     * The Yarn registry (registry.yarnpkg.com) is a CDN front for the same
+     * packages and is less aggressive about IP-based blocks.
+     */
+    const stderr = (result.stderr || '') + (result.stdout || '');
+    const isNpmBlock =
+      isInstallCommand &&
+      result.exitCode !== 0 &&
+      (/403/i.test(stderr) || /team is blocked/i.test(stderr) || /Billing limit/i.test(stderr));
+
+    if (isNpmBlock) {
+      logger.warn(`[e2b] job ${jobId}: npm install blocked (403/team blocked) — retrying with yarn registry mirror`);
+
+      // Retry with the Yarn registry mirror + no-strict-ssl
+      const retryCmd = command.replace(
+        /^(npm\s+(install|i|add|ci))/,
+        '$1 --registry=https://registry.yarnpkg.com/ --strict-ssl=false',
+      );
+
+      try {
+        result = await entry.sandbox.commands.run(retryCmd, { cwd: PROJECT_DIR, timeoutMs });
+        logger.info(`[e2b] job ${jobId}: retry with yarn registry → exit ${result.exitCode}`);
+      } catch (retryErr) {
+        logger.warn(`[e2b] job ${jobId}: yarn registry retry failed: ${retryErr}`);
+      }
+    }
 
     return { stdout: result.stdout || '', stderr: result.stderr || '', exitCode: result.exitCode };
   } catch (e) {
