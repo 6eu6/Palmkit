@@ -17,7 +17,7 @@
 
 import type { ToolSet } from 'ai';
 
-export type AgentRole = 'researcher' | 'planner' | 'builder' | 'tester';
+export type AgentRole = 'brain' | 'researcher' | 'planner' | 'builder' | 'tester';
 
 export interface AgentConfig {
   role: AgentRole;
@@ -324,10 +324,98 @@ export const TESTER_CONFIG: AgentConfig = {
 };
 
 /**
+ * Brain — the unified agent. Replaces Researcher + Planner + Builder + Tester.
+ *
+ * One agent with ALL tools. It decides its own flow: reason → acknowledge →
+ * plan → build → verify → fix → complete. No hardcoded pipeline.
+ */
+export const BRAIN_CONFIG: AgentConfig = {
+  role: 'brain',
+  name: 'Brain',
+  description: 'Unified agent — reasons, plans, builds, verifies, and reports honestly',
+  systemPrompt: `You are a senior web developer. You build web apps from user requests.
+
+## How You Work
+
+1. **Reason** — think out loud before any action. Your reasoning is visible to the user.
+2. **Acknowledge** — send a brief message confirming you understood the request.
+3. **Plan** — use update_todos with a logical plan (not just a file list).
+4. **Build** — write files with write_file. Reason between files.
+5. **Verify** — run "npm install && npm run build" to check it compiles.
+6. **Check visually** — start the dev server, take a screenshot with analyze_screenshot.
+7. **Fix** — if anything fails, read the error, fix the file, rebuild.
+8. **Complete** — call done() with an honest summary.
+
+## Your Tools
+
+- write_file(path, content) — create or overwrite a file
+- edit_file(path, oldText, newText) — edit part of a file
+- read_file(path) — read a file
+- list_files() — list all files
+- delete_file(path) — delete a file
+- search_code(pattern) — search across files
+- list_uploads() — list user-uploaded files
+- run_shell(command) — run a shell command (npm install, npm run build, npm run dev)
+- generate_image(name, prompt) — generate an image asset
+- generate_video(name, prompt, duration, aspectRatio) — generate a looping video
+- analyze_screenshot(question, viewport) — take a screenshot and analyze it visually
+- update_todos(items) — update the task checklist
+- ask_user(question, options, default_choice) — ask the user a clarifying question
+- done(summary) — signal you're finished
+
+## What Files to Create
+
+For a React + Vite + Tailwind app:
+- package.json, index.html, vite.config.js, src/main.jsx, src/App.jsx, src/index.css, tailwind.config.js, postcss.config.js
+
+For a static HTML app:
+- index.html (everything inline)
+
+Use your judgment — match the complexity to the request.
+
+## Rules
+
+- Write COMPLETE file content. No placeholders.
+- Create ALL files before calling done().
+- After writing, run "npm install && npm run build" to verify.
+- If the build fails, read the error, fix it, rebuild.
+- Be honest in done() — say what completed and what didn't.
+
+## Visual Verification
+
+After the build passes:
+1. run_shell("npm run dev &") — start dev server
+2. run_shell("sleep 3") — wait for boot
+3. analyze_screenshot("Is the layout correct? Any issues?") — see the result
+4. Fix issues with edit_file if needed`,
+  allowedTools: [
+    'write_file',
+    'edit_file',
+    'read_file',
+    'list_files',
+    'delete_file',
+    'search_code',
+    'list_uploads',
+    'generate_image',
+    'generate_video',
+    'analyze_screenshot',
+    'run_shell',
+    'run_tests',
+    'update_todos',
+    'ask_user',
+    'done',
+  ],
+  maxSteps: 120,
+  maxTokens: 32000,
+};
+
+/**
  * Get agent config by role.
  */
 export function getAgentConfig(role: AgentRole): AgentConfig {
   switch (role) {
+    case 'brain':
+      return BRAIN_CONFIG;
     case 'researcher':
       return RESEARCHER_CONFIG;
     case 'planner':
@@ -342,6 +430,8 @@ export function getAgentConfig(role: AgentRole): AgentConfig {
 }
 
 /**
- * All agent configs in execution order (for default flow).
+ * The agent flow — ONE unified brain that handles everything.
+ * The brain decides its own flow: reason → plan → build → verify → complete.
+ * No hardcoded Researcher→Planner→Builder→Tester pipeline.
  */
-export const DEFAULT_AGENT_FLOW: AgentRole[] = ['researcher', 'planner', 'builder', 'tester'];
+export const DEFAULT_AGENT_FLOW: AgentRole[] = ['brain'];

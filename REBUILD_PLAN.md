@@ -91,7 +91,7 @@ Every phase must be verified with:
 4. No regressions in existing functionality
 
 ## Status
-- [ ] Phase 0: Cleanup
+- [x] Phase 0: Cleanup (350 lines deleted, typecheck pass, worker deployed)
 - [ ] Phase 1: Unified Brain
 - [ ] Phase 2: Dynamic Sub-Agents
 - [ ] Phase 3: Clean Stream

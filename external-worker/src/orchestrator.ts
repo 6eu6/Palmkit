@@ -431,6 +431,55 @@ export async function runOrchestratedBuild(
       // Build the agent's prompt (includes context from previous agents)
       let agentPrompt = prompt;
 
+      /*
+       * BRAIN — the unified agent. Gets ALL context: handoff, worklog,
+       * design scheme, skills, libraries. No role-specific filtering.
+       */
+      if (role === 'brain') {
+        agentPrompt = `${prompt}${handoffBlock}`;
+
+        if (hasWorklog) {
+          agentPrompt += `\n\nPROJECT MEMORY (worklog.md):\n${worklog.slice(0, 4000)}`;
+        }
+
+        if (existingBrief) {
+          agentPrompt += `\n\n=== DESIGN BRIEF (from previous build — keep the design consistent) ===\n${existingBrief}\n=== END BRIEF ===`;
+        }
+
+        if (isEditMode) {
+          const editConvBlock =
+            opts?.conversationHistory && opts.conversationHistory.length > 0
+              ? `\nCONVERSATION HISTORY (understand references and intent):\n${opts.conversationHistory
+                  .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 1000)}`)
+                  .join('\n')}\n`
+              : '';
+          agentPrompt += `${editConvBlock}\n\nThis is an EDIT of an existing project. Use read_file and list_files to inspect the existing files before making changes. Make ONLY the changes the user requested.`;
+        }
+
+        // Skills
+        if (opts?.skills && opts.skills.length > 0) {
+          const skillsBlock = opts.skills.map((s) => `• ${s.name}: ${s.instructions}`).join('\n');
+          agentPrompt += `\n\n=== ACTIVE SKILLS (mandatory house rules — apply all of them) ===\n${skillsBlock}\n=== END SKILLS ===`;
+        }
+
+        // Design scheme
+        if (opts?.designScheme) {
+          const ds = opts.designScheme;
+          const paletteLines = Object.entries(ds.palette)
+            .map(([role, hex]) => `- ${role}: ${hex}`)
+            .join('\n');
+          const fontLine = ds.font.length > 0 ? ds.font.join(', ') : 'not specified';
+          const featuresLine = ds.features.length > 0 ? ds.features.join(', ') : 'none specified';
+          agentPrompt += `\n\n=== USER DESIGN SCHEME (MANDATORY — use these exact values) ===\nPALETTE:\n${paletteLines}\n\nFONTS: ${fontLine}\n\nDESIGN FEATURES: ${featuresLine}\n=== END USER DESIGN SCHEME ===`;
+        }
+
+        // Libraries
+        if (opts?.libraries && opts.libraries.length > 0) {
+          const libBlock = opts.libraries.map((l) => `--- ${l.name} (${l.kind}) ---\n${l.content}`).join('\n\n');
+          agentPrompt += `\n\n=== REFERENCE LIBRARY (reusable material to draw on where relevant) ===\n${libBlock}\n=== END REFERENCE LIBRARY ===`;
+        }
+      }
+
       if (role === 'researcher' && hasWorklog) {
         agentPrompt = `${prompt}${handoffBlock}\n\nPROJECT MEMORY (worklog.md):\n${worklog}`;
       }
