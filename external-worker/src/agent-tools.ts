@@ -727,11 +727,29 @@ export function createAgentTools(
 
           await registerFile(modulePath, mod);
 
+          // Emit the generated image to the stream for user visibility
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk' as any,
+            `🎨 Image "${safe}" ready (${Math.round(img.bytes / 1024)}KB)`,
+            {
+              agent: 'Brain',
+              kind: 'image_ready',
+              name: safe,
+              dataUrl: img.dataUri,
+              mime: img.mime,
+              sizeBytes: img.bytes,
+              isImage: true,
+            },
+          );
+
           return {
             ok: true,
             path: modulePath,
             importAs: safe.replace(/-([a-z])/g, (_m, c) => c.toUpperCase()),
             usage: `import asset from './assets/${safe}'; then use asset as an <img src> or CSS background url.`,
+            message: `Image generated and saved. It's visible in the stream — the user can see it and request changes if needed.`,
           };
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
@@ -1520,16 +1538,18 @@ fi
 
           await registerFile(modulePath, mod);
 
+          // Also emit the data URI so the stream can preview the video inline
           await emitEvent(
             supabase,
             jobId,
             'file_chunk' as any,
             `🎬 Video "${safe}" ready (${(buf.length / 1024 / 1024).toFixed(1)}MB, ${video.duration}s)`,
             {
-              agent: 'Builder',
+              agent: 'Brain',
               kind: 'video_ready',
               name: safe,
               url: video.url,
+              dataUrl: dataUri,
               sizeBytes: buf.length,
               duration: video.duration,
               isVideo: true,
@@ -1543,6 +1563,7 @@ fi
             duration: video.duration,
             aspectRatio: video.aspectRatio,
             usage: `import ${safe.replace(/-/g, '_')} from './assets/${safe}';\n// then: <video src={${safe.replace(/-/g, '_')}} autoPlay muted loop playsinline />`,
+            message: `Video generated and saved. It's visible in the stream — the user can see it and request changes if needed.`,
           };
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);

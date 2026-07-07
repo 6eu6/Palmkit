@@ -193,6 +193,33 @@ const SubagentRow = memo(({ task, result, status }: { task: string; result?: str
 SubagentRow.displayName = 'SubagentRow';
 
 /*
+ * ImageRow — shows a generated image inline in the stream.
+ * The user can see the image and decide if it's good enough, or
+ * request changes in the next message.
+ */
+const ImageRow = memo(({ dataUrl, name, size }: { dataUrl: string; name: string; size?: number }) => {
+  return (
+    <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-emerald-300">
+        <span className="i-ph:image shrink-0" />
+        <span>Generated image: {name}</span>
+        {size && <span className="text-emerald-400/60">({Math.round(size / 1024)}KB)</span>}
+      </div>
+      <div className="bg-black/30 p-2">
+        <img
+          src={dataUrl}
+          alt={`Generated asset: ${name}`}
+          className="max-w-full rounded-md"
+          style={{ maxHeight: '300px', objectFit: 'contain', margin: '0 auto', display: 'block' }}
+        />
+      </div>
+    </div>
+  );
+});
+
+ImageRow.displayName = 'ImageRow';
+
+/*
  * VideoRow — shows the video generation lifecycle inline. When ready,
  * embeds the actual MP4 so the user can preview the generated video asset.
  */
@@ -302,6 +329,7 @@ type Row =
   | { kind: 'screenshot'; dataUrl: string; analysis?: string; viewport?: string }
   | { kind: 'vision'; text: string }
   | { kind: 'video'; url?: string; name: string; status: 'generating' | 'ready' | 'error' }
+  | { kind: 'image'; dataUrl: string; name: string; size?: number }
   | { kind: 'subagent'; task: string; result?: string; status: 'running' | 'done' | 'error' }
   | { kind: 'system'; text: string }
   | { kind: 'error'; text: string }
@@ -532,6 +560,20 @@ function foldEvents(events: WorkerEvent[]): Section[] {
 
         if (p.kind === 'video_error' && p.name) {
           current.rows.push({ kind: 'video', name: p.name as string, status: 'error' });
+          break;
+        }
+
+        /*
+         * IMAGE — generated image shown inline for user visibility.
+         * The user can see the image and request changes in the next message.
+         */
+        if (p.kind === 'image_ready' && p.dataUrl) {
+          current.rows.push({
+            kind: 'image',
+            dataUrl: p.dataUrl as string,
+            name: p.name as string,
+            size: p.sizeBytes as number | undefined,
+          });
           break;
         }
 
@@ -899,6 +941,8 @@ const SectionView = memo(({ section }: { section: Section }) => {
               return <VisionRow key={i} text={row.text} />;
             case 'video':
               return <VideoRow key={i} name={row.name} url={row.url} status={row.status} />;
+            case 'image':
+              return <ImageRow key={i} dataUrl={row.dataUrl} name={row.name} size={row.size} />;
             case 'subagent':
               return <SubagentRow key={i} task={row.task} result={row.result} status={row.status} />;
             case 'read':
