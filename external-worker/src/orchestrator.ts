@@ -892,7 +892,7 @@ export async function runOrchestratedBuild(
                    * if there's no valid entry point. A looping model that had
                    * already written a working app shouldn't lose the whole build.
                    */
-                  const LOOP_ABORT_AT = 6; // was 4 — tolerate legitimate iteration
+                  const LOOP_ABORT_AT = 3; // was 6 — catch loops faster so the Tester can run
 
                   if (writes >= LOOP_ABORT_AT) {
                     logger.warn(
@@ -1404,6 +1404,78 @@ export async function runOrchestratedBuild(
         } else {
           logger.warn(`[orchestrator] Skipping auto-screenshot: no media key (visionApiKey=${opts?.media?.visionApiKey ? 'yes' : 'no'}, apiKey=${opts?.media?.apiKey ? 'yes' : 'no'})`);
         }
+      }
+    }
+
+    /*
+     * AUTOMATIC VISUAL VERIFICATION (FINAL) — take a screenshot and analyze
+     * it with the VLM. This runs AFTER all agents complete (Builder +
+     * Tester), regardless of whether the Tester ran. The Tester model often
+     * doesn't call analyze_screenshot on its own, and the Builder loop
+     * detection may skip the Tester entirely — so we do the screenshot here
+     * at the very end.
+     *
+     * This guarantees the 📸 Screenshot + 👁️ Vision analysis rows appear
+     * in the stream for every build that produced files.
+     */
+    {
+      const finalFiles = getProjectFiles(jobId) as Record<string, string>;
+      const finalFileCount = Object.keys(finalFiles).length;
+      const hasPackageJson = Object.keys(finalFiles).some((p) => /(^|\/)package\.json$/.test(p));
+
+      if (finalFileCount > 0 && hasPackageJson && (opts?.media?.visionApiKey || opts?.media?.apiKey)) {
+        try {
+          logger.info(`[orchestrator] FINAL auto-screenshot — starting (fileCount=${finalFileCount})`);
+
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk' as any,
+            `📸 Auto-capturing screenshot for visual verification…`,
+            { agent: 'Tester', kind: 'auto_screenshot_start' },
+          );
+
+          // Ensure the dev server is running
+          try {
+            const { runInE2B } = await import('./e2b-runner');
+            await runInE2B(jobId, 'npm run dev &', finalFiles);
+            await runInE2B(jobId, 'sleep 5', finalFiles);
+            logger.info(`[orchestrator] Dev server started for final screenshot`);
+          } catch (devErr: any) {
+            logger.warn(`[orchestrator] Dev server start for screenshot (may already be running): ${devErr?.message}`);
+          }
+
+          // Call analyze_screenshot directly
+          const tools = createAgentTools(jobId, supabase, projectId, opts.media);
+          const screenshotResult = await (tools.analyze_screenshot as any).execute({
+            question: 'Describe what you see. Is the layout correct? Any visual issues like clipped text, broken layout, or missing content?',
+            viewport: 'desktop',
+          });
+
+          logger.info(`[orchestrator] Final screenshot result: ok=${screenshotResult?.ok}`);
+
+          if (!screenshotResult?.ok) {
+            await emitEvent(
+              supabase,
+              jobId,
+              'file_chunk' as any,
+              `⚠️ Screenshot capture failed: ${screenshotResult?.error ?? 'unknown error'}`,
+              { agent: 'Tester', kind: 'screenshot_failed', error: screenshotResult?.error },
+            );
+          }
+        } catch (screenshotErr: any) {
+          const msg = screenshotErr?.message ?? String(screenshotErr);
+          logger.error(`[orchestrator] Final auto-screenshot EXCEPTION: ${msg}`);
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk' as any,
+            `⚠️ Screenshot capture error: ${msg.slice(0, 200)}`,
+            { agent: 'Tester', kind: 'screenshot_error', error: msg },
+          );
+        }
+      } else {
+        logger.info(`[orchestrator] Skipping final screenshot: fileCount=${finalFileCount}, hasPackageJson=${hasPackageJson}, hasMedia=${!!opts?.media}`);
       }
     }
 
