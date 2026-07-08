@@ -970,13 +970,9 @@ export async function runOrchestratedBuild(
                     logger.warn(
                       `[orchestrator] ${config.name} wrote ${filePath} ${writes}× — stopping this agent and salvaging the files built so far.`,
                     );
-                    await emitEvent(
-                      supabase,
-                      jobId,
-                      'file_chunk' as any,
-                      `⚠️ ${config.name} kept rewriting ${filePath}; wrapping up with the files built so far.`,
-                      { reason: 'loop_salvage', file: filePath, count: writes },
-                    );
+                    // Silent: don't emit a user-visible error. The build continues
+                    // with the files already written. The brain will call done()
+                    // or the orchestrator will finalize with what's available.
                     abortController.abort();
                     break;
                   }

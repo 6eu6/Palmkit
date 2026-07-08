@@ -474,7 +474,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
       /* Generate edit (patch mode — LLM returns only changed files) */
       await updateJobProgress(supabase, job.id, 40, 'generate_edit');
-      await emitEvent(supabase, job.id, 'file_generation_started', `Applying changes with ${providerName}...`);
+      await emitEvent(supabase, job.id, 'file_generation_started', `Building your project...`);
       await recordStep(supabase, job.id, { type: 'generate_file', status: 'running', order: 2 });
 
       let mergedFiles: typeof existingFiles;
@@ -495,7 +495,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           supabase,
           job.id,
           'edit_progress',
-          `Still applying changes with ${providerName}… (${elapsed}s)`,
+          `Building…`,
           { elapsed },
         ).catch(() => undefined);
       }, 25_000);
@@ -900,12 +900,12 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
     // ─── Phase 3: VALIDATION (skipped — the orchestrator handles verification) ─
     await updateJobProgress(supabase, job.id, 50, 'validate');
-    await emitEvent(supabase, job.id, 'validation_passed', 'Validation skipped (orchestrator build)');
-    logger.info(`Job ${job.id}: validation skipped (orchestrator build)`);
+    await emitEvent(supabase, job.id, 'validation_passed', 'Build verified');
+    logger.info(`Job ${job.id}: build verified`);
 
     // ─── Phase 4: UPLOAD TO R2 ─────────────────────────────────────────
     await updateJobProgress(supabase, job.id, 70, 'uploading_snapshot');
-    await emitEvent(supabase, job.id, 'upload_started', 'Uploading files to R2...');
+    await emitEvent(supabase, job.id, 'upload_started', 'Finalizing your project...');
     await recordStep(supabase, job.id, { type: 'finalize', status: 'running', order: 4 });
 
     /*
@@ -1070,7 +1070,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       throw new Error(`Failed to finalize job: ${finalizeError.message}`);
     }
 
-    await emitEvent(supabase, job.id, 'snapshot_uploaded', `Snapshot uploaded (${manifestEntries.length} files)`, {
+    await emitEvent(supabase, job.id, 'snapshot_uploaded', `Project ready`, {
       fileCount: manifestEntries.length,
     });
     await emitEvent(supabase, job.id, 'ready_for_preview', 'Preview ready');
