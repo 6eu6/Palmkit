@@ -283,8 +283,13 @@ the memory above.`
 
     if (success) {
       const totalSize = Object.values(files).reduce((s: number, c: string) => s + c.length, 0);
+      /*
+       * `🚀 Agent build complete: N files, M chars` banner removed — empty
+       * message. The brain's own done() summary is the canonical completion
+       * voice; this was a second, redundant hardcoded banner.
+       */
       await emitEvent(supabase, jobId, 'file_generation_completed' as any,
-        `🚀 Agent build complete: ${fileCount} files, ${totalSize} chars total`,
+        '',
         { fileCount, finishReason },
       );
 

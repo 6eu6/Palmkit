@@ -71,6 +71,13 @@ export async function action(args: ActionFunctionArgs) {
     agentConfig,
     designScheme,
     conversationHistory,
+    /*
+     * User-uploaded images — data URLs (e.g. "data:image/jpeg;base64,...").
+     * Each is uploaded to R2 under palmkit-files/<userId>/<jobId>/_input/user-images/<n>.<ext>
+     * and the resulting storage paths are stored in validation_result.userImagePaths
+     * so the worker can fetch signed URLs and inject them into the brain's prompt.
+     */
+    userImages,
   } = body;
 
   if (!prompt || typeof prompt !== 'string') {
@@ -112,6 +119,73 @@ export async function action(args: ActionFunctionArgs) {
   }
 
   /*
+   * Build the validation_result object ONCE as a local variable. This lets
+   * us add `userImagePaths` later (after images are uploaded) without a racy
+   * sub-query — we just spread `vr` into the UPDATE with the new field.
+   */
+  const vr: Record<string, unknown> = {
+    prompt,
+    model,
+    provider,
+    fileCount: Object.keys(files ?? {}).length,
+    ...(projectId ? { chatId: projectId } : {}),
+    ...(maxCompletionTokens ? { maxCompletionTokens } : {}),
+    ...(contextWindow ? { contextWindow } : {}),
+    ...(editJobId ? { editJobId } : {}),
+    ...(reasoningEffort && ['off', 'medium', 'max'].includes(reasoningEffort) ? { reasoningEffort } : {}),
+    ...(modelRoles && typeof modelRoles === 'object' ? { modelRoles } : {}),
+    ...(designScheme && typeof designScheme === 'object'
+      ? {
+          designScheme: {
+            palette: designScheme.palette ?? {},
+            font: Array.isArray(designScheme.font) ? designScheme.font : [],
+            features: Array.isArray(designScheme.features) ? designScheme.features : [],
+          },
+        }
+      : {}),
+    ...(Array.isArray(conversationHistory) && conversationHistory.length > 0
+      ? {
+          conversationHistory: conversationHistory
+            .filter(
+              (m: unknown): m is { role: string; content: string } =>
+                !!m && typeof (m as any).role === 'string' && typeof (m as any).content === 'string',
+            )
+            .slice(-10)
+            .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) })),
+        }
+      : {}),
+    ...(Array.isArray(skills) && skills.length > 0
+      ? {
+          skills: skills
+            .filter(
+              (s: unknown): s is { name: string; instructions: string } =>
+                !!s && typeof (s as any).name === 'string' && typeof (s as any).instructions === 'string',
+            )
+            .slice(0, 12)
+            .map((s) => ({ name: s.name.slice(0, 80), instructions: s.instructions.slice(0, 2000) })),
+        }
+      : {}),
+    ...(Array.isArray(libraries) && libraries.length > 0
+      ? {
+          libraries: libraries
+            .filter(
+              (l: unknown): l is { name: string; kind: string; content: string } =>
+                !!l && typeof (l as any).name === 'string' && typeof (l as any).content === 'string',
+            )
+            .slice(0, 12)
+            .map((l) => ({
+              name: l.name.slice(0, 80),
+              kind: typeof l.kind === 'string' ? l.kind.slice(0, 24) : 'ref',
+              content: l.content.slice(0, 4000),
+            })),
+        }
+      : {}),
+    ...(agentConfig && typeof agentConfig === 'object'
+      ? { agentConfig: { researcher: agentConfig.researcher !== false, tester: agentConfig.tester !== false } }
+      : {}),
+  };
+
+  /*
    * Insert a new build_jobs row with status='pending'.
    * Let the DB generate the UUID primary key (gen_random_uuid()).
    */
@@ -131,113 +205,7 @@ export async function action(args: ActionFunctionArgs) {
       progress: 0,
       retry_count: 0,
       has_completion_marker: false,
-      validation_result: {
-        prompt,
-        model,
-        provider,
-        fileCount: Object.keys(files ?? {}).length,
-
-        /*
-         * Store the chat ID (projectId) in validation_result so we can
-         * query build_jobs by chat ID later. This links the build job to
-         * the IndexedDB chat, enabling workspace file restore on reload.
-         * We use validation_result (jsonb) instead of adding a new column
-         * because we can't run DDL via the REST API.
-         */
-        ...(projectId ? { chatId: projectId } : {}),
-        ...(maxCompletionTokens ? { maxCompletionTokens } : {}),
-        ...(contextWindow ? { contextWindow } : {}),
-        ...(editJobId ? { editJobId } : {}),
-
-        /*
-         * Model Router + thinking control (Design v2).
-         * reasoningEffort: 'off' | 'medium' | 'max' — how hard reasoning
-         * models think. modelRoles: per-task model overrides
-         * ({ brain, builder, tester, vision, media }); empty = main model.
-         */
-        ...(reasoningEffort && ['off', 'medium', 'max'].includes(reasoningEffort) ? { reasoningEffort } : {}),
-        ...(modelRoles && typeof modelRoles === 'object' ? { modelRoles } : {}),
-
-        /*
-         * Design scheme (palette + fonts + features) — feeds the builder's
-         * system prompt so the AI uses the user's chosen colors/fonts instead
-         * of inventing its own. Passed through validation_result (jsonb) to
-         * the Oracle worker, which injects it into the Planner/Builder.
-         */
-        ...(designScheme && typeof designScheme === 'object'
-          ? {
-              designScheme: {
-                palette: designScheme.palette ?? {},
-                font: Array.isArray(designScheme.font) ? designScheme.font : [],
-                features: Array.isArray(designScheme.features) ? designScheme.features : [],
-              },
-            }
-          : {}),
-
-        /*
-         * Conversation history — the last few user+assistant messages from the
-         * chat. Passed to the edit path so the LLM understands references like
-         * "no, make it blue instead of red" (where "red" was mentioned in a
-         * prior message the edit wouldn't otherwise see). Capped at 10 messages
-         * and 500 chars each to keep the row small.
-         */
-        ...(Array.isArray(conversationHistory) && conversationHistory.length > 0
-          ? {
-              conversationHistory: conversationHistory
-                .filter(
-                  (m: unknown): m is { role: string; content: string } =>
-                    !!m && typeof (m as any).role === 'string' && typeof (m as any).content === 'string',
-                )
-                .slice(-10)
-                .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) })),
-            }
-          : {}),
-
-        /*
-         * Skills: enabled instruction playbooks ({ name, instructions }) that
-         * the orchestrator injects into the Planner/Builder prompt. Cap to keep
-         * the row small and prevent prompt bloat from a runaway client.
-         */
-        ...(Array.isArray(skills) && skills.length > 0
-          ? {
-              skills: skills
-                .filter(
-                  (s: unknown): s is { name: string; instructions: string } =>
-                    !!s && typeof (s as any).name === 'string' && typeof (s as any).instructions === 'string',
-                )
-                .slice(0, 12)
-                .map((s) => ({ name: s.name.slice(0, 80), instructions: s.instructions.slice(0, 2000) })),
-            }
-          : {}),
-
-        /*
-         * Libraries: reference material ({ name, kind, content }) injected into
-         * the Builder. Capped like skills to keep the row small.
-         */
-        ...(Array.isArray(libraries) && libraries.length > 0
-          ? {
-              libraries: libraries
-                .filter(
-                  (l: unknown): l is { name: string; kind: string; content: string } =>
-                    !!l && typeof (l as any).name === 'string' && typeof (l as any).content === 'string',
-                )
-                .slice(0, 12)
-                .map((l) => ({
-                  name: l.name.slice(0, 80),
-                  kind: typeof l.kind === 'string' ? l.kind.slice(0, 24) : 'ref',
-                  content: l.content.slice(0, 4000),
-                })),
-            }
-          : {}),
-
-        /*
-         * Agents: optional pipeline phases the user turned off (Researcher /
-         * Tester). Only present when non-default; the orchestrator honours it.
-         */
-        ...(agentConfig && typeof agentConfig === 'object'
-          ? { agentConfig: { researcher: agentConfig.researcher !== false, tester: agentConfig.tester !== false } }
-          : {}),
-      },
+      validation_result: vr,
     })
     .select('id')
     .single();
@@ -269,6 +237,88 @@ export async function action(args: ActionFunctionArgs) {
         logger.warn(`Failed to upload input file ${path}:`, uploadError.message);
 
         // Non-fatal — worker will proceed without the input file.
+      }
+    }
+  }
+
+  /*
+   * Upload user-attached images (data URLs) to R2 and collect their storage
+   * paths. The worker reads these paths from validation_result.userImagePaths,
+   * fetches signed URLs, and injects them into the brain's prompt so the brain
+   * can reference them in the build (e.g., "use the uploaded dish photo as the
+   * hero image of the restaurant site").
+   *
+   * Without this, the user's image uploads were silently dropped — the brain
+   * never saw them and couldn't use them, even though the user explicitly
+   * attached them to the prompt.
+   */
+  const userImagePaths: string[] = [];
+
+  if (Array.isArray(userImages) && userImages.length > 0) {
+    const imagePrefix = `${authed.user.id}/${jobId}/_input/user-images`;
+
+    for (let i = 0; i < userImages.length; i++) {
+      const dataUrl = userImages[i];
+
+      if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) {
+        continue;
+      }
+
+      // Parse the data URL: data:<mime>;base64,<payload>
+      const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+
+      if (!match) {
+        logger.warn(`Failed to parse user image ${i} as data URL — skipping`);
+        continue;
+      }
+
+      const mimeType = match[1];
+      const base64Data = match[2];
+      const ext = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : mimeType === 'image/gif' ? 'gif' : 'jpg';
+      const storagePath = `${imagePrefix}/image-${i}.${ext}`;
+
+      try {
+        // Decode base64 to binary for upload
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+
+        for (let j = 0; j < binaryString.length; j++) {
+          bytes[j] = binaryString.charCodeAt(j);
+        }
+
+        const { error: uploadError } = await authed.supabase.storage
+          .from('palmkit-files')
+          .upload(storagePath, bytes, {
+            contentType: mimeType,
+            upsert: true,
+          });
+
+        if (uploadError) {
+          logger.warn(`Failed to upload user image ${i}:`, uploadError.message);
+        } else {
+          userImagePaths.push(storagePath);
+        }
+      } catch (e) {
+        logger.warn(`Failed to decode/upload user image ${i}:`, (e as Error).message);
+      }
+    }
+
+    /*
+     * If any images uploaded successfully, merge userImagePaths into the
+     * job's validation_result. We use the in-memory `vr` object (built
+     * before the INSERT) instead of a racy sub-query — just spread it
+     * with the new field.
+     */
+    if (userImagePaths.length > 0) {
+      const { error: updateError } = await authed.supabase
+        .from('build_jobs')
+        .update({
+          validation_result: { ...vr, userImagePaths },
+        })
+        .eq('id', jobId);
+
+      if (updateError) {
+        logger.warn('Failed to store userImagePaths on job:', updateError.message);
       }
     }
   }

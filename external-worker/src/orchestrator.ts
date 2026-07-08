@@ -111,6 +111,20 @@ export async function runOrchestratedBuild(
 
     /** Conversation history (last few messages) — for edit context references. */
     conversationHistory?: Array<{ role: string; content: string }>;
+
+    /*
+     * User-uploaded images — the user attached these to their prompt (food
+     * photos, logos, screenshots, etc.). Each entry has the original R2 path,
+     * a base64 data URL, and the MIME type. The brain receives them inline
+     * in its prompt so it can:
+     *   1. "See" them (if the model supports multimodal/vision input)
+     *   2. Reference them by path in the project (e.g., /uploads/user-image-0.jpg)
+     *   3. Save them to the workspace as actual files the built site can serve
+     *
+     * Without this, the user's image uploads were silently dropped — the brain
+     * never knew they existed.
+     */
+    userImages?: Array<{ path: string; dataUrl: string; mime: string }>;
   },
 ): Promise<OrchestratorResult> {
   const startTime = Date.now();
@@ -132,6 +146,62 @@ export async function runOrchestratedBuild(
     }
 
     logger.info(`[orchestrator] Edit mode: preloaded ${opts!.preloadFiles!.length} files into workspace`);
+  }
+
+  /*
+   * USER-UPLOADED IMAGES — write them into the workspace as ES modules at
+   * src/assets/user-image-N.ts, following the SAME pattern as generate_image.
+   * Each module exports the data URL as the default export:
+   *
+   *   // User-uploaded image (image/jpeg, ~123KB). Do not edit.
+   *   const src = "data:image/jpeg;base64,...";
+   *   export default src;
+   *
+   * This way:
+   *   1. The brain can `import userImage0 from './assets/user-image-0'` and
+   *      use it as `<img src={userImage0}>` — the bundler inlines the data URL.
+   *   2. The built site renders the image correctly (data URLs work everywhere).
+   *   3. The brain's list_files() shows them, so it knows they're available.
+   *   4. No need for binary file serving — the data URL is embedded in JS.
+   *
+   * For static HTML projects (no bundler), the brain can also just inline the
+   * data URL directly into <img src="data:..."> — the prompt instruction
+   * explains both patterns.
+   */
+  if (opts?.userImages && opts.userImages.length > 0) {
+    const projectFiles = getJobFiles(jobId);
+
+    for (let i = 0; i < opts.userImages.length; i++) {
+      const img = opts.userImages[i];
+      const modulePath = `src/assets/user-image-${i}.ts`;
+      const approxKb = Math.round((img.dataUrl.length * 0.75) / 1024);
+      const mod =
+        `// User-uploaded image (${img.mime}, ~${approxKb}KB). Do not edit — replace by re-uploading.\n` +
+        `const src = ${JSON.stringify(img.dataUrl)};\nexport default src;\n`;
+      projectFiles.set(modulePath, mod);
+
+      /*
+       * Emit a user_image event so the front-end shows the uploaded image
+       * inline in the stream. This gives the user visual confirmation that
+       * their upload was received and is available to the brain. Reuses the
+       * same `image_ready` kind the BuildStream already knows how to render.
+       */
+      try {
+        await emitEvent(supabase, jobId, 'file_chunk' as any, `📷 User image ${i + 1} ready (${approxKb}KB)`, {
+          agent: 'Brain',
+          kind: 'image_ready',
+          name: `user-image-${i}`,
+          dataUrl: img.dataUrl,
+          mime: img.mime,
+          sizeBytes: Math.round(img.dataUrl.length * 0.75),
+          isUserUpload: true,
+        });
+      } catch {
+        // best-effort — don't fail the build if the event can't be emitted
+      }
+    }
+
+    logger.info(`[orchestrator] Wrote ${opts.userImages.length} user-uploaded images to workspace at src/assets/user-image-*.ts`);
   }
 
   /*
@@ -483,6 +553,28 @@ export async function runOrchestratedBuild(
         if (opts?.skills && opts.skills.length > 0) {
           const skillsBlock = opts.skills.map((s) => `• ${s.name}: ${s.instructions}`).join('\n');
           agentPrompt += `\n\n=== ACTIVE SKILLS (mandatory house rules — apply all of them) ===\n${skillsBlock}\n=== END SKILLS ===`;
+        }
+
+        /*
+         * USER-UPLOADED IMAGES — the user attached images to their prompt.
+         * The brain receives:
+         *   1. A list of image module paths (e.g., src/assets/user-image-0.ts)
+         *   2. Instruction to import and use these images in the project
+         *
+         * The brain should:
+         *   - For bundler projects (React/Vue/Vite): `import userImage0 from './assets/user-image-0'` then `<img src={userImage0}>`
+         *   - For static HTML: inline the data URL directly into `<img src="data:...">` (read the file to get the URL)
+         *   - Use them as hero backgrounds, product photos, gallery images, avatars, etc.
+         *   - NOT regenerate or replace them with AI-generated images
+         *
+         * The actual image modules are already in the workspace (the brain can
+         * read_file to inspect them, or just import them directly).
+         */
+        if (opts?.userImages && opts.userImages.length > 0) {
+          const imageList = opts.userImages
+            .map((img, i) => `  - src/assets/user-image-${i}.ts (${img.mime}, ~${Math.round((img.dataUrl.length * 0.75) / 1024)}KB)`)
+            .join('\n');
+          agentPrompt += `\n\n=== USER-UPLOADED IMAGES (the user attached these — USE THEM in the project) ===\nThe user uploaded ${opts.userImages.length} image(s) with their prompt. They are saved as ES modules in the workspace at:\n${imageList}\n\nUSAGE:\n- For React/Vue/Vite projects: \`import userImage0 from './assets/user-image-0'\` then \`<img src={userImage0} />\`\n- For static HTML projects: read_file('src/assets/user-image-0.ts') to get the data URL, then inline it: \`<img src="data:image/jpeg;base64,...">\`\n\nUse these images where they fit — as hero backgrounds, product photos, gallery images, avatars, etc. Do NOT regenerate or replace them with AI-generated images unless the user explicitly asks. If the user's prompt references "the photo I uploaded" or "my image", this is what they mean.\n=== END USER-UPLOADED IMAGES ===`;
         }
 
         // Design scheme

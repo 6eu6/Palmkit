@@ -54,12 +54,22 @@ const LiveBuildPlaceholder = memo(() => {
 LiveBuildPlaceholder.displayName = 'LiveBuildPlaceholder';
 
 /**
- * True when an assistant message body is JUST the worker build banner
- * (⚡/🔨/✅/❌ …) — i.e. this turn IS a build, whose real representation is the
- * BuildStream timeline, not the hardcoded text line.
+ * True when an assistant message body is JUST the build-turn placeholder
+ * marker (⚡). This is the INITIAL state of a build turn — before the
+ * build's jobId annotation is stamped and before any worker events arrive.
+ * Once events arrive, the global BuildStream takes over and LiveBuildPlaceholder
+ * hides itself. We match ONLY the ⚡ marker (not ✅/❌) because once the
+ * build is done or failed, the message content becomes the brain's summary
+ * or the error text, which should be rendered as a regular AssistantMessage
+ * (or as a past turn's collapsed BuildStream if it has a buildJobId).
  */
 function isBuildBannerContent(content: unknown): boolean {
-  return typeof content === 'string' && /^\s*[⚡🔨✅❌]/.test(content);
+  if (typeof content !== 'string') {
+    return false;
+  }
+
+  const trimmed = content.trim();
+  return trimmed === '⚡' || trimmed.startsWith('⚡');
 }
 
 export const Messages = forwardRef<HTMLDivElement, MessagesProps>(

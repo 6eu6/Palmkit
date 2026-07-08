@@ -220,6 +220,56 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       ? (job.validation_result.libraries as { name: string; kind: string; content: string }[])
       : undefined;
 
+    /*
+     * User-uploaded images — paths in R2 (palmkit-files bucket). The front-end
+     * uploaded them at /api/jobs time and stored the paths in validation_result.
+     * We fetch each as a data URL and inject them into the brain's prompt so
+     * the brain can reference them in the build (e.g., use a dish photo as the
+     * hero image of a restaurant site). Without this, the user's uploads were
+     * silently dropped.
+     */
+    const userImagePaths = Array.isArray(job.validation_result?.userImagePaths)
+      ? (job.validation_result.userImagePaths as string[])
+      : [];
+
+    /*
+     * Fetch each user image as a data URL. The brain's prompt will reference
+     * them by index (image-0, image-1, ...) with the data URL inline, so the
+     * brain can "see" the images via its vision capability (if the model
+     * supports multimodal input) or at minimum know they exist and decide to
+     * write them into the project as <img src="..."> references.
+     *
+     * For non-vision models, we also save the images to the project workspace
+     * as /uploads/user-image-N.<ext> so the brain can reference them by path
+     * and the built site can display them.
+     */
+    const userImageDataUrls: Array<{ path: string; dataUrl: string; mime: string }> = [];
+
+    if (userImagePaths.length > 0) {
+      for (const imagePath of userImagePaths) {
+        try {
+          const { data, error } = await supabase.storage
+            .from('palmkit-files')
+            .download(imagePath);
+
+          if (error || !data) {
+            logger.warn(`Failed to download user image ${imagePath}: ${error?.message ?? 'no data'}`);
+            continue;
+          }
+
+          const bytes = await data.arrayBuffer();
+          const base64 = Buffer.from(bytes).toString('base64');
+          const ext = imagePath.endsWith('.png') ? 'png' : imagePath.endsWith('.webp') ? 'webp' : imagePath.endsWith('.gif') ? 'gif' : 'jpg';
+          const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+          const dataUrl = `data:${mime};base64,${base64}`;
+
+          userImageDataUrls.push({ path: imagePath, dataUrl, mime });
+        } catch (e) {
+          logger.warn(`Failed to process user image ${imagePath}: ${(e as Error).message}`);
+        }
+      }
+    }
+
     const agentConfig =
       job.validation_result?.agentConfig && typeof job.validation_result.agentConfig === 'object'
         ? (job.validation_result.agentConfig as { researcher: boolean; tester: boolean })
@@ -326,7 +376,12 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
     if (editJobId) {
       await updateJobProgress(supabase, job.id, 10, 'load_existing_files');
-      await emitEvent(supabase, job.id, 'edit_started', 'Loading existing project files...');
+      /*
+       * No user-visible "Loading existing project files..." event — the brain's
+       * own first reasoning row is the first thing the user sees. Worker-only
+       * plumbing events (recordStep, updateJobProgress) still happen, but they
+       * are metadata, not chat-stream rows.
+       */
       await recordStep(supabase, job.id, {
         type: 'plan',
         status: 'running',
@@ -413,12 +468,12 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         }
 
         if (attempt < MANIFEST_POLL_MAX - 1) {
-          await emitEvent(
-            supabase,
-            job.id,
-            'edit_progress',
-            `Waiting for the previous build to finish… (${Math.round((attempt + 1) * 5)}s)`,
-          );
+          /*
+           * Previously emitted a user-visible "Waiting for the previous build
+           * to finish… (Ns)" event here. Removed — it was a hardcoded banner.
+           * The wait is silent; the brain's first reasoning row will appear
+           * once the edit actually starts.
+           */
           await new Promise((r) => setTimeout(r, MANIFEST_POLL_MS));
         }
       }
@@ -467,41 +522,26 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         order: 1,
         outputSummary: `loaded ${existingFiles.length} files (${editAppType})`,
       });
-      await emitEvent(
-        supabase,
-        job.id,
-        'planning_completed',
-        `Editing your project...`,
-        { fileCount: existingFiles.length, appType: editAppType },
-      );
+      /*
+       * Removed user-visible `Editing your project...` and `Building your project...`
+       * emitEvent calls — they were hardcoded banners shown BEFORE the brain
+       * produced any output, exactly the patch the user rejected. The brain's
+       * own first reasoning row now opens the stream.
+       */
 
       /* Generate edit (patch mode — LLM returns only changed files) */
       await updateJobProgress(supabase, job.id, 40, 'generate_edit');
-      await emitEvent(supabase, job.id, 'file_generation_started', `Building your project...`);
       await recordStep(supabase, job.id, { type: 'generate_file', status: 'running', order: 2 });
 
       let mergedFiles: typeof existingFiles;
 
       /*
-       * Edit heartbeat.
-       *
-       * Unlike the create path (which streams file_chunk events in real time),
-       * generateEdit is ONE synchronous generateText call — so the UI sees no
-       * progress for up to the full edit window and the chat looks frozen.
-       * Emit a heartbeat every 25s so the front-end can show "still working…"
-       * and the user knows the edit is in flight, not dead.
+       * Edit heartbeat was emitting `Building…` every 25s as a fake progress
+       * banner. Removed — the brain's own reasoning streams live through the
+       * orchestrator's `reasoning` events. If the brain goes quiet for a while
+       * (long tool call), the front-end's existing live-action tail handles
+       * the perception of progress.
        */
-      const editStart = Date.now();
-      const heartbeat = setInterval(async () => {
-        const elapsed = Math.round((Date.now() - editStart) / 1000);
-        await emitEvent(
-          supabase,
-          job.id,
-          'edit_progress',
-          `Building…`,
-          { elapsed },
-        ).catch(() => undefined);
-      }, 25_000);
 
       try {
         /*
@@ -528,28 +568,13 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
         const editReasoningEffort = job.validation_result?.reasoningEffort as 'off' | 'medium' | 'max' | undefined;
 
-        /*
-         * Stream callback — forward edit text deltas as 'edit_progress' events
-         * so the UI shows the edit happening live (same as build streaming).
-         * Throttle to avoid flooding Supabase: emit every ~500ms or on
-         * meaningful chunks (line breaks).
-         */
-        let lastEmit = 0;
-        let deltaBuffer = '';
-        const streamCallback = async (delta: string) => {
-          deltaBuffer += delta;
-          const now = Date.now();
-
-          if (now - lastEmit > 500 || deltaBuffer.includes('\n')) {
-            const snippet = deltaBuffer.slice(-200);
-
-            await emitEvent(supabase, job.id, 'edit_progress', `Editing… ${snippet}`, {
-              delta: snippet,
-            }).catch(() => undefined);
-            lastEmit = now;
-            deltaBuffer = '';
-          }
-        };
+      /*
+       * Removed the per-delta `Editing… ${snippet}` emit — it produced a
+       * janky, fragmented stream of code snippets in the chat. The brain's
+       * reasoning events (streamed by the orchestrator) are the canonical
+       * voice; tool calls (write_file) produce file_written events; this
+       * middle layer was just noise.
+       */
 
         const conversationHistory = job.validation_result?.conversationHistory as
           | Array<{ role: string; content: string }>
@@ -592,6 +617,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
             designScheme,
             preloadFiles,
             conversationHistory,
+            userImages: userImageDataUrls,
           },
         );
 
@@ -614,11 +640,13 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         await emitEvent(supabase, job.id, 'job_failed', `Edit failed: ${editErr.message}`, { error: editErr.message });
         await failJob(supabase, job.id, `Edit generation failed: ${editErr.message}`);
         return;
-      } finally {
-        clearInterval(heartbeat);
       }
 
-      await emitEvent(supabase, job.id, 'edit_completed', `Changes applied — ${mergedFiles.length} files in project`);
+      /*
+       * `edit_completed` event removed — it was a redundant banner after the
+       * brain already called `done()` with its own structured summary. The
+       * brain's done() event is the authoritative completion signal.
+       */
       await recordStep(supabase, job.id, {
         type: 'generate_file',
         status: 'completed',
@@ -649,7 +677,10 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
       // ─── Phase 2: AGENTIC BUILD (streamText + tools) ───────────────────
       await updateJobProgress(supabase, job.id, 30, 'generate_files');
-      await emitEvent(supabase, job.id, 'file_generation_started', `Building your project...`);
+      /*
+       * Removed the hardcoded `Building your project...` banner. The brain
+       * opens the stream itself with its first reasoning row.
+       */
       await recordStep(supabase, job.id, { type: 'generate_file', status: 'running', order: 2 });
 
       /*
@@ -775,7 +806,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           spec.maxCompletionTokens,
           spec.appType,
           contextWindow,
-          { agentModels, reasoningEffort, media, skills, libraries, agentConfig, designScheme, conversationHistory: newBuildConversationHistory },
+          { agentModels, reasoningEffort, media, skills, libraries, agentConfig, designScheme, conversationHistory: newBuildConversationHistory, userImages: userImageDataUrls },
         );
 
         // Capture the server-measured context pressure for the fork nudge.
@@ -899,12 +930,22 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
     // ─── Phase 3: VALIDATION (skipped — the orchestrator handles verification) ─
     await updateJobProgress(supabase, job.id, 50, 'validate');
-    await emitEvent(supabase, job.id, 'validation_passed', 'Build verified');
+    /*
+     * The `validation_passed` event is kept for telemetry but its message is
+     * empty — no longer a user-visible `Build verified` banner. The brain's
+     * own done() summary is the authoritative completion voice.
+     */
+    await emitEvent(supabase, job.id, 'validation_passed', '');
     logger.info(`Job ${job.id}: build verified`);
 
     // ─── Phase 4: UPLOAD TO R2 ─────────────────────────────────────────
     await updateJobProgress(supabase, job.id, 70, 'uploading_snapshot');
-    await emitEvent(supabase, job.id, 'upload_started', 'Finalizing your project...');
+    /*
+     * `Finalizing your project...` banner removed — empty event message.
+     * The R2 upload is silent plumbing; the brain's summary already
+     * announced the build is done.
+     */
+    await emitEvent(supabase, job.id, 'upload_started', '');
     await recordStep(supabase, job.id, { type: 'finalize', status: 'running', order: 4 });
 
     /*
@@ -1069,10 +1110,15 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       throw new Error(`Failed to finalize job: ${finalizeError.message}`);
     }
 
-    await emitEvent(supabase, job.id, 'snapshot_uploaded', `Project ready`, {
+    /*
+     * `Project ready` / `Preview ready` banners removed — empty messages.
+     * The event itself still fires (the front-end state machine needs it to
+     * transition to ready_for_preview), but no user-visible row is rendered.
+     */
+    await emitEvent(supabase, job.id, 'snapshot_uploaded', '', {
       fileCount: manifestEntries.length,
     });
-    await emitEvent(supabase, job.id, 'ready_for_preview', 'Preview ready');
+    await emitEvent(supabase, job.id, 'ready_for_preview', '');
 
     logger.info(`Job ${job.id} → ready_for_preview ✅`);
   } catch (err: any) {

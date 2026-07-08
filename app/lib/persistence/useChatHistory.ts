@@ -8,6 +8,25 @@ import { workbenchStore } from '~/lib/stores/workbench';
 import { logStore } from '~/lib/stores/logs';
 import { authUserStore } from '~/lib/stores/auth';
 import { setRestoreStep, isRestoring } from '~/lib/stores/generationStatus';
+/*
+ * Build-status stores — must be reset whenever the route changes so that a
+ * prior chat's worker events, preview files, and progress don't bleed into
+ * the newly-opened chat. This is the single root cause of "projects mixing":
+ * switching chats via the sidebar (without a full page reload) left the
+ * previous chat's `workerEventsStore` and `previewFilesStore` populated, so
+ * the new chat's BuildStream showed the old chat's images, files, and
+ * reasoning. Now we clear them in the same render-time teardown that already
+ * clears `initialMessages` (the official React "adjust state on prop change"
+ * pattern), guaranteeing the stale frame is never committed.
+ */
+import {
+  resetAllProgressStores,
+  resetBuildStatus,
+  resetPreviewFiles,
+  resetWorkerProgress,
+  clearWorkerEvents,
+  setContextPressure,
+} from '~/lib/stores/build-status';
 import {
   getMessages,
   getNextId,
@@ -299,6 +318,27 @@ export function useChatHistory() {
     setInitialMessages([]);
     setArchivedMessages([]);
     setUrlId(undefined);
+
+    /*
+     * CRITICAL: clear ALL global worker/build state on chat switch so the
+     * new chat doesn't inherit the previous chat's stream. Without this,
+     * opening chat B from the sidebar showed chat A's reasoning, files,
+     * and inline images — the "projects mixing" bug. This runs during
+     * render (not in an effect) so the stale frame is never painted.
+     *
+     * Also clear chatMetadata + chatId + description so the new chat
+     * doesn't resolve `priorJobId` from the prior chat's metadata and
+     * treat its first message as an EDIT of the old chat's project.
+     */
+    resetAllProgressStores();
+    resetBuildStatus();
+    resetPreviewFiles();
+    resetWorkerProgress();
+    clearWorkerEvents();
+    setContextPressure(null);
+    chatId.set(undefined);
+    chatMetadata.set(undefined);
+    description.set(undefined);
   }
 
   const loadEpochRef = useRef(0);

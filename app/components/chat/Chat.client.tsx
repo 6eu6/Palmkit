@@ -127,19 +127,19 @@ const processSampledMessages = createSampler(
 /**
  * Build the assistant message content from Oracle-worker events.
  *
- * IMPORTANT: This is the MODEL'S OWN SUMMARY — not a flat event log.
- * The detailed event information (reasoning, todos, file writes, shell
- * commands) is rendered inline in the conversation by the unified
- * BuildStream component (a single CLI-style timeline), not by this text.
+ * RADICAL STREAM REBUILD: This function returns ONLY the brain's own final
+ * summary text (when the build is done) or an error message (when it failed).
+ * During the build it returns an EMPTY string — no "🔨 Building your project…"
+ * banner, no file-count stub, no reasoning-step count. The BuildStream panel
+ * is the single voice during the build; this text only fills in once the
+ * brain has called `done()` and produced its structured summary.
  *
- * RADICAL STREAM IMPROVEMENT: When the build is done (ready_for_preview),
- * we surface the Builder agent's full final narration as the assistant's
- * response message — exactly like Claude Code / Cursor / Super Z summarize
- * their work at the end of a build. The orchestrator emits a
- * `build_summary` event (file_chunk with isBuildSummary=true in payload)
- * carrying the Builder's narration text, and we use it here.
- *
- * Fallback to a short status line if no summary event is present.
+ * The empty-string-during-build approach works because `isBuildBannerContent`
+ * in Messages.client.tsx detects build turns by a leading ⚡/🔨/✅/❌ marker
+ * on the placeholder, then renders `<LiveBuildPlaceholder />` (a minimal
+ * "Working…" line) until the global BuildStream has events to show. So the
+ * user sees: Working… → [BuildStream timeline] → [brain's summary]. Never a
+ * hardcoded "Building your project…" banner.
  */
 function buildWorkerStreamContent(state: import('~/lib/hooks/use-external-worker').ExternalWorkerState): string {
   if (state.status === 'failed_clean') {
@@ -147,16 +147,12 @@ function buildWorkerStreamContent(state: import('~/lib/hooks/use-external-worker
   }
 
   const isDone = state.status === 'ready_for_preview';
-  const fileCount = state.files.length;
 
   if (isDone) {
     /*
      * Use the Builder's model-generated summary as the assistant's final
      * response. This gives the user a real explanation of what was built,
      * the files created, key features, and tech stack — not a generic stub.
-     *
-     * The summary event is emitted by the orchestrator after the Builder
-     * agent completes (see external-worker/src/orchestrator.ts).
      */
     const summaryEvent = [...state.events]
       .reverse()
@@ -170,34 +166,21 @@ function buildWorkerStreamContent(state: import('~/lib/hooks/use-external-worker
       }
     }
 
-    // Fallback to stub if no summary event was emitted
-    return `✅ **Build complete** — ${fileCount} file${fileCount !== 1 ? 's' : ''} generated. Preview is loading…`;
+    // Minimal fallback ONLY when the brain produced no summary at all.
+    const fileCount = state.files.length;
+    return `✅ **Build complete** — ${fileCount} file${fileCount !== 1 ? 's' : ''} generated.`;
   }
 
-  // During build — just a short status line. The panels show the details.
-  const reasoningCount = state.events.filter((e) => e.type === 'reasoning').length;
-  const todosCount = state.events.filter((e) => e.type === 'todos_updated').length;
-  const filesWritten = state.events.filter((e) => e.type === 'file_written').length;
-
-  const parts: string[] = ['🔨 **Building your project…**'];
-
-  if (filesWritten > 0) {
-    parts.push(`${filesWritten} file${filesWritten !== 1 ? 's' : ''} written so far`);
-  }
-
-  if (todosCount > 0) {
-    const lastTodo = state.events.filter((e) => e.type === 'todos_updated').slice(-1)[0];
-
-    if (lastTodo?.message) {
-      parts.push(lastTodo.message);
-    }
-  }
-
-  if (reasoningCount > 0) {
-    parts.push(`${reasoningCount} reasoning step${reasoningCount !== 1 ? 's' : ''}`);
-  }
-
-  return parts.join(' · ');
+  /*
+   * During build — return the ⚡ marker only (no descriptive text). This
+   * keeps the `isWorkerMessage` check (last.content.startsWith('⚡'))
+   * passing on every poll so the message keeps updating, while rendering
+   * no visible banner text. The `<LiveBuildPlaceholder />` in Messages.tsx
+   * detects the ⚡ prefix and shows a minimal "Working…" line that hides
+   * itself the moment the global BuildStream has events. The brain's own
+   * reasoning is the first real content the user sees.
+   */
+  return '⚡';
 }
 
 interface ChatProps {
@@ -643,11 +626,22 @@ export const ChatImpl = memo(
             return prev;
           }
 
+          /*
+           * Detect a worker build-turn message by its ⚡ marker (the
+           * placeholder set when the turn was created) OR by the presence
+           * of a palmkit-build annotation (stamped once the jobId is known).
+           * Either signal means this turn is a build and should be updated
+           * from the worker state. We no longer match ✅/❌ because once the
+           * build is done/failed, the content is the brain's summary or the
+           * error text — both are final, no further updates needed.
+           */
+          const hasBuildAnnotation = Array.isArray(last.annotations) && last.annotations.some(
+            (a) => a && typeof a === 'object' && (a as any).type === 'palmkit-build',
+          );
           const isWorkerMessage =
-            last.content.startsWith('⚡') ||
-            last.content.startsWith('🔨') ||
-            last.content.startsWith('✅') ||
-            last.content.startsWith('❌');
+            last.content.trim().startsWith('⚡') ||
+            last.content.trim().startsWith('❌') ||
+            hasBuildAnnotation;
 
           if (!isWorkerMessage) {
             return prev;
@@ -1208,7 +1202,13 @@ export const ChatImpl = memo(
           (extWorkerState.status === 'ready_for_preview' && extWorkerState.jobId) ||
           chatMetadata.get()?.palmkitJobId ||
           undefined;
-        const isEditJob = Boolean(priorJobId);
+        /*
+         * `isEditJob` was previously used to label the assistant placeholder
+         * ("⚡ Editing project…" vs "⚡ Building project…"). The placeholder
+         * is now just "⚡" (a marker, no descriptive text), so `isEditJob`
+         * is no longer needed for the label. The `priorJobId` itself is
+         * still used below for the edit handoff (`editFromJobId`).
+         */
 
         /*
          * Build the new messages array BEFORE calling setMessages.
@@ -1227,7 +1227,15 @@ export const ChatImpl = memo(
         const assistantPlaceholder = {
           id: `${Date.now()}-assistant`,
           role: 'assistant' as const,
-          content: isEditJob ? '⚡ Editing project…' : '⚡ Building project…',
+          /*
+           * Just the ⚡ marker — no descriptive text. This is a build-turn
+           * marker detected by `isBuildBannerContent` in Messages.client.tsx
+           * to route the turn into the build-stream UI. The actual content
+           * (the brain's summary) is filled in by `buildWorkerStreamContent`
+           * when the build completes. During the build, the global
+           * BuildStream panel is the single voice — no hardcoded banner.
+           */
+          content: '⚡',
         };
         const newMessages = [...messages, userMessage, assistantPlaceholder];
 
@@ -1281,6 +1289,13 @@ export const ChatImpl = memo(
           workerChatId,
           designScheme,
           conversationHistory,
+          /*
+           * Pass user-uploaded images (food photos, logos, etc.) so the
+           * brain can actually use them in the build. Without this, the
+           * user's uploads were silently dropped — the brain never saw
+           * them and couldn't reference them in the project.
+           */
+          imageDataList,
         );
 
         /*

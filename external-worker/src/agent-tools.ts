@@ -1053,8 +1053,14 @@ export function createAgentTools(
           next_steps && next_steps.length > 0 ? `\n\n💡 Next steps:\n${next_steps.map((s: string) => `- ${s}`).join('\n')}` : '',
         ].join('');
 
+        /*
+         * `Build complete! N files, M chars` banner removed — empty message.
+         * The summary is already carried in the payload (for the BuildStream's
+         * summary row) and the brain's done() tool already announced it. The
+         * banner was a redundant, hardcoded second voice.
+         */
         await emitEvent(supabase, jobId, 'file_generation_completed' as any,
-          `✅ Build complete! ${fileCount} files, ${totalSize} chars`,
+          '',
           { fileCount, totalSize, summary: fullSummary, completed, incomplete, next_steps },
         );
 

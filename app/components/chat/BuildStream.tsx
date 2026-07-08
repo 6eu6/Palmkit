@@ -375,14 +375,28 @@ function isHeartbeat(ev: WorkerEvent): boolean {
  * Consecutive `reasoning` fragments are concatenated (they are token deltas)
  * and split into paragraphs on stepId changes.
  *
- * RADICAL STREAM IMPROVEMENT: only the LAST `build_summary` event is rendered
- * as a `summary` row — earlier ones (from repair rounds or retry rounds) are
- * skipped so the user sees exactly one clean summary at the end, not duplicates.
+ * RADICAL STREAM REBUILD: No more "System" section. The stream opens
+ * directly with the brain's first reasoning row — no empty gear-icon header,
+ * no "Building your project..." banner. The brain IS the voice from the
+ * first token. Worker plumbing events (planning_completed, file_generation_started,
+ * validation_passed, upload_started, snapshot_uploaded, ready_for_preview) are
+ * NOT rendered as visible rows — they're state-machine transitions, not chat
+ * messages. Only the brain's reasoning, tool calls (write_file, run_shell),
+ * and final summary are shown.
+ *
+ * Only the LAST `build_summary` event is rendered as a `summary` row —
+ * earlier ones (from repair rounds or retry rounds) are skipped so the user
+ * sees exactly one clean summary at the end, not duplicates.
  */
 function foldEvents(events: WorkerEvent[]): Section[] {
   const sections: Section[] = [];
-  let current: Section = { agent: 'System', role: 'system', rows: [], running: false };
-  sections.push(current);
+  /*
+   * No initial "System" section. The first section is created when the first
+   * `agent_started` event arrives (the brain starting). If events arrive
+   * before any agent_started (rare — e.g. a job_failed with no agent), we
+   * create a minimal "Worker" section on demand to host them.
+   */
+  let current: Section | null = null;
 
   /*
    * Pre-scan: find the seq of the LAST build_summary event. Only this one
@@ -405,11 +419,26 @@ function foldEvents(events: WorkerEvent[]): Section[] {
   let reasoningBuf = '';
   let reasoningStep: number | undefined;
 
+  /*
+   * Ensure a section exists before pushing rows into it. If no agent has
+   * started yet (no `agent_started` event), create a minimal "Worker"
+   * section to host the row. This is rare — normally the brain's
+   * `agent_started` arrives first.
+   */
+  const ensureSection = (): Section => {
+    if (!current) {
+      current = { agent: 'Worker', role: 'worker', rows: [], running: false };
+      sections.push(current);
+    }
+
+    return current;
+  };
+
   const flushReasoning = () => {
     const text = reasoningBuf.trim();
 
     if (text) {
-      current.rows.push({ kind: 'thinking', text });
+      ensureSection().rows.push({ kind: 'thinking', text });
     }
 
     reasoningBuf = '';
@@ -455,29 +484,32 @@ function foldEvents(events: WorkerEvent[]): Section[] {
         break;
       }
       case 'agent_completed': {
+        if (!current) break;
         current.running = false;
         current.durationMs = (p.durationMs as number) ?? current.durationMs;
         current.success = (p.success as boolean) ?? true;
         break;
       }
       case 'todos_updated': {
+        const sec = ensureSection();
         const todos = (p.todos as TodoItem[] | undefined) ?? [];
-        current.todos = todos;
+        sec.todos = todos;
 
         const counts = p.counts as { done: number; total: number } | undefined;
-        current.todoCounts = counts
+        sec.todoCounts = counts
           ? { done: counts.done, total: counts.total }
           : { done: todos.filter((t) => t.status === 'done').length, total: todos.length };
         break;
       }
       case 'file_written': {
+        const sec = ensureSection();
         const path = (p.path as string) ?? (p.filePath as string) ?? ev.message;
 
         // dedupe: same path already listed in this section → skip
-        const seen = current.rows.some((r) => r.kind === 'file' && r.path === path);
+        const seen = sec.rows.some((r) => r.kind === 'file' && r.path === path);
 
         if (!seen) {
-          current.rows.push({
+          sec.rows.push({
             kind: 'file',
             path,
             lines: p.lines as number | undefined,
@@ -505,7 +537,7 @@ function foldEvents(events: WorkerEvent[]): Section[] {
          */
         if (p.kind === 'build_summary' && p.text) {
           if (ev.seq === lastBuildSummarySeq) {
-            current.rows.push({ kind: 'summary', text: p.text as string });
+            ensureSection().rows.push({ kind: 'summary', text: p.text as string });
           }
 
           break;
@@ -518,7 +550,7 @@ function foldEvents(events: WorkerEvent[]): Section[] {
          * missing before the radical rebuild.
          */
         if (p.kind === 'screenshot_captured' && p.dataUrl) {
-          current.rows.push({
+          ensureSection().rows.push({
             kind: 'screenshot',
             dataUrl: p.dataUrl as string,
             viewport: p.viewport as string | undefined,
@@ -533,7 +565,7 @@ function foldEvents(events: WorkerEvent[]): Section[] {
          * the headline is clipped at the top."
          */
         if (p.kind === 'vision_analysis' && p.text) {
-          current.rows.push({ kind: 'vision', text: p.text as string });
+          ensureSection().rows.push({ kind: 'vision', text: p.text as string });
           break;
         }
 
@@ -544,12 +576,12 @@ function foldEvents(events: WorkerEvent[]): Section[] {
          *   - video_error: generation failed, show the error
          */
         if (p.kind === 'video_start' && p.name) {
-          current.rows.push({ kind: 'video', name: p.name as string, status: 'generating' });
+          ensureSection().rows.push({ kind: 'video', name: p.name as string, status: 'generating' });
           break;
         }
 
         if (p.kind === 'video_ready' && p.name) {
-          current.rows.push({
+          ensureSection().rows.push({
             kind: 'video',
             name: p.name as string,
             url: p.url as string | undefined,
@@ -559,7 +591,7 @@ function foldEvents(events: WorkerEvent[]): Section[] {
         }
 
         if (p.kind === 'video_error' && p.name) {
-          current.rows.push({ kind: 'video', name: p.name as string, status: 'error' });
+          ensureSection().rows.push({ kind: 'video', name: p.name as string, status: 'error' });
           break;
         }
 
@@ -568,7 +600,7 @@ function foldEvents(events: WorkerEvent[]): Section[] {
          * The user can see the image and request changes in the next message.
          */
         if (p.kind === 'image_ready' && p.dataUrl) {
-          current.rows.push({
+          ensureSection().rows.push({
             kind: 'image',
             dataUrl: p.dataUrl as string,
             name: p.name as string,
@@ -582,12 +614,12 @@ function foldEvents(events: WorkerEvent[]): Section[] {
          * Shows the task being worked on and the result when done.
          */
         if (p.kind === 'subagent_start' && p.task) {
-          current.rows.push({ kind: 'subagent', task: p.task as string, status: 'running' });
+          ensureSection().rows.push({ kind: 'subagent', task: p.task as string, status: 'running' });
           break;
         }
 
         if (p.kind === 'subagent_complete' && p.task) {
-          current.rows.push({
+          ensureSection().rows.push({
             kind: 'subagent',
             task: p.task as string,
             result: p.result as string | undefined,
@@ -597,22 +629,22 @@ function foldEvents(events: WorkerEvent[]): Section[] {
         }
 
         if (p.kind === 'subagent_error' && p.task) {
-          current.rows.push({ kind: 'subagent', task: p.task as string, status: 'error' });
+          ensureSection().rows.push({ kind: 'subagent', task: p.task as string, status: 'error' });
           break;
         }
 
         if (/^🔧/.test(m) || /repair attempt/i.test(m)) {
           // Build-verification repair round kicking off.
-          current.rows.push({ kind: 'system', text: m.replace(/^🔧\s*/, '') });
+          ensureSection().rows.push({ kind: 'system', text: m.replace(/^🔧\s*/, '') });
         } else if (/^⚠️/.test(m) || /Build still has errors/i.test(m)) {
-          current.rows.push({ kind: 'error', text: m.replace(/^⚠️\s*/, '') });
+          ensureSection().rows.push({ kind: 'error', text: m.replace(/^⚠️\s*/, '') });
         } else if (p.command || /Run:/.test(m) || /^⚡/.test(m)) {
-          current.rows.push({
+          ensureSection().rows.push({
             kind: 'command',
             text: (p.command as string) ?? m.replace(/^.*?Run:\s*/, '').replace(/^⚡\s*/, ''),
           });
         } else if (/Read:/.test(m) || /^📖/.test(m)) {
-          current.rows.push({ kind: 'read', text: m.replace(/^📖\s*/, '') });
+          ensureSection().rows.push({ kind: 'read', text: m.replace(/^📖\s*/, '') });
         } else if (/Screenshot/i.test(m) || /^📸/.test(m)) {
           // Don't render the text-only screenshot messages here — they're
           // either the old broken take_screenshot or the new analyze_screenshot
@@ -631,14 +663,28 @@ function foldEvents(events: WorkerEvent[]): Section[] {
          * 'system' rows (neutral), not 'error' rows (red). The failure card
          * below also checks for cancel vs real failure.
          */
+        const sec = ensureSection();
         if (ev.message.includes('cancelled by user') || ev.message.includes('saving partial state')) {
-          current.rows.push({ kind: 'system', text: ev.message });
+          sec.rows.push({ kind: 'system', text: ev.message });
         } else {
-          current.rows.push({ kind: 'error', text: ev.message });
+          sec.rows.push({ kind: 'error', text: ev.message });
         }
 
         break;
       }
+      /*
+       * Worker plumbing events — NOT rendered as visible rows. These are
+       * state-machine transitions (planning_completed, file_generation_started,
+       * validation_passed, upload_started, snapshot_uploaded, ready_for_preview).
+       * The brain's own reasoning, tool calls, and done() summary are the
+       * chat-stream voice; these events are silent state changes the front-end
+       * state machine consumes via useExternalWorker's pollJob (which reads
+       * `data.status` directly, not these events).
+       *
+       * The messages are also now empty strings (set in job-processor.ts), so
+       * even if we did render them, they'd be empty rows. Skipping them
+       * entirely keeps the stream clean.
+       */
       case 'planning_started':
       case 'planning_completed':
       case 'file_generation_started':
@@ -647,19 +693,21 @@ function foldEvents(events: WorkerEvent[]): Section[] {
       case 'upload_started':
       case 'snapshot_uploaded':
       case 'edit_completed':
-      case 'ready_for_preview': {
-        current.rows.push({ kind: 'system', text: ev.message });
+      case 'ready_for_preview':
+      case 'edit_started':
         break;
-      }
 
       /*
-       * Edit heartbeat — generateEdit is one synchronous LLM call (no file
-       * streaming), so without these periodic "still working…" pings the chat
-       * would look frozen for the whole edit window. Render the heartbeat as a
-       * subtle progress line (not a new section) so it doesn't clutter the log.
+       * Edit heartbeat — was a periodic "Building…" ping. Now skipped: the
+       * brain's reasoning events stream live, so there's no frozen window to
+       * bridge. Empty messages are also dropped here as a safety net.
        */
       case 'edit_progress': {
-        const rows = current.rows;
+        if (!ev.message || !ev.message.trim()) {
+          break;
+        }
+        const sec = ensureSection();
+        const rows = sec.rows;
         const last = rows[rows.length - 1];
 
         if (last && last.kind === 'progress') {
@@ -678,8 +726,14 @@ function foldEvents(events: WorkerEvent[]): Section[] {
 
   flushReasoning();
 
-  // Drop the leading System section if it ended up empty.
-  return sections.filter((s, i) => !(i === 0 && s.rows.length === 0));
+  /*
+   * Drop any sections that ended up with zero rows AND zero todos — they
+   * would render as empty headers (the old "System" gear-icon bug). With
+   * the new no-initial-section design this is mostly a safety net, but it
+   * also catches the rare case where an agent_started arrived but the agent
+   * produced nothing renderable before completing.
+   */
+  return sections.filter((s) => s.rows.length > 0 || (s.todos && s.todos.length > 0));
 }
 
 /* ── Presentational pieces ──────────────────────────────────────────────── */

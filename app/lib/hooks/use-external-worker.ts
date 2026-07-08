@@ -538,6 +538,14 @@ export function useExternalWorker() {
       projectId?: string,
       designScheme?: { palette: Record<string, string>; font: string[]; features: string[] },
       conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+      /*
+       * User-uploaded images (data URLs). These are the images the user
+       * attached to their prompt (food photos, logos, screenshots, etc.).
+       * They're uploaded to R2 by /api/jobs and the brain receives their
+       * URLs so it can reference them in the project (e.g., use a dish
+       * photo as the hero image of a restaurant site).
+       */
+      userImages?: string[],
     ) => {
       epochRef.current++;
       setState({ ...initialState, status: 'pending', currentStep: 'queued' });
@@ -613,6 +621,13 @@ export function useExternalWorker() {
             ...(projectId ? { projectId } : {}),
             ...(designScheme ? { designScheme } : {}),
             ...(conversationHistory && conversationHistory.length > 0 ? { conversationHistory } : {}),
+            /*
+             * User-uploaded images (data URLs). /api/jobs uploads each to R2
+             * and records the path; the worker reads them and injects the
+             * public URLs into the brain's prompt so the brain can use them
+             * in the build (e.g., as hero images, product photos, etc.).
+             */
+            ...(userImages && userImages.length > 0 ? { userImages } : {}),
           }),
         });
 
