@@ -463,13 +463,17 @@ export const canShowPreview = computed(buildStatusStore, (status) => {
     return true;
   }
 
-  return (
-    status.completeness === 'complete' &&
-    status.hasCompletionMarker &&
-    status.artifactTagsBalanced &&
-    status.fileActionsBalanced &&
-    status.fileCount > 0
-  );
+  // Show preview when the build is ready, regardless of the old
+  // artifact/file balance checks. The external worker path sets
+  // all these to true when ready_for_preview, but the checks were
+  // too strict and sometimes blocked the preview even when the
+  // sandbox was running and ready.
+  if (status.jobStatus === 'ready_for_preview') {
+    return true;
+  }
+
+  // During build: don't show preview (show "Building..." instead)
+  return false;
 });
 
 /**
