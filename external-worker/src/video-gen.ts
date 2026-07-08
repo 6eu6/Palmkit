@@ -95,16 +95,22 @@ async function generateViaZaiSDK(
     throw new Error(`Z.ai SDK: no task id in response: ${JSON.stringify(result).slice(0, 300)}`);
   }
 
+  // Get the auth token from the SDK config for polling
+  const authToken = (zai as any)?.config?.token;
+  const apiKey = (zai as any)?.config?.apiKey;
+
   // Poll for completion (up to 5 minutes)
   const maxAttempts = 60;
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, 5000));
 
-    // The SDK doesn't have a .get() method, so we poll via the API directly
-    // using the task ID returned by create().
     let pollData: any;
     try {
-      const pollResp = await fetch(`https://api.z.ai/api/paas/v4/videos/generations/${taskId}`);
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      if (apiKey) headers['X-API-Key'] = apiKey;
+
+      const pollResp = await fetch(`https://api.z.ai/api/paas/v4/videos/generations/${taskId}`, { headers });
       if (!pollResp.ok) {
         logger.warn(`[video-gen] SDK poll ${i + 1} HTTP ${pollResp.status}`);
         continue;
