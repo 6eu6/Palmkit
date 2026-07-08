@@ -134,6 +134,29 @@ function dispatchJobEvent(ev: JobEvent): void {
       case 'file_written':
       case 'file_chunk': {
         /*
+         * appType_refined — the worker detected the real app type from
+         * the generated files (e.g., 'react' instead of 'static').
+         * Update the build status store so the auto-launch in
+         * use-worker-sandbox picks it up.
+         */
+        if (payload.kind === 'appType_refined' && payload.appType) {
+          import('~/lib/stores/build-status').then(({ setBuildStatus }) => {
+            setBuildStatus({
+              completeness: 'complete',
+              jobStatus: 'generating',
+              hasCompletionMarker: false,
+              artifactTagsBalanced: false,
+              fileActionsBalanced: false,
+              fileCount: 0,
+              appType: payload.appType as string,
+              issues: [],
+              retryCount: 0,
+            });
+          });
+          break;
+        }
+
+        /*
          * file_chunk events without an agent are keep-alive heartbeats
          * ("⏳ Building... (Ns)") — skip them, they're not agent actions.
          *

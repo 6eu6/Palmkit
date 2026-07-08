@@ -820,6 +820,15 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           if (detectedAppType && detectedAppType !== result.appType) {
             logger.info(`Job ${job.id}: appType refined ${result.appType} → ${detectedAppType} (from generated files)`);
             result.appType = detectedAppType;
+
+            // Emit the corrected appType so the frontend's auto-launch
+            // (use-worker-sandbox.ts) picks it up. Without this, the frontend
+            // keeps the old appType from planProject (e.g., 'static') and
+            // never auto-launches the E2B sandbox for React apps.
+            await emitEvent(supabase, job.id, 'file_chunk' as any, `Detected: ${detectedAppType} app`, {
+              kind: 'appType_refined',
+              appType: detectedAppType,
+            });
           }
 
           /*
