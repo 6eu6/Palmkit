@@ -468,7 +468,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         supabase,
         job.id,
         'planning_completed',
-        `Loaded ${existingFiles.length} existing files, applying your changes...`,
+        `Editing your project...`,
         { fileCount: existingFiles.length, appType: editAppType },
       );
 
@@ -627,14 +627,12 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       logger.info(`Job ${job.id}: edit complete → ${mergedFiles.length} files (${editAppType})`);
     } else {
       // ─── Phase 1: PLAN ─────────────────────────────────────────────────
+      // The brain decides what to build — no hardcoded planning step.
+      // planProject() was guessing appType from keywords and showing
+      // "Planned 3 files (static)" which was wrong and confusing.
+      // We still call planProject() to get maxCompletionTokens, but
+      // we DON'T emit the planning events.
       await updateJobProgress(supabase, job.id, 10, 'plan');
-      await emitEvent(supabase, job.id, 'planning_started', 'Planning app structure...');
-      await recordStep(supabase, job.id, {
-        type: 'plan',
-        status: 'running',
-        order: 1,
-        inputSummary: prompt.slice(0, 100),
-      });
 
       const spec = planProject(prompt);
 
@@ -644,22 +642,11 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         spec.maxCompletionTokens = job.validation_result.maxCompletionTokens;
       }
 
-      await recordStep(supabase, job.id, {
-        type: 'plan',
-        status: 'completed',
-        order: 1,
-        outputSummary: `spec: ${spec.appType}, ${spec.files.length} files`,
-      });
-      await emitEvent(supabase, job.id, 'planning_completed', `Planned ${spec.files.length} files (${spec.appType})`, {
-        fileCount: spec.files.length,
-        appType: spec.appType,
-      });
-
       logger.info(`Job ${job.id}: plan complete → ${spec.appType}, ${spec.files.length} files`);
 
       // ─── Phase 2: AGENTIC BUILD (streamText + tools) ───────────────────
       await updateJobProgress(supabase, job.id, 30, 'generate_files');
-      await emitEvent(supabase, job.id, 'file_generation_started', `Building with ${providerName}...`);
+      await emitEvent(supabase, job.id, 'file_generation_started', `Building your project...`);
       await recordStep(supabase, job.id, { type: 'generate_file', status: 'running', order: 2 });
 
       /*
@@ -891,7 +878,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         supabase,
         job.id,
         'file_generation_completed',
-        `Generated ${result.files.length} files (${result.appType})`,
+        `Build complete`,
       );
 
       await recordStep(supabase, job.id, {
