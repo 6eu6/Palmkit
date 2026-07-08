@@ -200,6 +200,13 @@ async function generateViaOpenRouter(
   duration: number,
   aspectRatio: string,
 ): Promise<GeneratedVideo> {
+  const sizeMap: Record<string, string> = {
+    '16:9': '1280x720',
+    '9:16': '720x1280',
+    '1:1': '720x720',
+  };
+  const size = sizeMap[aspectRatio] ?? '1280x720';
+
   const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -212,7 +219,7 @@ async function generateViaOpenRouter(
       messages: [
         {
           role: 'user',
-          content: `${prompt}\n\nDuration: ${duration}s. Aspect ratio: ${aspectRatio}.`,
+          content: `${prompt}\n\nDuration: ${duration}s. Aspect ratio: ${aspectRatio}. Size: ${size}.`,
         },
       ],
     }),
@@ -224,15 +231,33 @@ async function generateViaOpenRouter(
   }
 
   const data: any = await resp.json();
-  const videoUrl = data?.choices?.[0]?.message?.videos?.[0]?.url;
+  const msg = data?.choices?.[0]?.message;
+
+  // Different models return video URLs in different places
+  const videoUrl =
+    msg?.videos?.[0]?.url ??
+    msg?.video_url ??
+    msg?.content?.find?.((c: any) => c?.type === 'video_url')?.video_url?.url ??
+    msg?.content?.find?.((c: any) => c?.type === 'output_video')?.output_video?.url ??
+    data?.data?.[0]?.url ??
+    data?.url;
 
   if (!videoUrl) {
     throw new Error(`OpenRouter video: no URL in response: ${JSON.stringify(data).slice(0, 500)}`);
   }
 
+  // Get the file size
+  let bytes = 0;
+  try {
+    const head = await fetch(videoUrl, { method: 'HEAD' });
+    bytes = Number(head.headers.get('content-length') ?? 0);
+  } catch {
+    /* best-effort */
+  }
+
   return {
     url: videoUrl,
-    bytes: 0,
+    bytes,
     duration,
     aspectRatio,
   };

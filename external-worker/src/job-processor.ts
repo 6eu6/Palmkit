@@ -264,7 +264,10 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
     };
 
     const imageProvider = getProvider(mediaRoleModel || DEFAULT_IMAGE_MODEL);
-    const videoProvider = getProvider(mediaRoleModel || 'cogvideox-2b');
+    // Video: default to OpenRouter (user has OpenRouter key, not Z.ai key)
+    // If user picks a Z.ai video model in Settings, we try Z.ai first then fallback
+    const videoModel = mediaRoleModel || 'google/veo-3.0-generate-001';
+    const videoProvider = getProvider(videoModel);
     const visionProvider = getProvider(visionRoleModel || 'glm-4.6v');
 
     const media = apiKey
@@ -273,9 +276,9 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           imageApiKey: apiKey,
           imageModel: mediaRoleModel || DEFAULT_IMAGE_MODEL,
           imageProvider,
-          // Video generation
+          // Video generation — use OpenRouter by default (user's key works)
           videoApiKey: apiKey,
-          videoModel: mediaRoleModel || 'cogvideox-2b',
+          videoModel,
           videoProvider,
           // Vision (VLM)
           visionApiKey: apiKey,
