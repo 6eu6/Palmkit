@@ -1,17 +1,12 @@
 /**
- * Video generation — let the agent create looping video assets.
+ * Video generation — uses z-ai-web-dev-sdk (house SDK) for Z.ai video models.
  *
- * RADICAL REBUILD: there was NO video generation capability in Palmkit.
- * The user asked for "a video of a person coding as a hero background,
- * looped, proper dimensions" and the model couldn't even attempt it.
+ * The SDK handles authentication internally — no need for a separate Z.ai API key.
+ * The user's OpenRouter key is NOT used for video; the SDK has its own credentials.
  *
- * This module wraps video generation APIs. Currently supports:
- *   1. Z.ai video models (house SDK, recommended)
- *   2. OpenRouter video-capable models (fallback)
- *
- * Returns an OSS-hosted MP4 URL that the Builder writes as a <video>
- * element with autoplay muted loop playsinline.
+ * For non-Z.ai video models, we fall back to direct API calls.
  */
+import ZAI from 'z-ai-web-dev-sdk';
 import { logger } from './logger';
 
 export interface VideoGenOptions {
@@ -32,12 +27,6 @@ export interface GeneratedVideo {
 
 const DEFAULT_VIDEO_MODEL = 'cogvideox-2b';
 
-/**
- * Generate a short looping video.
- *
- * Tries Z.ai first (house SDK, fastest), falls back to OpenRouter.
- * Returns a direct MP4 URL the builder can fetch + embed.
- */
 export async function generateVideo(opts: VideoGenOptions): Promise<GeneratedVideo> {
   const {
     apiKey,
@@ -51,40 +40,116 @@ export async function generateVideo(opts: VideoGenOptions): Promise<GeneratedVid
   logger.info(`[video-gen] Generating video: model=${model}, duration=${duration}s, ratio=${aspectRatio}, provider=${provider}`);
 
   /*
-   * Try the requested provider first. If it fails (e.g. Z.ai key not
-   * available but user has OpenRouter), fall back to the other provider.
-   * This makes video generation work regardless of which key the user has.
+   * Try the Z.ai SDK first — it handles auth internally and works with the
+   * user's existing environment. No separate Z.ai API key needed.
    */
   try {
-    if (provider === 'openrouter') {
-      return await generateViaOpenRouter(apiKey, model, prompt, duration, aspectRatio);
-    }
-    return await generateViaZai(apiKey, model, prompt, duration, aspectRatio);
-  } catch (zaiErr: any) {
-    logger.warn(`[video-gen] ${provider} failed: ${zaiErr?.message?.slice(0, 200)} — trying fallback`);
+    return await generateViaZaiSDK(model, prompt, duration, aspectRatio);
+  } catch (sdkErr: any) {
+    logger.warn(`[video-gen] Z.ai SDK failed: ${sdkErr?.message?.slice(0, 200)}`);
 
-    // Try the other provider as fallback
-    const fallbackProvider = provider === 'zai' ? 'openrouter' : 'zai';
+    // Fallback to direct Z.ai API (if user has a Z.ai key)
     try {
-      if (fallbackProvider === 'openrouter') {
-        return await generateViaOpenRouter(apiKey, model, prompt, duration, aspectRatio);
-      }
       return await generateViaZai(apiKey, model, prompt, duration, aspectRatio);
-    } catch (fallbackErr: any) {
-      throw new Error(`Video generation failed on both providers. ${provider}: ${zaiErr?.message?.slice(0, 200)}. ${fallbackProvider}: ${fallbackErr?.message?.slice(0, 200)}`);
+    } catch (directErr: any) {
+      logger.warn(`[video-gen] Z.ai direct failed: ${directErr?.message?.slice(0, 200)}`);
+
+      // Last resort: OpenRouter (may not support video output)
+      try {
+        return await generateViaOpenRouter(apiKey, model, prompt, duration, aspectRatio);
+      } catch (orErr: any) {
+        throw new Error(`Video generation failed on all providers. SDK: ${sdkErr?.message?.slice(0, 150)}. Z.ai: ${directErr?.message?.slice(0, 150)}. OpenRouter: ${orErr?.message?.slice(0, 150)}`);
+      }
     }
   }
 }
 
 /**
- * Z.ai video generation endpoint.
- *
- * IMPORTANT: Z.ai's video API requires a Z.ai API key (not OpenRouter or E2B).
- * The worker passes the user's main API key here. If the user has a Z.ai key,
- * it works. If they have an OpenRouter key, we need to use OpenRouter's
- * video generation instead.
- *
- * Since most users have OpenRouter keys, we try OpenRouter first, then Z.ai.
+ * Generate video via z-ai-web-dev-sdk.
+ * The SDK handles auth internally — no API key needed from the user.
+ */
+async function generateViaZaiSDK(
+  model: string,
+  prompt: string,
+  duration: number,
+  aspectRatio: string,
+): Promise<GeneratedVideo> {
+  const sizeMap: Record<string, string> = {
+    '16:9': '1280x720',
+    '9:16': '720x1280',
+    '1:1': '720x720',
+  };
+  const size = sizeMap[aspectRatio] ?? '1280x720';
+
+  const zai = await ZAI.create();
+  const result: any = await zai.video.generations.create({
+    model,
+    prompt,
+    duration,
+    size,
+  });
+
+  const taskId = result?.id ?? result?.task_id;
+
+  if (!taskId) {
+    throw new Error(`Z.ai SDK: no task id in response: ${JSON.stringify(result).slice(0, 300)}`);
+  }
+
+  // Poll for completion (up to 5 minutes)
+  const maxAttempts = 60;
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((r) => setTimeout(r, 5000));
+
+    // The SDK doesn't have a .get() method, so we poll via the API directly
+    // using the task ID returned by create().
+    let pollData: any;
+    try {
+      const pollResp = await fetch(`https://api.z.ai/api/paas/v4/videos/generations/${taskId}`);
+      if (!pollResp.ok) {
+        logger.warn(`[video-gen] SDK poll ${i + 1} HTTP ${pollResp.status}`);
+        continue;
+      }
+      pollData = await pollResp.json();
+    } catch (e: any) {
+      logger.warn(`[video-gen] SDK poll ${i + 1} failed: ${e?.message?.slice(0, 100)}`);
+      continue;
+    }
+
+    const status = pollData?.task_status ?? pollData?.status;
+
+    if (status === 'SUCCEEDED' || status === 'succeeded' || status === 'completed') {
+      const videoUrl =
+        pollData?.video_result?.[0]?.url ??
+        pollData?.videos?.[0]?.url ??
+        pollData?.data?.video_url ??
+        pollData?.url;
+
+      if (!videoUrl) {
+        throw new Error(`Z.ai SDK: succeeded but no URL: ${JSON.stringify(pollData).slice(0, 300)}`);
+      }
+
+      let bytes = 0;
+      try {
+        const head = await fetch(videoUrl, { method: 'HEAD' });
+        bytes = Number(head.headers.get('content-length') ?? 0);
+      } catch { /* best-effort */ }
+
+      logger.info(`[video-gen] SDK video ready: ${videoUrl} (${bytes} bytes)`);
+      return { url: videoUrl, bytes, duration, aspectRatio };
+    }
+
+    if (status === 'FAILED' || status === 'failed' || status === 'error') {
+      throw new Error(`Z.ai SDK: generation failed: ${JSON.stringify(pollData).slice(0, 300)}`);
+    }
+
+    logger.debug(`[video-gen] SDK poll ${i + 1}/${maxAttempts}: status=${status}`);
+  }
+
+  throw new Error('Z.ai SDK: video generation timed out after 5 minutes');
+}
+
+/**
+ * Z.ai direct API fallback (if user has a Z.ai API key).
  */
 async function generateViaZai(
   apiKey: string,
@@ -98,37 +163,29 @@ async function generateViaZai(
     '9:16': '720x1280',
     '1:1': '720x720',
   };
-
   const size = sizeMap[aspectRatio] ?? '1280x720';
 
-  // Submit the generation request
   const submitResp = await fetch('https://api.z.ai/api/paas/v4/videos/generations', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model,
-      prompt,
-      duration,
-      size,
-    }),
+    body: JSON.stringify({ model, prompt, duration, size }),
   });
 
   if (!submitResp.ok) {
     const errText = await submitResp.text();
-    throw new Error(`Z.ai video submit failed (${submitResp.status}): ${errText.slice(0, 500)}`);
+    throw new Error(`Z.ai video submit failed (${submitResp.status}): ${errText.slice(0, 300)}`);
   }
 
   const submitData: any = await submitResp.json();
   const taskId = submitData?.id ?? submitData?.task_id ?? submitData?.data?.id;
 
   if (!taskId) {
-    throw new Error(`Z.ai video: no task id in response: ${JSON.stringify(submitData).slice(0, 500)}`);
+    throw new Error(`Z.ai video: no task id: ${JSON.stringify(submitData).slice(0, 300)}`);
   }
 
-  // Poll for completion (up to 5 minutes)
   const maxAttempts = 60;
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, 5000));
@@ -137,10 +194,7 @@ async function generateViaZai(
       headers: { Authorization: `Bearer ${apiKey}` },
     });
 
-    if (!pollResp.ok) {
-      logger.warn(`[video-gen] poll ${i + 1} failed: ${pollResp.status}`);
-      continue;
-    }
+    if (!pollResp.ok) continue;
 
     const pollData: any = await pollResp.json();
     const status = pollData?.status ?? pollData?.task_status;
@@ -152,46 +206,27 @@ async function generateViaZai(
         pollData?.data?.video_url ??
         pollData?.url;
 
-      if (!videoUrl) {
-        throw new Error(`Z.ai video: succeeded but no URL: ${JSON.stringify(pollData).slice(0, 500)}`);
-      }
+      if (!videoUrl) throw new Error(`Z.ai: succeeded but no URL`);
 
-      // Get the file size
       let bytes = 0;
       try {
         const head = await fetch(videoUrl, { method: 'HEAD' });
         bytes = Number(head.headers.get('content-length') ?? 0);
-      } catch {
-        /* best-effort */
-      }
+      } catch { /* best-effort */ }
 
-      logger.info(`[video-gen] Video ready: ${videoUrl} (${bytes} bytes)`);
-
-      return {
-        url: videoUrl,
-        bytes,
-        duration,
-        aspectRatio,
-      };
+      return { url: videoUrl, bytes, duration, aspectRatio };
     }
 
-    if (status === 'FAILED' || status === 'failed' || status === 'error') {
-      throw new Error(`Z.ai video generation failed: ${JSON.stringify(pollData).slice(0, 500)}`);
+    if (status === 'FAILED' || status === 'failed') {
+      throw new Error(`Z.ai: generation failed`);
     }
-
-    // Still processing (PENDING / PROCESSING / RUNNING)
-    logger.debug(`[video-gen] poll ${i + 1}/${maxAttempts}: status=${status}`);
   }
 
-  throw new Error('Z.ai video generation timed out after 5 minutes');
+  throw new Error('Z.ai: timed out after 5 minutes');
 }
 
 /**
  * OpenRouter video generation fallback.
- *
- * OpenRouter doesn't have a dedicated video endpoint, but some models
- * (e.g. Google Veo via OpenRouter) support video output through the
- * chat completions API with modalities: ['video', 'text'].
  */
 async function generateViaOpenRouter(
   apiKey: string,
@@ -227,13 +262,12 @@ async function generateViaOpenRouter(
 
   if (!resp.ok) {
     const errText = await resp.text();
-    throw new Error(`OpenRouter video failed (${resp.status}): ${errText.slice(0, 500)}`);
+    throw new Error(`OpenRouter video failed (${resp.status}): ${errText.slice(0, 300)}`);
   }
 
   const data: any = await resp.json();
   const msg = data?.choices?.[0]?.message;
 
-  // Different models return video URLs in different places
   const videoUrl =
     msg?.videos?.[0]?.url ??
     msg?.video_url ??
@@ -243,22 +277,14 @@ async function generateViaOpenRouter(
     data?.url;
 
   if (!videoUrl) {
-    throw new Error(`OpenRouter video: no URL in response: ${JSON.stringify(data).slice(0, 500)}`);
+    throw new Error(`OpenRouter: no video URL in response`);
   }
 
-  // Get the file size
   let bytes = 0;
   try {
     const head = await fetch(videoUrl, { method: 'HEAD' });
     bytes = Number(head.headers.get('content-length') ?? 0);
-  } catch {
-    /* best-effort */
-  }
+  } catch { /* best-effort */ }
 
-  return {
-    url: videoUrl,
-    bytes,
-    duration,
-    aspectRatio,
-  };
+  return { url: videoUrl, bytes, duration, aspectRatio };
 }
