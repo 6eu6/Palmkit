@@ -1776,7 +1776,7 @@ fi
      */
     ask_user: tool({
       description:
-        'Ask the user a clarifying question. Use sparingly — only when a missing detail would make the build fail or produce a wrong result. The user sees the question in the chat stream. If they do not answer in time, proceed with sensible defaults.',
+        'Ask the user a clarifying question. Use sparingly — only when a missing detail would make the build fail or produce a wrong result. The user sees the question in the chat stream. If they do not answer in time, proceed with sensible defaults. IMPORTANT: Do NOT use this tool if the user is asking YOU to make a change — just make the change directly.',
       parameters: z.object({
         question: z.string().describe('The question to ask the user (keep it short, one sentence).'),
         options: z
@@ -1785,10 +1785,12 @@ fi
           .describe('Optional list of suggested answers the user can pick from.'),
         default_choice: z
           .string()
-          .describe('What you will do if the user does not answer. Proceed with this.'),
+          .optional()
+          .describe('What you will do if the user does not answer. Proceed with this. If omitted, you will proceed with your best judgment.'),
       }),
       execute: async (args) => {
         const { question, options, default_choice } = args;
+        const fallback = default_choice ?? 'Proceeding with best judgment based on the request.';
 
         try {
           await emitEvent(supabase, jobId, 'file_chunk', `❓ ${question}`, {
@@ -1796,7 +1798,7 @@ fi
             kind: 'question',
             question,
             options: options ?? [],
-            defaultChoice: default_choice,
+            defaultChoice: fallback,
           });
         } catch {
           /* best-effort */
@@ -1804,8 +1806,8 @@ fi
 
         return {
           answered: false,
-          answer: default_choice,
-          message: `User has not answered yet. Proceeding with: ${default_choice}`,
+          answer: fallback,
+          message: `User has not answered yet. Proceeding with: ${fallback}`,
         };
       },
     }),

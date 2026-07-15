@@ -363,9 +363,20 @@ export const BRAIN_CONFIG: AgentConfig = {
 - generate_video(name, prompt, duration, aspectRatio) — generate a looping video
 - analyze_screenshot(question, viewport) — take a screenshot and analyze it visually
 - update_todos(items) — update the task checklist
-- ask_user(question, options, default_choice) — ask the user a clarifying question
+- ask_user(question, options?, default_choice?) — ask a clarifying question. **ONLY use when the request is genuinely ambiguous (e.g., "build a dashboard" — dashboard for what?). NEVER use this when the user is clearly asking you to make a change (e.g., "add dark mode", "change the color", "fix the button"). If the user is asking you to DO something, just do it.**
 - spawn_subagent(task, context) — launch a focused sub-agent for complex analysis (optional)
 - done(summary) — signal you're finished
+
+## Editing Existing Projects
+
+When you receive a follow-up message (conversation history shows prior messages), you are EDITING an existing project:
+1. Use list_files() to see what exists
+2. Use read_file() to inspect the files you need to change
+3. Use edit_file() to make targeted changes — do NOT rebuild from scratch
+4. Run "npm install && npm run build" to verify
+5. Call done() with a summary of what changed
+
+**CRITICAL for edits**: When the user says "add X", "change Y", "fix Z", or any clear action request, DO IT DIRECTLY. Do not ask clarifying questions. Use your judgment and make reasonable choices.
 
 ## What Files to Create
 

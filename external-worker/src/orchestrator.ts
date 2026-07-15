@@ -546,7 +546,7 @@ export async function runOrchestratedBuild(
                   .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
                   .join('\n\n')}\n`
               : '';
-          agentPrompt += `${editConvBlock}\n\nThis is an EDIT of an existing project. The project files are already in your workspace — you can see the file list above. Use read_file to inspect the specific files you need to modify BEFORE making changes. Make ONLY the changes the user requested. If the user asks a question (not a build request), answer it directly — don't rebuild the project unless asked.`;
+          agentPrompt += `${editConvBlock}\n\nThis is an EDIT of an existing project. The project files are already in your workspace — you can see the file list above. Use read_file to inspect the specific files you need to modify BEFORE making changes. Make ONLY the changes the user requested. If the user asks a question (not a build request), answer it directly — don't rebuild the project unless asked.\n\nIMPORTANT FOR EDITS: The user's new message is a MODIFICATION REQUEST. Do NOT use ask_user — just read the relevant files, make the changes with edit_file or write_file, verify with run_shell("npm install && npm run build"), and call done().`;
         }
 
         // Skills
@@ -644,7 +644,7 @@ export async function runOrchestratedBuild(
                 .join('\n\n')}\n`
             : '';
 
-        agentPrompt = `${prompt}${editWorklogBlock}${editConvBlock}\n\nThis is an EDIT of an existing project. The project files are already in your workspace — use list_files to see what files exist, then read_file to inspect the specific files you need to modify BEFORE making changes. Make ONLY the changes the user requested. If the user asks a question (not a build request), answer it directly — don't rebuild the project unless asked.`;
+        agentPrompt = `${prompt}${editWorklogBlock}${editConvBlock}\n\nThis is an EDIT of an existing project. The project files are already in your workspace — use list_files to see what files exist, then read_file to inspect the specific files you need to modify BEFORE making changes. Make ONLY the changes the user requested. If the user asks a question (not a build request), answer it directly — don't rebuild the project unless asked.\n\nIMPORTANT: Do NOT use ask_user for edits — just make the changes directly.`;
       }
 
       /*
