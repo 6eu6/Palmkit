@@ -582,12 +582,35 @@ export function createAgentTools(
           logger.warn(`[agent] R2 delete failed for ${path}: ${e}`);
         }
 
+        /*
+         * Un-brick delete-then-rewrite. The write LOCK (>=4 writes) refuses
+         * further writes to a path. Models that hit the lock sometimes
+         * delete_file the path intending to rewrite it fresh — but the lock
+         * counter survived the delete, so the rewrite was REFUSED and the
+         * file was permanently lost (observed live: src/App.jsx and
+         * KanbanBoard.jsx vanished from a "complete" build). After a real
+         * delete, grant exactly one more write by stepping the counter back.
+         */
+        const m = jobWriteCounts.get(jobId);
+
+        if (m && (m.get(path) ?? 0) >= 4) {
+          m.set(path, 3);
+        }
+
+        // Make the deletion visible in the build stream — silent destructive
+        // ops made post-mortems impossible.
+        await emitEvent(supabase, jobId, 'file_chunk' as any, `🗑️ Deleted ${path}`, {
+          agent: 'Builder',
+          kind: 'file_deleted',
+          filePath: path,
+        });
+
         logger.info(`[agent] delete_file: ${path}`);
 
         return {
           success: true,
           path,
-          message: `Deleted ${path}`,
+          message: `Deleted ${path}. You may now rewrite it ONCE — write the complete, correct content in a single write_file call.`,
         };
       },
     }),
@@ -979,8 +1002,8 @@ export function createAgentTools(
          */
         const hasIndexHtml = filePaths.some((p) => /^index\.html$/i.test(p));
         const hasSourceFile = filePaths.some((p) => /^src\/.*(jsx|tsx|vue|js|ts)$/i.test(p));
-        const hasPyEntry = filePaths.some((p) => /^(app|main|server|run)\.py$/i);
-        const hasFlutterEntry = filePaths.some((p) => /^lib\/(main|app)\.dart$/i);
+        const hasPyEntry = filePaths.some((p) => /^(app|main|server|run)\.py$/i.test(p));
+        const hasFlutterEntry = filePaths.some((p) => /^lib\/(main|app)\.dart$/i.test(p));
 
         const hasAnyEntryPoint = hasIndexHtml || hasSourceFile || hasPyEntry || hasFlutterEntry;
 

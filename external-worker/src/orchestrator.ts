@@ -1136,6 +1136,16 @@ export async function runOrchestratedBuild(
 
         if (isAbort) {
           logger.warn(`[orchestrator] Stream aborted for ${config.name} (timeout or loop detection)`);
+
+          // Tell the user honestly — a silent abort used to masquerade as a
+          // normal completion ("Build complete" with missing files).
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk' as any,
+            `⏱️ ${config.name} hit the build time limit and was stopped — checking what was completed…`,
+            { agent: config.name, kind: 'agent_aborted' },
+          ).catch(() => undefined);
           // Don't rethrow — just stop this agent's loop.
           // The job_processor will see 0 files and fail the job cleanly.
           streamError = null;
@@ -1552,16 +1562,48 @@ export async function runOrchestratedBuild(
             return filePaths.some((p) => patterns.some((re) => re.test(p)));
           })();
 
-    if (fileCount > 0 && !hasEntryPoint) {
+    /*
+     * IMPORT-INTEGRITY GATE. The entry-point check above verifies files EXIST,
+     * but a build can still ship broken: observed live — src/main.jsx imports
+     * './App.jsx' while App.jsx was deleted mid-build (write-lock + delete_file
+     * interplay) and the job was STILL marked ready_for_preview. The preview
+     * then dies on Vite's "Failed to resolve import". Verify the main entry's
+     * relative imports resolve against the final file set before declaring
+     * success.
+     */
+    const missingImports: string[] = [];
+
+    if (effectiveAppType === 'react' || effectiveAppType === 'vue') {
+      const mainPath = filePaths.find((p) => /^src\/main\.(jsx|tsx|js|ts)$/i.test(p));
+      const mainSrc = mainPath ? (files as Record<string, string>)[mainPath] : '';
+
+      for (const m of (mainSrc || '').matchAll(/from\s+['"]\.\/([\w./-]+)['"]/g)) {
+        const rel = m[1].replace(/\.(jsx|tsx|js|ts|vue|css)$/i, '');
+        const satisfied = filePaths.some((p) =>
+          new RegExp(`^src/${rel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\.(jsx|tsx|js|ts|vue|css))?$`, 'i').test(p),
+        );
+
+        if (!satisfied) {
+          missingImports.push(`src/${m[1]}`);
+        }
+      }
+    }
+
+    if (fileCount > 0 && (!hasEntryPoint || missingImports.length > 0)) {
       logger.error(
-        `[orchestrator] Build produced ${fileCount} files but NO entry point for ${appType} app. Files: ${filePaths.join(', ')}. Failing.`,
+        `[orchestrator] Build produced ${fileCount} files but is broken for ${appType} app. ` +
+          `hasEntryPoint=${hasEntryPoint}, missingImports=[${missingImports.join(', ')}]. Files: ${filePaths.join(', ')}. Failing.`,
       );
 
-      const errorMsg =
-        `Build produced ${fileCount} file${fileCount !== 1 ? 's' : ''} but is missing required entry point files. ` +
-        `Files written: ${filePaths.join(', ')}. ` +
-        `For a ${appType} app, you need BOTH index.html AND source files (src/App.jsx, src/main.jsx). ` +
-        `Please try again — the model called done() before writing the main application files.`;
+      const errorMsg = !hasEntryPoint
+        ? `Build produced ${fileCount} file${fileCount !== 1 ? 's' : ''} but is missing required entry point files. ` +
+          `Files written: ${filePaths.join(', ')}. ` +
+          `For a ${appType} app, you need BOTH index.html AND source files (src/App.jsx, src/main.jsx). ` +
+          `Please try again — the model called done() before writing the main application files.`
+        : `Build finished but is incomplete: the entry file imports ${missingImports.join(', ')} which ${
+            missingImports.length === 1 ? 'was' : 'were'
+          } never written (or got deleted during the build). The preview would fail to start. ` +
+          `Please try again or send a follow-up message asking to recreate the missing file${missingImports.length === 1 ? '' : 's'}.`;
 
       await emitEvent(supabase, jobId, 'job_failed', errorMsg);
       overallSuccess = false;
