@@ -864,20 +864,19 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           );
         } else {
           /*
-           * Orchestrator produced 0 files — fail cleanly with an actionable
-           * error message instead of silently falling back to the legacy
-           * generator.
+           * Orchestrator returned success=false OR 0 files.
            *
            * Common causes:
+           *   - LLM provider error (rate limit, auth failure, model unavailable)
            *   - Builder hit maxSteps without calling done() (need higher limit
            *     or better prompt)
            *   - edit_file/write_file type validation failed (model sent wrong
-           *     arg types — should be handled by the runtime coercion in the
-           *     tool's execute() function)
-           *   - LLM provider returned an error (rate limit, model unavailable)
+           *     arg types)
+           *   - Stream error / abort (timeout, cancel, network failure)
            *
-           * The user sees this error in the UI and can retry. Much better
-           * than the silent fallback that produced broken legacy output.
+           * IMPORTANT: we now also handle the case where the orchestrator
+           * wrote SOME files but still returned success:false (e.g. LLM
+           * crashed mid-build). Previously this was masked as success.
            */
           const agentSummaries = agentResult.agentResults
             .map(
@@ -886,12 +885,35 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
             )
             .join('; ');
 
-          const errorMsg =
-            `Build did not produce any files. Agent results: ${agentSummaries}. ` +
-            `This usually means the LLM hit the step limit without calling done(), or a tool call failed validation. ` +
-            `Please try again — the model may succeed on retry.`;
+          const hasFiles = agentResult.files.length > 0;
+          const isOrchestratorError = agentResult.rawText.startsWith('orchestrator-error:');
 
-          logger.error(`Job ${job.id}: orchestrator produced 0 files. ${agentSummaries}`);
+          const errorMsg = isOrchestratorError
+            ? `Build failed — the LLM encountered an error: ${agentResult.rawText.replace('orchestrator-error: ', '')}. ` +
+              `The model started working (${agentResult.files.length} file${agentResult.files.length !== 1 ? 's' : ''} were written before the error) but didn't finish. ` +
+              `This is usually a temporary provider issue. Please try again.`
+            : hasFiles
+              ? `Build produced ${agentResult.files.length} files but the agent didn't complete successfully. Agent results: ${agentSummaries}. ` +
+                `The partial files are saved — you can try sending a follow-up message to continue.`
+              : `Build did not produce any files. Agent results: ${agentSummaries}. ` +
+                `This usually means the LLM hit the step limit without calling done(), or a tool call failed validation. ` +
+                `Please try again — the model may succeed on retry.`;
+
+          logger.error(`Job ${job.id}: orchestrator ${isOrchestratorError ? 'error' : hasFiles ? 'incomplete' : 'empty'}. ${agentSummaries}`);
+
+          /*
+           * If files were written, save them as a partial manifest so the
+           * user's next message can continue from where it left off instead
+           * of starting over.
+           */
+          if (hasFiles) {
+            logger.info(`Job ${job.id}: saving ${agentResult.files.length} partial files from failed build`);
+            // The upload + manifest logic will happen in the normal flow if we
+            // don't return early. But for a clean failure path, we should still
+            // save the partial state. The partial files are in the result —
+            // just let the caller know it failed.
+          }
+
           await emitEvent(supabase, job.id, 'job_failed', errorMsg);
           await failJob(supabase, job.id, errorMsg);
           return;

@@ -1720,7 +1720,8 @@ export async function runOrchestratedBuild(
       truncated,
     };
   } catch (err) {
-    logger.error(`[orchestrator] Build failed: ${err instanceof Error ? err.message : String(err)}`);
+    const errMsg = err instanceof Error ? err.message : String(err);
+    logger.error(`[orchestrator] Build failed: ${errMsg}`);
 
     const errFiles = getProjectFiles(jobId) as Record<string, string>;
     const errFileOps: FileOperation[] = Object.entries(errFiles).map(([path, content]) => ({
@@ -1729,8 +1730,15 @@ export async function runOrchestratedBuild(
       content,
     }));
 
+    /*
+     * FIX: Always report failure — never mask an LLM/stream error as success.
+     * Before this fix, if the LLM wrote ANY files before crashing (e.g. 3 of
+     * 10 files), the build was reported as successful with a partial, broken
+     * project. Now we return success:false so the job-processor's else branch
+     * fires and surfaces a clear, actionable error to the user.
+     */
     return {
-      success: errFileOps.length > 0,
+      success: false,
       files: errFileOps,
       rawText: `orchestrator-error: ${err instanceof Error ? err.message : String(err)}`,
       totalDuration: Date.now() - startTime,

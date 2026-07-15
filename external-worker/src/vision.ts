@@ -1,21 +1,15 @@
 /**
  * Vision Analysis — let the agent SEE its rendered preview.
  *
- * RADICAL REBUILD: the agent was blind. The old `take_screenshot` tool
- * returned a 300-char text dump of document.body.textContent — the model
- * could read the DOM text but couldn't see a single pixel. So it could
- * not tell whether the hero was centered, whether colors clashed, whether
- * a video background played, or whether the layout was broken.
+ * Supports two paths:
+ *   1. User's BYOK vision model (via provider-registry) — uses the provider,
+ *      model name, and API key the user configured in Settings.
+ *   2. Z.ai SDK fallback — uses the built-in z-ai-web-dev-sdk for vision
+ *      analysis (requires ZAI_ env vars on the worker).
  *
- * This module wraps the Z.ai vision chat API (z-ai-web-dev-sdk) so the
- * agent can ask arbitrary questions about a base64 PNG screenshot and get
- * a natural-language description back. Used by the `analyze_screenshot`
- * tool in agent-tools.ts.
- *
- * The SDK runs server-side only (it imports the API key), so this file
- * lives in external-worker/ — never in app/.
+ * Path 1 is preferred because it respects the user's provider choice and
+ * doesn't require Z.ai env vars on the worker.
  */
-import ZAI from 'z-ai-web-dev-sdk';
 import { logger } from './logger';
 
 export interface VisionAnalysis {
@@ -23,6 +17,13 @@ export interface VisionAnalysis {
   description: string;
   issues?: string[];
   raw?: string;
+}
+
+/** Options for using the user's BYOK vision model. */
+export interface VisionOptions {
+  model?: string;
+  apiKey?: string;
+  provider?: string;
 }
 
 const DEFAULT_PROMPT =
@@ -33,22 +34,90 @@ const DEFAULT_PROMPT =
   'Be specific and concise (under 300 words).';
 
 /**
- * Analyze a screenshot with the vision model.
+ * Analyze a screenshot with a vision model.
+ *
+ * If opts has apiKey + provider + model, uses the user's BYOK model via
+ * provider-registry (OpenRouter, Google, Anthropic, etc.).
+ * Otherwise falls back to Z.ai SDK.
  *
  * @param imageBase64 — raw base64 PNG (no data: prefix)
  * @param question — optional specific question; falls back to the default
  *                   "describe + find problems" prompt
+ * @param opts — optional BYOK vision model config
  */
 export async function analyzeScreenshot(
   imageBase64: string,
   question?: string,
+  opts?: VisionOptions,
 ): Promise<VisionAnalysis> {
-  try {
-    const zai = await ZAI.create();
+  const prompt = question?.trim()
+    ? `You are looking at a screenshot of a web app preview. ${question.trim()}`
+    : DEFAULT_PROMPT;
 
-    const prompt = question?.trim()
-      ? `You are looking at a screenshot of a web app preview. ${question.trim()}`
-      : DEFAULT_PROMPT;
+  /*
+   * Path 1: User's BYOK vision model.
+   * Use provider-registry to create a LanguageModelV1, then call generateText
+   * with the image as a multi-modal message.
+   *
+   * NOTE: mediaConfig uses short provider names ('openrouter', 'google', 'zai')
+   * but provider-registry uses full names ('OpenRouter', 'Google', 'Z.ai').
+   * We map here.
+   */
+  if (opts?.apiKey && opts?.provider && opts?.model) {
+    try {
+      // Map short provider names to full registry names
+      const providerNameMap: Record<string, string> = {
+        openrouter: 'OpenRouter',
+        google: 'Google',
+        anthropic: 'Anthropic',
+        openai: 'OpenAI',
+        zai: 'OpenRouter', // Z.ai models accessible via OpenRouter proxy
+      };
+      const registryProvider = providerNameMap[opts.provider.toLowerCase()] || opts.provider;
+
+      const { getModelInstance } = await import('./provider-registry');
+      const visionModel = getModelInstance(registryProvider, opts.model, opts.apiKey);
+      const { generateText } = await import('ai');
+
+      const result = await generateText({
+        model: visionModel,
+        maxTokens: 1024,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              {
+                type: 'image',
+                image: Buffer.from(imageBase64, 'base64'),
+              },
+            ],
+          },
+        ],
+      });
+
+      const text = result.text;
+
+      return {
+        ok: true,
+        description: text,
+        raw: text,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`[vision] BYOK vision analysis failed (${opts.provider}/${opts.model}): ${msg}`);
+      // Fall through to Z.ai SDK
+    }
+  }
+
+  /*
+   * Path 2: Z.ai SDK fallback.
+   * Uses the built-in z-ai-web-dev-sdk. This requires ZAI_ env vars on
+   * the worker. If those aren't set, this will fail and return ok:false.
+   */
+  try {
+    const ZAI = await import('z-ai-web-dev-sdk');
+    const zai = await (ZAI.default ?? ZAI).create();
 
     const completion = await (zai as any).chat.completions.createVision({
       messages: [
@@ -75,7 +144,7 @@ export async function analyzeScreenshot(
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.warn(`[vision] analyzeScreenshot failed: ${msg}`);
+    logger.warn(`[vision] Z.ai vision analysis failed: ${msg}`);
     return {
       ok: false,
       description: '',

@@ -1090,7 +1090,12 @@ export function createAgentTools(
           summary || '',
           completed && completed.length > 0 ? `\n\n✅ Completed:\n${completed.map((c: string) => `- ${c}`).join('\n')}` : '',
           incomplete && incomplete.length > 0
-            ? `\n\n⚠️ Incomplete:\n${incomplete.map((i: { item: string; reason: string; suggestion: string }) => `- ${i.item}: ${i.reason} → ${i.suggestion}`).join('\n')}`
+            ? `\n\n⚠️ Incomplete:\n${incomplete.map((i: any) => {
+                const item = typeof i === 'string' ? i : (i?.item ?? 'unknown');
+                const reason = typeof i === 'string' ? '' : (i?.reason ?? '');
+                const suggestion = typeof i === 'string' ? '' : (i?.suggestion ?? '');
+                return `- ${item}${reason ? `: ${reason}` : ''}${suggestion ? ` → ${suggestion}` : ''}`;
+              }).join('\n')}`
             : '',
           next_steps && next_steps.length > 0 ? `\n\n💡 Next steps:\n${next_steps.map((s: string) => `- ${s}`).join('\n')}` : '',
         ].join('');
@@ -1457,9 +1462,13 @@ fi
             };
           }
 
-          // Use the z-ai-web-dev-sdk for VLM analysis (Z.ai vision models)
-          // For non-Z.ai vision models, the SDK still works via OpenRouter
-          const analysis = await analyzeScreenshot(base64, question);
+          // Use the user's configured vision model (BYOK via provider-registry)
+          // Falls back to Z.ai SDK if BYOK fails or isn't configured
+          const analysis = await analyzeScreenshot(base64, question, {
+            model: media?.visionModel,
+            apiKey: media?.visionApiKey || media?.apiKey,
+            provider: media?.visionProvider,
+          });
 
           if (!analysis.ok) {
             return {
