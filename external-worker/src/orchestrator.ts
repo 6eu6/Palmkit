@@ -1401,7 +1401,7 @@ export async function runOrchestratedBuild(
        * ZERO files, the model planned without acting. Re-queue the Builder once
        * with a force-build directive (runs BEFORE the Tester) instead of failing.
        */
-      if (role === 'builder' && builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES) {
+      if ((role === 'builder' || role === 'brain') && builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES) {
         const curFiles = getProjectFiles(jobId) as Record<string, string>;
         const curPaths = Object.keys(curFiles);
         const zeroFiles = curPaths.length === 0;
@@ -1435,7 +1435,7 @@ export async function runOrchestratedBuild(
           builderEmptyRetries++;
           forceBuild = true;
           incompleteBuild = !zeroFiles && (missingPkg || missingEntryPoint);
-          agentQueue.unshift('builder'); // run the Builder again next, before the Tester
+          agentQueue.unshift(role === 'brain' ? 'brain' : 'builder'); // re-run the same agent type
 
           const reason = zeroFiles
             ? 'empty_builder_retry'
@@ -1443,11 +1443,12 @@ export async function runOrchestratedBuild(
               ? 'incomplete_build_retry'
               : 'no_entry_point_retry';
 
+          const agentName = role === 'brain' ? 'Brain' : 'Builder';
           const msg = zeroFiles
-            ? `⚠️ No files written yet — re-prompting the Builder to build now (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`
+            ? `⚠️ No files written yet — re-prompting ${agentName} to build now (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`
             : missingPkg
-              ? `⚠️ Build is missing package.json — a Vite app can't run without it. Asking the Builder to finish the scaffolding (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`
-              : `⚠️ Build has ${curPaths.length} files but NO entry point (no index.html, no src/App.jsx). The preview will 404. Re-prompting the Builder to write the missing entry files (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`;
+              ? `⚠️ Build is missing package.json — a Vite app can't run without it. Asking ${agentName} to finish the scaffolding (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`
+              : `⚠️ Build has ${curPaths.length} files but NO entry point (no index.html, no src/App.jsx). The preview will 404. Re-prompting ${agentName} to write the missing entry files (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`;
 
           await emitEvent(
             supabase,
