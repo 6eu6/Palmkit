@@ -239,9 +239,28 @@ export function createAgentTools(
           ),
       }),
       execute: async ({ path, content }) => {
-        // Convert object/array content to string (for JSON files)
-        const fileContent =
-          typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+        /*
+         * Convert object/array content to string. For .json files, raw JSON is
+         * correct. For JS/TS files it is NOT: models pass config objects for
+         * postcss.config.js / tailwind.config.js, and saving raw JSON into a
+         * .js file crashes Vite at startup ("Unexpected token ':'") — observed
+         * live, it took the whole preview down. Wrap it as a proper ES module.
+         */
+        let fileContent: string;
+
+        if (typeof content === 'string') {
+          fileContent = content;
+        } else {
+          const json = JSON.stringify(content, null, 2);
+
+          if (/\.(mjs|js|ts)$/i.test(path)) {
+            fileContent = `export default ${json};\n`;
+          } else if (/\.cjs$/i.test(path)) {
+            fileContent = `module.exports = ${json};\n`;
+          } else {
+            fileContent = json;
+          }
+        }
 
         /*
          * LOOP BREAKER. Some models (GLM-4.x) get stuck rewriting the same file
