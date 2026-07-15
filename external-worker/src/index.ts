@@ -77,8 +77,19 @@ app.get('/health', (c) =>
   c.json({
     status: 'ok',
     service: 'palmkit-external-worker',
-    version: '0.1.0',
+    version: '0.2.0-experiment-1',
+    commit: execSync('git -C /opt/palmkit-worker rev-parse --short HEAD 2>/dev/null || echo unknown').toString().trim(),
     timestamp: new Date().toISOString(),
+  }),
+);
+
+app.get('/version', (c) =>
+  c.json({
+    version: '0.2.0-experiment-1',
+    service: 'palmkit-external-worker',
+    commit: execSync('git -C /opt/palmkit-worker rev-parse --short HEAD 2>/dev/null || echo unknown').toString().trim(),
+    deployedAt: new Date().toISOString(),
+    uptime: process.uptime(),
   }),
 );
 
