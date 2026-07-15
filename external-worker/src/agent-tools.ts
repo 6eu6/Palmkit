@@ -249,11 +249,62 @@ export function createAgentTools(
         let fileContent: string;
 
         if (typeof content === 'string') {
-          fileContent = content;
+          /*
+           * JSON-UNWRAP GUARD. Some models (GLM-4.x, some OpenRouter models)
+           * wrap file content in a JSON envelope like {"content": "actual code"}
+           * or {"text": "actual code"} instead of passing the raw string.
+           * If the string looks like a JSON object with a single string-valued
+           * "content" / "text" / "code" key, extract the inner value — that's
+           * the actual file the model intended to write.
+           *
+           * Heuristic: starts with '{' AND contains a "content"/"text"/"code"
+           * key whose value is a string. Only unwrap if the inner string is
+           * longer than the wrapper (the wrapper is noise, the inner value is
+           * the real file). This avoids false positives on legitimate JSON files.
+           */
+          const trimmed = content.trimStart();
+
+          if (
+            trimmed.startsWith('{') &&
+            !path.endsWith('.json') &&
+            !path.endsWith('.json5')
+          ) {
+            try {
+              const parsed = JSON.parse(trimmed);
+
+              if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                const innerKey = ['content', 'text', 'code', 'source', 'file_content'].find(
+                  (k) => typeof parsed[k] === 'string' && parsed[k].length > trimmed.length * 0.5,
+                );
+
+                if (innerKey) {
+                  logger.info(
+                    `[agent] write_file: ${path} — unwrapped JSON envelope (key="${innerKey}", wrapper=${trimmed.length} chars, inner=${parsed[innerKey].length} chars)`,
+                  );
+                  fileContent = parsed[innerKey];
+                } else {
+                  fileContent = content;
+                }
+              } else {
+                fileContent = content;
+              }
+            } catch {
+              // Not valid JSON — use as-is
+              fileContent = content;
+            }
+          } else {
+            fileContent = content;
+          }
         } else {
           const json = JSON.stringify(content, null, 2);
 
-          if (/\.(mjs|js|ts)$/i.test(path)) {
+          /*
+           * Include .jsx, .tsx, .mts, .cts in the JS/TS detection.
+           * Previously only .mjs/.js/.ts matched — so a model that passed an
+           * object for tailwind.config.js worked, but postcss.config.cjs or
+           * any .jsx content got raw JSON.stringified, crashing Vite.
+           */
+          if (/\.(mjs|jsx?|mts?|cts?)$/i.test(path)) {
             fileContent = `export default ${json};\n`;
           } else if (/\.cjs$/i.test(path)) {
             fileContent = `module.exports = ${json};\n`;
@@ -488,6 +539,32 @@ export function createAgentTools(
           }
 
           if (typeof v === 'string') {
+            /*
+             * JSON-UNWRAP GUARD (same as write_file). Some models wrap the
+             * replacement text in {"content": "..."} instead of passing the
+             * raw string. Extract the inner value when detected.
+             */
+            const trimmed = v.trimStart();
+
+            if (trimmed.startsWith('{')) {
+              try {
+                const parsed = JSON.parse(trimmed);
+
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                  const innerKey = ['content', 'text', 'code', 'source'].find(
+                    (k) => typeof parsed[k] === 'string' && parsed[k].length > trimmed.length * 0.5,
+                  );
+
+                  if (innerKey) {
+                    logger.info(`[agent] edit_file: unwrapped JSON envelope (key="${innerKey}")`);
+                    return parsed[innerKey];
+                  }
+                }
+              } catch {
+                // Not valid JSON — use as-is
+              }
+            }
+
             return v;
           }
 

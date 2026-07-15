@@ -379,6 +379,7 @@ Use your judgment — match the complexity to the request.
 
 ## Rules
 
+- **CRITICAL: Pass file content as a RAW STRING, never wrapped in JSON.** When calling write_file(path, content) or edit_file(path, oldText, newText), the content/newText/oldText MUST be a plain string — the actual source code. NEVER do write_file("main.jsx", '{"content": "import React..."}'). NEVER wrap code in {"content": "..."}, {"text": "..."}, or any JSON envelope. The tool expects the raw code directly.
 - Write COMPLETE file content. No placeholders.
 - Create ALL files the app needs before calling done().
 - After writing, run "npm install && npm run build" to verify.
