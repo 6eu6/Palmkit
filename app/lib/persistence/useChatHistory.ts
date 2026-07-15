@@ -600,6 +600,27 @@ export function useChatHistory() {
           if (hasSnapshot) {
             try {
               workbenchStore.files.set(snapshot.files);
+
+              /*
+               * AUTO-OPEN WORKBENCH on restore when the project has files.
+               * Previously, showWorkbench defaulted to false on every page
+               * load, so returning to a completed project showed files in
+               * the Code tab but the workbench panel was collapsed (width=0)
+               * and the preview iframe was invisible. Now we open it so the
+               * user immediately sees their app.
+               *
+               * On mobile (<640px), we skip this — the mobile shell uses a
+               * bottom tab bar to switch between Chat and Workspace, and
+               * auto-opening the workbench would yank the user away from the
+               * conversation they just navigated to.
+               */
+              const fileCount = Object.keys(snapshot.files).length;
+              const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 640;
+
+              if (fileCount > 0 && isDesktop) {
+                workbenchStore.showWorkbench.set(true);
+                workbenchStore.currentView.set('preview');
+              }
             } catch (e) {
               console.error('Failed to restore snapshot files into workbench:', e);
             }
@@ -1030,6 +1051,15 @@ ${value.content}
                   }
                   workbenchStore.files.set(fileMap as any);
 
+                  /*
+                   * AUTO-OPEN WORKBENCH after workspace restore.
+                   */
+                  const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 640;
+                  if (isDesktop) {
+                    workbenchStore.showWorkbench.set(true);
+                    workbenchStore.currentView.set('preview');
+                  }
+
                   const { buildStatusStore, setPreviewFiles: setStore } = await import('~/lib/stores/build-status');
                   setStore(previewFiles);
 
@@ -1158,6 +1188,16 @@ ${value.content}
                     fileMap[path] = { type: 'file', content };
                   }
                   workbenchStore.files.set(fileMap as any);
+
+                  /*
+                   * AUTO-OPEN WORKBENCH after restoring files from R2.
+                   * Same logic as the snapshot restore path above.
+                   */
+                  const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 640;
+                  if (isDesktop) {
+                    workbenchStore.showWorkbench.set(true);
+                    workbenchStore.currentView.set('preview');
+                  }
 
                   console.log(
                     `[Palmkit] Restored ${Object.keys(previewFiles).length} file(s) from R2 for job ${jobId} (appType: ${restoredAppType})`,
@@ -1295,6 +1335,15 @@ ${value.content}
                         fileMap[path] = { type: 'file', content };
                       }
                       workbenchStore.files.set(fileMap as any);
+
+                      /*
+                       * AUTO-OPEN WORKBENCH after fallback R2 restore.
+                       */
+                      const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 640;
+                      if (isDesktop) {
+                        workbenchStore.showWorkbench.set(true);
+                        workbenchStore.currentView.set('preview');
+                      }
 
                       console.log(
                         `[Palmkit] Fallback restore: ${Object.keys(previewFiles).length} file(s) from R2 for job ${matchingBuild.id}`,
