@@ -110,9 +110,14 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
      *
      * For non-static apps, the Launch Preview button (from useWorkerSandbox)
      * handles the preview via E2B sandbox.
+     *
+     * FIX: Subscribe to buildStatusStore (via buildStatusValue) so this
+     * effect re-runs when appType changes. Previously the effect only
+     * depended on [previewFiles] and read buildStatusStore.get() directly,
+     * causing a race condition on restore: previewFiles updated before
+     * buildStatusStore.appType, so React apps got a blob URL → white screen.
      */
-    const buildStatus = buildStatusStore.get();
-    const appType = buildStatus.appType;
+    const appType = buildStatusValue.appType;
 
     /*
      * Static apps: use blob URL preview
@@ -178,7 +183,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
       URL.revokeObjectURL(blobUrl);
       blobUrls.forEach((u) => URL.revokeObjectURL(u));
     };
-  }, [previewFiles]);
+  }, [previewFiles, buildStatusValue.appType]);
 
   const [displayPath, setDisplayPath] = useState('/');
   const [iframeUrl, setIframeUrl] = useState<string | undefined>();
