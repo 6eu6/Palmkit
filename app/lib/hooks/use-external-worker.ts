@@ -538,6 +538,7 @@ export function useExternalWorker() {
       projectId?: string,
       designScheme?: { palette: Record<string, string>; font: string[]; features: string[] },
       conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+
       /*
        * User-uploaded images (data URLs). These are the images the user
        * attached to their prompt (food photos, logos, screenshots, etc.).
@@ -621,6 +622,7 @@ export function useExternalWorker() {
             ...(projectId ? { projectId } : {}),
             ...(designScheme ? { designScheme } : {}),
             ...(conversationHistory && conversationHistory.length > 0 ? { conversationHistory } : {}),
+
             /*
              * User-uploaded images (data URLs). /api/jobs uploads each to R2
              * and records the path; the worker reads them and injects the

@@ -230,7 +230,21 @@ export const ModelSelector = ({
   }, [isProviderDropdownOpen, isModelDropdownOpen]);
 
   const filteredModels = useMemo(() => {
-    const baseModels = [...modelList].filter((e) => e.provider === provider?.name && e.name);
+    /*
+     * Dedupe by model name: the list is a merge of static + dynamically
+     * fetched models, and the same model id appearing in both produced
+     * duplicate React keys (and duplicate rows) in the dropdown.
+     */
+    const seen = new Set<string>();
+    const baseModels = [...modelList].filter((e) => {
+      if (e.provider !== provider?.name || !e.name || seen.has(e.name)) {
+        return false;
+      }
+
+      seen.add(e.name);
+
+      return true;
+    });
 
     return baseModels
       .filter((model) => {

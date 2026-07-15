@@ -71,6 +71,7 @@ export async function action(args: ActionFunctionArgs) {
     agentConfig,
     designScheme,
     conversationHistory,
+
     /*
      * User-uploaded images — data URLs (e.g. "data:image/jpeg;base64,...").
      * Each is uploaded to R2 under palmkit-files/<userId>/<jobId>/_input/user-images/<n>.<ext>
@@ -274,7 +275,14 @@ export async function action(args: ActionFunctionArgs) {
 
       const mimeType = match[1];
       const base64Data = match[2];
-      const ext = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : mimeType === 'image/gif' ? 'gif' : 'jpg';
+      const ext =
+        mimeType === 'image/png'
+          ? 'png'
+          : mimeType === 'image/webp'
+            ? 'webp'
+            : mimeType === 'image/gif'
+              ? 'gif'
+              : 'jpg';
       const storagePath = `${imagePrefix}/image-${i}.${ext}`;
 
       try {
@@ -286,12 +294,10 @@ export async function action(args: ActionFunctionArgs) {
           bytes[j] = binaryString.charCodeAt(j);
         }
 
-        const { error: uploadError } = await authed.supabase.storage
-          .from('palmkit-files')
-          .upload(storagePath, bytes, {
-            contentType: mimeType,
-            upsert: true,
-          });
+        const { error: uploadError } = await authed.supabase.storage.from('palmkit-files').upload(storagePath, bytes, {
+          contentType: mimeType,
+          upsert: true,
+        });
 
         if (uploadError) {
           logger.warn(`Failed to upload user image ${i}:`, uploadError.message);

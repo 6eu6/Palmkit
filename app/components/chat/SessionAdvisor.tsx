@@ -187,8 +187,7 @@ export function SessionAdvisor() {
             </>
           ) : (
             <>
-              This chat is using{' '}
-              <span className="font-medium text-amber-300 tabular-nums">~{pct}%</span> of the
+              This chat is using <span className="font-medium text-amber-300 tabular-nums">~{pct}%</span> of the
               model&apos;s context window. Each further edit sends more data, which slows the model down.
             </>
           )}{' '}

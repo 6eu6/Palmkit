@@ -18,17 +18,28 @@ import { toggleSidebar } from '~/lib/stores/sidebar';
  * physical pane), and a soft drop shadow so it lifts off the canvas.
  */
 const glassButton =
-  'pointer-events-auto items-center justify-center h-10 w-10 rounded-2xl border border-[var(--pk-glass-border)] ' +
+  'pointer-events-auto items-center justify-center h-11 w-11 rounded-[14px] border border-[var(--pk-glass-border)] ' +
   'bg-[var(--pk-glass-bg)] backdrop-blur-2xl backdrop-saturate-[1.8] text-palmkit-elements-textSecondary ' +
-  'shadow-[inset_0_1px_0_0_rgba(255,255,255,0.55),inset_0_-1px_0_0_rgba(0,0,0,0.04),0_6px_18px_-6px_rgba(0,0,0,0.28)] ' +
+  'shadow-[inset_0_1px_0_0_rgba(255,255,255,0.55),inset_0_-1px_0_0_rgba(0,0,0,0.05),inset_0_0_12px_0_rgba(255,255,255,0.06),0_8px_24px_-8px_rgba(0,0,0,0.32)] ' +
   'hover:text-palmkit-elements-textPrimary hover:bg-[var(--pk-glass-bg-hi)] hover:border-[var(--pk-glass-border-hi)] ' +
-  'active:scale-95 transition-all duration-200';
+  'active:scale-[0.92] transition-all duration-200 select-none [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]';
 
 export function Header() {
   const chat = useStore(chatStore);
 
+  /*
+   * The inline safe-area padding keeps the glass chrome clear of the Dynamic
+   * Island / notch and rounded corners (viewport-fit=cover exposes the insets).
+   */
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 z-logo flex items-start justify-between p-3 sm:p-4">
+    <div
+      className="pointer-events-none absolute inset-x-0 top-0 z-logo flex items-start justify-between p-3 sm:p-4"
+      style={{
+        paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0px))',
+        paddingLeft: 'max(0.75rem, env(safe-area-inset-left, 0px))',
+        paddingRight: 'max(0.75rem, env(safe-area-inset-right, 0px))',
+      }}
+    >
       {/* glassy hamburger — opens the projects drawer on mobile, toggles the sidebar on desktop.
           Exactly one is shown per breakpoint; the display class must NOT collide with a base
           `flex`, so the base has none and each button sets its own. */}

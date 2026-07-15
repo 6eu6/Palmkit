@@ -69,6 +69,7 @@ function isBuildBannerContent(content: unknown): boolean {
   }
 
   const trimmed = content.trim();
+
   return trimmed === '⚡' || trimmed.startsWith('⚡');
 }
 

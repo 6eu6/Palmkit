@@ -93,7 +93,10 @@ const ScreenshotRow = memo(({ dataUrl, viewport }: { dataUrl: string; viewport?:
       >
         <span className="i-ph:camera shrink-0" />
         <span>Screenshot{viewport ? ` (${viewport})` : ''}</span>
-        <span className="ml-auto i-ph:caret-down shrink-0 transition-transform" style={{ transform: expanded ? 'rotate(180deg)' : 'none' }} />
+        <span
+          className="ml-auto i-ph:caret-down shrink-0 transition-transform"
+          style={{ transform: expanded ? 'rotate(180deg)' : 'none' }}
+        />
       </button>
       {expanded && (
         <div className="bg-black/30 p-2">
@@ -129,7 +132,10 @@ const VisionRow = memo(({ text }: { text: string }) => {
       >
         <span className="i-ph:eye shrink-0" />
         <span>Vision analysis</span>
-        <span className="ml-auto i-ph:caret-down shrink-0 transition-transform" style={{ transform: expanded ? 'rotate(180deg)' : 'none' }} />
+        <span
+          className="ml-auto i-ph:caret-down shrink-0 transition-transform"
+          style={{ transform: expanded ? 'rotate(180deg)' : 'none' }}
+        />
       </button>
       {expanded && (
         <div className="mt-2 text-xs leading-relaxed text-palmkit-elements-textSecondary whitespace-pre-wrap">
@@ -148,47 +154,52 @@ VisionRow.displayName = 'VisionRow';
  * When done: collapsible with the sub-agent's findings.
  * When error: red warning with the error.
  */
-const SubagentRow = memo(({ task, result, status }: { task: string; result?: string; status: 'running' | 'done' | 'error' }) => {
-  const [expanded, setExpanded] = useState(false);
+const SubagentRow = memo(
+  ({ task, result, status }: { task: string; result?: string; status: 'running' | 'done' | 'error' }) => {
+    const [expanded, setExpanded] = useState(false);
 
-  if (status === 'running') {
-    return (
-      <div className="flex items-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/5 p-2.5 text-sm text-cyan-300">
-        <span className="i-svg-spinners:90-ring-with-bg shrink-0" />
-        <span className="truncate">Sub-agent: {task}</span>
-      </div>
-    );
-  }
-
-  if (status === 'error') {
-    return (
-      <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/5 p-2.5 text-sm text-red-300">
-        <span className="i-ph:warning-circle shrink-0" />
-        <span className="truncate">Sub-agent failed: {task}</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/5 overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setExpanded((e) => !e)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-cyan-300"
-      >
-        <span className="i-ph:robot shrink-0" />
-        <span className="truncate">Sub-agent: {task}</span>
-        <span className="i-ph:check-circle-fill ml-auto shrink-0 text-green-400" />
-        <span className="i-ph:caret-down shrink-0 transition-transform" style={{ transform: expanded ? 'rotate(180deg)' : 'none' }} />
-      </button>
-      {expanded && result && (
-        <div className="border-t border-cyan-500/20 px-3 py-2 text-xs leading-relaxed text-palmkit-elements-textSecondary whitespace-pre-wrap">
-          {result}
+    if (status === 'running') {
+      return (
+        <div className="flex items-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/5 p-2.5 text-sm text-cyan-300">
+          <span className="i-svg-spinners:90-ring-with-bg shrink-0" />
+          <span className="truncate">Sub-agent: {task}</span>
         </div>
-      )}
-    </div>
-  );
-});
+      );
+    }
+
+    if (status === 'error') {
+      return (
+        <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/5 p-2.5 text-sm text-red-300">
+          <span className="i-ph:warning-circle shrink-0" />
+          <span className="truncate">Sub-agent failed: {task}</span>
+        </div>
+      );
+    }
+
+    return (
+      <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/5 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-cyan-300"
+        >
+          <span className="i-ph:robot shrink-0" />
+          <span className="truncate">Sub-agent: {task}</span>
+          <span className="i-ph:check-circle-fill ml-auto shrink-0 text-green-400" />
+          <span
+            className="i-ph:caret-down shrink-0 transition-transform"
+            style={{ transform: expanded ? 'rotate(180deg)' : 'none' }}
+          />
+        </button>
+        {expanded && result && (
+          <div className="border-t border-cyan-500/20 px-3 py-2 text-xs leading-relaxed text-palmkit-elements-textSecondary whitespace-pre-wrap">
+            {result}
+          </div>
+        )}
+      </div>
+    );
+  },
+);
 
 SubagentRow.displayName = 'SubagentRow';
 
@@ -223,47 +234,49 @@ ImageRow.displayName = 'ImageRow';
  * VideoRow — shows the video generation lifecycle inline. When ready,
  * embeds the actual MP4 so the user can preview the generated video asset.
  */
-const VideoRow = memo(({ name, url, status }: { name: string; url?: string; status: 'generating' | 'ready' | 'error' }) => {
-  if (status === 'generating') {
-    return (
-      <div className="flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/5 p-2.5 text-sm text-purple-300">
-        <span className="i-svg-spinners:90-ring-with-bg shrink-0" />
-        <span>Generating video "{name}"…</span>
-      </div>
-    );
-  }
-
-  if (status === 'error') {
-    return (
-      <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/5 p-2.5 text-sm text-red-300">
-        <span className="i-ph:warning-circle shrink-0" />
-        <span>Video "{name}" failed — falling back to image</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-purple-300">
-        <span className="i-ph:video shrink-0" />
-        <span>Video "{name}" ready</span>
-      </div>
-      {url && (
-        <div className="bg-black/30 p-2">
-          <video
-            src={url}
-            autoPlay
-            muted
-            loop
-            playsInline
-            className="max-w-full rounded-md"
-            style={{ maxHeight: '300px', margin: '0 auto', display: 'block' }}
-          />
+const VideoRow = memo(
+  ({ name, url, status }: { name: string; url?: string; status: 'generating' | 'ready' | 'error' }) => {
+    if (status === 'generating') {
+      return (
+        <div className="flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/5 p-2.5 text-sm text-purple-300">
+          <span className="i-svg-spinners:90-ring-with-bg shrink-0" />
+          <span>Generating video "{name}"…</span>
         </div>
-      )}
-    </div>
-  );
-});
+      );
+    }
+
+    if (status === 'error') {
+      return (
+        <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/5 p-2.5 text-sm text-red-300">
+          <span className="i-ph:warning-circle shrink-0" />
+          <span>Video "{name}" failed — falling back to image</span>
+        </div>
+      );
+    }
+
+    return (
+      <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-purple-300">
+          <span className="i-ph:video shrink-0" />
+          <span>Video "{name}" ready</span>
+        </div>
+        {url && (
+          <div className="bg-black/30 p-2">
+            <video
+              src={url}
+              autoPlay
+              muted
+              loop
+              playsInline
+              className="max-w-full rounded-md"
+              style={{ maxHeight: '300px', margin: '0 auto', display: 'block' }}
+            />
+          </div>
+        )}
+      </div>
+    );
+  },
+);
 
 VideoRow.displayName = 'VideoRow';
 
@@ -274,6 +287,7 @@ VideoRow.displayName = 'VideoRow';
  */
 function renderInline(text: string): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
+
   // Match **bold**, `code`, or any other text
   const regex = /(\*\*[^*]+\*\*|`[^`]+`)/g;
   let lastIndex = 0;
@@ -390,6 +404,7 @@ function isHeartbeat(ev: WorkerEvent): boolean {
  */
 function foldEvents(events: WorkerEvent[]): Section[] {
   const sections: Section[] = [];
+
   /*
    * No initial "System" section. The first section is created when the first
    * `agent_started` event arrives (the brain starting). If events arrive
@@ -484,7 +499,10 @@ function foldEvents(events: WorkerEvent[]): Section[] {
         break;
       }
       case 'agent_completed': {
-        if (!current) break;
+        if (!current) {
+          break;
+        }
+
         current.running = false;
         current.durationMs = (p.durationMs as number) ?? current.durationMs;
         current.success = (p.success as boolean) ?? true;
@@ -646,12 +664,15 @@ function foldEvents(events: WorkerEvent[]): Section[] {
         } else if (/Read:/.test(m) || /^📖/.test(m)) {
           ensureSection().rows.push({ kind: 'read', text: m.replace(/^📖\s*/, '') });
         } else if (/Screenshot/i.test(m) || /^📸/.test(m)) {
-          // Don't render the text-only screenshot messages here — they're
-          // either the old broken take_screenshot or the new analyze_screenshot
-          // which emits its own screenshot_captured/vision_analysis events.
-          // Skip to avoid duplicate rows.
+          /*
+           * Don't render the text-only screenshot messages here — they're
+           * either the old broken take_screenshot or the new analyze_screenshot
+           * which emits its own screenshot_captured/vision_analysis events.
+           * Skip to avoid duplicate rows.
+           */
           break;
         }
+
         break;
       }
       case 'job_failed':
@@ -664,6 +685,7 @@ function foldEvents(events: WorkerEvent[]): Section[] {
          * below also checks for cancel vs real failure.
          */
         const sec = ensureSection();
+
         if (ev.message.includes('cancelled by user') || ev.message.includes('saving partial state')) {
           sec.rows.push({ kind: 'system', text: ev.message });
         } else {
@@ -672,6 +694,7 @@ function foldEvents(events: WorkerEvent[]): Section[] {
 
         break;
       }
+
       /*
        * Worker plumbing events — NOT rendered as visible rows. These are
        * state-machine transitions (planning_completed, file_generation_started,
@@ -706,6 +729,7 @@ function foldEvents(events: WorkerEvent[]): Section[] {
         if (!ev.message || !ev.message.trim()) {
           break;
         }
+
         const sec = ensureSection();
         const rows = sec.rows;
         const last = rows[rows.length - 1];
@@ -765,7 +789,12 @@ const Thinking = memo(({ text }: { text: string }) => {
           {open ? text : preview}
         </span>
         {text.length > 800 && (
-          <span className={classNames('ml-auto shrink-0 text-xs text-palmkit-elements-textTertiary transition-transform', open ? 'i-ph:caret-up' : 'i-ph:caret-down')} />
+          <span
+            className={classNames(
+              'ml-auto shrink-0 text-xs text-palmkit-elements-textTertiary transition-transform',
+              open ? 'i-ph:caret-up' : 'i-ph:caret-down',
+            )}
+          />
         )}
       </button>
     </div>
@@ -973,7 +1002,9 @@ const SectionView = memo(({ section }: { section: Section }) => {
               <span
                 className={classNames(
                   'text-[11px]',
-                  section.success === false ? 'i-ph:x-circle-fill text-red-400' : 'i-ph:check-circle-fill text-green-400',
+                  section.success === false
+                    ? 'i-ph:x-circle-fill text-red-400'
+                    : 'i-ph:check-circle-fill text-green-400',
                 )}
               />
               {fmtDur(section.durationMs) && <span className="tabular-nums">{fmtDur(section.durationMs)}</span>}

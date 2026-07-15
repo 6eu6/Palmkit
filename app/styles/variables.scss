@@ -418,3 +418,13 @@
   --palmkit-text-2xl: 20px;
   --palmkit-text-3xl: 24px;
 }
+
+/* --- Safe-area insets (iPhone notch / Dynamic Island / home indicator) ---
+   Exposed as custom properties so JS (e.g. the floating view toggle) can read
+   real inset values via getComputedStyle — env() is not readable from JS. */
+:root {
+  --pk-safe-top: env(safe-area-inset-top, 0px);
+  --pk-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --pk-safe-left: env(safe-area-inset-left, 0px);
+  --pk-safe-right: env(safe-area-inset-right, 0px);
+}

@@ -453,15 +453,27 @@ async function _runInE2B(
    * Poll until the cloud dev server responds (up to ~120s).
    * The dev server needs time for: npm install (~10s) + vite start (~2s).
    */
-  for (let i = 0; i < 40; i++) {
-    const ready = await checkRemoteStatus(sandbox.id, 3000);
+  let ready = false;
+
+  for (let i = 0; i < 40 && !ready; i++) {
+    ready = await checkRemoteStatus(sandbox.id, 3000);
     console.log(`[worker-sandbox] poll ${i + 1}/40: ready=${ready}`);
 
-    if (ready) {
-      break;
+    if (!ready) {
+      await new Promise((r) => setTimeout(r, 3000));
     }
+  }
 
-    await new Promise((r) => setTimeout(r, 3000));
+  /*
+   * If the dev server never came up, surface a real error instead of showing
+   * a "ready" state with a dead iframe — the user gets a Retry button rather
+   * than a silent white screen.
+   */
+  if (!ready) {
+    setError('The preview server did not start in time. Tap "Launch Preview" to retry.');
+    setState('error');
+
+    return;
   }
 
   const proxyUrl = typeof window !== 'undefined' ? `${window.location.origin}/preview/` : '/preview/';

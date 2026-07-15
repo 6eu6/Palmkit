@@ -8,6 +8,7 @@ import { workbenchStore } from '~/lib/stores/workbench';
 import { logStore } from '~/lib/stores/logs';
 import { authUserStore } from '~/lib/stores/auth';
 import { setRestoreStep, isRestoring } from '~/lib/stores/generationStatus';
+
 /*
  * Build-status stores — must be reset whenever the route changes so that a
  * prior chat's worker events, preview files, and progress don't bleed into

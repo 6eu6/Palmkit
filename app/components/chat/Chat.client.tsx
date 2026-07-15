@@ -154,9 +154,7 @@ function buildWorkerStreamContent(state: import('~/lib/hooks/use-external-worker
      * response. This gives the user a real explanation of what was built,
      * the files created, key features, and tech stack — not a generic stub.
      */
-    const summaryEvent = [...state.events]
-      .reverse()
-      .find((e) => (e.payload as any)?.isBuildSummary === true);
+    const summaryEvent = [...state.events].reverse().find((e) => (e.payload as any)?.isBuildSummary === true);
 
     if (summaryEvent) {
       const summaryText = (summaryEvent.payload as any)?.text ?? '';
@@ -168,6 +166,7 @@ function buildWorkerStreamContent(state: import('~/lib/hooks/use-external-worker
 
     // Minimal fallback ONLY when the brain produced no summary at all.
     const fileCount = state.files.length;
+
     return `✅ **Build complete** — ${fileCount} file${fileCount !== 1 ? 's' : ''} generated.`;
   }
 
@@ -635,13 +634,11 @@ export const ChatImpl = memo(
            * build is done/failed, the content is the brain's summary or the
            * error text — both are final, no further updates needed.
            */
-          const hasBuildAnnotation = Array.isArray(last.annotations) && last.annotations.some(
-            (a) => a && typeof a === 'object' && (a as any).type === 'palmkit-build',
-          );
+          const hasBuildAnnotation =
+            Array.isArray(last.annotations) &&
+            last.annotations.some((a) => a && typeof a === 'object' && (a as any).type === 'palmkit-build');
           const isWorkerMessage =
-            last.content.trim().startsWith('⚡') ||
-            last.content.trim().startsWith('❌') ||
-            hasBuildAnnotation;
+            last.content.trim().startsWith('⚡') || last.content.trim().startsWith('❌') || hasBuildAnnotation;
 
           if (!isWorkerMessage) {
             return prev;
@@ -1202,6 +1199,7 @@ export const ChatImpl = memo(
           (extWorkerState.status === 'ready_for_preview' && extWorkerState.jobId) ||
           chatMetadata.get()?.palmkitJobId ||
           undefined;
+
         /*
          * `isEditJob` was previously used to label the assistant placeholder
          * ("⚡ Editing project…" vs "⚡ Building project…"). The placeholder
@@ -1227,6 +1225,7 @@ export const ChatImpl = memo(
         const assistantPlaceholder = {
           id: `${Date.now()}-assistant`,
           role: 'assistant' as const,
+
           /*
            * Just the ⚡ marker — no descriptive text. This is a build-turn
            * marker detected by `isBuildBannerContent` in Messages.client.tsx
@@ -1271,9 +1270,16 @@ export const ChatImpl = memo(
          */
         const conversationHistory = messages
           .filter((m) => {
-            if (m.role !== 'user' && m.role !== 'assistant') return false;
-            if (m.annotations?.includes('hidden')) return false;
+            if (m.role !== 'user' && m.role !== 'assistant') {
+              return false;
+            }
+
+            if (m.annotations?.includes('hidden')) {
+              return false;
+            }
+
             const content = typeof m.content === 'string' ? m.content : '';
+
             return content.length > 0;
           })
           .map((m) => ({
@@ -1289,6 +1295,7 @@ export const ChatImpl = memo(
           workerChatId,
           designScheme,
           conversationHistory,
+
           /*
            * Pass user-uploaded images (food photos, logos, etc.) so the
            * brain can actually use them in the build. Without this, the
