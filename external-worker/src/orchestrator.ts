@@ -1104,8 +1104,10 @@ export async function runOrchestratedBuild(
              * try/catch can handle it.
              */
             case 'error': {
-              logger.error(`[orchestrator] Stream error in ${config.name}: ${part.error}`);
-              streamError = part.error instanceof Error ? part.error : new Error(String(part.error));
+              const errStr = String(part.error);
+              const errStack = (part.error instanceof Error) ? part.error.stack : '';
+              logger.error(`[orchestrator] Stream error in ${config.name}: ${errStr}${errStack ? '\n' + errStack : ''}`);
+              streamError = part.error instanceof Error ? part.error : new Error(errStr);
               break;
             }
 
@@ -1289,7 +1291,7 @@ export async function runOrchestratedBuild(
       });
 
       logger.info(
-        `[orchestrator] ${config.name} finished: ${finishReason}, ${agentText.length} chars, ${agentDuration}ms`,
+        `[orchestrator] ${config.name} finished: finishReason=${finishReason}, steps=${steps?.length ?? 0}, ${agentText.length} chars text, ${agentDuration}ms, madeToolCalls=${madeToolCalls}, agentSuccess=${agentSuccess}`,
       );
 
       // Store context for next agent
