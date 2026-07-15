@@ -174,7 +174,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
      * use-worker-sandbox). Without this the user had to find
      * Workspace → Preview manually after every static build.
      */
-    if (buildStatus.jobStatus === 'ready_for_preview') {
+    if (buildStatusValue.jobStatus === 'ready_for_preview') {
       workbenchStore.showWorkbench.set(true);
       workbenchStore.currentView.set('preview');
     }
