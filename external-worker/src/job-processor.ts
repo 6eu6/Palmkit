@@ -24,6 +24,8 @@ import {
   type GenerationResult,
 } from './generator';
 import { runOrchestratedBuild } from './orchestrator';
+import { classifyPrompt } from './prompt-classifier';
+import { runFastBuild } from './fast-builder';
 import { createRunner } from './build-runner';
 import { putFile, getFileText, buildKey, buildWorkspaceKey } from './r2-client';
 import { hydrateWorkspaceFromStorage, readWorklog, readWorkspaceFile } from './workspace-manager';
@@ -675,37 +677,69 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
       logger.info(`Job ${job.id}: plan complete → ${spec.appType}, ${spec.files.length} files`);
 
+      // ─── Phase 1.5: FAST PATH CLASSIFICATION ──────────────────────
+      //
+      // For simple/medium apps with a matching blueprint, use single-call
+      // generation (~10-20s, 1 LLM call) instead of the full orchestrator
+      // (~4-16 min, 15-25 LLM calls). Fall back to orchestrator on failure.
+      //
+      const classification = classifyPrompt(prompt);
+      const projectId = (job.validation_result as any)?.chatId ?? job.project_id ?? job.id;
+      let fastPathUsed = false;
+
+      if (classification.shouldUseFastPath) {
+        logger.info(`Job ${job.id}: using FAST PATH (${classification.appType}, ${classification.complexity})`);
+        await updateJobProgress(supabase, job.id, 30, 'generate_files');
+        await recordStep(supabase, job.id, { type: 'generate_file', status: 'running', order: 2 });
+
+        const fastResult = await runFastBuild(
+          prompt,
+          model,
+          job.id,
+          supabase,
+          projectId,
+          job.user_id,
+          { maxCompletionTokens: spec.maxCompletionTokens, reasoningEffort: job.validation_result?.reasoningEffort as any },
+        );
+
+        if (fastResult.success && fastResult.files.length > 0) {
+          fastPathUsed = true;
+          result = {
+            files: fastResult.files,
+            complete: true,
+            rawText: `[Fast build] ${fastResult.files.length} files in ${(fastResult.durationMs / 1000).toFixed(1)}s`,
+            appType: spec.appType,
+          };
+
+          // Refine appType from generated files (same as orchestrator path)
+          const filesRecord: Record<string, string> = {};
+          for (const f of fastResult.files) {
+            filesRecord[f.path] = (f.content as string) ?? '';
+          }
+          const detectedAppType = detectAppTypeFromFiles(filesRecord);
+          if (detectedAppType && detectedAppType !== result.appType) {
+            logger.info(`Job ${job.id}: fast path appType refined ${result.appType} → ${detectedAppType}`);
+            result.appType = detectedAppType;
+          }
+
+          logger.info(`Job ${job.id}: FAST PATH success → ${fastResult.files.length} files in ${(fastResult.durationMs / 1000).toFixed(1)}s (blueprint: ${fastResult.blueprintUsed || 'none'})`);
+        } else {
+          // Fast path failed — fall back to orchestrator
+          logger.warn(`Job ${job.id}: FAST PATH failed (${fastResult.error}), falling back to orchestrator`);
+          await emitEvent(supabase, job.id, 'file_chunk' as any,
+            `⚠️ Fast generation failed, switching to full agent build...`,
+            { kind: 'fast_build_fallback', error: fastResult.error },
+          );
+        }
+      }
+
       // ─── Phase 2: AGENTIC BUILD (streamText + tools) ───────────────────
+      // Only run orchestrator if fast path was NOT used
+      if (!fastPathUsed) {
       await updateJobProgress(supabase, job.id, 30, 'generate_files');
-      /*
-       * Removed the hardcoded `Building your project...` banner. The brain
-       * opens the stream itself with its first reasoning row.
-       */
       await recordStep(supabase, job.id, { type: 'generate_file', status: 'running', order: 2 });
 
-      /*
-       * AGENTIC BUILD — gives the LLM tools and lets it work freely.
-       *
-       * This replaces the orchestrator/decomposer with a simpler, more
-       * powerful approach: the LLM gets tools (write_file, read_file,
-       * list_files, run_shell, done) and decides everything itself.
-       *
-       * This is EXACTLY how Super Z works:
-       * - Gets the full prompt
-       * - Uses Write, Read, Bash tools
-       * - Decides what to do
-       * - Works until done
-       *
-       * No JSON parsing, no XML format, no format constraints.
-       * The LLM writes files directly and calls done() when finished.
-       */
       try {
-        /*
-         * Use the chatId from validation_result as the projectId for the
-         * agent-builder. This ensures the agent writes files to the SAME
-         * workspace key that /api/workspace reads from.
-         */
-        const projectId = (job.validation_result as any)?.chatId ?? job.project_id ?? job.id;
 
         /*
          * CONTINUATION HYDRATION — for a project forked via /api/fork-chat, the
@@ -907,6 +941,8 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         await failJob(supabase, job.id, `Build failed: ${errMsg}`);
         return;
       }
+
+      } // end if (!fastPathUsed) — orchestrator block
 
       await emitEvent(
         supabase,
