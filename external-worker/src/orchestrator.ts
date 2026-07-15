@@ -1428,8 +1428,21 @@ export async function runOrchestratedBuild(
         const hasSourceFile = curPaths.some((p) => /^src\/.*(jsx|tsx|vue|js|ts)$/i.test(p));
         const hasPyEntry = curPaths.some((p) => /^(app|main|server|run)\.py$/i);
         const hasFlutterEntry = curPaths.some((p) => /^lib\/(main|app)\.dart$/i);
-        const hasAnyEntryPoint = hasIndexHtml || hasSourceFile || hasPyEntry || hasFlutterEntry;
-        const missingEntryPoint = !zeroFiles && !missingPkg && curPaths.length > 0 && !hasAnyEntryPoint;
+
+        /*
+         * App-type-aware entry point check. For React/Vue apps, having
+         * ONLY index.html without a source file is still broken (Vite 404s).
+         * The old hasAnyEntryPoint was too loose — it accepted index.html
+         * alone as a valid entry point for React apps, so the retry never
+         * triggered when the model wrote config + index.html but no src/App.
+         */
+        const detectedType = detectAppTypeFromFiles(curFiles);
+        const isViteApp = detectedType === 'react' || detectedType === 'vue' || isViteType;
+        const hasSufficientEntryPoint = isViteApp
+          ? hasIndexHtml && hasSourceFile
+          : (hasIndexHtml || hasSourceFile || hasPyEntry || hasFlutterEntry);
+
+        const missingEntryPoint = !zeroFiles && !missingPkg && curPaths.length > 0 && !hasSufficientEntryPoint;
 
         if (zeroFiles || missingPkg || missingEntryPoint) {
           builderEmptyRetries++;
