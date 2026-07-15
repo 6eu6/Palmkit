@@ -1167,32 +1167,46 @@ export async function runOrchestratedBuild(
 
       if (streamError) {
         /*
-         * A Builder that ERRORED (flaky provider / bad tool-call — seen with
-         * GLM-5.2, which sometimes fails the LLM call in a few seconds) must not
-         * kill the whole build if we can still retry. If this is the Builder, we
-         * have retry budget, and nothing was written yet, recover: surface the
-         * real error, then re-queue the Builder with a force-build directive.
+         * A Builder/Brain that ERRORED (flaky provider / bad tool-call — seen
+         * with GLM-4.7, GLM-5.2) must not kill the whole build if we can still
+         * retry. Previously this only checked role === 'builder' — but with
+         * DEFAULT_AGENT_FLOW = ['brain'], the brain IS the builder. Now we
+         * also cover 'brain' role.
+         *
+         * Also: the old check required 0 files written. But a flaky model may
+         * write 2-3 config files BEFORE erroring. If it wrote partial files,
+         * we should still retry (the retry gate below will check if entry
+         * points are missing and re-prompt if needed). Only skip retry if the
+         * error is clearly unrecoverable (auth failure).
          */
-        const canRetryBuilder =
-          role === 'builder' &&
-          builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES &&
-          Object.keys(getProjectFiles(jobId)).length === 0;
+        const isRecoverable =
+          !streamError.message.includes('401') &&
+          !streamError.message.includes('authentication') &&
+          !streamError.message.includes('API key');
 
-        if (canRetryBuilder) {
-          logger.warn(`[orchestrator] Builder errored (${streamError.message}) — retrying once.`);
+        const canRetry =
+          (role === 'builder' || role === 'brain') &&
+          builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES &&
+          isRecoverable;
+
+        if (canRetry) {
+          const writtenFiles = Object.keys(getProjectFiles(jobId)).length;
+          logger.warn(
+            `[orchestrator] ${config.name} errored (${streamError.message.slice(0, 150)}) — retrying (attempt ${builderEmptyRetries + 1}/${MAX_BUILDER_EMPTY_RETRIES}, ${writtenFiles} files on disk).`,
+          );
           await emitEvent(
             supabase,
             jobId,
             'file_chunk' as any,
-            `⚠️ Builder hit an error (${streamError.message.slice(0, 120)}) — retrying…`,
+            `⚠️ ${config.name} hit an error (${streamError.message.slice(0, 120)}) — retrying…`,
             { reason: 'builder_error_retry', error: streamError.message.slice(0, 300) },
           );
           agentResults.push({ role, success: false, text: '', duration: Date.now() - agentStart });
           streamError = null;
           builderEmptyRetries++;
           forceBuild = true;
-          agentQueue.unshift('builder');
-          continue; // skip the (unavailable) stream results; run the Builder again
+          agentQueue.unshift(role === 'brain' ? 'brain' : 'builder');
+          continue; // skip the (unavailable) stream results; run the agent again
         }
 
         throw streamError;
