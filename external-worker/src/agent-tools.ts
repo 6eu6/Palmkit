@@ -1058,29 +1058,65 @@ export function createAgentTools(
         'Signal that you have finished building the project. Call this ONLY when all files ' +
         'have been written and verified. This marks the build as complete and triggers preview generation. ' +
         'Be HONEST in your summary — say what completed and what did not.',
+      /*
+       * Use z.any().optional() for array params — GLM-4.x serializes arrays
+       * as JSON STRINGS ("[\"a\", \"b\"]") instead of actual arrays.
+       * If we use z.array(), the AI SDK rejects the tool call BEFORE
+       * execute() runs — the model gets a validation error and the build
+       * fails with 8 files on disk but no completion signal.
+       *
+       * We parse strings in execute() (same pattern as update_todos).
+       */
       parameters: z.object({
         summary: z
           .string()
           .describe('A brief summary of what was built (1-2 sentences).'),
         completed: z
-          .array(z.string())
+          .any()
           .optional()
-          .describe('List of features/components that were successfully built. Example: ["counter with increment", "reset button", "dark theme"]'),
+          .describe('List of features that were successfully built. Pass as a JSON array of strings, e.g. ["counter with increment", "reset button", "dark theme"]'),
         incomplete: z
-          .array(z.object({
-            item: z.string().describe('What did not complete'),
-            reason: z.string().describe('Why it did not complete'),
-            suggestion: z.string().describe('What the user can do to fix it'),
-          }))
+          .any()
           .optional()
-          .describe('Things that did not complete, with reasons and suggestions. Be honest — if video generation failed, say so.'),
+          .describe('Things that did not complete. Pass as a JSON array of objects, each with {item, reason, suggestion}.'),
         next_steps: z
-          .array(z.string())
+          .any()
           .optional()
-          .describe('Optional suggestions for what the user could do next. Example: ["Add a database for persistence", "Deploy to Vercel"]'),
+          .describe('Optional suggestions for what the user could do next. Pass as a JSON array of strings.'),
       }),
       execute: async (args) => {
-        const { summary, completed, incomplete, next_steps } = args;
+        /*
+         * COERCE: GLM-4.x sends arrays as JSON strings. Parse them safely.
+         */
+        const parseStringArray = (v: any): string[] => {
+          if (Array.isArray(v)) return v.map(String);
+          if (typeof v === 'string') {
+            try { const p = JSON.parse(v); return Array.isArray(p) ? p.map(String) : []; }
+            catch { return v ? [v] : []; }
+          }
+          return [];
+        };
+
+        const coerceIncomplete = (v: any): Array<{ item: string; reason: string; suggestion: string }> => {
+          if (!v) return [];
+          if (Array.isArray(v)) {
+            return v.map((i: any) => ({
+              item: typeof i === 'string' ? i : String(i?.item ?? ''),
+              reason: typeof i === 'string' ? '' : String(i?.reason ?? ''),
+              suggestion: typeof i === 'string' ? '' : String(i?.suggestion ?? ''),
+            }));
+          }
+          if (typeof v === 'string') {
+            try { const p = JSON.parse(v); return Array.isArray(p) ? coerceIncomplete(p) : []; }
+            catch { return []; }
+          }
+          return [];
+        };
+
+        const summary: string = typeof args.summary === 'string' ? args.summary : '';
+        const completed = parseStringArray(args.completed);
+        const incomplete = coerceIncomplete(args.incomplete);
+        const next_steps = parseStringArray(args.next_steps);
         const fileCount = projectFiles.size;
         const totalSize = Array.from(projectFiles.values()).reduce((sum, c) => sum + c.length, 0);
         const filePaths = Array.from(projectFiles.keys());
