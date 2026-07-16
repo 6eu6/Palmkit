@@ -291,24 +291,80 @@ export function createAgentTools(
           // Not valid JSON — use as-is
           fileContent = content;
         }
+      } else if (
+        trimmed.startsWith('[') &&
+        !path.endsWith('.json') &&
+        !path.endsWith('.json5') &&
+        !path.endsWith('.ndjson')
+      ) {
+        /*
+         * JSON-ARRAY UNWRAP GUARD. GLM-4.x sometimes wraps a single file's
+         * content as a one-element JSON array string like
+         *   ["<!DOCTYPE html>...\n...</html>"]
+         * instead of passing the raw string. Without this guard the array
+         * literal is saved verbatim, which is NOT valid HTML/CSS/JS — the
+         * brain then reads it back, sees "the content is corrupted", and
+         * loops rewriting the file until the hard-lock kicks in (observed
+         * live on a todo-list build, seq=25..68 in the reasoning stream).
+         * Unwrap single-element string arrays to their inner value.
+         * Multi-element arrays or arrays of non-strings are left alone
+         * (rare; the model shouldn't pass those for a single file).
+         */
+        try {
+          const parsed = JSON.parse(trimmed);
+
+          if (Array.isArray(parsed) && parsed.length === 1 && typeof parsed[0] === 'string') {
+            const inner = parsed[0] as string;
+
+            if (inner.length > 0) {
+              logger.info(
+                `[agent] write_file: ${path} — unwrapped JSON array envelope (wrapper=${trimmed.length} chars, inner=${inner.length} chars)`,
+              );
+              fileContent = inner;
+            } else {
+              fileContent = content;
+            }
+          } else {
+            fileContent = content;
+          }
+        } catch {
+          // Not valid JSON — use as-is
+          fileContent = content;
+        }
       } else {
         fileContent = content;
       }
     } else {
-      const json = JSON.stringify(content, null, 2);
-
       /*
-       * Include .jsx, .tsx, .mts, .cts in the JS/TS detection.
-       * Previously only .mjs/.js/.ts matched — so a model that passed an
-       * object for tailwind.config.js worked, but postcss.config.cjs or
-       * any .jsx content got raw JSON.stringified, crashing Vite.
+       * ARRAY UNWRAP (non-string content). After repairStringifiedArgs in
+       * orchestrator.ts runs, a GLM-4.x args envelope like
+       *   {"path":"index.html","content":"[\"<!DOCTYPE html>...\"]"}
+       * becomes
+       *   {"path":"index.html","content":["<!DOCTYPE html>..."]}
+       * with `content` now an actual array. Without this guard, the array
+       * is JSON.stringified to '["<!DOCTYPE html>..."]' and saved verbatim
+       * for .html/.css — NOT valid source. Unwrap single-element string
+       * arrays to their inner string; fall through to the normal path for
+       * arrays of objects (used legitimately for config files).
        */
-      if (/\.(mjs|jsx?|mts?|cts?)$/i.test(path)) {
-        fileContent = `export default ${json};\n`;
-      } else if (/\.cjs$/i.test(path)) {
-        fileContent = `module.exports = ${json};\n`;
+      if (Array.isArray(content) && content.length === 1 && typeof content[0] === 'string') {
+        fileContent = content[0] as string;
       } else {
-        fileContent = json;
+        const json = JSON.stringify(content, null, 2);
+
+        /*
+         * Include .jsx, .tsx, .mts, .cts in the JS/TS detection.
+         * Previously only .mjs/.js/.ts matched — so a model that passed an
+         * object for tailwind.config.js worked, but postcss.config.cjs or
+         * any .jsx content got raw JSON.stringified, crashing Vite.
+         */
+        if (/\.(mjs|jsx?|mts?|cts?)$/i.test(path)) {
+          fileContent = `export default ${json};\n`;
+        } else if (/\.cjs$/i.test(path)) {
+          fileContent = `module.exports = ${json};\n`;
+        } else {
+          fileContent = json;
+        }
       }
     }
 
