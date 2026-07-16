@@ -349,6 +349,35 @@ export function createAgentTools(
        */
       if (Array.isArray(content) && content.length === 1 && typeof content[0] === 'string') {
         fileContent = content[0] as string;
+      } else if (
+        Array.isArray(content) &&
+        !path.endsWith('.json') &&
+        !path.endsWith('.json5') &&
+        !path.endsWith('.ndjson')
+      ) {
+        /*
+         * REJECT multi-element / object arrays for non-JSON files. GLM-4.x
+         * sometimes serializes CSS or HTML as a JSON array of objects
+         * (e.g. [{"margin":0,"padding":0}, ...]) instead of raw text.
+         * Saving this verbatim produces garbage the brain then reads back
+         * and reports as "corrupted", looping until the hard-lock kicks
+         * in (observed live on a weather-widget build, 22:07 UTC). Instead
+         * of silently saving garbage, REFUSE the write with a clear error
+         * so the brain retries with proper raw-text content.
+         */
+        const sample = JSON.stringify(content).slice(0, 120);
+        bumpWriteCount(jobId, path);
+
+        return {
+          success: false,
+          path,
+          corrupted: true,
+          message:
+            `REFUSED — ${path} content was passed as a JSON array of objects (${content.length} elements), ` +
+            `not as raw file text. File content must be a RAW STRING (the actual HTML/CSS/JS source), ` +
+            `never a structured array. Sample of what was received: ${sample}. ` +
+            `Re-write ${path} with the file content as a plain string parameter.`,
+        };
       } else {
         const json = JSON.stringify(content, null, 2);
 
