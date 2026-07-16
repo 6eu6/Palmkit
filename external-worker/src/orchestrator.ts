@@ -536,30 +536,53 @@ export async function runOrchestratedBuild(
             const lines = content.split('\n').length;
             return `  - ${p} (${lines} lines)`;
           }).join('\n');
-          agentPrompt += `\n\n=== EXISTING PROJECT FILES ===\nThe following ${existingPaths.length} files ALREADY EXIST in your workspace. They are loaded and ready.\n${fileListBlock}\n=== END FILES ===\n`;
+          agentPrompt += `\n\n=== EXISTING PROJECT FILES ===\nThe following ${existingPaths.length} files ALREADY EXIST in your workspace. They are loaded and ready to read with read_file().\n${fileListBlock}\n=== END FILES ===\n`;
+
+          // For edit mode, also inject content of key small files so the model
+          // has immediate context without extra tool calls
+          if (isEditMode) {
+            const SMALL_FILE_THRESHOLD = 50; // lines
+            const keyFiles = ['package.json', 'index.html', 'src/App.jsx', 'src/App.tsx', 'src/main.jsx', 'src/main.tsx', 'vite.config.js', 'vite.config.ts', 'tailwind.config.js', 'tailwind.config.ts'];
+            const smallKeyFiles = existingPaths
+              .filter(p => keyFiles.some(k => p === k || p.endsWith('/' + k)))
+              .filter(p => (existingFiles[p]?.split('\n').length ?? 0) <= SMALL_FILE_THRESHOLD);
+
+            if (smallKeyFiles.length > 0) {
+              const contentBlock = smallKeyFiles.map(p => {
+                const content = existingFiles[p] || '';
+                return `--- ${p} ---\n${content}`;
+              }).join('\n\n');
+
+              agentPrompt += `\n\n=== KEY FILE CONTENTS (for quick reference — use read_file for full content) ===\n${contentBlock}\n=== END KEY FILE CONTENTS ===\n`;
+            }
+          }
         }
 
         if (isEditMode) {
           const editConvBlock =
             opts?.conversationHistory && opts.conversationHistory.length > 0
-              ? `\n\nCONVERSATION HISTORY (what was said before — understand references and intent):\n${opts.conversationHistory
+              ? `\n\nCONVERSATION HISTORY:\n${opts.conversationHistory
                   .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
                   .join('\n\n')}\n`
               : '';
+
+          const fileList = existingPaths.length > 0 
+            ? existingPaths.join(', ') 
+            : 'None found — check with list_files()';
+
           agentPrompt += `${editConvBlock}\n\n` +
-            `🔴 CRITICAL: THIS IS AN EDIT OF AN EXISTING PROJECT — DO NOT REBUILD FROM SCRATCH.\n` +
-            `The ${existingPaths.length} files listed above ALREADY EXIST. They are fully loaded in your workspace.\n` +
-            (existingPaths.length > 0
-              ? `DO NOT create package.json, index.html, vite.config.js, or any file that already exists — they are already there!\n`
-              : '') +
+            `🔴🔴🔴 THIS IS AN EDIT OF AN EXISTING PROJECT — DO NOT REBUILD FROM SCRATCH. 🔴🔴🔴\n` +
+            `There are ${existingPaths.length} files already in your workspace: ${fileList}\n` +
+            `These files are REAL and LOADED — you can read them with read_file() RIGHT NOW.\n` +
+            `DO NOT create package.json, index.html, vite.config.js, or any scaffolding — they already exist!\n` +
+            `DO NOT say "files don't exist" or "I'll create the project" — the project is already built!\n` +
             `YOUR WORKFLOW:\n` +
-            `1. read_file("src/App.jsx") (or whichever file needs changes)\n` +
-            `2. edit_file(path, oldText, newText) to make targeted changes\n` +
-            `3. run_shell("npm install && npm run build") to verify\n` +
-            `4. done(summary of what changed)\n\n` +
-            `NEVER use run_shell("ls"), run_shell("find"), or run_shell("cat") to check files — use list_files() and read_file() instead.\n` +
-            `NEVER use ask_user — just make the changes directly.\n` +
-            `NEVER plan to "create project files" — they already exist.\n`;
+            `1. If you need to see file content: read_file("path/to/file")\n` +
+            `2. To make changes: edit_file(path, oldText, newText) for targeted edits\n` +
+            `3. To verify: run_shell("npm install && npm run build")\n` +
+            `4. When done: done(summary of what changed)\n\n` +
+            `NEVER use run_shell("ls"), run_shell("find"), run_shell("cat") — use list_files() and read_file() instead.\n` +
+            `NEVER use ask_user — just make the changes directly.\n`;
         }
 
         // Skills
@@ -979,6 +1002,54 @@ export async function runOrchestratedBuild(
         role === 'builder' ? 'builder' : role === 'tester' ? 'tester' : 'brain';
       const agentModel = opts?.agentModels?.[roleKey] ?? model;
 
+      // ── PRE-FLIGHT TOKEN ESTIMATION ──────────────────────────────────
+      // Estimate input tokens BEFORE calling the LLM so we can fail early
+      // when the prompt is clearly too large for the model's context window.
+      const estimatedInputTokens = Math.ceil((config.systemPrompt.length + agentPrompt.length) / 4);
+      const warnThreshold  = Math.floor(effectiveContextWindow * 0.80);
+      const failThreshold  = Math.floor(effectiveContextWindow * 0.95);
+
+      if (estimatedInputTokens > failThreshold) {
+        const msg =
+          `Your prompt is too large for this model's context window ` +
+          `(estimated ${estimatedInputTokens.toLocaleString()} tokens vs ${effectiveContextWindow.toLocaleString()} limit). ` +
+          `Please use a model with a larger context, shorten your prompt, or continue in a fresh chat.`;
+        logger.error(`[orchestrator] Pre-flight token check FAILED: ${msg}`);
+        await emitEvent(supabase, jobId, 'file_chunk' as any, `❌ ${msg}`, {
+          agent: config.name,
+          kind: 'context_overflow_preflight',
+          estimatedTokens: estimatedInputTokens,
+          contextWindow: effectiveContextWindow,
+        });
+        throw new Error(msg);
+      } else if (estimatedInputTokens > warnThreshold) {
+        logger.warn(
+          `[orchestrator] Pre-flight token warning: estimated ${estimatedInputTokens} tokens (${Math.round((estimatedInputTokens / effectiveContextWindow) * 100)}% of ${effectiveContextWindow} window)`,
+        );
+        await emitEvent(
+          supabase,
+          jobId,
+          'file_chunk' as any,
+          `⚠️ Prompt is large (~${estimatedInputTokens.toLocaleString()} tokens, ${Math.round((estimatedInputTokens / effectiveContextWindow) * 100)}% of context window). Build may fail or produce incomplete results. Consider using a model with a larger context or starting a fresh chat.`,
+          {
+            agent: config.name,
+            kind: 'context_pressure_warning',
+            estimatedTokens: estimatedInputTokens,
+            contextWindow: effectiveContextWindow,
+          },
+        );
+      }
+
+      // GUARANTEED FIRST EVENT — always emit before the LLM call so the user
+      // sees activity even if the provider is slow or the prompt is huge.
+      const promptChars = agentPrompt.length;
+      const estimatedTokens = Math.ceil(promptChars / 4);
+      await emitEvent(
+        supabase, jobId, 'file_chunk' as any,
+        `🧠 ${config.name} is processing your request (${(promptChars / 1024).toFixed(1)}KB, ~${estimatedTokens} tokens)...`,
+        { agent: config.name, kind: 'agent_thinking', promptSize: promptChars, estimatedTokens }
+      );
+
       const streamResult = streamText({
         model: agentModel,
         system: config.systemPrompt,
@@ -1184,6 +1255,20 @@ export async function runOrchestratedBuild(
       }
 
       if (streamError) {
+        // CONTEXT OVERFLOW — never retry, fail immediately with clear message
+        const isContextOverflow = /context_length|too many tokens|token limit|input too large|max.?token|prompt too long|exceeds.*context/i.test(streamError.message);
+
+        if (isContextOverflow) {
+          logger.error(`[orchestrator] Context overflow detected: ${streamError.message.slice(0, 200)}`);
+          await emitEvent(supabase, jobId, 'file_chunk' as any,
+            `❌ Your prompt is too large for this model's context window. The system prompt + your request + project context exceeds the limit. ` +
+            `Please: (1) shorten your prompt, (2) use a model with a larger context (128K+), or (3) start a fresh chat. ` +
+            `Error: ${streamError.message.slice(0, 200)}`,
+            { kind: 'context_overflow', error: streamError.message.slice(0, 500) }
+          );
+          throw streamError; // Don't retry context overflow errors
+        }
+
         /*
          * A Builder/Brain that ERRORED (flaky provider / bad tool-call — seen
          * with GLM-4.7, GLM-5.2) must not kill the whole build if we can still
