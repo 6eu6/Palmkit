@@ -363,6 +363,7 @@ interface Section {
 }
 
 const AGENT_ICON: Record<string, string> = {
+  Palmkit: 'i-ph:brain-bold',
   Brain: 'i-ph:brain-bold',
   Builder: 'i-ph:hammer-bold',
   Tester: 'i-ph:flask-bold',
@@ -371,6 +372,7 @@ const AGENT_ICON: Record<string, string> = {
 };
 
 const AGENT_ACCENT: Record<string, string> = {
+  Palmkit: 'text-[var(--pk-accent)]',
   Brain: 'text-[var(--pk-accent)]',
   Builder: 'text-blue-400',
   Tester: 'text-purple-400',

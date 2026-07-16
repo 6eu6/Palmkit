@@ -42,7 +42,9 @@ import {
   generateWorklogEntry,
   generateSmartManifest,
   writePalmkitMemory,
+  writePalmkitProjectMemory,
 } from './workspace-manager';
+import { loadSession, appendToSession, estimateSessionTokens, type SessionMessage } from './session-manager';
 import { registerJobAbort, unregisterJobAbort } from './abort-registry';
 
 export interface OrchestratorResult {
@@ -222,6 +224,23 @@ export async function runOrchestratedBuild(
   // Read worklog for context
   const worklog = await readWorklog(projectId);
   const hasWorklog = !!worklog;
+
+  /*
+   * PALMKIT SESSION — the project's ongoing conversation. Loaded once per
+   * build; the brain runs on [session messages + this build's user message]
+   * so it remembers everything it did in earlier turns (files, commands,
+   * decisions) instead of reconstructing context from prompt blocks. After
+   * the brain finishes, this build's exchange is appended back (compacted).
+   */
+  const session = await loadSession(projectId);
+  const hasSession = session.messages.length > 0;
+
+  /*
+   * Palmkit.md — the project's memory file (stack, entrypoints, state,
+   * decisions). Written at the end of every build; injected at session
+   * start so the agent always knows what project it is working on.
+   */
+  const palmkitMd = await readWorkspaceFile(projectId, 'Palmkit.md');
 
   /*
    * CONTINUATION HANDOFF — when this project was forked from another chat
@@ -509,7 +528,16 @@ export async function runOrchestratedBuild(
       if (role === 'brain') {
         agentPrompt = `${prompt}${handoffBlock}`;
 
-        if (hasWorklog) {
+        /*
+         * Project memory: Palmkit.md is the primary memory (written at the
+         * end of every build). Fall back to the legacy worklog for projects
+         * built before Palmkit.md existed. When the session already carries
+         * the full conversation, memory is still injected — it is small and
+         * anchors the project identity even after session compaction.
+         */
+        if (palmkitMd) {
+          agentPrompt += `\n\n=== Palmkit.md (PROJECT MEMORY) ===\n${palmkitMd}\n=== END Palmkit.md ===`;
+        } else if (hasWorklog) {
           agentPrompt += `\n\nPROJECT MEMORY (worklog.md):\n${worklog}`;
         }
 
@@ -559,30 +587,47 @@ export async function runOrchestratedBuild(
         }
 
         if (isEditMode) {
+          /*
+           * Conversation history: only injected as TEXT when the project has
+           * no stored session (legacy projects). Session-backed projects get
+           * the real prior messages via streamText({messages}) — injecting
+           * the history again would duplicate it and bloat the prompt.
+           */
           const editConvBlock =
-            opts?.conversationHistory && opts.conversationHistory.length > 0
+            !hasSession && opts?.conversationHistory && opts.conversationHistory.length > 0
               ? `\n\nCONVERSATION HISTORY:\n${opts.conversationHistory
                   .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
                   .join('\n\n')}\n`
               : '';
 
-          const fileList = existingPaths.length > 0 
-            ? existingPaths.join(', ') 
+          const fileList = existingPaths.length > 0
+            ? existingPaths.join(', ')
             : 'None found — check with list_files()';
 
-          agentPrompt += `${editConvBlock}\n\n` +
-            `🔴🔴🔴 THIS IS AN EDIT OF AN EXISTING PROJECT — DO NOT REBUILD FROM SCRATCH. 🔴🔴🔴\n` +
-            `There are ${existingPaths.length} files already in your workspace: ${fileList}\n` +
-            `These files are REAL and LOADED — you can read them with read_file() RIGHT NOW.\n` +
-            `DO NOT create package.json, index.html, vite.config.js, or any scaffolding — they already exist!\n` +
-            `DO NOT say "files don't exist" or "I'll create the project" — the project is already built!\n` +
-            `YOUR WORKFLOW:\n` +
-            `1. If you need to see file content: read_file("path/to/file")\n` +
-            `2. To make changes: edit_file(path, oldText, newText) for targeted edits\n` +
-            `3. To verify: run_shell("npm install && npm run build")\n` +
-            `4. When done: done(summary of what changed)\n\n` +
-            `NEVER use run_shell("ls"), run_shell("find"), run_shell("cat") — use list_files() and read_file() instead.\n` +
-            `NEVER use ask_user — just make the changes directly.\n`;
+          /*
+           * Session-backed edits get a short factual note (the session itself
+           * proves the project exists — the model saw itself build it).
+           * Legacy no-session edits keep the loud guard block: without prior
+           * messages, weak models genuinely rebuild from scratch.
+           */
+          agentPrompt += hasSession
+            ? `${editConvBlock}\n\n` +
+              `This is a follow-up request on the SAME project you have been building in this session ` +
+              `(${existingPaths.length} files in the workspace: ${fileList}). ` +
+              `Make targeted changes with read_file/edit_file, verify with "npm install && npm run build", then done().\n`
+            : `${editConvBlock}\n\n` +
+              `🔴🔴🔴 THIS IS AN EDIT OF AN EXISTING PROJECT — DO NOT REBUILD FROM SCRATCH. 🔴🔴🔴\n` +
+              `There are ${existingPaths.length} files already in your workspace: ${fileList}\n` +
+              `These files are REAL and LOADED — you can read them with read_file() RIGHT NOW.\n` +
+              `DO NOT create package.json, index.html, vite.config.js, or any scaffolding — they already exist!\n` +
+              `DO NOT say "files don't exist" or "I'll create the project" — the project is already built!\n` +
+              `YOUR WORKFLOW:\n` +
+              `1. If you need to see file content: read_file("path/to/file")\n` +
+              `2. To make changes: edit_file(path, oldText, newText) for targeted edits\n` +
+              `3. To verify: run_shell("npm install && npm run build")\n` +
+              `4. When done: done(summary of what changed)\n\n` +
+              `NEVER use run_shell("ls"), run_shell("find"), run_shell("cat") — use list_files() and read_file() instead.\n` +
+              `NEVER use ask_user — just make the changes directly.\n`;
         }
 
         // Skills
@@ -945,7 +990,7 @@ export async function runOrchestratedBuild(
        * We do NOT emit orchestrator-level events for these to avoid duplication.
        * Tools NOT in this set get an orchestrator-level event on tool-call.
        */
-      const SELF_EMITTING_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'update_todos', 'done', 'ask_user', 'analyze_screenshot', 'generate_video', 'generate_image']);
+      const SELF_EMITTING_TOOLS = new Set(['write_file', 'write_files', 'edit_file', 'delete_file', 'update_todos', 'done', 'ask_user', 'analyze_screenshot', 'generate_video', 'generate_image']);
 
       const emitToolEvent = async (toolName: string, args: any) => {
         try {
@@ -1005,7 +1050,9 @@ export async function runOrchestratedBuild(
       // ── PRE-FLIGHT TOKEN ESTIMATION ──────────────────────────────────
       // Estimate input tokens BEFORE calling the LLM so we can fail early
       // when the prompt is clearly too large for the model's context window.
-      const estimatedInputTokens = Math.ceil((config.systemPrompt.length + agentPrompt.length) / 4);
+      // For the brain, the stored session messages are part of the request.
+      const sessionTokens = role === 'brain' ? estimateSessionTokens(session.messages) : 0;
+      const estimatedInputTokens = Math.ceil((config.systemPrompt.length + agentPrompt.length) / 4) + sessionTokens;
       const warnThreshold  = Math.floor(effectiveContextWindow * 0.80);
       const failThreshold  = Math.floor(effectiveContextWindow * 0.95);
 
@@ -1050,10 +1097,22 @@ export async function runOrchestratedBuild(
         { agent: config.name, kind: 'agent_thinking', promptSize: promptChars, estimatedTokens }
       );
 
+      /*
+       * SESSION-BASED LOOP (brain only). The brain runs on the project's
+       * full message history + this build's user message — real conversation
+       * continuity, like a coding-agent CLI session. Other roles (planner,
+       * tester, legacy builder) stay prompt-based: they are single-purpose
+       * passes with no cross-turn memory.
+       */
+      const brainMessages =
+        role === 'brain'
+          ? ([...session.messages, { role: 'user', content: agentPrompt }] as SessionMessage[])
+          : undefined;
+
       const streamResult = streamText({
         model: agentModel,
         system: config.systemPrompt,
-        prompt: agentPrompt,
+        ...(brainMessages ? { messages: brainMessages as any } : { prompt: agentPrompt }),
         tools: agentTools,
         maxSteps: config.maxSteps,
         temperature: 0.3, // Low temperature for consistent code generation (was 0.7 — too random)
@@ -1128,6 +1187,21 @@ export async function runOrchestratedBuild(
                * is written 4+ times, abort the stream and fail the job —
                * the LLM is in a loop it can't escape.
                */
+              /*
+               * write_files (batch) counts each contained path — a model that
+               * keeps re-shipping the same batch is looping just as surely as
+               * one rewriting a single file.
+               */
+              if (part.toolName === 'write_files') {
+                const batch = (part.args as any)?.files as Array<{ path?: string }> | undefined;
+
+                for (const f of batch ?? []) {
+                  if (f?.path) {
+                    fileWriteCounts.set(f.path, (fileWriteCounts.get(f.path) ?? 0) + 1);
+                  }
+                }
+              }
+
               if (part.toolName === 'write_file' || part.toolName === 'edit_file') {
                 const filePath = (part.args as any)?.path as string | undefined;
 
@@ -1411,6 +1485,31 @@ export async function runOrchestratedBuild(
         `[orchestrator] ${config.name} finished: finishReason=${finishReason}, steps=${steps?.length ?? 0}, ${agentText.length} chars text, ${agentDuration}ms, madeToolCalls=${madeToolCalls}, agentSuccess=${agentSuccess}`,
       );
 
+      /*
+       * Persist this exchange into the project session. response.messages
+       * carries the assistant + tool messages exactly as the SDK produced
+       * them, so the next build replays real history (compacted) instead of
+       * reconstructed prompt blocks. Best-effort: memory must never fail a
+       * build.
+       */
+      if (role === 'brain') {
+        try {
+          const resp: any = await (streamResult as any).response;
+          const respMessages = (resp?.messages ?? []) as SessionMessage[];
+
+          await appendToSession(
+            projectId,
+            session.messages,
+            session.turns,
+            [{ role: 'user', content: agentPrompt }, ...respMessages],
+            supabase,
+            userId,
+          );
+        } catch (e) {
+          logger.warn(`[orchestrator] Failed to persist session for ${projectId}: ${e}`);
+        }
+      }
+
       // Store context for next agent
       if (role === 'researcher') {
         researcherContext = agentText;
@@ -1429,7 +1528,7 @@ export async function runOrchestratedBuild(
             logger.warn(`[orchestrator] Failed to persist design brief: ${e}`);
           }
         }
-      } else if (role === 'builder') {
+      } else if (role === 'builder' || role === 'brain') {
         builderContext = agentText;
 
         /*
@@ -1841,6 +1940,23 @@ export async function runOrchestratedBuild(
         await writePalmkitMemory(
           projectId,
           { prompt, files, appType: appType ?? null, summary, manifest: smartManifest },
+          supabase,
+          userId,
+        );
+
+        // 4. Palmkit.md — the project's primary memory file (injected at
+        //    session start on the next build).
+        await writePalmkitProjectMemory(
+          projectId,
+          {
+            prompt,
+            files,
+            appType: appType ?? null,
+            summary,
+            manifest: smartManifest,
+            buildVerified,
+            success: overallSuccess,
+          },
           supabase,
           userId,
         );

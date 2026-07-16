@@ -218,27 +218,13 @@ export function createAgentTools(
     });
   };
 
-  return {
-    // ═══════════════════════════════════════════════════════════════════
-    // write_file — Write a file to the project workspace (like Super Z's Write tool)
-    // ═══════════════════════════════════════════════════════════════════
-    write_file: tool({
-      description:
-        'Write a file to the project. Use this to create or update any file — HTML, CSS, JS, JSON, etc. ' +
-        'The file is saved instantly and can be read back with read_file to verify. ' +
-        'If the file already exists, it will be overwritten with the new content. ' +
-        'For JSON files (package.json, tsconfig.json), you can pass either a string or a JSON object.',
-      parameters: z.object({
-        path: z
-          .string()
-          .describe('The file path, e.g. "index.html", "src/App.tsx", "styles.css"'),
-        content: z
-          .any()
-          .describe(
-            'The COMPLETE file content. Pass as a STRING for code files (HTML, CSS, JS, JSX). For JSON files (package.json), you can pass either a string or a JSON object. Write the full file — no placeholders, no truncation.',
-          ),
-      }),
-      execute: async ({ path, content }) => {
+  /*
+   * Core write implementation — shared by write_file (single) and
+   * write_files (batch). Every guard lives HERE so both tools behave
+   * identically: JSON-envelope unwrap, identical-content refusal, the
+   * per-path hard lock, R2 persistence, and the file_written event.
+   */
+  const performWrite = async (path: string, content: any) => {
         /*
          * Convert object/array content to string. For .json files, raw JSON is
          * correct. For JS/TS files it is NOT: models pass config objects for
@@ -425,6 +411,79 @@ export function createAgentTools(
           size: fileContent.length,
           lines,
           message: `File ${path} written successfully (${fileContent.length} chars, ${lines} lines).${loopNudge}`,
+        };
+  };
+
+  return {
+    // ═══════════════════════════════════════════════════════════════════
+    // write_file — Write a single file to the project workspace
+    // ═══════════════════════════════════════════════════════════════════
+    write_file: tool({
+      description:
+        'Write ONE file to the project. Prefer write_files (batch) when creating several files at once. ' +
+        'The file is saved instantly and can be read back with read_file to verify. ' +
+        'If the file already exists, it will be overwritten with the new content.',
+      parameters: z.object({
+        path: z
+          .string()
+          .describe('The file path, e.g. "index.html", "src/App.tsx", "styles.css"'),
+        content: z
+          .any()
+          .describe(
+            'The COMPLETE file content. Pass as a STRING for code files (HTML, CSS, JS, JSX). For JSON files (package.json), a string or a JSON object is accepted. Write the full file — no placeholders, no truncation.',
+          ),
+      }),
+      execute: async ({ path, content }) => performWrite(path, content),
+    }),
+
+    // ═══════════════════════════════════════════════════════════════════
+    // write_files — Batch write: create MANY files in ONE tool call.
+    // Palmkit's fast path: the model plans silently, then ships the whole
+    // scaffolding in a single step instead of one LLM round trip per file.
+    // ═══════════════════════════════════════════════════════════════════
+    write_files: tool({
+      description:
+        'Write MULTIPLE files to the project in ONE call. This is the PREFERRED way to create a new project: ' +
+        'think first, then pass ALL the files (scaffolding + sources) as one array. Each entry is {path, content} ' +
+        'with the COMPLETE file content as a raw string (no placeholders, no JSON envelopes). ' +
+        'Files are saved instantly and stream to the user one by one.',
+      parameters: z.object({
+        files: z
+          .array(
+            z.object({
+              path: z.string().describe('The file path, e.g. "src/App.jsx"'),
+              content: z.any().describe('The COMPLETE file content as a raw string.'),
+            }),
+          )
+          .describe('All files to write, in dependency order (package.json and configs first).'),
+      }),
+      execute: async ({ files }) => {
+        const results: Array<{ path: string; success: boolean; message?: string }> = [];
+
+        for (const f of files ?? []) {
+          if (!f?.path) {
+            continue;
+          }
+
+          try {
+            const r = await performWrite(f.path, f.content);
+            results.push({ path: f.path, success: r.success !== false, message: r.message });
+          } catch (e) {
+            results.push({ path: f.path, success: false, message: String(e) });
+          }
+        }
+
+        const ok = results.filter((r) => r.success).length;
+        logger.info(`[agent] write_files: ${ok}/${results.length} files written`);
+
+        return {
+          success: ok > 0,
+          written: ok,
+          total: results.length,
+          results,
+          message:
+            `Wrote ${ok}/${results.length} files.` +
+            (ok === results.length ? ' All saved.' : ' Some writes were refused — see per-file results.'),
         };
       },
     }),

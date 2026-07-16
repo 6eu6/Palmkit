@@ -748,6 +748,101 @@ export async function writePalmkitMemory(
   logger.info(`[workspace] .palmkit/ memory layer written for ${projectId}`);
 }
 
+/**
+ * Palmkit.md — the project's single memory file, written at the workspace
+ * root after every build and injected into the agent's context at session
+ * start. It is the product-branded equivalent of a repo's agent memory file:
+ * one compact page that tells the agent (and the user) what this project IS —
+ * stack, entrypoints, commands, state, and history.
+ */
+export async function writePalmkitProjectMemory(
+  projectId: string,
+  params: {
+    prompt: string;
+    files: Record<string, string>;
+    appType: string | null;
+    summary?: string;
+    manifest: Partial<ProjectManifest>;
+    buildVerified: boolean | null;
+    success: boolean;
+  },
+  supabase?: SupabaseClient,
+  userId?: string,
+): Promise<void> {
+  try {
+    const { prompt, files, appType, summary, manifest, buildVerified, success } = params;
+    const filePaths = Object.keys(files).sort();
+
+    // Carry forward the History section from the previous Palmkit.md.
+    const prev = await readWorkspaceFile(projectId, 'Palmkit.md');
+    let history: string[] = [];
+
+    if (prev) {
+      const m = prev.match(/## History\n([\s\S]*?)(\n## |$)/);
+
+      if (m) {
+        history = m[1].split('\n').filter((l) => l.trim().startsWith('- '));
+      }
+    }
+
+    const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const status = success ? (buildVerified === true ? 'built & verified' : 'built') : 'partial';
+    history.push(`- ${stamp} — ${status}: ${prompt.slice(0, 110).replace(/\n/g, ' ')}${prompt.length > 110 ? '…' : ''}`);
+
+    // Keep the last 15 history lines.
+    history = history.slice(-15);
+
+    const stackLine = [
+      manifest.stack?.frontend,
+      manifest.stack?.backend,
+      manifest.stack?.database,
+      manifest.stack?.styling,
+    ]
+      .filter(Boolean)
+      .join(' + ');
+
+    const content = [
+      `# Palmkit.md`,
+      '',
+      `> Project memory — written by the Palmkit agent after every build. Read at session start.`,
+      '',
+      `## Project`,
+      `- Type: ${manifest.projectType || appType || 'unknown'}`,
+      `- Stack: ${stackLine || 'n/a'}`,
+      `- Files: ${filePaths.length}`,
+      `- Last build: ${stamp} (${status})`,
+      '',
+      `## Entrypoints`,
+      `- HTML: ${manifest.entrypoints?.html || 'n/a'}`,
+      `- Frontend: ${manifest.entrypoints?.frontend || 'n/a'}`,
+      `- Backend: ${manifest.entrypoints?.backend || 'n/a'}`,
+      '',
+      `## Commands`,
+      ...Object.entries(manifest.commands || {})
+        .filter(([, v]) => v)
+        .map(([k, v]) => `- ${k}: \`${v}\``),
+      '',
+      `## Key Files`,
+      ...(manifest.importantFiles || filePaths.slice(0, 10)).map((p) => `- ${p}`),
+      '',
+      ...(summary ? [`## Last Build Summary`, summary.slice(0, 600), ''] : []),
+      `## History`,
+      ...history,
+      '',
+    ].join('\n');
+
+    await writeWorkspaceFile(projectId, 'Palmkit.md', content);
+
+    if (supabase && userId) {
+      await mirrorToSupabaseStorage(supabase, userId, projectId, 'Palmkit.md', content, 'text/markdown');
+    }
+
+    logger.info(`[workspace] Palmkit.md updated for ${projectId} (${content.length} chars)`);
+  } catch (e) {
+    logger.warn(`[workspace] Failed to write Palmkit.md for ${projectId}: ${e}`);
+  }
+}
+
 // Helper functions for manifest generation
 function hasExpress(files: Record<string, string>): boolean {
   return Object.keys(files).some((p) => p.includes('server/') || p.includes('express'));
