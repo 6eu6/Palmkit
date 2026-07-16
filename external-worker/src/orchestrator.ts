@@ -1106,17 +1106,49 @@ export async function runOrchestratedBuild(
             return null;
           }
 
+          // First: try unstringifying stringified JSON args (GLM habit).
           const repaired = repairStringifiedArgs(toolCall.args);
 
-          if (repaired === null) {
-            return null;
+          if (repaired !== null) {
+            logger.warn(
+              `[orchestrator] Repaired stringified args for tool ${toolCall.toolName} (${toolCall.args.length} → ${repaired.length} chars)`,
+            );
+
+            return { ...toolCall, args: repaired };
           }
 
-          logger.warn(
-            `[orchestrator] Repaired stringified args for tool ${toolCall.toolName} (${toolCall.args.length} → ${repaired.length} chars)`,
-          );
+          /*
+           * Second: structural repair for write_files. GLM-4.x often calls
+           * write_files with a SINGLE file object as the top-level args
+           *   {"path":"App.jsx","content":"..."}
+           * instead of the required shape
+           *   {"files":[{"path":"App.jsx","content":"..."}]}
+           * The Zod schema rejects this ("files: expected nonoptional,
+           * received undefined"). Wrap the stray object in a `files` array
+           * so the tool can proceed. Observed live on multiple builds.
+           */
+          if (toolCall.toolName === 'write_files') {
+            try {
+              const parsed = JSON.parse(toolCall.args);
 
-          return { ...toolCall, args: repaired };
+              if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && !('files' in parsed)) {
+                // Looks like a single file object (has path/content) or an
+                // array of file objects placed at the top level.
+                const wrapped = Array.isArray(parsed) ? { files: parsed } : { files: [parsed] };
+                const wrappedJson = JSON.stringify(wrapped);
+
+                logger.warn(
+                  `[orchestrator] Structural repair for write_files: wrapped top-level object in files[] array`,
+                );
+
+                return { ...toolCall, args: wrappedJson };
+              }
+            } catch {
+              // not JSON — fall through
+            }
+          }
+
+          return null;
         },
         temperature: 0.3, // Low temperature for consistent code generation (was 0.7 — too random)
         maxTokens: stepMaxTokens,
