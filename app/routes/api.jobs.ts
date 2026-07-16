@@ -85,12 +85,16 @@ export async function action(args: ActionFunctionArgs) {
     return json({ error: 'prompt is required' }, { status: 400 });
   }
 
-  // Prompt size sanity check — reject obviously oversized prompts
-  // before they reach the queue. 100K chars ≈ 25K tokens which is near
-  // or past most model context windows.
+  /*
+   * Prompt size sanity check — reject obviously oversized prompts
+   * before they reach the queue. 100K chars ≈ 25K tokens which is near
+   * or past most model context windows.
+   */
   if (prompt.length > 100_000) {
     return json(
-      { error: `Prompt is too long (${(prompt.length / 1024).toFixed(0)}KB). Maximum is 100KB (~25K tokens). Please shorten your request or start a fresh chat.` },
+      {
+        error: `Prompt is too long (${(prompt.length / 1024).toFixed(0)}KB). Maximum is 100KB (~25K tokens). Please shorten your request or start a fresh chat.`,
+      },
       { status: 400 },
     );
   }

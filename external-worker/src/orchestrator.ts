@@ -273,7 +273,7 @@ export async function runOrchestratedBuild(
        * same `image_ready` kind the BuildStream already knows how to render.
        */
       try {
-        await emitEvent(supabase, jobId, 'file_chunk' as any, `📷 User image ${i + 1} ready (${approxKb}KB)`, {
+        await emitEvent(supabase, jobId, 'file_chunk', `📷 User image ${i + 1} ready (${approxKb}KB)`, {
           agent: 'Brain',
           kind: 'image_ready',
           name: `user-image-${i}`,
@@ -348,7 +348,7 @@ export async function runOrchestratedBuild(
     await emitEvent(
       supabase,
       jobId,
-      'file_chunk' as any,
+      'file_chunk',
       '🧬 Continuing a project carried over from a previous chat — loaded its handoff memory',
       { continuation: true },
     );
@@ -375,7 +375,7 @@ export async function runOrchestratedBuild(
       await emitEvent(
         supabase,
         jobId,
-        'file_chunk' as any,
+        'file_chunk',
         `⏳ Building... (${Math.round((Date.now() - startTime) / 1000)}s)`,
       );
     } catch {
@@ -1022,7 +1022,7 @@ export async function runOrchestratedBuild(
           `(estimated ${estimatedInputTokens.toLocaleString()} tokens vs ${effectiveContextWindow.toLocaleString()} limit). ` +
           `Please use a model with a larger context, shorten your prompt, or continue in a fresh chat.`;
         logger.error(`[orchestrator] Pre-flight token check FAILED: ${msg}`);
-        await emitEvent(supabase, jobId, 'file_chunk' as any, `❌ ${msg}`, {
+        await emitEvent(supabase, jobId, 'file_chunk', `❌ ${msg}`, {
           agent: config.name,
           kind: 'context_overflow_preflight',
           estimatedTokens: estimatedInputTokens,
@@ -1036,7 +1036,7 @@ export async function runOrchestratedBuild(
         await emitEvent(
           supabase,
           jobId,
-          'file_chunk' as any,
+          'file_chunk',
           `⚠️ Prompt is large (~${estimatedInputTokens.toLocaleString()} tokens, ${Math.round((estimatedInputTokens / effectiveContextWindow) * 100)}% of context window). Build may fail or produce incomplete results. Consider using a model with a larger context or starting a fresh chat.`,
           {
             agent: config.name,
@@ -1056,7 +1056,7 @@ export async function runOrchestratedBuild(
       await emitEvent(
         supabase,
         jobId,
-        'file_chunk' as any,
+        'file_chunk',
         `🧠 ${config.name} is processing your request (${(promptChars / 1024).toFixed(1)}KB, ~${estimatedTokens} tokens)...`,
         { agent: config.name, kind: 'agent_thinking', promptSize: promptChars, estimatedTokens },
       );
@@ -1421,7 +1421,7 @@ export async function runOrchestratedBuild(
             await emitEvent(
               supabase,
               jobId,
-              'file_chunk' as any,
+              'file_chunk',
               `🔁 The model went silent for ${Math.round(STALL_TIMEOUT_MS / 1000)}s — restarting the agent (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES})…`,
               { reason: 'stall_retry', attempt: builderEmptyRetries },
             ).catch(() => undefined);
@@ -1464,7 +1464,7 @@ export async function runOrchestratedBuild(
           await emitEvent(
             supabase,
             jobId,
-            'file_chunk' as any,
+            'file_chunk',
             `⏱️ ${config.name} hit the build time limit and was stopped — checking what was completed…`,
             { agent: config.name, kind: 'agent_aborted' },
           ).catch(() => undefined);
@@ -1504,7 +1504,7 @@ export async function runOrchestratedBuild(
           await emitEvent(
             supabase,
             jobId,
-            'file_chunk' as any,
+            'file_chunk',
             `❌ Your prompt is too large for this model's context window. The system prompt + your request + project context exceeds the limit. ` +
               `Please: (1) shorten your prompt, (2) use a model with a larger context (128K+), or (3) start a fresh chat. ` +
               `Error: ${streamError.message.slice(0, 200)}`,
@@ -1554,7 +1554,7 @@ export async function runOrchestratedBuild(
             await emitEvent(
               supabase,
               jobId,
-              'file_chunk' as any,
+              'file_chunk',
               `✅ Build completed and verified (${salvageCount} files). A non-essential final step failed and was skipped.`,
               { kind: 'salvaged_success', error: streamError.message.slice(0, 200) },
             );
@@ -1591,7 +1591,7 @@ export async function runOrchestratedBuild(
           await emitEvent(
             supabase,
             jobId,
-            'file_chunk' as any,
+            'file_chunk',
             `⚠️ ${config.name} hit an error (${streamError.message.slice(0, 120)}) — retrying…`,
             { reason: 'builder_error_retry', error: streamError.message.slice(0, 300) },
           );
@@ -1664,7 +1664,7 @@ export async function runOrchestratedBuild(
         await emitEvent(
           supabase,
           jobId,
-          'file_chunk' as any,
+          'file_chunk',
           `⚠️ ${config.name} hit token cap — output may be truncated.`,
         );
       } else if (finishReason === 'tool-calls') {
@@ -1686,7 +1686,7 @@ export async function runOrchestratedBuild(
           await emitEvent(
             supabase,
             jobId,
-            'file_chunk' as any,
+            'file_chunk',
             `⚠️ ${config.name} reached step limit (${config.maxSteps}) — continuing with what was built.`,
           );
         }
@@ -1785,7 +1785,7 @@ export async function runOrchestratedBuild(
           }
 
           if (summaryText.length > 30) {
-            await emitEvent(supabase, jobId, 'file_chunk' as any, `📋 Build summary ready`, {
+            await emitEvent(supabase, jobId, 'file_chunk', `📋 Build summary ready`, {
               agent: config.name,
               role,
               kind: 'build_summary',
@@ -1879,7 +1879,7 @@ export async function runOrchestratedBuild(
               ? `⚠️ Build is missing package.json — a Vite app can't run without it. Asking ${agentName} to finish the scaffolding (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`
               : `⚠️ Build has ${curPaths.length} files but NO entry point (no index.html, no src/App.jsx). The preview will 404. Re-prompting ${agentName} to write the missing entry files (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`;
 
-          await emitEvent(supabase, jobId, 'file_chunk' as any, msg, {
+          await emitEvent(supabase, jobId, 'file_chunk', msg, {
             reason,
             attempt: builderEmptyRetries,
             currentFiles: curPaths,
@@ -2037,7 +2037,7 @@ export async function runOrchestratedBuild(
       await emitEvent(
         supabase,
         jobId,
-        'file_chunk' as any,
+        'file_chunk',
         `Build finished with errors. Files are saved so you can review or fix them, but the live preview may not run.`,
         { buildVerified: false },
       );
@@ -2064,7 +2064,7 @@ export async function runOrchestratedBuild(
         await emitEvent(
           supabase,
           jobId,
-          'file_generation_completed' as any,
+          'file_generation_completed',
           `🚀 Orchestrated build complete: ${fileCount} files, ${totalSize} chars, ${agentResults.length} agents${
             buildVerified === true ? ' — build verified ✓' : buildVerified === false ? ' — build has errors ⚠️' : ''
           }`,
@@ -2074,7 +2074,7 @@ export async function runOrchestratedBuild(
         await emitEvent(
           supabase,
           jobId,
-          'file_generation_completed' as any,
+          'file_generation_completed',
           `⚠️ Build incomplete: ${fileCount} files written, but agent didn't finish cleanly. Memory saved so next edit can continue.`,
           { fileCount, partial: true },
         );
@@ -2157,7 +2157,7 @@ export async function runOrchestratedBuild(
         const checkpoint = await commitProjectTurn(projectId, files, prompt, supabase, userId);
 
         if (checkpoint) {
-          await emitEvent(supabase, jobId, 'file_chunk' as any, `🕘 Checkpoint saved (${checkpoint.hash})`, {
+          await emitEvent(supabase, jobId, 'file_chunk', `🕘 Checkpoint saved (${checkpoint.hash})`, {
             kind: 'checkpoint',
             hash: checkpoint.hash,
             message: checkpoint.message,
@@ -2236,7 +2236,7 @@ export async function runOrchestratedBuild(
       await emitEvent(
         supabase,
         jobId,
-        'file_chunk' as any,
+        'file_chunk',
         `📡 Live stream: ${stats.chunksSent} chunks in ${stats.batchesSent} batches${stats.failures ? ` (${stats.failures} failed)` : ''}`,
         { kind: 'stream_stats', ...stats },
       );

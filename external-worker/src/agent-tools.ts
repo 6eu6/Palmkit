@@ -225,7 +225,7 @@ export function createAgentTools(
 
     const lines = content.split('\n').length;
     const inlineContent = content.length <= MAX_INLINE_CONTENT ? content : undefined;
-    await emitEvent(supabase, jobId, 'file_written' as any, `📝 ${path} (${lines} lines, ${content.length} chars)`, {
+    await emitEvent(supabase, jobId, 'file_written', `📝 ${path} (${lines} lines, ${content.length} chars)`, {
       filePath: path,
       path,
       lines,
@@ -400,7 +400,7 @@ export function createAgentTools(
     await emitEvent(
       supabase,
       jobId,
-      'file_written' as any,
+      'file_written',
       `📝 ${path} (${lines} lines, ${fileContent.length} chars)`,
       {
         filePath: path,
@@ -759,7 +759,7 @@ export function createAgentTools(
         const lines = updated.split('\n').length;
         const inlineContent = updated.length <= MAX_INLINE_CONTENT ? updated : undefined;
 
-        await emitEvent(supabase, jobId, 'file_written' as any, `✏️ ${path} edited (${lines} lines)`, {
+        await emitEvent(supabase, jobId, 'file_written', `✏️ ${path} edited (${lines} lines)`, {
           filePath: path,
           path,
           lines,
@@ -825,7 +825,7 @@ export function createAgentTools(
          * Make the deletion visible in the build stream — silent destructive
          * ops made post-mortems impossible.
          */
-        await emitEvent(supabase, jobId, 'file_chunk' as any, `🗑️ Deleted ${path}`, {
+        await emitEvent(supabase, jobId, 'file_chunk', `🗑️ Deleted ${path}`, {
           agent: 'Palmkit',
           kind: 'file_deleted',
           filePath: path,
@@ -959,7 +959,7 @@ export function createAgentTools(
         const modulePath = `src/assets/${safe}.ts`;
 
         try {
-          await emitEvent(supabase, jobId, 'file_chunk' as any, `🎨 Generating image "${safe}"…`);
+          await emitEvent(supabase, jobId, 'file_chunk', `🎨 Generating image "${safe}"…`);
 
           // Logos/icons need alpha (keep PNG); heroes/photos compress to JPEG.
           const transparent = /logo|icon|mark|avatar|badge|transparent/i.test(`${safe} ${prompt}`);
@@ -987,7 +987,7 @@ export function createAgentTools(
           await emitEvent(
             supabase,
             jobId,
-            'file_chunk' as any,
+            'file_chunk',
             `🎨 Image "${safe}" ready (${Math.round(img.bytes / 1024)}KB)`,
             {
               agent: 'Brain',
@@ -1111,7 +1111,7 @@ export function createAgentTools(
          * and the exit code. Command-level granularity (E2B returns the whole
          * output at once) — enough to watch the build work in real time.
          */
-        await emitEvent(supabase, jobId, 'shell_command' as any, `$ ${command}`, { command, running: true });
+        await emitEvent(supabase, jobId, 'shell_command', `$ ${command}`, { command, running: true });
 
         let result: { stdout: string; stderr: string; exitCode: number };
 
@@ -1151,7 +1151,7 @@ export function createAgentTools(
 
         logger.info(`[agent] run_shell (E2B): "${command}" → exit ${result.exitCode}`);
 
-        await emitEvent(supabase, jobId, 'shell_output' as any, `$ ${command} → exit ${result.exitCode}`, {
+        await emitEvent(supabase, jobId, 'shell_output', `$ ${command} → exit ${result.exitCode}`, {
           command,
           exitCode: result.exitCode,
           stdout: (result.stdout ?? '').slice(0, 3000),
@@ -1360,7 +1360,7 @@ export function createAgentTools(
           await emitEvent(
             supabase,
             jobId,
-            'file_chunk' as any,
+            'file_chunk',
             `⚠️ done() refused — missing entry point. Writing the missing files now…`,
             { agent: 'Palmkit', kind: 'done_refused', missing },
           );
@@ -1408,7 +1408,7 @@ export function createAgentTools(
          * summary row) and the brain's done() tool already announced it. The
          * banner was a redundant, hardcoded second voice.
          */
-        await emitEvent(supabase, jobId, 'file_generation_completed' as any, '', {
+        await emitEvent(supabase, jobId, 'file_generation_completed', '', {
           fileCount,
           totalSize,
           summary: fullSummary,
@@ -1631,7 +1631,7 @@ export function createAgentTools(
         const dims = vp === 'mobile' ? '390x844' : '1280x720';
 
         try {
-          await emitEvent(supabase, jobId, 'file_chunk' as any, `📸 Capturing screenshot (${vp})…`, {
+          await emitEvent(supabase, jobId, 'file_chunk', `📸 Capturing screenshot (${vp})…`, {
             agent: 'Palmkit',
             kind: 'screenshot_start',
             viewport: vp,
@@ -1755,7 +1755,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
           }
 
           // Emit the screenshot to the UI so the user sees what the model sees
-          await emitEvent(supabase, jobId, 'file_chunk' as any, `📸 Screenshot captured (${vp})`, {
+          await emitEvent(supabase, jobId, 'file_chunk', `📸 Screenshot captured (${vp})`, {
             agent: 'Palmkit',
             kind: 'screenshot_captured',
             dataUrl: `data:image/png;base64,${base64}`,
@@ -1796,7 +1796,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
           }
 
           // Emit the analysis to the UI
-          await emitEvent(supabase, jobId, 'file_chunk' as any, `👁️ Vision: ${analysis.description.slice(0, 150)}…`, {
+          await emitEvent(supabase, jobId, 'file_chunk', `👁️ Vision: ${analysis.description.slice(0, 150)}…`, {
             agent: 'Palmkit',
             kind: 'vision_analysis',
             text: analysis.description,
@@ -1880,7 +1880,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
           };
         }
 
-        await emitEvent(supabase, jobId, 'file_chunk' as any, `🎬 Generating video "${safe}"…`, {
+        await emitEvent(supabase, jobId, 'file_chunk', `🎬 Generating video "${safe}"…`, {
           agent: 'Palmkit',
           kind: 'video_start',
           name: safe,
@@ -1917,7 +1917,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
           await emitEvent(
             supabase,
             jobId,
-            'file_chunk' as any,
+            'file_chunk',
             `🎬 Video "${safe}" ready (${(buf.length / 1024 / 1024).toFixed(1)}MB, ${video.duration}s)`,
             {
               agent: 'Brain',
@@ -1943,7 +1943,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           logger.warn(`[agent] generate_video "${safe}" failed: ${msg}`);
-          await emitEvent(supabase, jobId, 'file_chunk' as any, `⚠️ Video "${safe}" failed: ${msg.slice(0, 120)}`, {
+          await emitEvent(supabase, jobId, 'file_chunk', `⚠️ Video "${safe}" failed: ${msg.slice(0, 120)}`, {
             agent: 'Palmkit',
             kind: 'video_error',
             name: safe,
@@ -2064,7 +2064,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
         logger.info(`[agent] spawn_subagent: ${task.slice(0, 100)}`);
 
         // Emit start event so the UI shows the sub-agent in the stream
-        await emitEvent(supabase, jobId, 'file_chunk' as any, `🔄 Sub-agent: ${task.slice(0, 120)}`, {
+        await emitEvent(supabase, jobId, 'file_chunk', `🔄 Sub-agent: ${task.slice(0, 120)}`, {
           agent: 'Brain',
           kind: 'subagent_start',
           task,
@@ -2223,7 +2223,7 @@ Do NOT call done() — just return your findings as your final message.`;
           );
 
           // Emit completion event with the result
-          await emitEvent(supabase, jobId, 'file_chunk' as any, `✅ Sub-agent done: ${task.slice(0, 80)}`, {
+          await emitEvent(supabase, jobId, 'file_chunk', `✅ Sub-agent done: ${task.slice(0, 80)}`, {
             agent: 'Brain',
             kind: 'subagent_complete',
             task,
@@ -2243,7 +2243,7 @@ Do NOT call done() — just return your findings as your final message.`;
           const msg = err?.message ?? String(err);
           logger.error(`[agent] spawn_subagent failed: ${msg}`);
 
-          await emitEvent(supabase, jobId, 'file_chunk' as any, `⚠️ Sub-agent failed: ${msg.slice(0, 120)}`, {
+          await emitEvent(supabase, jobId, 'file_chunk', `⚠️ Sub-agent failed: ${msg.slice(0, 120)}`, {
             agent: 'Brain',
             kind: 'subagent_error',
             task,

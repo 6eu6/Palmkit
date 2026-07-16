@@ -67,7 +67,15 @@ export type JobEventType =
    * payload: { agent, role }
    */
   | 'agent_started'
-  | 'agent_completed';
+  | 'agent_completed'
+  /*
+   * Shell lifecycle — emitted by run_shell before/after each command.
+   * shell_command payload: { command, running: true }
+   * shell_output  payload: { command, exitCode, stdout?, stderr?, durationMs }
+   * Frontend (use-external-worker.ts) renders these as the terminal activity rows.
+   */
+  | 'shell_command'
+  | 'shell_output';
 
 export interface JobEventPayload {
   [key: string]: unknown;

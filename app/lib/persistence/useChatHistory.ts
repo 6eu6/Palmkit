@@ -1055,6 +1055,7 @@ ${value.content}
                    * AUTO-OPEN WORKBENCH after workspace restore.
                    */
                   const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 640;
+
                   if (isDesktop) {
                     workbenchStore.showWorkbench.set(true);
                     workbenchStore.currentView.set('preview');
@@ -1194,6 +1195,7 @@ ${value.content}
                    * Same logic as the snapshot restore path above.
                    */
                   const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 640;
+
                   if (isDesktop) {
                     workbenchStore.showWorkbench.set(true);
                     workbenchStore.currentView.set('preview');
@@ -1340,6 +1342,7 @@ ${value.content}
                        * AUTO-OPEN WORKBENCH after fallback R2 restore.
                        */
                       const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 640;
+
                       if (isDesktop) {
                         workbenchStore.showWorkbench.set(true);
                         workbenchStore.currentView.set('preview');
