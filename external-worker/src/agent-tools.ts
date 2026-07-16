@@ -1487,13 +1487,50 @@ export function createAgentTools(
             'Optional specific question about the screenshot, e.g. "is the navbar overlapping the hero?" ' +
               'If omitted, the VLM describes the layout and flags any visual problems.',
           ),
+        /*
+         * z.any() + runtime coercion, NOT z.enum(): GLM-4.x/5.x pass things
+         * like '{"width": 390, "height": 844}' (a JSON string of dimensions)
+         * instead of 'mobile'. A strict enum makes the SDK reject the call
+         * before execute() runs — and that error aborts the whole stream,
+         * killing an otherwise-finished build (observed live on job
+         * 88bdfbd4). Accept anything and coerce to desktop/mobile here.
+         */
         viewport: z
-          .enum(['desktop', 'mobile'])
+          .any()
           .optional()
-          .describe('Viewport to capture. Default: desktop (1280x720). Use mobile for responsive checks.'),
+          .describe(
+            'Viewport to capture: "desktop" (default, 1280x720) or "mobile" (390x844) for responsive checks.',
+          ),
       }),
       execute: async ({ question, viewport }) => {
-        const vp = viewport ?? 'desktop';
+        /* Coerce arbitrary viewport shapes to 'desktop' | 'mobile'. */
+        const coerceViewport = (v: unknown): 'desktop' | 'mobile' => {
+          if (v === 'mobile' || v === 'desktop') {
+            return v;
+          }
+
+          let obj: any = v;
+
+          if (typeof v === 'string') {
+            if (/mobile|phone/i.test(v)) {
+              return 'mobile';
+            }
+
+            try {
+              obj = JSON.parse(v);
+            } catch {
+              return 'desktop';
+            }
+          }
+
+          if (obj && typeof obj === 'object' && typeof obj.width === 'number') {
+            return obj.width <= 500 ? 'mobile' : 'desktop';
+          }
+
+          return 'desktop';
+        };
+
+        const vp = coerceViewport(viewport);
         const dims = vp === 'mobile' ? '390x844' : '1280x720';
 
         try {

@@ -1375,6 +1375,37 @@ export async function runOrchestratedBuild(
           builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES &&
           isRecoverable;
 
+        /*
+         * SALVAGE GATE — a late tool-argument error (e.g. a malformed
+         * analyze_screenshot call AFTER the app was written and verified)
+         * must never kill a finished build. If the workspace already holds
+         * files AND the last real build command passed, accept the build
+         * with a note instead of retrying/failing. Observed live on job
+         * 88bdfbd4: app built, `npm run build` exit 0, then a broken
+         * screenshot call failed the whole job three times in a row.
+         */
+        if (role === 'brain' || role === 'builder') {
+          const salvageFiles = getProjectFiles(jobId) as Record<string, string>;
+          const salvageCount = Object.keys(salvageFiles).length;
+          const salvageBuild = getBuildResult(jobId);
+
+          if (salvageCount > 0 && salvageBuild?.passed) {
+            logger.warn(
+              `[orchestrator] ${config.name} errored late (${streamError.message.slice(0, 120)}) but the build already passed with ${salvageCount} files — salvaging as success.`,
+            );
+            await emitEvent(
+              supabase,
+              jobId,
+              'file_chunk' as any,
+              `✅ Build completed and verified (${salvageCount} files). A non-essential final step failed and was skipped.`,
+              { kind: 'salvaged_success', error: streamError.message.slice(0, 200) },
+            );
+            agentResults.push({ role, success: true, text: builderContext || '', duration: Date.now() - agentStart });
+            streamError = null;
+            break; // exit the agent queue — finalize with what was built
+          }
+        }
+
         if (canRetry) {
           const writtenFiles = Object.keys(getProjectFiles(jobId)).length;
           logger.warn(
