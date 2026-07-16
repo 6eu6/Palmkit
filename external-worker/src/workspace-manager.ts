@@ -20,6 +20,61 @@
 import { putFile, getFileText, buildWorkspaceKey, buildWorklogKey, buildManifestKey, listObjects } from './r2-client';
 import { logger } from './logger';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+import * as os from 'node:os';
+
+/*
+ * ── M1: DISK-FIRST WORKSPACE ────────────────────────────────────────────
+ *
+ * Every project lives as a REAL directory on the worker's disk:
+ *
+ *   ~/palmkit-projects/{projectId}/
+ *     ├── .git/            ← per-project version history (git-manager.ts)
+ *     ├── Palmkit.md       ← project memory
+ *     ├── .palmkit/        ← session.json, history.json, briefs
+ *     └── src/…            ← the user's actual app
+ *
+ * The DISK is the source of truth for the agent (fast, atomic, git-able).
+ * R2 stays as the DELIVERY + BACKUP layer — the Cloudflare app reads files
+ * from R2, and a project claimed by a different worker box hydrates its
+ * disk copy from R2 on first read. Writes go disk-first, then R2.
+ */
+const PROJECTS_DIR = process.env.PALMKIT_PROJECTS_DIR || path.join(os.homedir(), 'palmkit-projects');
+
+/** Sanitized absolute directory for a project. */
+export function projectDiskDir(projectId: string): string {
+  const safe = String(projectId).replace(/[^a-zA-Z0-9._-]/g, '_');
+  return path.join(PROJECTS_DIR, safe);
+}
+
+/** Resolve a relative file path inside the project dir, refusing escapes. */
+function diskFilePath(projectId: string, relPath: string): string {
+  const dir = projectDiskDir(projectId);
+  const full = path.resolve(dir, relPath);
+
+  if (full !== dir && !full.startsWith(dir + path.sep)) {
+    throw new Error(`path escapes project dir: ${relPath}`);
+  }
+
+  return full;
+}
+
+/** Write a file to the project's disk dir (creates parent dirs). */
+export async function writeProjectFileToDisk(projectId: string, relPath: string, content: string): Promise<void> {
+  const full = diskFilePath(projectId, relPath);
+  await fs.mkdir(path.dirname(full), { recursive: true });
+  await fs.writeFile(full, content, 'utf8');
+}
+
+/** Read a file from the project's disk dir. Returns null when missing. */
+export async function readProjectFileFromDisk(projectId: string, relPath: string): Promise<string | null> {
+  try {
+    return await fs.readFile(diskFilePath(projectId, relPath), 'utf8');
+  } catch {
+    return null;
+  }
+}
 
 export interface ProjectManifest {
   projectId: string;
@@ -117,13 +172,8 @@ async function mirrorToSupabaseStorage(
  * The worklog is markdown text — the agent reads it as context.
  */
 export async function readWorklog(projectId: string): Promise<string | null> {
-  try {
-    const key = buildWorklogKey(projectId);
-    return await getFileText(key);
-  } catch (e) {
-    logger.warn(`[workspace] Failed to read worklog for ${projectId}: ${e}`);
-    return null;
-  }
+  // Disk-first via the workspace layer (worklog.md lives at the project root).
+  return readWorkspaceFile(projectId, 'worklog.md');
 }
 
 /**
@@ -139,8 +189,7 @@ export async function appendToWorklog(
   userId?: string,
 ): Promise<void> {
   try {
-    const key = buildWorklogKey(projectId);
-    const existing = (await getFileText(key)) || '';
+    const existing = (await readWorkspaceFile(projectId, 'worklog.md')) || '';
 
     const timestamp = new Date().toISOString();
     const newEntry = `\n## ${timestamp}\n\n${entry}\n`;
@@ -167,7 +216,7 @@ export async function appendToWorklog(
       updated = compactWorklog(updated);
     }
 
-    await putFile(key, updated);
+    await writeWorkspaceFile(projectId, 'worklog.md', updated);
 
     // Mirror to Supabase Storage so /api/workspace can read it
     if (supabase && userId) {
@@ -392,11 +441,28 @@ export async function hydrateWorkspaceFromStorage(
 
 /**
  * Read a file from the workspace by relative path.
+ *
+ * M1: DISK-FIRST. The local project dir is the source of truth; R2 is the
+ * fallback for projects that were built before M1 or on another worker box.
+ * An R2 hit hydrates the disk copy so subsequent reads (and git) see it.
  */
 export async function readWorkspaceFile(projectId: string, filePath: string): Promise<string | null> {
+  const fromDisk = await readProjectFileFromDisk(projectId, filePath);
+
+  if (fromDisk !== null) {
+    return fromDisk;
+  }
+
   try {
     const key = buildWorkspaceKey(projectId, filePath);
-    return await getFileText(key);
+    const fromR2 = await getFileText(key);
+
+    if (fromR2 !== null) {
+      // Hydrate the disk copy (best-effort) so this box owns the file now.
+      writeProjectFileToDisk(projectId, filePath, fromR2).catch(() => undefined);
+    }
+
+    return fromR2;
   } catch (e) {
     logger.warn(`[workspace] Failed to read ${filePath} for ${projectId}: ${e}`);
     return null;
@@ -405,8 +471,19 @@ export async function readWorkspaceFile(projectId: string, filePath: string): Pr
 
 /**
  * Write a file to the workspace by relative path.
+ *
+ * M1: writes land on DISK first (source of truth), then R2 (delivery +
+ * backup — the Cloudflare app serves files from R2). A disk failure does
+ * not block the R2 write, and vice versa: memory + at least one layer is
+ * always enough to finish a build.
  */
 export async function writeWorkspaceFile(projectId: string, filePath: string, content: string): Promise<void> {
+  try {
+    await writeProjectFileToDisk(projectId, filePath, content);
+  } catch (e) {
+    logger.warn(`[workspace] Disk write failed for ${filePath} (${projectId}): ${e}`);
+  }
+
   try {
     const key = buildWorkspaceKey(projectId, filePath);
     await putFile(key, content);
@@ -464,7 +541,7 @@ function buildPalmkitKey(projectId: string, filename: string): string {
 export async function readPalmkitMemory(projectId: string): Promise<PalmkitMemory> {
   const read = async (filename: string): Promise<string> => {
     try {
-      return (await getFileText(buildPalmkitKey(projectId, filename))) || '';
+      return (await readWorkspaceFile(projectId, `${PALMKIT_PREFIX}/${filename}`)) || '';
     } catch {
       return '';
     }
@@ -513,8 +590,7 @@ export async function writePalmkitFile(
   userId?: string,
 ): Promise<void> {
   try {
-    const key = buildPalmkitKey(projectId, filename);
-    await putFile(key, content);
+    await writeWorkspaceFile(projectId, `${PALMKIT_PREFIX}/${filename}`, content);
 
     if (supabase && userId) {
       await mirrorToSupabaseStorage(supabase, userId, projectId, `${PALMKIT_PREFIX}/${filename}`, content);

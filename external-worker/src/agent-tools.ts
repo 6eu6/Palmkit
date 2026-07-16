@@ -32,6 +32,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { streamText, type LanguageModelV1 } from 'ai';
 import { putFile, getFileText, buildWorkspaceKey } from './r2-client';
+import { writeProjectFileToDisk, readProjectFileFromDisk } from './workspace-manager';
 import { logger } from './logger';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { emitEvent } from './event-emitter';
@@ -353,7 +354,14 @@ export function createAgentTools(
         // Store in memory
         projectFiles.set(path, fileContent);
 
-        // Also store to R2 workspace for persistence
+        // M1: disk is the source of truth (fast, local, git-able).
+        try {
+          await writeProjectFileToDisk(projectId, path, fileContent);
+        } catch (e) {
+          logger.warn(`[agent] disk write failed for ${path}: ${e}`);
+        }
+
+        // R2 stays as delivery + backup (the Cloudflare app serves from it).
         try {
           const r2Key = buildWorkspaceKey(projectId, path);
           await putFile(r2Key, fileContent);
@@ -543,7 +551,17 @@ export function createAgentTools(
         // Try memory first (faster, includes current build's changes)
         let content = projectFiles.get(path);
 
-        // If not in memory, try R2 workspace (existing files from previous builds)
+        // M1: then the project's disk dir (source of truth on this box)
+        if (!content) {
+          const fromDisk = await readProjectFileFromDisk(projectId, path);
+
+          if (fromDisk !== null) {
+            content = fromDisk;
+            projectFiles.set(path, content);
+          }
+        }
+
+        // Finally R2 (legacy projects / projects built on another box)
         if (!content) {
           try {
             const r2Key = buildWorkspaceKey(projectId, path);

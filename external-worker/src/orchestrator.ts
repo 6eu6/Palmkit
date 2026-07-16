@@ -117,6 +117,7 @@ import {
   writePalmkitProjectMemory,
 } from './workspace-manager';
 import { loadSession, appendToSession, estimateSessionTokens, type SessionMessage } from './session-manager';
+import { commitProjectTurn } from './git-manager';
 import { registerJobAbort, unregisterJobAbort } from './abort-registry';
 
 export interface OrchestratorResult {
@@ -2145,6 +2146,21 @@ export async function runOrchestratedBuild(
           supabase,
           userId,
         );
+
+        // 5. Git checkpoint (M1) — flush the full file set to the project's
+        //    disk dir and commit this turn. Exports .palmkit/history.json
+        //    (hash + date + message, last 20) for the version-history UI.
+        const checkpoint = await commitProjectTurn(projectId, files, prompt, supabase, userId);
+
+        if (checkpoint) {
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk' as any,
+            `🕘 Checkpoint saved (${checkpoint.hash})`,
+            { kind: 'checkpoint', hash: checkpoint.hash, message: checkpoint.message },
+          ).catch(() => undefined);
+        }
 
         logger.info(`[orchestrator] Worklog + manifest + .palmkit/ memory updated for ${projectId} (${overallSuccess ? 'success' : 'partial'})`);
       } catch (e) {
