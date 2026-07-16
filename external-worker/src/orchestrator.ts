@@ -536,17 +536,30 @@ export async function runOrchestratedBuild(
             const lines = content.split('\n').length;
             return `  - ${p} (${lines} lines)`;
           }).join('\n');
-          agentPrompt += `\n\n=== EXISTING PROJECT FILES ===\nThe following files are already in your workspace. Use read_file(path) to inspect any file before editing it. Use list_files() to see the full list.\n${fileListBlock}\n=== END FILES ===\n`;
+          agentPrompt += `\n\n=== EXISTING PROJECT FILES ===\nThe following ${existingPaths.length} files ALREADY EXIST in your workspace. They are loaded and ready.\n${fileListBlock}\n=== END FILES ===\n`;
         }
 
         if (isEditMode) {
           const editConvBlock =
             opts?.conversationHistory && opts.conversationHistory.length > 0
-              ? `\n\nCONVERSATION HISTORY (full context from prior messages — understand references and intent):\n${opts.conversationHistory
+              ? `\n\nCONVERSATION HISTORY (what was said before — understand references and intent):\n${opts.conversationHistory
                   .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
                   .join('\n\n')}\n`
               : '';
-          agentPrompt += `${editConvBlock}\n\nThis is an EDIT of an existing project. The project files are already in your workspace — you can see the file list above. Use read_file to inspect the specific files you need to modify BEFORE making changes. Make ONLY the changes the user requested. If the user asks a question (not a build request), answer it directly — don't rebuild the project unless asked.\n\nIMPORTANT FOR EDITS: The user's new message is a MODIFICATION REQUEST. Do NOT use ask_user — just read the relevant files, make the changes with edit_file or write_file, verify with run_shell("npm install && npm run build"), and call done().`;
+          agentPrompt += `${editConvBlock}\n\n` +
+            `🔴 CRITICAL: THIS IS AN EDIT OF AN EXISTING PROJECT — DO NOT REBUILD FROM SCRATCH.\n` +
+            `The ${existingPaths.length} files listed above ALREADY EXIST. They are fully loaded in your workspace.\n` +
+            (existingPaths.length > 0
+              ? `DO NOT create package.json, index.html, vite.config.js, or any file that already exists — they are already there!\n`
+              : '') +
+            `YOUR WORKFLOW:\n` +
+            `1. read_file("src/App.jsx") (or whichever file needs changes)\n` +
+            `2. edit_file(path, oldText, newText) to make targeted changes\n` +
+            `3. run_shell("npm install && npm run build") to verify\n` +
+            `4. done(summary of what changed)\n\n` +
+            `NEVER use run_shell("ls"), run_shell("find"), or run_shell("cat") to check files — use list_files() and read_file() instead.\n` +
+            `NEVER use ask_user — just make the changes directly.\n` +
+            `NEVER plan to "create project files" — they already exist.\n`;
         }
 
         // Skills
@@ -644,7 +657,12 @@ export async function runOrchestratedBuild(
                 .join('\n\n')}\n`
             : '';
 
-        agentPrompt = `${prompt}${editWorklogBlock}${editConvBlock}\n\nThis is an EDIT of an existing project. The project files are already in your workspace — use list_files to see what files exist, then read_file to inspect the specific files you need to modify BEFORE making changes. Make ONLY the changes the user requested. If the user asks a question (not a build request), answer it directly — don't rebuild the project unless asked.\n\nIMPORTANT: Do NOT use ask_user for edits — just make the changes directly.`;
+        agentPrompt = `${prompt}${editWorklogBlock}${editConvBlock}\n\n` +
+          `🔴 CRITICAL: THIS IS AN EDIT OF AN EXISTING PROJECT — DO NOT REBUILD FROM SCRATCH.\n` +
+          `Files are already in your workspace. Use list_files to see them, read_file to inspect.\n` +
+          `YOUR WORKFLOW: read_file → edit_file → run_shell("npm install && npm run build") → done()\n` +
+          `NEVER use run_shell("ls"), run_shell("find"), or run_shell("cat") — use list_files() and read_file() instead.\n` +
+          `NEVER use ask_user — just make the changes directly.\n`;
       }
 
       /*
@@ -1664,20 +1682,35 @@ export async function runOrchestratedBuild(
     );
 
     // Write worklog + manifest + .palmkit/ memory
-    if (overallSuccess) {
+    // Write EVEN on partial/failed builds if files were written — the next
+    // "edit" message needs this memory to know what exists. Without it, the
+    // model thinks the project is empty and rebuilds from scratch.
+    const hasFiles = fileCount > 0;
+
+    if (hasFiles) {
       const totalSize = Object.values(files).reduce((s: number, c: string) => s + c.length, 0);
       const duration = Date.now() - startTime;
       const summary = testerContext || builderContext.slice(-500) || undefined;
 
-      await emitEvent(
-        supabase,
-        jobId,
-        'file_generation_completed' as any,
-        `🚀 Orchestrated build complete: ${fileCount} files, ${totalSize} chars, ${agentResults.length} agents${
-          buildVerified === true ? ' — build verified ✓' : buildVerified === false ? ' — build has errors ⚠️' : ''
-        }`,
-        { fileCount, agents: agentResults.map((a) => a.role), buildVerified, repairRounds },
-      );
+      if (overallSuccess) {
+        await emitEvent(
+          supabase,
+          jobId,
+          'file_generation_completed' as any,
+          `🚀 Orchestrated build complete: ${fileCount} files, ${totalSize} chars, ${agentResults.length} agents${
+            buildVerified === true ? ' — build verified ✓' : buildVerified === false ? ' — build has errors ⚠️' : ''
+          }`,
+          { fileCount, agents: agentResults.map((a) => a.role), buildVerified, repairRounds },
+        );
+      } else {
+        await emitEvent(
+          supabase,
+          jobId,
+          'file_generation_completed' as any,
+          `⚠️ Build incomplete: ${fileCount} files written, but agent didn't finish cleanly. Memory saved so next edit can continue.`,
+          { fileCount, partial: true },
+        );
+      }
 
       try {
         // 1. Worklog
@@ -1713,7 +1746,9 @@ export async function runOrchestratedBuild(
         manifest.commands = smartManifest.commands;
         manifest.apiRoutes = smartManifest.apiRoutes;
         manifest.qualityGates = smartManifest.qualityGates;
-        manifest.lastKnownStatus = testerContext.includes('build pass') ? 'build_passed' : 'build_unknown';
+        manifest.lastKnownStatus = overallSuccess
+          ? (testerContext.includes('build pass') ? 'build_passed' : 'build_unknown')
+          : 'partial';
         manifest.knownIssues = smartManifest.knownIssues;
         await writeManifest(manifest, supabase, userId);
 
@@ -1725,7 +1760,7 @@ export async function runOrchestratedBuild(
           userId,
         );
 
-        logger.info(`[orchestrator] Worklog + manifest + .palmkit/ memory updated for ${projectId}`);
+        logger.info(`[orchestrator] Worklog + manifest + .palmkit/ memory updated for ${projectId} (${overallSuccess ? 'success' : 'partial'})`);
       } catch (e) {
         logger.warn(`[orchestrator] Failed to update memory: ${e}`);
       }

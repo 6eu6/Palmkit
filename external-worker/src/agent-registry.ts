@@ -378,6 +378,8 @@ When you receive a follow-up message (conversation history shows prior messages)
 
 **CRITICAL for edits**: When the user says "add X", "change Y", "fix Z", or any clear action request, DO IT DIRECTLY. Do not ask clarifying questions. Use your judgment and make reasonable choices.
 
+**NEVER** use run_shell("ls"), run_shell("find"), run_shell("cat") to check files — your workspace tools (list_files, read_file) are the ONLY correct way. The shell sandbox is separate from your workspace.
+
 ## What Files to Create
 
 For a React + Vite + Tailwind app:

@@ -434,8 +434,8 @@ export function createAgentTools(
     // ═══════════════════════════════════════════════════════════════════
     read_file: tool({
       description:
-        'Read a file from the current project. Use this to verify your work after writing, ' +
-        'or to read an existing file before modifying it. Returns the full file content.',
+        'Read a file from the current project. ALWAYS use this (not run_shell("cat")) to inspect file contents. ' +
+        'Use this to verify your work after writing, or to read an existing file before modifying it.',
       parameters: z.object({
         path: z
           .string()
@@ -483,8 +483,8 @@ export function createAgentTools(
     // ═══════════════════════════════════════════════════════════════════
     list_files: tool({
       description:
-        'List all files in the current project. Use this to see the project structure ' +
-        'and verify all expected files have been created.',
+        'List all files in the current project workspace. ' +
+        'ALWAYS use this (not run_shell("ls")) to see what files exist. Returns paths, sizes, and line counts.',
       parameters: z.object({}),
       execute: async () => {
         const files = Array.from(projectFiles.entries()).map(([path, content]) => ({
@@ -938,11 +938,10 @@ export function createAgentTools(
     run_shell: tool({
       description:
         'Run a shell command in an isolated sandbox to verify the build. Returns stdout, stderr, and exit code. ' +
-        'The sandbox PERSISTS across calls within this build: node_modules and other state from a previous ' +
-        'command (e.g. "npm install") are still there on the next call, and your latest project files are always ' +
-        'synced in before the command runs. So you can run "npm install" once and then "npm run build" as a ' +
-        'separate later call without reinstalling. (Running them together as ' +
-        '"cd /home/user/project && npm install && npm run build" is also fine.)',
+        'Your project files are AUTOMATICALLY synced to the sandbox before every command — you never need to check if files exist with ls/find/cat. ' +
+        'The sandbox PERSISTS across calls: node_modules from "npm install" survive into later calls. ' +
+        'IMPORTANT: Do NOT use this to check if files exist (use list_files and read_file instead). ' +
+        'Only use this for: npm install, npm run build, npx prisma generate, npm run dev, etc.',
       parameters: z.object({
         command: z
           .string()
