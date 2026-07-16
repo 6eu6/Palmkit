@@ -15,7 +15,12 @@
  */
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '@nanostores/react';
-import { workerEventsStore, workerProgressStore, type WorkerEvent } from '~/lib/stores/build-status';
+import {
+  workerEventsStore,
+  workerProgressStore,
+  terminalOutputStore,
+  type WorkerEvent,
+} from '~/lib/stores/build-status';
 import { liveStreamStore } from '~/lib/stores/live-stream';
 import { classNames } from '~/utils/classNames';
 import { PalmkitLoader } from '~/components/ui/PalmkitLoader';
@@ -1366,6 +1371,7 @@ export const BuildStreamView = memo(
   }) => {
     const [open, setOpen] = useState(defaultOpen);
     const live = useStore(liveStreamStore);
+    const terminalLines = useStore(terminalOutputStore);
     const sections = useMemo(() => {
       const folded = foldEvents(events);
 
@@ -1490,6 +1496,40 @@ export const BuildStreamView = memo(
     // Total agent time, for the "· Worked for Xs" summary once the build ends.
     const totalMs = sections.reduce((sum, sec) => sum + (sec.durationMs ?? 0), 0);
 
+    /*
+     * Extract the last failed command's stderr for the failure card.
+     * terminalOutputStore holds every shell_command/shell_output event.
+     * When a build fails, the most actionable info is usually in the last
+     * non-zero exit code's stderr (e.g. TypeScript compile error, npm install
+     * ENOTFOUND). Show the last 15 lines of stderr from the last failed command.
+     */
+    const lastFailedStderr = useMemo(() => {
+      if (!failed) {
+        return null;
+      }
+
+      for (let i = terminalLines.length - 1; i >= 0; i--) {
+        const line = terminalLines[i];
+
+        if (!line.running && line.exitCode !== undefined && line.exitCode !== 0 && line.stderr) {
+          const trimmed = line.stderr.trim();
+
+          if (trimmed.length > 0) {
+            const lines = trimmed.split('\n').filter(Boolean);
+            const lastLines = lines.slice(-15).join('\n');
+
+            return {
+              command: line.command,
+              exitCode: line.exitCode,
+              stderr: lastLines.slice(-1500),
+            };
+          }
+        }
+      }
+
+      return null;
+    }, [terminalLines, failed]);
+
     // Only PAST turns fold; the live turn always flows open as the current reply.
     const toggle = () => setOpen((o) => !o);
     const showBody = past ? open : true;
@@ -1598,6 +1638,23 @@ export const BuildStreamView = memo(
                     ? 'You stopped this build. Partial files were saved — your next message will continue from here.'
                     : (failureReason ?? 'Something went wrong while building. You can retry or open the logs.')}
                 </p>
+                {/* Show the last failed command's stderr — the most actionable error info. */}
+                {lastFailedStderr && (
+                  <div className="mt-2 rounded-md border border-red-500/20 bg-black/40 overflow-hidden">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-red-500/20 bg-red-500/5">
+                      <span className="i-ph:terminal-window text-xs text-red-400" />
+                      <code className="text-[11px] text-red-300 font-mono truncate flex-1">
+                        $ {lastFailedStderr.command}
+                      </code>
+                      <span className="text-[10px] text-red-400/70 font-mono shrink-0">
+                        exit {lastFailedStderr.exitCode}
+                      </span>
+                    </div>
+                    <pre className="px-2.5 py-2 text-[11px] text-red-200/80 font-mono overflow-x-auto max-h-40 overflow-y-auto leading-relaxed">
+                      {lastFailedStderr.stderr}
+                    </pre>
+                  </div>
+                )}
                 <div className="mt-2.5 flex items-center gap-2">
                   {!isCancelled && (
                     <button
@@ -1608,6 +1665,19 @@ export const BuildStreamView = memo(
                     >
                       <span className="i-ph:arrow-clockwise text-sm" />
                       Retry
+                    </button>
+                  )}
+                  {lastFailedStderr && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const text = `$ ${lastFailedStderr.command}\nexit ${lastFailedStderr.exitCode}\n\n${lastFailedStderr.stderr}`;
+                        navigator.clipboard?.writeText(text).catch(() => undefined);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-palmkit-elements-borderColor px-3 py-1.5 text-xs font-medium text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
+                    >
+                      <span className="i-ph:copy text-sm" />
+                      Copy error
                     </button>
                   )}
                   <button
