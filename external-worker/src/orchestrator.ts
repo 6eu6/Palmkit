@@ -1193,9 +1193,18 @@ export async function runOrchestratedBuild(
                * one rewriting a single file.
                */
               if (part.toolName === 'write_files') {
-                const batch = (part.args as any)?.files as Array<{ path?: string }> | undefined;
+                let batch = (part.args as any)?.files as unknown;
 
-                for (const f of batch ?? []) {
+                // GLM models may pass the array as a JSON string — parse for counting.
+                if (typeof batch === 'string') {
+                  try {
+                    batch = JSON.parse(batch);
+                  } catch {
+                    batch = [];
+                  }
+                }
+
+                for (const f of (Array.isArray(batch) ? batch : []) as Array<{ path?: string }>) {
                   if (f?.path) {
                     fileWriteCounts.set(f.path, (fileWriteCounts.get(f.path) ?? 0) + 1);
                   }

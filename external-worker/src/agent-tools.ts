@@ -448,19 +448,58 @@ export function createAgentTools(
         'with the COMPLETE file content as a raw string (no placeholders, no JSON envelopes). ' +
         'Files are saved instantly and stream to the user one by one.',
       parameters: z.object({
+        /*
+         * z.any() + runtime coercion, NOT z.array(): GLM-4.x/5.x sometimes
+         * pass the array as a JSON STRING ('[{"path": ...}]'). A strict
+         * schema makes the SDK reject the call before execute() ever runs,
+         * killing the whole build — same failure class the done() tool
+         * already guards against. We accept anything and coerce here.
+         */
         files: z
-          .array(
-            z.object({
-              path: z.string().describe('The file path, e.g. "src/App.jsx"'),
-              content: z.any().describe('The COMPLETE file content as a raw string.'),
-            }),
-          )
-          .describe('All files to write, in dependency order (package.json and configs first).'),
+          .any()
+          .describe(
+            'All files to write, in dependency order (package.json and configs first). An ARRAY of {path, content} objects.',
+          ),
       }),
       execute: async ({ files }) => {
+        /* Coerce: JSON-string → array; single object → [object]. */
+        let list: Array<{ path?: string; content?: any }> = [];
+
+        if (typeof files === 'string') {
+          try {
+            const parsed = JSON.parse(files);
+            list = Array.isArray(parsed) ? parsed : [parsed];
+          } catch {
+            return {
+              success: false,
+              written: 0,
+              total: 0,
+              message:
+                'Could not parse the files argument — pass files as an ARRAY of {path, content} objects, not a string.',
+            };
+          }
+        } else if (Array.isArray(files)) {
+          list = files;
+        } else if (files && typeof files === 'object') {
+          list = [files];
+        }
+
+        /* Entries themselves may also arrive as JSON strings. */
+        list = list.map((f: any) => {
+          if (typeof f === 'string') {
+            try {
+              return JSON.parse(f);
+            } catch {
+              return {};
+            }
+          }
+
+          return f;
+        });
+
         const results: Array<{ path: string; success: boolean; message?: string }> = [];
 
-        for (const f of files ?? []) {
+        for (const f of list) {
           if (!f?.path) {
             continue;
           }
