@@ -1188,9 +1188,9 @@ export function createAgentTools(
      */
     done: tool({
       description:
-        'Signal that you have finished building the project. Call this ONLY when all files ' +
-        'have been written and verified. This marks the build as complete and triggers preview generation. ' +
-        'Be HONEST in your summary — say what completed and what did not.',
+        'Signal that you have finished this turn — a completed build, an applied change, or an answered ' +
+        'question. Include a summary: for builds/edits, what was done and what was verified; for questions, ' +
+        'the answer itself. Be HONEST — say what works and what does not.',
 
       /*
        * Use z.any().optional() for array params — GLM-4.x serializes arrays
@@ -1202,7 +1202,17 @@ export function createAgentTools(
        * We parse strings in execute() (same pattern as update_todos).
        */
       parameters: z.object({
-        summary: z.string().describe('A brief summary of what was built (1-2 sentences).'),
+        /*
+         * z.any().optional(), NOT z.string(): a model that just answered a
+         * question in narration sometimes calls done() with {} — a strict
+         * required string made the SDK reject the call and killed the whole
+         * turn (observed live: three intent-test jobs failed on
+         * 'Value: {}'). We coerce below and fall back to a neutral summary.
+         */
+        summary: z
+          .any()
+          .optional()
+          .describe('A brief summary of this turn: what was built/changed, or the answer to the question.'),
         completed: z
           .any()
           .optional()
@@ -1221,12 +1231,21 @@ export function createAgentTools(
           .describe('Optional suggestions for what the user could do next. Pass as a JSON array of strings.'),
       }),
       execute: async (args) => {
+        /*
+         * Coerce the summary: string → as-is; object/array → JSON; missing →
+         * neutral text (the model's narration already carried the substance).
+         */
+        const rawSummary = (args as any)?.summary;
+        const summaryText =
+          typeof rawSummary === 'string' && rawSummary.trim().length > 0
+            ? rawSummary
+            : rawSummary && typeof rawSummary === 'object'
+              ? JSON.stringify(rawSummary)
+              : 'Turn completed.';
+        (args as any).summary = summaryText;
+
         // Answer-mode signal: the model deliberately finished this turn.
-        try {
-          jobDoneSummaries.set(jobId, String((args as any)?.summary ?? '').slice(0, 2000));
-        } catch {
-          jobDoneSummaries.set(jobId, 'done');
-        }
+        jobDoneSummaries.set(jobId, summaryText.slice(0, 2000));
 
         /*
          * COERCE: GLM-4.x sends arrays as JSON strings. Parse them safely.
