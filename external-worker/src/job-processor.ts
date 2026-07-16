@@ -907,11 +907,67 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
            * of starting over.
            */
           if (hasFiles) {
-            logger.info(`Job ${job.id}: saving ${agentResult.files.length} partial files from failed build`);
-            // The upload + manifest logic will happen in the normal flow if we
-            // don't return early. But for a clean failure path, we should still
-            // save the partial state. The partial files are in the result —
-            // just let the caller know it failed.
+            logger.info(`Job ${job.id}: saving ${agentResult.files.length} partial files from failed/incomplete build`);
+
+            /*
+             * FINALIZE PARTIAL FILES — upload to R2 + write manifest rows.
+             *
+             * Without this, the edit path (next message) queries
+             * project_files_manifest WHERE job_id = editJobId and finds
+             * NOTHING → "Could not load the previous build's files".
+             * The model then rebuilds from scratch, losing all context.
+             *
+             * By saving the manifest + R2 here, the next edit can load
+             * these partial files and continue where the failed build left off.
+             */
+            try {
+              const workspaceKey = buildWorkspaceKey(projectId, '');
+              const legacyKey = `${job.user_id}/${job.id}`;
+
+              const manifestEntries = agentResult.files.map((f) => ({
+                job_id: job.id,
+                path: f.path,
+                storage_key: buildWorkspaceKey(projectId, f.path),
+                legacy_storage_key: `${legacyKey}/${f.path}`,
+                mime_type: 'text/plain',
+              }));
+
+              // Write files to R2 + Supabase Storage
+              await Promise.all(
+                agentResult.files.map(async (f) => {
+                  const content = (f.content as string) ?? '';
+                  const wkKey = buildWorkspaceKey(projectId, f.path);
+                  const lgKey = `${legacyKey}/${f.path}`;
+
+                  await putFile(wkKey, content).catch((e) => logger.warn(`R2 write failed for ${f.path}: ${e}`));
+
+                  try {
+                    await supabase.storage.from('palmkit-files').upload(`${job.user_id}/${wkKey}`, content, {
+                      contentType: 'text/plain',
+                      upsert: true,
+                    });
+                  } catch {}
+                  try {
+                    await supabase.storage.from('palmkit-files').upload(lgKey, content, {
+                      contentType: 'text/plain',
+                      upsert: true,
+                    });
+                  } catch {}
+                }),
+              );
+
+              // Write manifest table entries
+              await supabase.from('project_files_manifest').delete().eq('job_id', job.id);
+              const { error: manifestError } = await supabase.from('project_files_manifest').insert(manifestEntries);
+
+              if (manifestError) {
+                logger.warn(`Job ${job.id}: partial manifest insert failed: ${manifestError.message}`);
+              } else {
+                logger.info(`Job ${job.id}: partial manifest saved (${manifestEntries.length} files) — next edit can continue from here`);
+              }
+            } catch (partialErr) {
+              logger.warn(`Job ${job.id}: partial file save failed: ${partialErr}`);
+            }
           }
 
           await emitEvent(supabase, job.id, 'job_failed', errorMsg);
