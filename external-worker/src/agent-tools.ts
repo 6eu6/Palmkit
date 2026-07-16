@@ -1560,9 +1560,39 @@ export function createAgentTools(
           // (Vite default) AND localhost:3000 — whichever responds.
           const width = dims.split('x')[0];
           const height = dims.split('x')[1];
-          const script = `# Find or install a chromium browser
+
+          /*
+           * Capture script — verified against the real E2B base template
+           * (Debian 12, no chromium preinstalled, sudo available):
+           *
+           *   1. e2b-runner starts a BACKGROUND `sudo apt-get install
+           *      chromium` at sandbox creation (~27s measured) and touches
+           *      /tmp/.chromium-ready when done.
+           *   2. Here we wait briefly for that warm-up if it is still
+           *      running, and install with sudo ourselves only as fallback
+           *      (e.g. the warm-up failed to start).
+           *
+           * The old path chained sudo-less apt-get calls (always fail as
+           * non-root) into a puppeteer download (~170MB, missing shared
+           * libs) — it never worked in this template.
+           */
+          const script = `# Wait for the warm-up chromium install, or install now
+if ! command -v chromium >/dev/null 2>&1; then
+  for i in \$(seq 1 30); do
+    [ -f /tmp/.chromium-ready ] && break
+    command -v chromium >/dev/null 2>&1 && break
+    sleep 3
+  done
+fi
+
+if ! command -v chromium >/dev/null 2>&1; then
+  echo "INSTALLING_CHROMIUM..."
+  sudo apt-get update -qq >/dev/null 2>&1
+  sudo apt-get install -y -qq chromium fonts-liberation >/dev/null 2>&1
+fi
+
 CHROMIUM_BIN=""
-for bin in chromium-browser chromium google-chrome google-chrome-stable; do
+for bin in chromium chromium-browser google-chrome google-chrome-stable; do
   if command -v \$bin >/dev/null 2>&1; then
     CHROMIUM_BIN=\$bin
     break
@@ -1570,52 +1600,9 @@ for bin in chromium-browser chromium google-chrome google-chrome-stable; do
 done
 
 if [ -z "\$CHROMIUM_BIN" ]; then
-  echo "INSTALLING_CHROMIUM..."
-  # Try multiple package names — different Ubuntu versions use different names
-  apt-get update -qq 2>/dev/null
-  apt-get install -y -qq chromium-browser 2>/dev/null || \\
-    apt-get install -y -qq chromium 2>/dev/null || \\
-    apt-get install -y -qq google-chrome-stable 2>/dev/null || \\
-    (wget -q -O - https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb > /tmp/chrome.deb 2>/dev/null && apt-get install -y -qq /tmp/chrome.deb 2>/dev/null) || true
-
-  for bin in chromium-browser chromium google-chrome google-chrome-stable; do
-    if command -v \$bin >/dev/null 2>&1; then
-      CHROMIUM_BIN=\$bin
-      break
-    fi
-  done
-fi
-
-if [ -z "\$CHROMIUM_BIN" ]; then
   echo "CHROMIUM_NOT_FOUND"
-  echo "FALLBACK_PUPPETEER"
-  # Last resort: use puppeteer which downloads its own chromium
-  npm install puppeteer 2>/dev/null
-  node -e "
-const puppeteer = require('puppeteer');
-(async () => {
-  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
-  const page = await browser.newPage();
-  await page.setViewport({ width: ${width}, height: ${height} });
-  const ports = [5173, 3000, 4173];
-  for (const port of ports) {
-    try {
-      console.log('TRYING_PORT:' + port);
-      await page.goto('http://localhost:' + port, { timeout: 8000, waitUntil: 'networkidle0' });
-      const buf = await page.screenshot({ type: 'png' });
-      console.log('BASE64:' + buf.toString('base64'));
-      console.log('SCREENSHOT_OK');
-      console.log('USED_PORT:' + port);
-      await browser.close();
-      process.exit(0);
-    } catch(e) {
-      console.log('PORT_FAILED:' + port + ':' + e.message.slice(0, 100));
-    }
-  }
-  console.log('ALL_PORTS_FAILED');
-  await browser.close();
-})();
-" 2>/dev/null
+  echo "install log tail:"
+  tail -5 /tmp/chromium-install.log 2>/dev/null
   exit 0
 fi
 

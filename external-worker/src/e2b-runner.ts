@@ -145,6 +145,30 @@ strict-ssl=false
       logger.warn(`[e2b] job ${jobId}: failed to write .npmrc: ${e}`);
     }
 
+    /*
+     * CHROMIUM WARM-UP — start installing chromium in the BACKGROUND right
+     * at sandbox creation, so it is ready by the time the agent asks for a
+     * screenshot (typically 2-4 min later, after write + install + build).
+     *
+     * Verified live on the real E2B base template (Debian 12): no chromium
+     * binary exists, apt WITHOUT sudo fails (which is why the old on-demand
+     * install path never worked), and `sudo apt-get install chromium` takes
+     * ~27s. A marker file (/tmp/.chromium-ready) lets the screenshot script
+     * wait for an in-flight warm-up instead of double-installing.
+     */
+    try {
+      const warmup =
+        `nohup sh -c '` +
+        `sudo apt-get update -qq >/tmp/chromium-install.log 2>&1; ` +
+        `sudo apt-get install -y -qq chromium fonts-liberation >>/tmp/chromium-install.log 2>&1; ` +
+        `command -v chromium >/dev/null 2>&1 && touch /tmp/.chromium-ready` +
+        `' >/dev/null 2>&1 &`;
+      await sandbox.commands.run(warmup, { timeoutMs: 10_000 });
+      logger.info(`[e2b] job ${jobId}: chromium warm-up started in background`);
+    } catch (e) {
+      logger.warn(`[e2b] job ${jobId}: chromium warm-up failed to start: ${e}`);
+    }
+
     return entry;
   })();
 
