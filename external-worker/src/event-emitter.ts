@@ -22,21 +22,15 @@ export type JobEventType =
   | 'planning_started'
   | 'planning_completed'
   | 'file_generation_started'
-  | 'file_stream_started'
   | 'file_chunk'
   | 'file_written'
   | 'file_generation_completed'
-  | 'validation_started'
   | 'validation_passed'
   | 'validation_failed'
   | 'upload_started'
-  | 'file_uploaded'
   | 'snapshot_uploaded'
   | 'ready_for_preview'
-  | 'build_check_started'
-  | 'build_check_passed'
   | 'build_check_failed'
-  | 'repair_started'
   | 'edit_started'
   | 'edit_completed'
   | 'job_failed'
@@ -52,15 +46,6 @@ export type JobEventType =
    * payload: { agent, todos: [{ text, status: 'pending'|'in_progress'|'done' }] }
    */
   | 'todos_updated'
-  /*
-   * Step lifecycle — marks when an agent step starts/ends. Used by the
-   * activity stream UI to group events into expandable "Explored X files,
-   * Ran Y commands" entries.
-   * step_start payload: { agent, stepNumber, totalSteps }
-   * step_end payload:   { agent, stepNumber, filesTouched, commandsRun, durationMs }
-   */
-  | 'step_start'
-  | 'step_end'
   /*
    * Agent lifecycle — marks when an agent (Builder/Tester) starts/stops.
    * Lets the activity stream UI group all events of one agent together.
