@@ -1182,6 +1182,22 @@ export async function runOrchestratedBuild(
           ? ([...session.messages, { role: 'user', content: agentPrompt }] as SessionMessage[])
           : undefined;
 
+      /*
+       * Per-ATTEMPT abort controller. The job-level abortController (hard
+       * timeout + user cancel) used to be passed straight to streamText —
+       * but then a stall/loop abort of one attempt poisoned every retry
+       * (the shared signal stays aborted forever). Now each attempt gets
+       * its own controller; job-level aborts propagate into it.
+       */
+      const attemptController = new AbortController();
+      const onJobAbort = () => attemptController.abort();
+
+      if (abortController.signal.aborted) {
+        attemptController.abort();
+      }
+
+      abortController.signal.addEventListener('abort', onJobAbort);
+
       const streamResult = streamText({
         model: agentModel,
         system: config.systemPrompt,
@@ -1223,13 +1239,40 @@ export async function runOrchestratedBuild(
          * Without this signal, the stream would hang forever waiting for
          * chunks from a provider that's not sending any.
          */
-        abortSignal: abortController.signal,
+        abortSignal: attemptController.signal,
       });
 
       let streamError: Error | null = null;
 
+      /*
+       * STALL WATCHDOG — observed twice in production (735s and 901s of
+       * total silence): the provider accepts the request, maybe delivers a
+       * first tool call, then the stream emits NOTHING until the 15-min
+       * hard timeout kills the whole job. Track the last chunk arrival; if
+       * no chunk lands for STALL_TIMEOUT_MS, abort THIS ATTEMPT ONLY (the
+       * per-attempt controller below) so the normal retry path re-runs the
+       * agent instead of failing the build.
+       *
+       * 400s threshold: chunks pause legitimately while a tool executes
+       * (npm install is capped at 300s in the E2B runner) — the watchdog
+       * must outlast the slowest tool, not race it.
+       */
+      const STALL_TIMEOUT_MS = 400_000;
+      let lastChunkAt = Date.now();
+      let stalled = false;
+
+      const stallTimer = setInterval(() => {
+        if (Date.now() - lastChunkAt > STALL_TIMEOUT_MS) {
+          stalled = true;
+          logger.warn(`[orchestrator] ${config.name} stream stalled (${STALL_TIMEOUT_MS / 1000}s without a chunk) — aborting this attempt for retry`);
+          attemptController.abort();
+          clearInterval(stallTimer);
+        }
+      }, 15_000);
+
       try {
         for await (const part of streamResult.fullStream) {
+          lastChunkAt = Date.now();
           switch (part.type) {
             /*
              * text-delta — the model's regular text output.
@@ -1340,7 +1383,7 @@ export async function runOrchestratedBuild(
                     // Silent: don't emit a user-visible error. The build continues
                     // with the files already written. The brain will call done()
                     // or the orchestrator will finalize with what's available.
-                    abortController.abort();
+                    attemptController.abort();
                     break;
                   }
                 }
@@ -1398,6 +1441,9 @@ export async function runOrchestratedBuild(
           }
         }
       } catch (streamErr) {
+        clearInterval(stallTimer);
+        abortController.signal.removeEventListener('abort', onJobAbort);
+
         /*
          * Distinguish AbortError (triggered by our hard timeout or loop
          * detection) from other stream errors. For AbortError, we don't
@@ -1412,6 +1458,36 @@ export async function runOrchestratedBuild(
           /abort/i.test(String((streamErr as any)?.message ?? ''));
 
         if (isAbort) {
+          /*
+           * STALL RETRY — this attempt was aborted by the stall watchdog
+           * (provider went silent), NOT by the job-level hard timeout or a
+           * user cancel. The build deserves a fresh attempt: re-queue the
+           * same agent and continue, exactly like the flaky-provider retry.
+           */
+          if (
+            stalled &&
+            !abortController.signal.aborted &&
+            (role === 'brain' || role === 'builder') &&
+            builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES
+          ) {
+            clearInterval(stallTimer);
+            abortController.signal.removeEventListener('abort', onJobAbort);
+            builderEmptyRetries++;
+            logger.warn(
+              `[orchestrator] ${config.name} stalled — retrying (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES})`,
+            );
+            await emitEvent(
+              supabase,
+              jobId,
+              'file_chunk' as any,
+              `🔁 The model went silent for ${Math.round(STALL_TIMEOUT_MS / 1000)}s — restarting the agent (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES})…`,
+              { reason: 'stall_retry', attempt: builderEmptyRetries },
+            ).catch(() => undefined);
+            agentResults.push({ role, success: false, text: '', duration: Date.now() - agentStart });
+            agentQueue.unshift(role);
+            continue;
+          }
+
           logger.warn(`[orchestrator] Stream aborted for ${config.name} (timeout or loop detection)`);
 
           /*
@@ -1464,6 +1540,10 @@ export async function runOrchestratedBuild(
 
         streamError = streamErr instanceof Error ? streamErr : new Error(String(streamErr));
       }
+
+      // Normal completion path — stop the watchdog and detach the propagator.
+      clearInterval(stallTimer);
+      abortController.signal.removeEventListener('abort', onJobAbort);
 
       if (streamError) {
         // CONTEXT OVERFLOW — never retry, fail immediately with clear message
