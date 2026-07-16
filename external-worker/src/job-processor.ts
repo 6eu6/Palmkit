@@ -525,7 +525,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
             await emitEvent(
               supabase,
               job.id,
-              'file_chunk' as any,
+              'file_chunk',
               `🧠 Waiting for the previous build to finish before editing… (${attempt * 5}s/${MANIFEST_POLL_MAX * 5}s)`,
               { agent: 'Palmkit', kind: 'agent_thinking', waitingForManifest: true },
             ).catch(() => undefined);
@@ -690,6 +690,41 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           ratio: win > 0 ? editAgentResult.contextTokens / win : 0,
           truncated: editAgentResult.truncated,
         };
+
+        /*
+         * Answer-mode short-circuit (mirrors the new-build path at line ~903).
+         * When the brain answers a question during an edit (zero new files,
+         * `answered: true`), skip the upload phase entirely — otherwise the
+         * upload loop inserts an empty manifest and marks the job
+         * ready_for_preview with fileCount=0, which the client renders as a
+         * broken "Building your app…" spinner forever.
+         */
+        if (editAgentResult.success && editAgentResult.answered && mergedFiles.length === 0) {
+          await recordStep(supabase, job.id, {
+            type: 'generate_file',
+            status: 'completed',
+            order: 2,
+            outputSummary: 'answered (no files)',
+          });
+          await supabase.from('build_jobs').update({
+            status: 'ready_for_preview',
+            current_step: 'done',
+            progress: 100,
+            validation_result: {
+              ...(job.validation_result as any ?? {}),
+              fileCount: 0,
+              completeness: 'complete',
+              answered: true,
+              editJobId,
+              ...(contextPressure ? { contextPressure } : {}),
+            },
+            updated_at: new Date().toISOString(),
+          }).eq('id', job.id);
+          await emitEvent(supabase, job.id, 'ready_for_preview', '');
+          logger.info(`Job ${job.id}: edit answered (0 files) → ready_for_preview`);
+
+          return;
+        }
       } catch (editErr: any) {
         await recordStep(supabase, job.id, {
           type: 'generate_file',
@@ -788,7 +823,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
             await emitEvent(
               supabase,
               job.id,
-              'file_chunk' as any,
+              'file_chunk',
               `📦 Restored ${hydrated} file(s) + project memory from the previous chat`,
               { continuation: true, hydrated },
             );
@@ -964,7 +999,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
              * keeps the old appType from planProject (e.g., 'static') and
              * never auto-launches the E2B sandbox for React apps.
              */
-            await emitEvent(supabase, job.id, 'file_chunk' as any, `Detected: ${detectedAppType} app`, {
+            await emitEvent(supabase, job.id, 'file_chunk', `Detected: ${detectedAppType} app`, {
               kind: 'appType_refined',
               appType: detectedAppType,
             });
@@ -1162,10 +1197,12 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
     for (const file of result.files) {
       /*
-       * Write to BOTH the workspace key (new unified location) AND the
-       * job-scoped key (backward compat for /api/files that still reads it).
-       * Once /api/files is migrated to read from workspace, the job-scoped
-       * write can be removed.
+       * R2 workspace is the single source of truth (the agent already wrote
+       * here during generation via agent-tools.ts:write_file). The legacy
+       * job-scoped key + Supabase Storage mirrors are kept as best-effort
+       * backward-compat caches — they run in the background and never block
+       * or fail the job. This cuts per-file storage writes from 4 blocking
+       * to 1 verify + 3 fire-and-forget, saving ~10-15s on a 15-file build.
        */
       const workspaceKey = buildWorkspaceKey(projectId, file.path);
       const legacyKey = buildKey(job.id, file.path, job.project_id ?? undefined);
@@ -1174,29 +1211,19 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       const sizeBytes = new TextEncoder().encode(content).length;
       const lineCount = content.split('\n').length;
 
-      // Upload to R2 workspace (primary storage — new).
+      // Primary: R2 workspace upload (authoritative). Fail the job ONLY if this fails.
       try {
         await putFile(workspaceKey, content);
         logger.debug(`R2 workspace upload OK: ${workspaceKey} (${sizeBytes} bytes)`);
-      } catch (uploadError: any) {
-        logger.warn(`R2 workspace upload failed for ${workspaceKey}: ${uploadError?.message || uploadError}`);
-
-        // Non-fatal — the legacy upload below may still succeed
-      }
-
-      // Upload to R2 job-scoped (legacy — for backward compat with /api/files).
-      try {
-        await putFile(legacyKey, content);
-        logger.debug(`R2 legacy upload OK: ${legacyKey} (${sizeBytes} bytes)`);
       } catch (uploadError: any) {
         await recordStep(supabase, job.id, {
           type: 'finalize',
           status: 'failed',
           order: 4,
-          error: `R2 upload failed for ${file.path}: ${uploadError.message}`,
+          error: `R2 workspace upload failed for ${file.path}: ${uploadError.message}`,
         });
         await emitEvent(supabase, job.id, 'job_failed', `Upload failed for ${file.path}: ${uploadError.message}`);
-        await failJob(supabase, job.id, `R2 upload failed for ${file.path}: ${uploadError.message}`);
+        await failJob(supabase, job.id, `R2 workspace upload failed for ${file.path}: ${uploadError.message}`);
 
         return;
       }
@@ -1213,36 +1240,37 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       }
 
       /*
-       * Mirror to Supabase Storage (read-through cache for the browser).
-       * Mirror BOTH the legacy key AND the workspace key so /api/workspace
-       * can read files by chatId.
+       * Best-effort backward-compat mirrors — fire-and-forget, never block.
+       * - R2 legacy key: read by the old /api/files route.
+       * - Supabase Storage workspace + legacy: read-through cache for the browser.
+       * If any of these fail, the build still succeeds because R2 workspace
+       * is the source of truth. Logged for visibility but non-fatal.
        */
       const sbLegacyKey = `${job.user_id}/${legacyKey}`;
       const sbWorkspaceKey = `${job.user_id}/${workspaceKey}`;
+      const contentType = file.mime_type ?? 'text/plain';
 
-      try {
-        // Mirror workspace key (new — for /api/workspace)
-        const { error: sbWsError } = await supabase.storage.from('palmkit-files').upload(sbWorkspaceKey, content, {
-          contentType: file.mime_type ?? 'text/plain',
+      // Fire all three mirrors concurrently; do not await blocking the loop.
+      void Promise.allSettled([
+        putFile(legacyKey, content).then(
+          () => logger.debug(`R2 legacy mirror OK: ${legacyKey}`),
+          (e: any) => logger.warn(`R2 legacy mirror failed for ${file.path}: ${e?.message || e} (non-fatal)`),
+        ),
+        supabase.storage.from('palmkit-files').upload(sbWorkspaceKey, content, {
+          contentType,
           upsert: true,
-        });
-
-        if (sbWsError) {
-          logger.warn(`Supabase Storage workspace mirror failed for ${file.path}: ${sbWsError.message} (non-fatal)`);
-        }
-
-        // Mirror legacy key (for /api/files backward compat)
-        const { error: sbUploadError } = await supabase.storage.from('palmkit-files').upload(sbLegacyKey, content, {
-          contentType: file.mime_type ?? 'text/plain',
+        }).then(
+          ({ error }) => error && logger.warn(`SB Storage workspace mirror failed for ${file.path}: ${error.message} (non-fatal)`),
+          (e: any) => logger.warn(`SB Storage workspace mirror exception for ${file.path}: ${e?.message || e} (non-fatal)`),
+        ),
+        supabase.storage.from('palmkit-files').upload(sbLegacyKey, content, {
+          contentType,
           upsert: true,
-        });
-
-        if (sbUploadError) {
-          logger.warn(`Supabase Storage legacy mirror failed for ${file.path}: ${sbUploadError.message} (non-fatal)`);
-        }
-      } catch (sbErr: any) {
-        logger.warn(`Supabase Storage mirror exception for ${file.path}: ${sbErr.message} (non-fatal)`);
-      }
+        }).then(
+          ({ error }) => error && logger.warn(`SB Storage legacy mirror failed for ${file.path}: ${error.message} (non-fatal)`),
+          (e: any) => logger.warn(`SB Storage legacy mirror exception for ${file.path}: ${e?.message || e} (non-fatal)`),
+        ),
+      ]);
 
       // Record manifest entry (metadata only — no content in DB).
       manifestEntries.push({
@@ -1253,7 +1281,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         version: 1,
         hash,
         size_bytes: sizeBytes,
-        mime_type: file.mime_type ?? 'text/plain',
+        mime_type: contentType,
         storage_provider: 'r2',
         storage_key: workspaceKey,
         integrity: 'complete',

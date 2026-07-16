@@ -975,24 +975,6 @@ export function foldEvents(events: WorkerEvent[]): Section[] {
        * brain's reasoning events stream live, so there's no frozen window to
        * bridge. Empty messages are also dropped here as a safety net.
        */
-      case 'edit_progress': {
-        if (!ev.message || !ev.message.trim()) {
-          break;
-        }
-
-        const sec = ensureSection();
-        const rows = sec.rows;
-        const last = rows[rows.length - 1];
-
-        if (last && last.kind === 'progress') {
-          // Replace the previous heartbeat so we don't stack one per ping.
-          rows[rows.length - 1] = { kind: 'progress', text: ev.message };
-        } else {
-          rows.push({ kind: 'progress', text: ev.message });
-        }
-
-        break;
-      }
       default:
         break;
     }
