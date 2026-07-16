@@ -368,7 +368,28 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       { palette: Record<string, string>; font: string[]; features: string[] } | undefined;
 
     // ─── Phase 7: EDIT MODE ────────────────────────────────────────────
-    const editJobId: string | null = job.validation_result?.editJobId ?? null;
+    let editJobId: string | null = job.validation_result?.editJobId ?? null;
+
+    /*
+     * If the previous turn was an ANSWER (question replied via done(), zero
+     * files), it is not a file source — there is no manifest to load. The
+     * conversation simply CONTINUES: same project session, same workspace,
+     * normal path. Without this, the manifest poll would wait minutes for
+     * rows that will never exist.
+     */
+    if (editJobId) {
+      const { data: prevJob } = await supabase
+        .from('build_jobs')
+        .select('validation_result')
+        .eq('id', editJobId)
+        .eq('user_id', job.user_id)
+        .single();
+
+      if (prevJob?.validation_result?.answered) {
+        logger.info(`Job ${job.id}: previous turn was an answer — continuing the session without manifest preload`);
+        editJobId = null;
+      }
+    }
 
     /*
      * Context window for this model, captured at enqueue time by /api/jobs from
