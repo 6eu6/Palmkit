@@ -1427,6 +1427,42 @@ export const BuildStreamView = memo(
           );
     const isCancelled = Boolean(cancelEvent);
 
+    /*
+     * Extract the last failed command's stderr for the failure card.
+     * MUST be declared before any early return — React hooks cannot be
+     * conditional. terminalOutputStore holds every shell_command/shell_output
+     * event. When a build fails, the most actionable info is usually in the
+     * last non-zero exit code's stderr (e.g. TypeScript compile error, npm
+     * install ENOTFOUND). Show the last 15 lines of stderr from the last
+     * failed command.
+     */
+    const lastFailedStderr = useMemo(() => {
+      if (!failed) {
+        return null;
+      }
+
+      for (let i = terminalLines.length - 1; i >= 0; i--) {
+        const line = terminalLines[i];
+
+        if (!line.running && line.exitCode !== undefined && line.exitCode !== 0 && line.stderr) {
+          const trimmed = line.stderr.trim();
+
+          if (trimmed.length > 0) {
+            const lines = trimmed.split('\n').filter(Boolean);
+            const lastLines = lines.slice(-15).join('\n');
+
+            return {
+              command: line.command,
+              exitCode: line.exitCode,
+              stderr: lastLines.slice(-1500),
+            };
+          }
+        }
+      }
+
+      return null;
+    }, [terminalLines, failed]);
+
     if (events.length === 0 && progress === 0) {
       return null;
     }
@@ -1495,40 +1531,6 @@ export const BuildStreamView = memo(
 
     // Total agent time, for the "· Worked for Xs" summary once the build ends.
     const totalMs = sections.reduce((sum, sec) => sum + (sec.durationMs ?? 0), 0);
-
-    /*
-     * Extract the last failed command's stderr for the failure card.
-     * terminalOutputStore holds every shell_command/shell_output event.
-     * When a build fails, the most actionable info is usually in the last
-     * non-zero exit code's stderr (e.g. TypeScript compile error, npm install
-     * ENOTFOUND). Show the last 15 lines of stderr from the last failed command.
-     */
-    const lastFailedStderr = useMemo(() => {
-      if (!failed) {
-        return null;
-      }
-
-      for (let i = terminalLines.length - 1; i >= 0; i--) {
-        const line = terminalLines[i];
-
-        if (!line.running && line.exitCode !== undefined && line.exitCode !== 0 && line.stderr) {
-          const trimmed = line.stderr.trim();
-
-          if (trimmed.length > 0) {
-            const lines = trimmed.split('\n').filter(Boolean);
-            const lastLines = lines.slice(-15).join('\n');
-
-            return {
-              command: line.command,
-              exitCode: line.exitCode,
-              stderr: lastLines.slice(-1500),
-            };
-          }
-        }
-      }
-
-      return null;
-    }, [terminalLines, failed]);
 
     // Only PAST turns fold; the live turn always flows open as the current reply.
     const toggle = () => setOpen((o) => !o);
