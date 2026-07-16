@@ -146,27 +146,38 @@ strict-ssl=false
     }
 
     /*
-     * CHROMIUM WARM-UP — start installing chromium in the BACKGROUND right
+     * VISION WARM-UP — prepare the screenshot stack in the BACKGROUND right
      * at sandbox creation, so it is ready by the time the agent asks for a
      * screenshot (typically 2-4 min later, after write + install + build).
      *
-     * Verified live on the real E2B base template (Debian 12): no chromium
-     * binary exists, apt WITHOUT sudo fails (which is why the old on-demand
-     * install path never worked), and `sudo apt-get install chromium` takes
-     * ~27s. A marker file (/tmp/.chromium-ready) lets the screenshot script
-     * wait for an in-flight warm-up instead of double-installing.
+     * Root cause found by live diagnosis on the real E2B base template:
+     * the sandbox VM has 478MB RAM, no swap, and default overcommit — a
+     * CommitLimit of ~244MB. Chromium's V8 cannot reserve its virtual
+     * code range ("V8 process OOM"), the renderer dies, and any CLI
+     * `--screenshot` waits forever. Two measures fix it (verified live,
+     * screenshot in 1.6s afterwards):
+     *   1. vm.overcommit_memory=1 — virtual reservations succeed again.
+     *   2. Playwright's chromium-headless-shell driven over CDP — purpose
+     *      built, waits for networkidle (captures AFTER React renders,
+     *      where the CLI would capture a blank pre-JS page).
+     *
+     * The whole setup takes ~25s in background; /tmp/.vision-ready marks
+     * completion for the capture script.
      */
     try {
       const warmup =
         `nohup sh -c '` +
-        `sudo apt-get update -qq >/tmp/chromium-install.log 2>&1; ` +
-        `sudo apt-get install -y -qq chromium fonts-liberation >>/tmp/chromium-install.log 2>&1; ` +
-        `command -v chromium >/dev/null 2>&1 && touch /tmp/.chromium-ready` +
+        `sudo sysctl -w vm.overcommit_memory=1 >/tmp/vision-setup.log 2>&1; ` +
+        `mkdir -p /tmp/pw-vision && cd /tmp/pw-vision && npm init -y >>/tmp/vision-setup.log 2>&1; ` +
+        `npm i playwright-core --no-audit --no-fund >>/tmp/vision-setup.log 2>&1; ` +
+        `npx playwright-core install chromium-headless-shell >>/tmp/vision-setup.log 2>&1; ` +
+        `sudo npx playwright-core install-deps chromium >>/tmp/vision-setup.log 2>&1; ` +
+        `touch /tmp/.vision-ready` +
         `' >/dev/null 2>&1 &`;
       await sandbox.commands.run(warmup, { timeoutMs: 10_000 });
-      logger.info(`[e2b] job ${jobId}: chromium warm-up started in background`);
+      logger.info(`[e2b] job ${jobId}: vision warm-up started in background`);
     } catch (e) {
-      logger.warn(`[e2b] job ${jobId}: chromium warm-up failed to start: ${e}`);
+      logger.warn(`[e2b] job ${jobId}: vision warm-up failed to start: ${e}`);
     }
 
     return entry;

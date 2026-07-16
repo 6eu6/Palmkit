@@ -1562,84 +1562,72 @@ export function createAgentTools(
           const height = dims.split('x')[1];
 
           /*
-           * Capture script — verified against the real E2B base template
-           * (Debian 12, no chromium preinstalled, sudo available):
+           * Capture stack — root-caused and verified live on the real E2B
+           * base template: the 478MB VM's CommitLimit (~244MB, default
+           * overcommit, no swap) makes Chromium's V8 fail to reserve its
+           * virtual code range → renderer dies → CLI --screenshot hangs
+           * forever. Fix (measured: screenshot in 1.6s):
+           *   1. vm.overcommit_memory=1
+           *   2. Playwright chromium-headless-shell over CDP with
+           *      waitUntil:networkidle — also captures AFTER React renders
+           *      (the CLI captured the pre-JS blank page).
            *
-           *   1. e2b-runner starts a BACKGROUND `sudo apt-get install
-           *      chromium` at sandbox creation (~27s measured) and touches
-           *      /tmp/.chromium-ready when done.
-           *   2. Here we wait briefly for that warm-up if it is still
-           *      running, and install with sudo ourselves only as fallback
-           *      (e.g. the warm-up failed to start).
-           *
-           * The old path chained sudo-less apt-get calls (always fail as
-           * non-root) into a puppeteer download (~170MB, missing shared
-           * libs) — it never worked in this template.
+           * e2b-runner warms this stack up in the background at sandbox
+           * creation (~25s) and touches /tmp/.vision-ready. Here we wait
+           * for the warm-up, self-install only as fallback, then run the
+           * CDP driver. Output protocol (TRYING_PORT / SCREENSHOT_OK /
+           * BASE64:) is unchanged for the parser below.
            */
-          const script = `# Wait for the warm-up chromium install, or install now
-if ! command -v chromium >/dev/null 2>&1; then
+          const script = `# Wait for the vision warm-up, or self-install
+if [ ! -f /tmp/.vision-ready ]; then
   for i in \$(seq 1 30); do
-    [ -f /tmp/.chromium-ready ] && break
-    command -v chromium >/dev/null 2>&1 && break
+    [ -f /tmp/.vision-ready ] && break
     sleep 3
   done
 fi
 
-if ! command -v chromium >/dev/null 2>&1; then
-  echo "INSTALLING_CHROMIUM..."
-  sudo apt-get update -qq >/dev/null 2>&1
-  sudo apt-get install -y -qq chromium fonts-liberation >/dev/null 2>&1
+if [ ! -f /tmp/.vision-ready ]; then
+  echo "VISION_SELF_INSTALL"
+  sudo sysctl -w vm.overcommit_memory=1 >/dev/null 2>&1
+  mkdir -p /tmp/pw-vision && cd /tmp/pw-vision
+  [ -f package.json ] || npm init -y >/dev/null 2>&1
+  npm i playwright-core --no-audit --no-fund >/dev/null 2>&1
+  npx playwright-core install chromium-headless-shell >/dev/null 2>&1
+  sudo npx playwright-core install-deps chromium >/dev/null 2>&1
+  touch /tmp/.vision-ready
 fi
 
-CHROMIUM_BIN=""
-for bin in chromium chromium-browser google-chrome google-chrome-stable; do
-  if command -v \$bin >/dev/null 2>&1; then
-    CHROMIUM_BIN=\$bin
-    break
-  fi
-done
+# overcommit must be on even if the warm-up path set the marker earlier
+sudo sysctl -w vm.overcommit_memory=1 >/dev/null 2>&1
 
-if [ -z "\$CHROMIUM_BIN" ]; then
-  echo "CHROMIUM_NOT_FOUND"
-  echo "install log tail:"
-  tail -5 /tmp/chromium-install.log 2>/dev/null
-  exit 0
-fi
-
-echo "USING_CHROMIUM=\$CHROMIUM_BIN"
-
-# Try multiple ports — Vite defaults to 5173, some configs use 3000.
-PORTS="5173 3000 4173"
-CAPTURED=false
-
-for PORT in \$PORTS; do
-  echo "TRYING_PORT:\$PORT"
-  # Check if the port is responding
-  if curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://localhost:\$PORT" | grep -q "^[23]"; then
-    echo "PORT_ALIVE:\$PORT"
-    # Take a screenshot with headless chromium
-    \$CHROMIUM_BIN --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \\
-      --screenshot=/tmp/screenshot.png \\
-      --window-size=${width},${height} \\
-      "http://localhost:\$PORT" 2>/dev/null
-
-    if [ -f /tmp/screenshot.png ] && [ -s /tmp/screenshot.png ]; then
-      echo "SCREENSHOT_OK"
-      echo "USED_PORT:\$PORT"
-      echo "BASE64:\$(base64 -w0 /tmp/screenshot.png)"
-      CAPTURED=true
-      break
-    else
-      echo "PORT_FAILED:\$PORT:no_screenshot"
-    fi
-  else
-    echo "PORT_FAILED:\$PORT:not_responding"
-  fi
-done
-
-if [ "\$CAPTURED" = "false" ]; then
-  echo "ALL_PORTS_FAILED"
-fi
+cat > /tmp/pw-vision/shot.js <<'PWEOF'
+const { chromium } = require('/tmp/pw-vision/node_modules/playwright-core');
+(async () => {
+  const ports = [5173, 3000, 4173];
+  const b = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+  const page = await (await b.newContext({ viewport: { width: __W__, height: __H__ } })).newPage();
+  for (const port of ports) {
+    try {
+      console.log('TRYING_PORT:' + port);
+      await page.goto('http://localhost:' + port + '/', { waitUntil: 'networkidle', timeout: 12000 });
+      const buf = await page.screenshot({ type: 'png' });
+      console.log('USED_PORT:' + port);
+      console.log('BASE64:' + buf.toString('base64'));
+      console.log('SCREENSHOT_OK');
+      await b.close();
+      process.exit(0);
+    } catch (e) {
+      console.log('PORT_FAILED:' + port + ':' + String((e && e.message) || e).slice(0, 80));
+    }
+  }
+  console.log('ALL_PORTS_FAILED');
+  await b.close();
+  process.exit(0);
+})().catch((e) => { console.log('VISION_DRIVER_ERROR:' + String(e).slice(0, 150)); process.exit(0); });
+PWEOF
+sed -i "s/__W__/${width}/; s/__H__/${height}/" /tmp/pw-vision/shot.js
+timeout 90 node /tmp/pw-vision/shot.js
+tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
 `;
 
           /*
