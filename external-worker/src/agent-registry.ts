@@ -390,6 +390,7 @@ Match complexity to the request.
 - Create ALL files the app needs before calling done().
 - After writing, run "npm install && npm run build" to verify.
 - Keep narration SHORT. One or two sentences between tool calls — never an essay.
+- **Mobile-first**: most Palmkit users are on phones. The app must render cleanly at 390px wide — responsive containers (max-w-* + mx-auto + px-4), flex-wrap on button/tab groups, no fixed pixel widths that overflow the viewport.
 - Be honest in done() — say what completed and what didn't.
 
 ## Database Support

@@ -812,7 +812,7 @@ export function createAgentTools(
         // Make the deletion visible in the build stream — silent destructive
         // ops made post-mortems impossible.
         await emitEvent(supabase, jobId, 'file_chunk' as any, `🗑️ Deleted ${path}`, {
-          agent: 'Builder',
+          agent: 'Palmkit',
           kind: 'file_deleted',
           filePath: path,
         });
@@ -1295,7 +1295,7 @@ export function createAgentTools(
             jobId,
             'file_chunk' as any,
             `⚠️ done() refused — missing entry point. Writing the missing files now…`,
-            { agent: 'Builder', kind: 'done_refused', missing },
+            { agent: 'Palmkit', kind: 'done_refused', missing },
           );
 
           return {
@@ -1460,7 +1460,7 @@ export function createAgentTools(
              * Without this, dispatchJobEvent falls back to 'Worker' and
              * the TodosPanel (which looks for 'Builder') never finds the data.
              */
-            agent: 'Builder',
+            agent: 'Palmkit',
           },
         );
 
@@ -1557,7 +1557,7 @@ export function createAgentTools(
             jobId,
             'file_chunk' as any,
             `📸 Capturing screenshot (${vp})…`,
-            { agent: 'Builder', kind: 'screenshot_start', viewport: vp },
+            { agent: 'Palmkit', kind: 'screenshot_start', viewport: vp },
           );
 
           // Use headless chromium to capture the page.
@@ -1682,7 +1682,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             'file_chunk' as any,
             `📸 Screenshot captured (${vp})`,
             {
-              agent: 'Builder',
+              agent: 'Palmkit',
               kind: 'screenshot_captured',
               dataUrl: `data:image/png;base64,${base64}`,
               viewport: vp,
@@ -1726,7 +1726,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             'file_chunk' as any,
             `👁️ Vision: ${analysis.description.slice(0, 150)}…`,
             {
-              agent: 'Builder',
+              agent: 'Palmkit',
               kind: 'vision_analysis',
               text: analysis.description,
               isVisionAnalysis: true,
@@ -1806,7 +1806,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
         }
 
         await emitEvent(supabase, jobId, 'file_chunk' as any, `🎬 Generating video "${safe}"…`, {
-          agent: 'Builder',
+          agent: 'Palmkit',
           kind: 'video_start',
           name: safe,
         });
@@ -1871,7 +1871,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             jobId,
             'file_chunk' as any,
             `⚠️ Video "${safe}" failed: ${msg.slice(0, 120)}`,
-            { agent: 'Builder', kind: 'video_error', name: safe, error: msg },
+            { agent: 'Palmkit', kind: 'video_error', name: safe, error: msg },
           );
           return {
             ok: false,
@@ -1921,7 +1921,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
 
         try {
           await emitEvent(supabase, jobId, 'file_chunk', `❓ ${question}`, {
-            agent: 'Planner',
+            agent: 'Palmkit',
             kind: 'question',
             question,
             options: options ?? [],

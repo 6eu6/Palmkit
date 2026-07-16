@@ -335,7 +335,7 @@ interface TodoItem {
   status: 'pending' | 'in_progress' | 'done';
 }
 
-type Row =
+export type Row =
   | { kind: 'thinking'; text: string }
   | { kind: 'file'; path: string; lines?: number; chars?: number; changeKind?: string }
   | { kind: 'command'; text: string }
@@ -350,7 +350,7 @@ type Row =
   | { kind: 'progress'; text: string }
   | { kind: 'summary'; text: string };
 
-interface Section {
+export interface Section {
   /** agent name, or 'System' for pre-agent / worker events */
   agent: string;
   role?: string;
@@ -404,8 +404,20 @@ function isHeartbeat(ev: WorkerEvent): boolean {
  * earlier ones (from repair rounds or retry rounds) are skipped so the user
  * sees exactly one clean summary at the end, not duplicates.
  */
-function foldEvents(events: WorkerEvent[]): Section[] {
+export function foldEvents(events: WorkerEvent[]): Section[] {
   const sections: Section[] = [];
+
+  /*
+   * LIVE STATUS — a single self-replacing "what is happening right now"
+   * line. Heartbeats (⏳ Building… Ns) and agent_thinking events used to be
+   * dropped entirely, so any silent stretch (model thinking, provider lag,
+   * edit waiting for the previous build) showed the user NOTHING — measured
+   * up to 735s of blank screen in production. Now they feed this status:
+   * it renders as the section's last row ONLY while it is the most recent
+   * signal, and disappears as soon as real rows resume.
+   */
+  let liveStatus: string | null = null;
+  let liveStatusIsLast = false;
 
   /*
    * No initial "System" section. The first section is created when the first
@@ -464,10 +476,25 @@ function foldEvents(events: WorkerEvent[]): Section[] {
 
   for (const ev of events) {
     if (isHeartbeat(ev)) {
+      liveStatus = ev.message.replace(/^[⏳🧠]+\s*/u, '');
+      liveStatusIsLast = true;
       continue;
     }
 
     const p = (ev.payload ?? {}) as Record<string, any>;
+
+    /*
+     * agent_thinking — the guaranteed pre-LLM signal ("processing your
+     * request…") and the edit path's "waiting for the previous build…".
+     */
+    if (ev.type === 'file_chunk' && p.kind === 'agent_thinking') {
+      liveStatus = ev.message.replace(/^[⏳🧠]+\s*/u, '');
+      liveStatusIsLast = true;
+      continue;
+    }
+
+    // Any other event supersedes the live status line.
+    liveStatusIsLast = false;
 
     if (ev.type === 'reasoning') {
       const step = p.stepId as number | undefined;
@@ -653,6 +680,16 @@ function foldEvents(events: WorkerEvent[]): Section[] {
           break;
         }
 
+        /*
+         * Checkpoint (M1 git), salvaged completion, and stall-retry events —
+         * short factual status lines the stream should show, previously
+         * dropped by the fallback chain below.
+         */
+        if (p.kind === 'checkpoint' || p.kind === 'salvaged_success' || p.reason === 'stall_retry') {
+          ensureSection().rows.push({ kind: 'system', text: m.replace(/^[🕘✅🔁]+\s*/u, '') });
+          break;
+        }
+
         if (/^🔧/.test(m) || /repair attempt/i.test(m)) {
           // Build-verification repair round kicking off.
           ensureSection().rows.push({ kind: 'system', text: m.replace(/^🔧\s*/, '') });
@@ -751,6 +788,15 @@ function foldEvents(events: WorkerEvent[]): Section[] {
   }
 
   flushReasoning();
+
+  /*
+   * If the newest signal is a heartbeat / agent_thinking, surface it as the
+   * live status row at the end of the stream (spinner + text). It vanishes
+   * automatically once any real row supersedes it on the next fold.
+   */
+  if (liveStatusIsLast && liveStatus) {
+    ensureSection().rows.push({ kind: 'progress', text: liveStatus });
+  }
 
   /*
    * Drop any sections that ended up with zero rows AND zero todos — they

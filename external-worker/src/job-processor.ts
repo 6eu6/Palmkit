@@ -469,11 +469,22 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
         if (attempt < MANIFEST_POLL_MAX - 1) {
           /*
-           * Previously emitted a user-visible "Waiting for the previous build
-           * to finish… (Ns)" event here. Removed — it was a hardcoded banner.
-           * The wait is silent; the brain's first reasoning row will appear
-           * once the edit actually starts.
+           * Truthful live status (NOT a fake banner): this wait is real and
+           * can last minutes — total silence here produced the worst dead
+           * zones we measured. Emitted as kind 'agent_thinking' every 3rd
+           * poll (~15s cadence) so the frontend's self-replacing live-status
+           * row shows it without stacking rows.
            */
+          if (attempt % 3 === 0) {
+            await emitEvent(
+              supabase,
+              job.id,
+              'file_chunk' as any,
+              `🧠 Waiting for the previous build to finish before editing… (${attempt * 5}s/${MANIFEST_POLL_MAX * 5}s)`,
+              { agent: 'Palmkit', kind: 'agent_thinking', waitingForManifest: true },
+            ).catch(() => undefined);
+          }
+
           await new Promise((r) => setTimeout(r, MANIFEST_POLL_MS));
         }
       }
