@@ -26,10 +26,6 @@ import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROMPT_COOKIE_KEY, PROVIDER_LIST } fro
 import { cubicEasingFn } from '~/utils/easings';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
 import { BaseChat } from './BaseChat';
-import { Clarifier } from './Clarifier';
-
-/* shouldClarify is disabled — the Planner now asks questions in-stream via ask_user. */
-// import { shouldClarify } from '~/lib/clarify-rules';
 import { PENDING_PROMPT_KEY } from '~/components/landing/LandingPromptBox';
 import Cookies from 'js-cookie';
 import { debounce } from '~/utils/debounce';
@@ -216,15 +212,6 @@ export const ChatImpl = memo(
      */
     const abortedJobIdRef = useRef<string | null>(null);
     const [chatStarted, setChatStarted] = useState(initialMessages.length > 0);
-
-    /*
-     * Pre-build clarifier: when the user sends a SHORT/vague prompt on a fresh
-     * chat, surface 1-2 quick questions (keyword heuristics, no LLM) so they
-     * can add spec at zero model cost. `clarifyPrompt` holds the original text;
-     * when set, the Clarifier sheet is shown and the build is deferred until
-     * the user picks answers (or skips). See lib/clarify-rules.ts.
-     */
-    const [clarifyPrompt, setClarifyPrompt] = useState<string | null>(null);
 
     /*
      * BUG FIX (2026-06-30): When navigating from home (/) to /chat/<id>, the
@@ -1093,18 +1080,6 @@ export const ChatImpl = memo(
         return;
       }
 
-      /*
-       * The pre-build clarifier popup is REMOVED. The Planner/Builder now
-       * asks clarifying questions INSIDE the stream via the ask_user tool —
-       * the user sees the question in the BuildStream and can answer or let
-       * the agent proceed with defaults. This is more natural than a modal
-       * that blocks the build.
-       *
-       * The shouldClarify gate + Clarifier component are kept for now (not
-       * deleted) in case we need to re-enable the popup, but the gate is
-       * disabled — the stream starts immediately on every send.
-       */
-
       let finalMessageContent = messageContent;
 
       if (selectedElement) {
@@ -1639,27 +1614,6 @@ export const ChatImpl = memo(
           isInterruptedGeneration={isInterruptedGeneration}
           onResumeGeneration={() => {
             append({ role: 'user', content: CONTINUE_PROMPT });
-          }}
-        />
-        <Clarifier
-          open={clarifyPrompt !== null}
-          prompt={clarifyPrompt ?? ''}
-          model={model}
-          provider={provider}
-          onBuild={(expanded) => {
-            setClarifyPrompt(null);
-            setInput(expanded);
-
-            /*
-             * Re-send with the expanded prompt as messageInput (bypasses the
-             * clarifier gate because messageInput is set).
-             */
-            sendMessage({} as React.UIEvent, expanded);
-          }}
-          onSkip={() => {
-            const original = clarifyPrompt ?? '';
-            setClarifyPrompt(null);
-            sendMessage({} as React.UIEvent, original);
           }}
         />
       </>
