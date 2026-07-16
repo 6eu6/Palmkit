@@ -118,6 +118,7 @@ import {
 } from './workspace-manager';
 import { loadSession, appendToSession, estimateSessionTokens, type SessionMessage } from './session-manager';
 import { commitProjectTurn } from './git-manager';
+import { sendDelta, sendTool, sendStep, closeJobStream } from './stream-bus';
 import { registerJobAbort, unregisterJobAbort } from './abort-registry';
 
 export interface OrchestratorResult {
@@ -1282,6 +1283,7 @@ export async function runOrchestratedBuild(
              */
             case 'text-delta': {
               textBuffer += part.textDelta;
+              sendDelta(jobId, part.textDelta); // M2: instant live layer (fire-and-forget)
               await maybeFlush();
 
               break;
@@ -1295,6 +1297,7 @@ export async function runOrchestratedBuild(
              */
             case 'reasoning': {
               textBuffer += part.textDelta;
+              sendDelta(jobId, part.textDelta); // M2: instant live layer
               await maybeFlush();
 
               break;
@@ -1313,6 +1316,38 @@ export async function runOrchestratedBuild(
              */
             case 'tool-call': {
               await flushText(true);
+
+              /*
+               * M2: broadcast a live "tool started" chip. Details stay short
+               * and human: file path(s), the command, or the tool name.
+               */
+              try {
+                const a: any = part.args ?? {};
+                let detail: string | undefined;
+
+                if (part.toolName === 'write_file' || part.toolName === 'edit_file' || part.toolName === 'read_file') {
+                  detail = a.path;
+                } else if (part.toolName === 'write_files') {
+                  let batchArg = a.files;
+
+                  if (typeof batchArg === 'string') {
+                    try {
+                      batchArg = JSON.parse(batchArg);
+                    } catch {
+                      batchArg = [];
+                    }
+                  }
+
+                  const n = Array.isArray(batchArg) ? batchArg.length : 0;
+                  detail = `${n} files`;
+                } else if (part.toolName === 'run_shell') {
+                  detail = String(a.command ?? '').slice(0, 80);
+                }
+
+                sendTool(jobId, part.toolName, detail);
+              } catch {
+                /* live layer is best-effort */
+              }
 
               /*
                * LOOP DETECTION — catch the case where the LLM is stuck
@@ -1403,6 +1438,7 @@ export async function runOrchestratedBuild(
              */
             case 'step-finish': {
               await flushText(true);
+              sendStep(jobId); // M2: close the live text segment
               stepId++;
               break;
             }
@@ -2298,6 +2334,25 @@ export async function runOrchestratedBuild(
   } finally {
     clearInterval(keepAlive);
     clearTimeout(hardTimeout);
+
+    /*
+     * M2: close the live-stream bus and record its stats as a durable
+     * marker. `stream_stats` is the remote-verification hook: chunksSent>0
+     * with failures=0 proves the broadcast path worked for this build even
+     * without a browser attached.
+     */
+    try {
+      const stats = await closeJobStream(jobId);
+      await emitEvent(
+        supabase,
+        jobId,
+        'file_chunk' as any,
+        `📡 Live stream: ${stats.chunksSent} chunks in ${stats.batchesSent} batches${stats.failures ? ` (${stats.failures} failed)` : ''}`,
+        { kind: 'stream_stats', ...stats },
+      );
+    } catch {
+      /* telemetry only */
+    }
     // Release this job's isolated file map (the result already holds a
     // detached copy of the files, so this is safe and prevents the registry
     // from growing without bound on the long-running worker).

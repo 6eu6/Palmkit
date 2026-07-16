@@ -16,8 +16,100 @@
 import { memo, useMemo, useState } from 'react';
 import { useStore } from '@nanostores/react';
 import { workerEventsStore, workerProgressStore, type WorkerEvent } from '~/lib/stores/build-status';
+import { liveStreamStore } from '~/lib/stores/live-stream';
 import { classNames } from '~/utils/classNames';
 import { PalmkitLoader } from '~/components/ui/PalmkitLoader';
+
+/*
+ * Stream micro-animations (M2): the typing caret and the gentle entrance of
+ * new rows. Injected once — tiny, self-contained, theme-agnostic.
+ */
+const STREAM_STYLES = `
+@keyframes pk-caret-blink { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0; } }
+@keyframes pk-row-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.pk-caret { display: inline-block; width: 0.55em; animation: pk-caret-blink 1s steps(1) infinite; }
+.pk-row-in { animation: pk-row-in 0.25s ease-out; }
+`;
+
+/*
+ * Tool → icon for the live activity chip ("what is the agent literally doing
+ * right now"). Mirrors the icons used elsewhere in the stream.
+ */
+const LIVE_TOOL_ICON: Record<string, string> = {
+  write_files: 'i-ph:pencil-simple-line-bold',
+  write_file: 'i-ph:pencil-simple-line-bold',
+  edit_file: 'i-ph:pencil-simple-line-bold',
+  read_file: 'i-ph:eye-bold',
+  list_files: 'i-ph:list-bullets-bold',
+  search_code: 'i-ph:magnifying-glass-bold',
+  run_shell: 'i-ph:terminal-bold',
+  run_tests: 'i-ph:flask-bold',
+  analyze_screenshot: 'i-ph:camera-bold',
+  generate_image: 'i-ph:image-bold',
+  generate_video: 'i-ph:film-strip-bold',
+  update_todos: 'i-ph:list-checks-bold',
+  spawn_subagent: 'i-ph:robot-bold',
+  done: 'i-ph:flag-checkered-bold',
+};
+
+const LIVE_TOOL_LABEL: Record<string, string> = {
+  write_files: 'Writing',
+  write_file: 'Writing',
+  edit_file: 'Editing',
+  read_file: 'Reading',
+  list_files: 'Listing files',
+  search_code: 'Searching',
+  run_shell: 'Running',
+  run_tests: 'Testing',
+  analyze_screenshot: 'Taking a screenshot',
+  generate_image: 'Generating image',
+  generate_video: 'Generating video',
+  update_todos: 'Updating plan',
+  spawn_subagent: 'Delegating',
+  done: 'Wrapping up',
+};
+
+/*
+ * LiveTail — M2's instant layer. Renders the model's in-flight text
+ * (token-by-token, ahead of the durable rows) with a typing caret, plus a
+ * chip for the tool call currently executing. Mounted only on the LIVE
+ * turn; disappears the moment the durable stream catches up (the store is
+ * cleared on every reconciliation).
+ */
+const LiveTail = memo(() => {
+  const live = useStore(liveStreamStore);
+
+  if (!live.active || (!live.text && !live.tool)) {
+    return null;
+  }
+
+  // Show a readable tail — full text lands in the folded stream anyway.
+  const tail = live.text.length > 700 ? `…${live.text.slice(-700)}` : live.text;
+  const toolIcon = live.tool ? (LIVE_TOOL_ICON[live.tool.name] ?? 'i-ph:gear-bold') : '';
+  const toolLabel = live.tool ? (LIVE_TOOL_LABEL[live.tool.name] ?? live.tool.name) : '';
+
+  return (
+    <div className="relative pl-5 pb-3 space-y-1.5">
+      <div className="absolute left-[7px] top-0 bottom-0 w-px bg-palmkit-elements-borderColor/40" />
+      {tail && (
+        <div className="text-sm leading-relaxed text-palmkit-elements-textSecondary whitespace-pre-wrap">
+          {tail}
+          <span className="pk-caret text-[var(--pk-accent)]">▍</span>
+        </div>
+      )}
+      {live.tool && (
+        <div className="pk-row-in inline-flex items-center gap-1.5 rounded-full border border-palmkit-elements-borderColor/60 bg-palmkit-elements-background-depth-2 px-2.5 py-1 text-xs text-palmkit-elements-textSecondary">
+          <span className={classNames('shrink-0 text-[13px] text-[var(--pk-accent)]', toolIcon)} />
+          <span className="font-medium">{toolLabel}</span>
+          {live.tool.detail && <span className="max-w-[220px] truncate font-mono opacity-80">{live.tool.detail}</span>}
+          <PalmkitLoader bare size={9} className="text-[var(--pk-accent)]" />
+        </div>
+      )}
+    </div>
+  );
+});
+
+LiveTail.displayName = 'LiveTail';
 
 /*
  * Lightweight inline markdown renderer for the build summary.
@@ -1064,62 +1156,75 @@ const SectionView = memo(({ section }: { section: Section }) => {
         {/* timeline rail */}
         <div className="absolute left-[7px] top-0 bottom-0 w-px bg-palmkit-elements-borderColor/40" />
         {section.rows.map((row, i) => {
-          switch (row.kind) {
-            case 'thinking':
-              return <Thinking key={i} text={row.text} />;
-            case 'file':
-              return <FileRow key={i} row={row} />;
-            case 'command':
-              return <CommandRow key={i} text={row.text} />;
-            case 'summary':
-              return <SummaryRow key={i} text={row.text} />;
-            case 'screenshot':
-              return <ScreenshotRow key={i} dataUrl={row.dataUrl} viewport={row.viewport} />;
-            case 'vision':
-              return <VisionRow key={i} text={row.text} />;
-            case 'video':
-              return <VideoRow key={i} name={row.name} url={row.url} status={row.status} />;
-            case 'image':
-              return <ImageRow key={i} dataUrl={row.dataUrl} name={row.name} size={row.size} />;
-            case 'subagent':
-              return <SubagentRow key={i} task={row.task} result={row.result} status={row.status} />;
-            case 'read':
-              return (
-                <div key={i} className="flex items-center gap-2 font-mono text-sm text-palmkit-elements-textTertiary">
-                  <span className="i-ph:eye shrink-0" />
-                  <span className="truncate">{row.text}</span>
-                </div>
-              );
-            case 'error':
-              return (
-                <div
-                  key={i}
-                  className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 p-2 text-sm text-red-300"
-                >
-                  <span className="i-ph:warning-circle mt-0.5 shrink-0" />
-                  <span className="whitespace-pre-wrap">{row.text}</span>
-                </div>
-              );
-            case 'system':
-              return (
-                <div key={i} className="flex items-center gap-2 text-xs text-palmkit-elements-textTertiary">
-                  <span className="i-ph:dot-outline-fill shrink-0" />
-                  <span>{row.text}</span>
-                </div>
-              );
-            case 'progress':
-              return (
-                <div
-                  key={i}
-                  className="flex items-center gap-2 text-xs text-palmkit-elements-textTertiary animate-pulse"
-                >
-                  <span className="i-svg-spinners:90-ring-with-bg shrink-0 text-sm" />
-                  <span>{row.text}</span>
-                </div>
-              );
-            default:
-              return null;
+          const inner = (() => {
+            switch (row.kind) {
+              case 'thinking':
+                return <Thinking key={i} text={row.text} />;
+              case 'file':
+                return <FileRow key={i} row={row} />;
+              case 'command':
+                return <CommandRow key={i} text={row.text} />;
+              case 'summary':
+                return <SummaryRow key={i} text={row.text} />;
+              case 'screenshot':
+                return <ScreenshotRow key={i} dataUrl={row.dataUrl} viewport={row.viewport} />;
+              case 'vision':
+                return <VisionRow key={i} text={row.text} />;
+              case 'video':
+                return <VideoRow key={i} name={row.name} url={row.url} status={row.status} />;
+              case 'image':
+                return <ImageRow key={i} dataUrl={row.dataUrl} name={row.name} size={row.size} />;
+              case 'subagent':
+                return <SubagentRow key={i} task={row.task} result={row.result} status={row.status} />;
+              case 'read':
+                return (
+                  <div key={i} className="flex items-center gap-2 font-mono text-sm text-palmkit-elements-textTertiary">
+                    <span className="i-ph:eye shrink-0" />
+                    <span className="truncate">{row.text}</span>
+                  </div>
+                );
+              case 'error':
+                return (
+                  <div
+                    key={i}
+                    className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 p-2 text-sm text-red-300"
+                  >
+                    <span className="i-ph:warning-circle mt-0.5 shrink-0" />
+                    <span className="whitespace-pre-wrap">{row.text}</span>
+                  </div>
+                );
+              case 'system':
+                return (
+                  <div key={i} className="flex items-center gap-2 text-xs text-palmkit-elements-textTertiary">
+                    <span className="i-ph:dot-outline-fill shrink-0" />
+                    <span>{row.text}</span>
+                  </div>
+                );
+              case 'progress':
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 text-xs text-palmkit-elements-textTertiary animate-pulse"
+                  >
+                    <span className="i-svg-spinners:90-ring-with-bg shrink-0 text-sm" />
+                    <span>{row.text}</span>
+                  </div>
+                );
+              default:
+                return null;
+            }
+          })();
+
+          if (!inner) {
+            return null;
           }
+
+          // Gentle entrance for newly appended rows (M2 stream polish).
+          return (
+            <div key={i} className="pk-row-in">
+              {inner}
+            </div>
+          );
         })}
         {section.todos && section.todos.length > 0 && <Todos todos={section.todos} counts={section.todoCounts} />}
       </div>
@@ -1400,9 +1505,12 @@ export const BuildStreamView = memo(
         {/* the reasoning + tool rows, flowing as the reply (no box) */}
         {showBody && (
           <div className="mt-3">
+            <style>{STREAM_STYLES}</style>
             {sections.map((s, i) => (
               <SectionView key={i} section={s} />
             ))}
+            {/* M2: instant layer — in-flight model text + current tool chip */}
+            {!past && !done && !failed && <LiveTail />}
           </div>
         )}
       </div>

@@ -33,6 +33,13 @@ import {
   type ContextPressure,
 } from '~/lib/stores/build-status';
 import { WORK_DIR } from '~/utils/constants';
+import {
+  ingestLiveChunks,
+  clearLiveText,
+  clearLiveTool,
+  resetLiveStream,
+  type LiveChunk,
+} from '~/lib/stores/live-stream';
 
 const FLAG_KEY = 'palmkit_use_external_worker';
 const POLL_INTERVAL_MS = 1500;
@@ -102,6 +109,13 @@ function dispatchJobEvent(ev: JobEvent): void {
       case 'reasoning': {
         const text = (payload.text as string | undefined) ?? '';
 
+        /*
+         * M2 reconciliation: this durable row carries the same characters
+         * the live tail streamed — clear the tail so the folded stream
+         * takes over without duplication.
+         */
+        clearLiveText();
+
         if (text) {
           upsertReasoning({
             agent,
@@ -133,6 +147,11 @@ function dispatchJobEvent(ev: JobEvent): void {
 
       case 'file_written':
       case 'file_chunk': {
+        // M2: the in-flight tool produced its durable event — retire the chip.
+        if (ev.type === 'file_written' || payload.kind === 'read' || payload.kind === 'shell') {
+          clearLiveTool();
+        }
+
         /*
          * appType_refined — the worker detected the real app type from
          * the generated files (e.g., 'react' instead of 'static').
@@ -183,6 +202,8 @@ function dispatchJobEvent(ev: JobEvent): void {
       }
 
       case 'shell_command': {
+        clearLiveTool();
+
         // A command started in the E2B sandbox — show it live with a spinner.
         const command = (payload.command as string | undefined) ?? ev.message.replace(/^\$\s*/, '');
 
@@ -230,13 +251,7 @@ export interface JobEvent {
 export interface ExternalWorkerState {
   jobId: string | null;
   status:
-    | 'idle'
-    | 'pending'
-    | 'generating'
-    | 'validating'
-    | 'uploading_snapshot'
-    | 'ready_for_preview'
-    | 'failed_clean';
+    'idle' | 'pending' | 'generating' | 'validating' | 'uploading_snapshot' | 'ready_for_preview' | 'failed_clean';
   progress: number;
   currentStep: string;
   error: string | null;
@@ -367,6 +382,24 @@ export function useExternalWorker() {
         // Dynamic import to avoid bundling supabase if not needed
         import('@supabase/supabase-js').then(({ createClient }) => {
           const client = createClient(supabaseUrl, supabaseKey);
+
+          /*
+           * M2 LIVE STREAM — the worker broadcasts raw model deltas on
+           * `stream:{jobId}` (event 'chunks') the instant they arrive,
+           * far ahead of the durable job_events flushes. Feed them into
+           * the live layer; the durable path reconciles/repaints, so a
+           * dropped socket costs nothing.
+           */
+          client
+            .channel(`stream:${jobId}`)
+            .on('broadcast', { event: 'chunks' }, (msg: any) => {
+              const chunks = (msg?.payload?.chunks ?? []) as LiveChunk[];
+
+              if (chunks.length > 0) {
+                ingestLiveChunks(chunks);
+              }
+            })
+            .subscribe();
 
           client
             .channel(`job:${jobId}`)
@@ -551,6 +584,7 @@ export function useExternalWorker() {
       epochRef.current++;
       setState({ ...initialState, status: 'pending', currentStep: 'queued' });
       fetchedPreview.current = false;
+      resetLiveStream();
 
       /*
        * Capture the CURRENT files as the diff baseline BEFORE this build streams
@@ -976,10 +1010,14 @@ export function useExternalWorker() {
             }
           }
 
+          resetLiveStream();
+
+          // build ended — retire the live tail/caret
           return; // stop polling
         }
 
         if (uiStatus === 'failed_clean') {
+          resetLiveStream();
           return; // stop polling
         }
 
@@ -1037,7 +1075,7 @@ export function useExternalWorker() {
 
           for (const ch of channels) {
             try {
-              if (ch?.topic?.startsWith('job:')) {
+              if (ch?.topic?.startsWith('job:') || ch?.topic?.startsWith('stream:')) {
                 client.removeChannel(ch);
               }
             } catch {
@@ -1067,7 +1105,7 @@ export function useExternalWorker() {
 
         for (const ch of channels) {
           try {
-            if (ch?.topic?.startsWith('job:')) {
+            if (ch?.topic?.startsWith('job:') || ch?.topic?.startsWith('stream:')) {
               client.removeChannel(ch);
             }
           } catch {
@@ -1083,6 +1121,7 @@ export function useExternalWorker() {
     fetchedPreview.current = false;
     lastEventSeq.current = 0;
     liveEvents.current = [];
+    resetLiveStream();
     setState(initialState);
   }, []);
 
