@@ -211,6 +211,20 @@ const REGISTRY: Record<string, ProviderConfig> = {
  * @param apiKey        The user's decrypted API key (from user_api_keys table)
  * @param options       Optional provider-specific settings (baseURL, region, etc.)
  */
+/**
+ * Model instance cache — avoids recreating the same model client on every call.
+ *
+ * Without this cache, a build that calls analyze_screenshot 3× creates 3
+ * separate OpenRouter client objects for glm-4.6v in 60 seconds. Each
+ * creation involves SDK initialization + HTTP connection setup. Caching
+ * by (provider, model, apiKey-suffix) eliminates this overhead.
+ *
+ * The cache is keyed by `${provider}:${model}:${apiKey.slice(-8)}` — the
+ * last 8 chars of the API key provide user isolation without storing
+ * the full key in memory.
+ */
+const modelCache = new Map<string, LanguageModelV1>();
+
 export function getModelInstance(
   providerName: string,
   modelName: string,
@@ -227,8 +241,30 @@ export function getModelInstance(
     );
   }
 
+  // Cache key includes provider + model + last 8 chars of API key for user isolation.
+  // Options that affect model behavior (like reasoningEffort) are baked into the
+  // model instance at creation time, so we include a hash of options in the key.
+  const optionsKey = options ? JSON.stringify(options) : '';
+  const cacheKey = `${providerName}:${modelName}:${apiKey.slice(-8)}:${optionsKey}`;
+
+  const cached = modelCache.get(cacheKey);
+
+  if (cached) {
+    logger.debug(`Model instance cache HIT: provider=${providerName}, model=${modelName}`);
+    return cached;
+  }
+
   logger.info(`Creating model instance: provider=${providerName}, model=${modelName}`);
-  return config.createModel(modelName, apiKey, options);
+  const model = config.createModel(modelName, apiKey, options);
+  modelCache.set(cacheKey, model);
+
+  // Prevent unbounded cache growth — evict oldest entries past 50.
+  if (modelCache.size > 50) {
+    const firstKey = modelCache.keys().next().value;
+    if (firstKey) modelCache.delete(firstKey);
+  }
+
+  return model;
 }
 
 /**

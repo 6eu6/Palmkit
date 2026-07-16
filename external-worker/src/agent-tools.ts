@@ -138,9 +138,22 @@ function getWriteCount(jobId: string, path: string): number {
   return jobWriteCounts.get(jobId)?.get(path) ?? 0;
 }
 
+/*
+ * Screenshot counter — limits analyze_screenshot calls per job to prevent
+ * redundant vision model invocations (saves ~60s/build, 29% of build time).
+ */
+const jobScreenshotCounts = new Map<string, number>();
+
+function bumpScreenshotCount(jobId: string): number {
+  const n = (jobScreenshotCounts.get(jobId) ?? 0) + 1;
+  jobScreenshotCounts.set(jobId, n);
+  return n;
+}
+
 export function resetProjectFiles(jobId: string): void {
   getJobFiles(jobId).clear();
   jobWriteCounts.delete(jobId);
+  jobScreenshotCounts.delete(jobId);
 }
 
 export function getProjectFiles(jobId: string): Record<string, string> {
@@ -199,6 +212,116 @@ export function disposeBuildResult(jobId: string): void {
  * @param supabase - Supabase client for event emission
  * @param projectId - The project ID (used for R2 workspace key)
  */
+
+/**
+ * CONTENT VALIDATION — reject corrupt file content before saving.
+ *
+ * GLM-4.7 has a known bug where it sometimes serializes file content as
+ * JSON instead of raw source code. The JSON-unwrap guards in performWrite
+ * catch most cases (envelopes like {"content":"..."} or ["..."]), but some
+ * corruption passes through as a string that is valid JSON but NOT valid
+ * source code. This function catches those cases.
+ *
+ * Returns null if content is valid, or an error message string if corrupt.
+ */
+function validateFileContent(path: string, content: string): string | null {
+  const trimmed = content.trimStart();
+
+  if (trimmed.length === 0) {
+    return null; // empty files are valid (e.g. .gitkeep)
+  }
+
+  const ext = path.split('.').pop()?.toLowerCase() ?? '';
+  const baseName = path.split('/').pop() ?? path;
+
+  /*
+   * HTML files must start with <!DOCTYPE, <html, or a comment.
+   * GLM corruption produces JSON arrays/objects as HTML content.
+   */
+  if (ext === 'html' || ext === 'htm') {
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      return (
+        `REFUSED — ${path} content starts with '[' or '{' — this looks like JSON, not HTML. ` +
+        `HTML files must start with <!DOCTYPE html> or <html>. ` +
+        `Re-write ${path} with actual HTML source code as a raw string.`
+      );
+    }
+  }
+
+  /*
+   * CSS files must NOT start with [ or { — that indicates JSON corruption.
+   * GLM sometimes produces [{"margin":0,...}] as CSS.
+   */
+  if (ext === 'css' || ext === 'scss' || ext === 'sass') {
+    if (trimmed.startsWith('[')) {
+      return (
+        `REFUSED — ${path} content starts with '[' — this looks like a JSON array, not CSS. ` +
+        `CSS files must contain actual CSS rules (e.g. "body { margin: 0; }"). ` +
+        `Re-write ${path} with raw CSS source.`
+      );
+    }
+  }
+
+  /*
+   * JSX/TSX files must NOT be valid JSON objects or arrays.
+   * GLM corruption: shattered JSX fragments as JSON arrays like
+   * [{"react'...":"..."},{},"type=\"number"].
+   * Exception: config files like tailwind.config.js use `export default {...}`
+   * which starts with `export`, not `{` — so this check is safe.
+   */
+  if ((ext === 'jsx' || ext === 'tsx') && (trimmed.startsWith('[') || trimmed.startsWith('{'))) {
+    // Check if it's actually valid JSON (double corruption check)
+    try {
+      JSON.parse(trimmed);
+      return (
+        `REFUSED — ${path} content is valid JSON but JSX/TSX files must contain React source code, ` +
+        `not JSON. JSX starts with "import" or "function" or "const", never "[" or "{". ` +
+        `Re-write ${path} with actual JSX source as a raw string.`
+      );
+    } catch {
+      // Not valid JSON but starts with [ or { — still suspicious for JSX
+      if (trimmed.startsWith('[')) {
+        return (
+          `REFUSED — ${path} content starts with '[' — JSX/TSX files must not start with '['. ` +
+          `Re-write ${path} with actual JSX source as a raw string.`
+        );
+      }
+    }
+  }
+
+  /*
+   * JS/TS source files (not config files) should not start with raw JSON.
+   * Config files (tailwind.config.js, postcss.config.js, vite.config.js)
+   * use `export default` or `module.exports` — they don't start with { or [.
+   * If a .js file starts with { or [, it's likely corruption.
+   * Exception: .json files ARE expected to start with { or [.
+   */
+  if ((ext === 'js' || ext === 'ts' || ext === 'mjs' || ext === 'cjs') && !baseName.includes('.config.')) {
+    if (trimmed.startsWith('[')) {
+      return (
+        `REFUSED — ${path} content starts with '[' — JS/TS source files must not start with '['. ` +
+        `Re-write ${path} with actual JavaScript/TypeScript source as a raw string.`
+      );
+    }
+  }
+
+  /*
+   * JSON files must be valid JSON. If they're not, the build will fail later.
+   */
+  if (ext === 'json') {
+    try {
+      JSON.parse(content);
+    } catch (e: any) {
+      return (
+        `REFUSED — ${path} is a .json file but content is not valid JSON: ${e?.message ?? 'parse error'}. ` +
+        `Re-write ${path} with valid JSON.`
+      );
+    }
+  }
+
+  return null; // content is valid
+}
+
 export function createAgentTools(
   jobId: string,
   supabase: SupabaseClient,
@@ -395,6 +518,29 @@ export function createAgentTools(
           fileContent = json;
         }
       }
+    }
+
+    /*
+     * CONTENT VALIDATION — reject corrupt content before saving.
+     * GLM-4.7 sometimes produces content that is valid JSON but NOT valid
+     * source code (e.g. `[{"margin":0,...}]` as HTML, or shattered JSX
+     * fragments as a JSON array). The JSON-unwrap guards above catch most
+     * array/object envelopes, but some corruption passes through as a
+     * string that LOOKS valid but is actually JSON garbage. This check
+     * catches it BEFORE saving, preventing false-positive builds.
+     */
+    const validationError = validateFileContent(path, fileContent);
+
+    if (validationError) {
+      bumpWriteCount(jobId, path);
+      logger.warn(`[agent] write_file: ${path} REJECTED — content validation failed: ${validationError}`);
+
+      return {
+        success: false,
+        path,
+        corrupted: true,
+        message: validationError,
+      };
     }
 
     /*
@@ -1714,6 +1860,28 @@ export function createAgentTools(
 
         const vp = coerceViewport(viewport);
         const dims = vp === 'mobile' ? '390x844' : '1280x720';
+
+        /*
+         * SCREENSHOT LIMIT — prevent redundant vision calls.
+         * Live tracing (job 5dcaabf6) showed the brain calling analyze_screenshot
+         * 3× for a trivial counter app, wasting 60s (29% of build time) on
+         * redundant vision model invocations. Limit to 2 per build — enough
+         * for one desktop + one mobile check, or two iterations if the first
+         * reveals an issue. The brain can use read_file + run_shell for
+         * further verification instead of burning vision tokens.
+         */
+        const screenshotCount = bumpScreenshotCount(jobId);
+
+        if (screenshotCount > 2) {
+          return {
+            success: false,
+            refused: true,
+            message:
+              `Screenshot limit reached (${screenshotCount - 1} already taken). ` +
+              `Stop verifying visually — your code is built. Use read_file to inspect source, ` +
+              `or run_shell to check build output. Call done() when the project is complete.`,
+          };
+        }
 
         try {
           await emitEvent(supabase, jobId, 'file_chunk', `📸 Capturing screenshot (${vp})…`, {
