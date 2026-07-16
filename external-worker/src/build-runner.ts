@@ -9,7 +9,7 @@
  * without knowing which environment is running underneath.
  */
 
-import type { FileOperation } from './generator';
+import type { FileOperation } from './project-spec';
 
 export interface RuntimeSession {
   sessionId: string;

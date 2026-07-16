@@ -11,7 +11,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import type { FileOperation } from './generator';
+import type { FileOperation } from './project-spec';
 import { logger } from './logger';
 
 const INSTALL_TIMEOUT_MS = 120_000;

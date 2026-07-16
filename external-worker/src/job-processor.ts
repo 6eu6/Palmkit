@@ -18,11 +18,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { logger } from './logger';
-import {
-  planProject,
-  detectAppTypeFromFiles,
-  type GenerationResult,
-} from './generator';
+import { makeProjectSpec, detectAppTypeFromFiles, type GenerationResult } from './project-spec';
 import { runOrchestratedBuild } from './orchestrator';
 import { createRunner } from './build-runner';
 import { putFile, getFileText, buildKey, buildWorkspaceKey } from './r2-client';
@@ -142,9 +138,11 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
   logger.info(`Processing job ${job.id} (user=${job.user_id})`);
 
-  // Extract prompt + provider + model from validation_result (stored by /api/jobs on enqueue).
-  // NO defaults — the worker must use exactly what the user selected.
-  // If model or provider is missing, fail with a clear error.
+  /*
+   * Extract prompt + provider + model from validation_result (stored by /api/jobs on enqueue).
+   * NO defaults — the worker must use exactly what the user selected.
+   * If model or provider is missing, fail with a clear error.
+   */
   const prompt: string = job.validation_result?.prompt ?? '';
   const providerName: string = job.validation_result?.provider ?? '';
   const modelName: string = job.validation_result?.model ?? '';
@@ -257,9 +255,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
     if (userImagePaths.length > 0) {
       for (const imagePath of userImagePaths) {
         try {
-          const { data, error } = await supabase.storage
-            .from('palmkit-files')
-            .download(imagePath);
+          const { data, error } = await supabase.storage.from('palmkit-files').download(imagePath);
 
           if (error || !data) {
             logger.warn(`Failed to download user image ${imagePath}: ${error?.message ?? 'no data'}`);
@@ -268,8 +264,15 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
           const bytes = await data.arrayBuffer();
           const base64 = Buffer.from(bytes).toString('base64');
-          const ext = imagePath.endsWith('.png') ? 'png' : imagePath.endsWith('.webp') ? 'webp' : imagePath.endsWith('.gif') ? 'gif' : 'jpg';
-          const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+          const ext = imagePath.endsWith('.png')
+            ? 'png'
+            : imagePath.endsWith('.webp')
+              ? 'webp'
+              : imagePath.endsWith('.gif')
+                ? 'gif'
+                : 'jpg';
+          const mime =
+            ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
           const dataUrl = `data:${mime};base64,${base64}`;
 
           userImageDataUrls.push({ path: imagePath, dataUrl, mime });
@@ -317,14 +320,23 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
     // Determine provider from model name
     const getProvider = (modelName: string): 'zai' | 'openrouter' | 'google' => {
-      if (/glm|cogvideo/i.test(modelName)) return 'zai';
-      if (/gemini|veo/i.test(modelName)) return 'google';
+      if (/glm|cogvideo/i.test(modelName)) {
+        return 'zai';
+      }
+
+      if (/gemini|veo/i.test(modelName)) {
+        return 'google';
+      }
+
       return 'openrouter'; // default for everything else
     };
 
     const imageProvider = getProvider(mediaRoleModel || DEFAULT_IMAGE_MODEL);
-    // Video: default to OpenRouter (user has OpenRouter key, not Z.ai key)
-    // If user picks a Z.ai video model in Settings, we try Z.ai first then fallback
+
+    /*
+     * Video: default to OpenRouter (user has OpenRouter key, not Z.ai key)
+     * If user picks a Z.ai video model in Settings, we try Z.ai first then fallback
+     */
     const videoModel = mediaRoleModel || 'google/veo-3.0-generate-001';
     const videoProvider = getProvider(videoModel);
     const visionProvider = getProvider(visionRoleModel || 'glm-4.6v');
@@ -335,14 +347,17 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           imageApiKey: apiKey,
           imageModel: mediaRoleModel || DEFAULT_IMAGE_MODEL,
           imageProvider,
+
           // Video generation — use OpenRouter by default (user's key works)
           videoApiKey: apiKey,
           videoModel,
           videoProvider,
+
           // Vision (VLM)
           visionApiKey: apiKey,
           visionModel: visionRoleModel || 'glm-4.6v',
           visionProvider,
+
           // Legacy compat
           apiKey,
           model: mediaRoleModel || DEFAULT_IMAGE_MODEL,
@@ -350,8 +365,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       : undefined;
 
     const designScheme = job.validation_result?.designScheme as
-      | { palette: Record<string, string>; font: string[]; features: string[] }
-      | undefined;
+      { palette: Record<string, string>; font: string[]; features: string[] } | undefined;
 
     // ─── Phase 7: EDIT MODE ────────────────────────────────────────────
     const editJobId: string | null = job.validation_result?.editJobId ?? null;
@@ -385,6 +399,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
     if (editJobId) {
       await updateJobProgress(supabase, job.id, 10, 'load_existing_files');
+
       /*
        * No user-visible "Loading existing project files..." event — the brain's
        * own first reasoning row is the first thing the user sees. Worker-only
@@ -424,6 +439,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
        */
       let manifest: Array<{ path: string; storage_key: string; mime_type: string | null }> | null = null;
       let manifestErr: unknown = null;
+
       /*
        * Poll for the manifest. The target job might still be building (the
        * user may have hit Stop on a prior build, then sent a new message —
@@ -510,6 +526,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           job.id,
           `Could not load the previous build's files (${reason}). Please wait for it to finish or start a new build.`,
         );
+
         return;
       }
 
@@ -521,9 +538,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
        */
       const existingFiles: Array<{ op: 'write_file'; path: string; content: string; mime_type?: string }> = [];
 
-      const contents = await Promise.all(
-        manifest.map((row) => getFileText(row.storage_key).then((c) => ({ row, c }))),
-      );
+      const contents = await Promise.all(manifest.map((row) => getFileText(row.storage_key).then((c) => ({ row, c }))));
 
       for (const { row, c: content } of contents) {
         if (content !== null) {
@@ -542,6 +557,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         order: 1,
         outputSummary: `loaded ${existingFiles.length} files (${editAppType})`,
       });
+
       /*
        * Removed user-visible `Editing your project...` and `Building your project...`
        * emitEvent calls — they were hardcoded banners shown BEFORE the brain
@@ -583,22 +599,25 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
         const projectMemory =
           projectMd || decisionsMd || manifestJson
-            ? { projectMd: projectMd ?? undefined, decisionsMd: decisionsMd ?? undefined, manifestJson: manifestJson ?? undefined }
+            ? {
+                projectMd: projectMd ?? undefined,
+                decisionsMd: decisionsMd ?? undefined,
+                manifestJson: manifestJson ?? undefined,
+              }
             : null;
 
         const editReasoningEffort = job.validation_result?.reasoningEffort as 'off' | 'medium' | 'max' | undefined;
 
-      /*
-       * Removed the per-delta `Editing… ${snippet}` emit — it produced a
-       * janky, fragmented stream of code snippets in the chat. The brain's
-       * reasoning events (streamed by the orchestrator) are the canonical
-       * voice; tool calls (write_file) produce file_written events; this
-       * middle layer was just noise.
-       */
+        /*
+         * Removed the per-delta `Editing… ${snippet}` emit — it produced a
+         * janky, fragmented stream of code snippets in the chat. The brain's
+         * reasoning events (streamed by the orchestrator) are the canonical
+         * voice; tool calls (write_file) produce file_written events; this
+         * middle layer was just noise.
+         */
 
         const conversationHistory = job.validation_result?.conversationHistory as
-          | Array<{ role: string; content: string }>
-          | undefined;
+          Array<{ role: string; content: string }> | undefined;
 
         /*
          * Edit via agent loop (Builder agent with preloaded files).
@@ -659,6 +678,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         });
         await emitEvent(supabase, job.id, 'job_failed', `Edit failed: ${editErr.message}`, { error: editErr.message });
         await failJob(supabase, job.id, `Edit generation failed: ${editErr.message}`);
+
         return;
       }
 
@@ -677,18 +697,22 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       result = { files: mergedFiles, complete: true, rawText: '', appType: editAppType };
       logger.info(`Job ${job.id}: edit complete → ${mergedFiles.length} files (${editAppType})`);
     } else {
-      // ─── Phase 1: PLAN ─────────────────────────────────────────────────
-      // The brain decides what to build — no hardcoded planning step.
-      // planProject() was guessing appType from keywords and showing
-      // "Planned 3 files (static)" which was wrong and confusing.
-      // We still call planProject() to get maxCompletionTokens, but
-      // we DON'T emit the planning events.
+      /*
+       * ─── Phase 1: PLAN ─────────────────────────────────────────────────
+       * The brain decides what to build — no hardcoded planning step.
+       * planProject() was guessing appType from keywords and showing
+       * "Planned 3 files (static)" which was wrong and confusing.
+       * We still call planProject() to get maxCompletionTokens, but
+       * we DON'T emit the planning events.
+       */
       await updateJobProgress(supabase, job.id, 10, 'plan');
 
-      const spec = planProject(prompt);
+      const spec = makeProjectSpec(prompt);
 
-      // Pass the model's maxCompletionTokens (from job metadata) into the spec so
-      // the generator uses the model's actual limit instead of the old 16000 cap.
+      /*
+       * Pass the model's maxCompletionTokens (from job metadata) into the spec so
+       * the generator uses the model's actual limit instead of the old 16000 cap.
+       */
       if (job.validation_result?.maxCompletionTokens && typeof job.validation_result.maxCompletionTokens === 'number') {
         spec.maxCompletionTokens = job.validation_result.maxCompletionTokens;
       }
@@ -697,6 +721,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
       // ─── Phase 2: AGENTIC BUILD (streamText + tools) ───────────────────
       await updateJobProgress(supabase, job.id, 30, 'generate_files');
+
       /*
        * Removed the hardcoded `Building your project...` banner. The brain
        * opens the stream itself with its first reasoning row.
@@ -791,11 +816,13 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           if (id && typeof id === 'string' && id !== modelName) {
             try {
               if (roleName === 'vision' || roleName === 'media') {
-                // Vision and media models are NOT used as the main agent —
-                // they're called via tools. Store them in agentModels so
-                // createAgentTools can pass them to the VLM/video-gen
-                // wrappers. We don't add them to the brain/builder/tester
-                // loop.
+                /*
+                 * Vision and media models are NOT used as the main agent —
+                 * they're called via tools. Store them in agentModels so
+                 * createAgentTools can pass them to the VLM/video-gen
+                 * wrappers. We don't add them to the brain/builder/tester
+                 * loop.
+                 */
                 agentModels[roleName as 'brain' | 'builder' | 'tester'] = getModelInstance(providerName, id, apiKey, {
                   reasoningEffort: jobReasoningEffort,
                 }) as any;
@@ -814,11 +841,12 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
         const reasoningEffort = job.validation_result?.reasoningEffort as 'off' | 'medium' | 'max' | undefined;
 
-        // Also pass conversation history for new builds — the brain needs context
-        // from prior messages to understand references like "make it blue instead"
+        /*
+         * Also pass conversation history for new builds — the brain needs context
+         * from prior messages to understand references like "make it blue instead"
+         */
         const newBuildConversationHistory = job.validation_result?.conversationHistory as
-          | Array<{ role: string; content: string }>
-          | undefined;
+          Array<{ role: string; content: string }> | undefined;
 
         const agentResult = await runOrchestratedBuild(
           prompt,
@@ -830,7 +858,17 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           spec.maxCompletionTokens,
           spec.appType,
           contextWindow,
-          { agentModels, reasoningEffort, media, skills, libraries, agentConfig, designScheme, conversationHistory: newBuildConversationHistory, userImages: userImageDataUrls },
+          {
+            agentModels,
+            reasoningEffort,
+            media,
+            skills,
+            libraries,
+            agentConfig,
+            designScheme,
+            conversationHistory: newBuildConversationHistory,
+            userImages: userImageDataUrls,
+          },
         );
 
         // Capture the server-measured context pressure for the fork nudge.
@@ -840,6 +878,37 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           ratio: agentResult.contextRatio,
           truncated: agentResult.truncated,
         };
+
+        if (agentResult.success && agentResult.answered && agentResult.files.length === 0) {
+          /*
+           * ANSWER MODE — the agent judged this a question/discussion and
+           * replied via done() (the reply reached the user as the
+           * build_summary event). No files changed: skip build check,
+           * upload, and manifest — finalize directly.
+           */
+          await supabase
+            .from('build_jobs')
+            .update({
+              status: 'ready_for_preview',
+              current_step: 'done',
+              progress: 100,
+              validation_result: {
+                ...job.validation_result,
+                fileCount: 0,
+                completeness: 'complete',
+                answered: true,
+                ...(editJobId ? { editJobId } : {}),
+                ...(contextPressure ? { contextPressure } : {}),
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', job.id);
+
+          await emitEvent(supabase, job.id, 'ready_for_preview', '');
+          logger.info(`Job ${job.id} → answered (no file changes)`);
+
+          return;
+        }
 
         if (agentResult.success && agentResult.files.length > 0) {
           result = {
@@ -857,19 +926,23 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
            * of truth, and this drives the correct preview runtime + build check.
            */
           const filesRecord: Record<string, string> = {};
+
           for (const f of agentResult.files) {
             filesRecord[f.path] = (f.content as string) ?? '';
           }
+
           const detectedAppType = detectAppTypeFromFiles(filesRecord);
 
           if (detectedAppType && detectedAppType !== result.appType) {
             logger.info(`Job ${job.id}: appType refined ${result.appType} → ${detectedAppType} (from generated files)`);
             result.appType = detectedAppType;
 
-            // Emit the corrected appType so the frontend's auto-launch
-            // (use-worker-sandbox.ts) picks it up. Without this, the frontend
-            // keeps the old appType from planProject (e.g., 'static') and
-            // never auto-launches the E2B sandbox for React apps.
+            /*
+             * Emit the corrected appType so the frontend's auto-launch
+             * (use-worker-sandbox.ts) picks it up. Without this, the frontend
+             * keeps the old appType from planProject (e.g., 'static') and
+             * never auto-launches the E2B sandbox for React apps.
+             */
             await emitEvent(supabase, job.id, 'file_chunk' as any, `Detected: ${detectedAppType} app`, {
               kind: 'appType_refined',
               appType: detectedAppType,
@@ -923,7 +996,9 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
                 `This usually means the LLM hit the step limit without calling done(), or a tool call failed validation. ` +
                 `Please try again — the model may succeed on retry.`;
 
-          logger.error(`Job ${job.id}: orchestrator ${isOrchestratorError ? 'error' : hasFiles ? 'incomplete' : 'empty'}. ${agentSummaries}`);
+          logger.error(
+            `Job ${job.id}: orchestrator ${isOrchestratorError ? 'error' : hasFiles ? 'incomplete' : 'empty'}. ${agentSummaries}`,
+          );
 
           /*
            * If files were written, save them as a partial manifest so the
@@ -971,6 +1046,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
                       upsert: true,
                     });
                   } catch {}
+
                   try {
                     await supabase.storage.from('palmkit-files').upload(lgKey, content, {
                       contentType: 'text/plain',
@@ -982,12 +1058,15 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
               // Write manifest table entries
               await supabase.from('project_files_manifest').delete().eq('job_id', job.id);
+
               const { error: manifestError } = await supabase.from('project_files_manifest').insert(manifestEntries);
 
               if (manifestError) {
                 logger.warn(`Job ${job.id}: partial manifest insert failed: ${manifestError.message}`);
               } else {
-                logger.info(`Job ${job.id}: partial manifest saved (${manifestEntries.length} files) — next edit can continue from here`);
+                logger.info(
+                  `Job ${job.id}: partial manifest saved (${manifestEntries.length} files) — next edit can continue from here`,
+                );
               }
             } catch (partialErr) {
               logger.warn(`Job ${job.id}: partial file save failed: ${partialErr}`);
@@ -996,6 +1075,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
           await emitEvent(supabase, job.id, 'job_failed', errorMsg);
           await failJob(supabase, job.id, errorMsg);
+
           return;
         }
       } catch (agentErr: any) {
@@ -1007,15 +1087,11 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         logger.error(`Job ${job.id}: orchestrator failed: ${errMsg}`);
         await emitEvent(supabase, job.id, 'job_failed', `Build failed: ${errMsg}`);
         await failJob(supabase, job.id, `Build failed: ${errMsg}`);
+
         return;
       }
 
-      await emitEvent(
-        supabase,
-        job.id,
-        'file_generation_completed',
-        `Build complete`,
-      );
+      await emitEvent(supabase, job.id, 'file_generation_completed', `Build complete`);
 
       await recordStep(supabase, job.id, {
         type: 'generate_file',
@@ -1032,6 +1108,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
     // ─── Phase 3: VALIDATION (skipped — the orchestrator handles verification) ─
     await updateJobProgress(supabase, job.id, 50, 'validate');
+
     /*
      * The `validation_passed` event is kept for telemetry but its message is
      * empty — no longer a user-visible `Build verified` banner. The brain's
@@ -1042,6 +1119,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
     // ─── Phase 4: UPLOAD TO R2 ─────────────────────────────────────────
     await updateJobProgress(supabase, job.id, 70, 'uploading_snapshot');
+
     /*
      * `Finalizing your project...` banner removed — empty event message.
      * The R2 upload is silent plumbing; the brain's summary already
@@ -1062,10 +1140,12 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
     const manifestEntries: Array<Record<string, unknown>> = [];
 
     for (const file of result.files) {
-      // Write to BOTH the workspace key (new unified location) AND the
-      // job-scoped key (backward compat for /api/files that still reads it).
-      // Once /api/files is migrated to read from workspace, the job-scoped
-      // write can be removed.
+      /*
+       * Write to BOTH the workspace key (new unified location) AND the
+       * job-scoped key (backward compat for /api/files that still reads it).
+       * Once /api/files is migrated to read from workspace, the job-scoped
+       * write can be removed.
+       */
       const workspaceKey = buildWorkspaceKey(projectId, file.path);
       const legacyKey = buildKey(job.id, file.path, job.project_id ?? undefined);
       const content = file.content;
@@ -1079,6 +1159,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         logger.debug(`R2 workspace upload OK: ${workspaceKey} (${sizeBytes} bytes)`);
       } catch (uploadError: any) {
         logger.warn(`R2 workspace upload failed for ${workspaceKey}: ${uploadError?.message || uploadError}`);
+
         // Non-fatal — the legacy upload below may still succeed
       }
 
@@ -1095,6 +1176,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         });
         await emitEvent(supabase, job.id, 'job_failed', `Upload failed for ${file.path}: ${uploadError.message}`);
         await failJob(supabase, job.id, `R2 upload failed for ${file.path}: ${uploadError.message}`);
+
         return;
       }
 
@@ -1109,9 +1191,11 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         await emitFileWritten(supabase, job.id, file.path, lineCount, sizeBytes);
       }
 
-      // Mirror to Supabase Storage (read-through cache for the browser).
-      // Mirror BOTH the legacy key AND the workspace key so /api/workspace
-      // can read files by chatId.
+      /*
+       * Mirror to Supabase Storage (read-through cache for the browser).
+       * Mirror BOTH the legacy key AND the workspace key so /api/workspace
+       * can read files by chatId.
+       */
       const sbLegacyKey = `${job.user_id}/${legacyKey}`;
       const sbWorkspaceKey = `${job.user_id}/${workspaceKey}`;
 
@@ -1174,6 +1258,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         error: `Manifest insert failed: ${manifestError.message}`,
       });
       await failJob(supabase, job.id, `Manifest insert failed: ${manifestError.message}`);
+
       return;
     }
 

@@ -1383,7 +1383,28 @@ export const BuildStreamView = memo(
     past?: boolean;
   }) => {
     const [open, setOpen] = useState(defaultOpen);
-    const sections = useMemo(() => foldEvents(events), [events]);
+    const live = useStore(liveStreamStore);
+    const sections = useMemo(() => {
+      const folded = foldEvents(events);
+
+      /*
+       * De-duplicate status strips: while the LIVE layer is speaking
+       * (thinking/text/tool streaming), the folded heartbeat row ("Building…
+       * Ns") is redundant noise — the header already shows the phase and the
+       * live layer shows the substance. Drop trailing progress rows then.
+       */
+      const liveSpeaking = live.active && (live.thinking || live.text || live.tool);
+
+      if (liveSpeaking && folded.length > 0) {
+        const last = folded[folded.length - 1];
+
+        while (last.rows.length > 0 && last.rows[last.rows.length - 1].kind === 'progress') {
+          last.rows.pop();
+        }
+      }
+
+      return folded;
+    }, [events, live.active, live.thinking, live.text, live.tool]);
 
     const done = currentStep === 'done' || events.some((e) => e.type === 'ready_for_preview');
 

@@ -58,6 +58,7 @@ function repairStringifiedArgs(argsJson: string): string | null {
       const out = v.map((item) => {
         const r = deepRepair(item);
         changed = changed || r.changed;
+
         return r.value;
       });
 
@@ -97,6 +98,8 @@ import {
   disposeProjectFiles,
   getBuildResult,
   disposeBuildResult,
+  getDoneSummary,
+  disposeDoneSummary,
 } from './agent-tools';
 import { filterTools, getAgentConfig, DEFAULT_AGENT_FLOW, type AgentRole } from './agent-registry';
 import { disposeSandbox } from './e2b-runner';
@@ -104,7 +107,7 @@ import { putFile, buildWorkspaceKey } from './r2-client';
 import { logger } from './logger';
 import { emitEvent } from './event-emitter';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { detectAppTypeFromFiles, type FileOperation } from './generator';
+import { detectAppTypeFromFiles, type FileOperation } from './project-spec';
 import {
   readWorklog,
   readWorkspaceFile,
@@ -127,6 +130,13 @@ export interface OrchestratorResult {
   rawText: string;
   totalDuration: number;
   agentResults: Array<{ role: AgentRole; success: boolean; text: string; duration: number }>;
+
+  /**
+   * ANSWER MODE — the agent judged the request to be a question/discussion
+   * and finished via done() without touching files. A legitimate success.
+   */
+  answered: boolean;
+
   /**
    * Context-pressure telemetry — the peak input (prompt) tokens the model
    * consumed on its single most demanding request during this build, and the
@@ -277,7 +287,9 @@ export async function runOrchestratedBuild(
       }
     }
 
-    logger.info(`[orchestrator] Wrote ${opts.userImages.length} user-uploaded images to workspace at src/assets/user-image-*.ts`);
+    logger.info(
+      `[orchestrator] Wrote ${opts.userImages.length} user-uploaded images to workspace at src/assets/user-image-*.ts`,
+    );
   }
 
   /*
@@ -351,8 +363,10 @@ export async function runOrchestratedBuild(
    */
   const existingBrief = await readWorkspaceFile(projectId, '.palmkit/design-brief.md');
 
-  // Create all tools (shared across agents, filtered per agent)
-  // Pass the model so spawn_subagent can create sub-agents
+  /*
+   * Create all tools (shared across agents, filtered per agent)
+   * Pass the model so spawn_subagent can create sub-agents
+   */
   const allTools = createAgentTools(jobId, supabase, projectId, opts?.media, model);
 
   // Keep-alive timer (every 10s instead of 5s to reduce Realtime events)
@@ -369,25 +383,27 @@ export async function runOrchestratedBuild(
     }
   }, 10000);
 
-  // Hard-cap the whole orchestrator at 15 minutes using AbortController.
-  //
-  // The previous approach used setTimeout + throw. That DID NOT WORK because:
-  //   1. streamText runs as an async iterator (for await ... of fullStream).
-  //   2. The throw inside setTimeout fires in a separate event-loop turn.
-  //   3. The throw doesn't propagate into the active async iterator — the
-  //      for-await loop keeps waiting for the next chunk that never arrives.
-  //   4. Result: the Builder "finishes" writing files, then hangs forever
-  //      reading/rewriting the same file in a loop, never calling done(),
-  //      and the timeout never triggers a clean abort.
-  //
-  // The fix: AbortController. We pass abortSignal to streamText, which
-  // forwards it to the underlying fetch() call. When abort() fires:
-  //   - The fetch is cancelled → the LLM stream closes.
-  //   - The for-await loop sees an error chunk (or throws) → breaks out.
-  //   - We catch the AbortError and fail the job cleanly.
-  //
-  // 15 minutes is enough for real projects (Builder ~6min + Tester ~5min
-  // + npm install on cold E2B ~3min). Anything beyond that is a stuck LLM.
+  /*
+   * Hard-cap the whole orchestrator at 15 minutes using AbortController.
+   *
+   * The previous approach used setTimeout + throw. That DID NOT WORK because:
+   *   1. streamText runs as an async iterator (for await ... of fullStream).
+   *   2. The throw inside setTimeout fires in a separate event-loop turn.
+   *   3. The throw doesn't propagate into the active async iterator — the
+   *      for-await loop keeps waiting for the next chunk that never arrives.
+   *   4. Result: the Builder "finishes" writing files, then hangs forever
+   *      reading/rewriting the same file in a loop, never calling done(),
+   *      and the timeout never triggers a clean abort.
+   *
+   * The fix: AbortController. We pass abortSignal to streamText, which
+   * forwards it to the underlying fetch() call. When abort() fires:
+   *   - The fetch is cancelled → the LLM stream closes.
+   *   - The for-await loop sees an error chunk (or throws) → breaks out.
+   *   - We catch the AbortError and fail the job cleanly.
+   *
+   * 15 minutes is enough for real projects (Builder ~6min + Tester ~5min
+   * + npm install on cold E2B ~3min). Anything beyond that is a stuck LLM.
+   */
   const HARD_TIMEOUT_MS = 15 * 60 * 1000;
   const abortController = new AbortController();
   const hardTimeout = setTimeout(() => {
@@ -482,22 +498,9 @@ export async function runOrchestratedBuild(
   });
 
   const agentResults: OrchestratorResult['agentResults'] = [];
-  let researcherContext = '';
-  let plannerContext = '';
-  let builderContext = '';
-  let testerContext = '';
-  let overallSuccess = false;
 
-  /*
-   * Build-verification repair loop state. When the Tester runs the build and it
-   * FAILS, we feed the exact error back to a Builder repair pass and re-verify
-   * — up to MAX_REPAIR_ROUNDS times — instead of shipping a broken project as
-   * ready_for_preview. This mirrors how a real coding agent works: build → see
-   * the error → fix → re-verify until green.
-   */
-  const MAX_REPAIR_ROUNDS = 2;
-  let repairRounds = 0;
-  let repairContext = '';
+  let builderContext = '';
+  let overallSuccess = false;
 
   /*
    * Empty-Builder retry. Some models (observed with GLM-5.2 on complex prompts)
@@ -519,76 +522,15 @@ export async function runOrchestratedBuild(
   const fileWriteCounts = new Map<string, number>();
 
   try {
-    // A mutable work queue (not a fixed list) so a failed build can re-enqueue
-    // a Builder repair round + another Tester verification.
+    /*
+     * A mutable work queue (not a fixed list) so a failed build can re-enqueue
+     * a Builder repair round + another Tester verification.
+     */
     const agentQueue = [...DEFAULT_AGENT_FLOW];
 
     while (agentQueue.length > 0) {
       const role = agentQueue.shift() as (typeof DEFAULT_AGENT_FLOW)[number];
       const config = getAgentConfig(role);
-
-      /*
-       * TOKEN OPTIMIZATION: Skip Researcher for new projects (no worklog).
-       * Researcher is only useful when editing existing projects — it reads
-       * files and searches code. For a new project, there's nothing to read.
-       * Skipping it saves ~5 LLM calls (5 maxSteps × 4000 tokens = 20K tokens).
-       */
-      if (role === 'researcher' && !hasWorklog) {
-        logger.info('[orchestrator] Skipping Researcher (new project, nothing to read)');
-        await emitEvent(supabase, jobId, 'file_chunk' as any, '⏭️ Skipping Researcher (new project)');
-        continue;
-      }
-
-      /*
-       * Edit mode: skip Researcher AND Planner — the files are already
-       * preloaded in the workspace, and the Planner's design brief already
-       * exists in the worklog. The Builder reads the preloaded files +
-       * worklog + conversation history and makes targeted edits directly.
-       */
-      if (isEditMode && (role === 'researcher' || role === 'planner')) {
-        logger.info(`[orchestrator] Skipping ${role} (edit mode — files preloaded)`);
-        await emitEvent(supabase, jobId, 'file_chunk' as any, `⏭️ Skipping ${role} (edit mode)`);
-        continue;
-      }
-
-      // Agents setting: user turned this optional phase off.
-      if (role === 'researcher' && opts?.agentConfig && opts.agentConfig.researcher === false) {
-        logger.info('[orchestrator] Skipping Researcher (disabled by Agents setting)');
-        continue;
-      }
-
-      if (role === 'tester' && opts?.agentConfig && opts.agentConfig.tester === false) {
-        logger.info('[orchestrator] Skipping Tester (disabled by Agents setting)');
-        await emitEvent(supabase, jobId, 'file_chunk' as any, '⏭️ Skipping verification (Tester disabled)');
-        continue;
-      }
-
-      /*
-       * The Planner (design brain) is complementary to the Researcher: it runs
-       * on NEW projects to set the identity + design system + media plan up
-       * front. On EDITS we skip it — the Researcher already read the existing
-       * project, and the saved design brief (existingBrief) is carried forward
-       * to the Builder for consistency — so re-planning would just burn a brain
-       * call and risk drifting the established design.
-       */
-      if (role === 'planner' && hasWorklog) {
-        logger.info('[orchestrator] Skipping Planner (edit — reusing the saved design brief)');
-        continue;
-      }
-
-      /*
-       * Skip the Planner for SIMPLE new builds (prompt < 80 chars). The
-       * Planner's value is art direction — identity, palette, media plan.
-       * For a "build a counter" or "make a todo app" the Builder doesn't
-       * need a design brief; it can pick sensible defaults directly. This
-       * saves ~30s (Planner's LLM call) on the simplest builds. Complex
-       * prompts (≥80 chars) still get the full Planner treatment.
-       */
-      if (role === 'planner' && !hasWorklog && prompt.trim().length < 80) {
-        logger.info(`[orchestrator] Skipping Planner (simple build, prompt=${prompt.trim().length} chars)`);
-        await emitEvent(supabase, jobId, 'file_chunk' as any, '⏭️ Skipping Planner (simple build)');
-        continue;
-      }
 
       const agentTools = filterTools(allTools as unknown as ToolSet, config.allowedTools);
 
@@ -632,28 +574,48 @@ export async function runOrchestratedBuild(
          */
         const existingFiles = getProjectFiles(jobId);
         const existingPaths = Object.keys(existingFiles);
+
         if (existingPaths.length > 0) {
-          const fileListBlock = existingPaths.sort().map((p) => {
-            const content = existingFiles[p] || '';
-            const lines = content.split('\n').length;
-            return `  - ${p} (${lines} lines)`;
-          }).join('\n');
+          const fileListBlock = existingPaths
+            .sort()
+            .map((p) => {
+              const content = existingFiles[p] || '';
+              const lines = content.split('\n').length;
+
+              return `  - ${p} (${lines} lines)`;
+            })
+            .join('\n');
           agentPrompt += `\n\n=== EXISTING PROJECT FILES ===\nThe following ${existingPaths.length} files ALREADY EXIST in your workspace. They are loaded and ready to read with read_file().\n${fileListBlock}\n=== END FILES ===\n`;
 
-          // For edit mode, also inject content of key small files so the model
-          // has immediate context without extra tool calls
+          /*
+           * For edit mode, also inject content of key small files so the model
+           * has immediate context without extra tool calls
+           */
           if (isEditMode) {
             const SMALL_FILE_THRESHOLD = 50; // lines
-            const keyFiles = ['package.json', 'index.html', 'src/App.jsx', 'src/App.tsx', 'src/main.jsx', 'src/main.tsx', 'vite.config.js', 'vite.config.ts', 'tailwind.config.js', 'tailwind.config.ts'];
+            const keyFiles = [
+              'package.json',
+              'index.html',
+              'src/App.jsx',
+              'src/App.tsx',
+              'src/main.jsx',
+              'src/main.tsx',
+              'vite.config.js',
+              'vite.config.ts',
+              'tailwind.config.js',
+              'tailwind.config.ts',
+            ];
             const smallKeyFiles = existingPaths
-              .filter(p => keyFiles.some(k => p === k || p.endsWith('/' + k)))
-              .filter(p => (existingFiles[p]?.split('\n').length ?? 0) <= SMALL_FILE_THRESHOLD);
+              .filter((p) => keyFiles.some((k) => p === k || p.endsWith('/' + k)))
+              .filter((p) => (existingFiles[p]?.split('\n').length ?? 0) <= SMALL_FILE_THRESHOLD);
 
             if (smallKeyFiles.length > 0) {
-              const contentBlock = smallKeyFiles.map(p => {
-                const content = existingFiles[p] || '';
-                return `--- ${p} ---\n${content}`;
-              }).join('\n\n');
+              const contentBlock = smallKeyFiles
+                .map((p) => {
+                  const content = existingFiles[p] || '';
+                  return `--- ${p} ---\n${content}`;
+                })
+                .join('\n\n');
 
               agentPrompt += `\n\n=== KEY FILE CONTENTS (for quick reference — use read_file for full content) ===\n${contentBlock}\n=== END KEY FILE CONTENTS ===\n`;
             }
@@ -674,34 +636,18 @@ export async function runOrchestratedBuild(
                   .join('\n\n')}\n`
               : '';
 
-          const fileList = existingPaths.length > 0
-            ? existingPaths.join(', ')
-            : 'None found — check with list_files()';
+          const fileList = existingPaths.length > 0 ? existingPaths.join(', ') : 'None found — check with list_files()';
 
           /*
-           * Session-backed edits get a short factual note (the session itself
-           * proves the project exists — the model saw itself build it).
-           * Legacy no-session edits keep the loud guard block: without prior
-           * messages, weak models genuinely rebuild from scratch.
+           * STATE, not intent. The model is told what exists — nothing more.
+           * What to DO with the request (answer / build / edit) is entirely
+           * its judgment, per the system prompt. The old shouting guard
+           * block ("DO NOT REBUILD", "NEVER ask_user", numbered workflow)
+           * is gone: rails belong in the runtime, not in prose.
            */
-          agentPrompt += hasSession
-            ? `${editConvBlock}\n\n` +
-              `This is a follow-up request on the SAME project you have been building in this session ` +
-              `(${existingPaths.length} files in the workspace: ${fileList}). ` +
-              `Make targeted changes with read_file/edit_file, verify with "npm install && npm run build", then done().\n`
-            : `${editConvBlock}\n\n` +
-              `🔴🔴🔴 THIS IS AN EDIT OF AN EXISTING PROJECT — DO NOT REBUILD FROM SCRATCH. 🔴🔴🔴\n` +
-              `There are ${existingPaths.length} files already in your workspace: ${fileList}\n` +
-              `These files are REAL and LOADED — you can read them with read_file() RIGHT NOW.\n` +
-              `DO NOT create package.json, index.html, vite.config.js, or any scaffolding — they already exist!\n` +
-              `DO NOT say "files don't exist" or "I'll create the project" — the project is already built!\n` +
-              `YOUR WORKFLOW:\n` +
-              `1. If you need to see file content: read_file("path/to/file")\n` +
-              `2. To make changes: edit_file(path, oldText, newText) for targeted edits\n` +
-              `3. To verify: run_shell("npm install && npm run build")\n` +
-              `4. When done: done(summary of what changed)\n\n` +
-              `NEVER use run_shell("ls"), run_shell("find"), run_shell("cat") — use list_files() and read_file() instead.\n` +
-              `NEVER use ask_user — just make the changes directly.\n`;
+          agentPrompt +=
+            `${editConvBlock}\n\n` +
+            `Project state: ${existingPaths.length} files exist in your workspace (${fileList}).\n`;
         }
 
         // Skills
@@ -727,7 +673,10 @@ export async function runOrchestratedBuild(
          */
         if (opts?.userImages && opts.userImages.length > 0) {
           const imageList = opts.userImages
-            .map((img, i) => `  - src/assets/user-image-${i}.ts (${img.mime}, ~${Math.round((img.dataUrl.length * 0.75) / 1024)}KB)`)
+            .map(
+              (img, i) =>
+                `  - src/assets/user-image-${i}.ts (${img.mime}, ~${Math.round((img.dataUrl.length * 0.75) / 1024)}KB)`,
+            )
             .join('\n');
           agentPrompt += `\n\n=== USER-UPLOADED IMAGES (the user attached these — USE THEM in the project) ===\nThe user uploaded ${opts.userImages.length} image(s) with their prompt. They are saved as ES modules in the workspace at:\n${imageList}\n\nUSAGE:\n- For React/Vue/Vite projects: \`import userImage0 from './assets/user-image-0'\` then \`<img src={userImage0} />\`\n- For static HTML projects: read_file('src/assets/user-image-0.ts') to get the data URL, then inline it: \`<img src="data:image/jpeg;base64,...">\`\n\nUse these images where they fit — as hero backgrounds, product photos, gallery images, avatars, etc. Do NOT regenerate or replace them with AI-generated images unless the user explicitly asks. If the user's prompt references "the photo I uploaded" or "my image", this is what they mean.\n=== END USER-UPLOADED IMAGES ===`;
         }
@@ -750,38 +699,15 @@ export async function runOrchestratedBuild(
         }
       }
 
-      if (role === 'researcher' && hasWorklog) {
-        agentPrompt = `${prompt}${handoffBlock}\n\nPROJECT MEMORY (worklog.md):\n${worklog}`;
-      }
-
-      if (role === 'planner') {
-        // The design brain: turn the request (+ any researcher findings) into an
-        // art-directed brief. Kept minimal — the system prompt carries the shape.
-        agentPrompt =
-          `${prompt}${handoffBlock}` +
-          (researcherContext ? `\n\nRESEARCHER FINDINGS (existing project):\n${researcherContext}` : '') +
-          `\n\nProduce the design + media brief for this request now.`;
-      }
-
       /*
        * The design brief handed to the Builder: the Planner's fresh output when
        * it ran (new project), otherwise the saved brief from a previous build
        * (edits) so the design stays consistent.
        */
-      const activeBrief = plannerContext || existingBrief || '';
+      const activeBrief = existingBrief || '';
       const briefBlock = activeBrief
         ? `\n\n=== DESIGN & MEDIA BRIEF (your art direction — apply the design system and execute the media plan exactly) ===\n${activeBrief}\n=== END BRIEF ===`
         : '';
-
-      if (role === 'builder' && researcherContext) {
-        agentPrompt = `${prompt}${handoffBlock}${briefBlock}\n\nRESEARCHER FINDINGS:\n${researcherContext}\n\nNow build the project based on the brief, these findings, and the user's request.`;
-      } else if (role === 'builder' && briefBlock) {
-        agentPrompt = `${prompt}${handoffBlock}${briefBlock}\n\nNow build the project based on the brief and the user's request.`;
-      } else if (role === 'builder' && handoffBlock) {
-        // No researcher context (e.g. Researcher skipped) but this IS a
-        // continuation — make sure the Builder still sees the handoff.
-        agentPrompt = `${prompt}${handoffBlock}\n\nThis is a continuation of an existing project. Use read_file/list_files to inspect the carried-over files before changing them; do not rebuild from scratch.`;
-      }
 
       /*
        * Edit mode: the Builder has preloaded files + worklog + conversation
@@ -790,29 +716,12 @@ export async function runOrchestratedBuild(
        * to inspect, write_file/edit_file to modify, and run_shell to verify
        * the build — a full agent loop, not a single LLM call.
        */
-      if (role === 'builder' && isEditMode) {
-        const editWorklogBlock = worklog ? `\nPROJECT MEMORY (worklog.md):\n${worklog}\n` : '';
-        const editConvBlock =
-          opts?.conversationHistory && opts.conversationHistory.length > 0
-            ? `\nCONVERSATION HISTORY (full context from prior messages):\n${opts.conversationHistory
-                .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
-                .join('\n\n')}\n`
-            : '';
-
-        agentPrompt = `${prompt}${editWorklogBlock}${editConvBlock}\n\n` +
-          `🔴 CRITICAL: THIS IS AN EDIT OF AN EXISTING PROJECT — DO NOT REBUILD FROM SCRATCH.\n` +
-          `Files are already in your workspace. Use list_files to see them, read_file to inspect.\n` +
-          `YOUR WORKFLOW: read_file → edit_file → run_shell("npm install && npm run build") → done()\n` +
-          `NEVER use run_shell("ls"), run_shell("find"), or run_shell("cat") — use list_files() and read_file() instead.\n` +
-          `NEVER use ask_user — just make the changes directly.\n`;
-      }
-
       /*
        * Force-build retry: the previous Builder turn produced NO files (the
        * model reasoned but never called write_file). Override the prompt with a
        * blunt directive to act now. Takes precedence over the normal prompts.
        */
-      if (role === 'builder' && forceBuild) {
+      if (forceBuild) {
         agentPrompt = incompleteBuild
           ? `${prompt}\n\n` +
             `CRITICAL: The project is INCOMPLETE and cannot run. It is missing required scaffolding — ` +
@@ -827,53 +736,6 @@ export async function runOrchestratedBuild(
             `After all files are written, call done(). Do NOT describe the plan — build it with tool calls immediately.`;
         forceBuild = false; // consumed
         incompleteBuild = false; // consumed
-      }
-
-      // Repair round: a previous build failed — give the Builder the exact
-      // error and tell it to fix ONLY that, then re-verify.
-      if (role === 'builder' && repairContext) {
-        agentPrompt = `The current project FAILS to compile. Your job is to FIX it (do not start over).\n\nOriginal request (for context):\n${prompt}\n\n${repairContext}\n\nInstructions: use read_file to inspect the offending files, fix ONLY the specific errors above (missing imports/files, type errors, syntax, wrong paths, missing deps in package.json), then run "cd /home/user/project && npm install && npm run build" to confirm it passes, then call done(). Do NOT rewrite files that already work.`;
-      }
-
-      if (role === 'tester' && builderContext) {
-        agentPrompt = `The Builder has finished creating the project. Here's the summary:\n${builderContext}\n\nNow verify the project works. The files are already written — just run the build, tests, and screenshot.`;
-      }
-
-      /*
-       * Skills: user-enabled instruction playbooks. They are house rules the
-       * generation must honour, so we surface them to the roles that actually
-       * shape and write the app (Planner art-directs, Builder codes). Injected
-       * as a clearly-delimited block the model must follow.
-       */
-      if ((role === 'planner' || role === 'builder') && opts?.skills && opts.skills.length > 0) {
-        const skillsBlock = opts.skills.map((s) => `• ${s.name}: ${s.instructions}`).join('\n');
-        agentPrompt = `${agentPrompt}\n\n=== ACTIVE SKILLS (mandatory house rules — apply all of them) ===\n${skillsBlock}\n=== END SKILLS ===`;
-      }
-
-      /*
-       * Design scheme (palette + fonts + features) — the user's explicit
-       * design choices from the toolbar. Injected into Planner + Builder so
-       * the Planner's DESIGN SYSTEM uses these exact colors/fonts, and the
-       * Builder applies them in code. Without this the palette popover was a
-       * no-op on the external-worker path.
-       */
-      if ((role === 'planner' || role === 'builder') && opts?.designScheme) {
-        const ds = opts.designScheme;
-        const paletteLines = Object.entries(ds.palette)
-          .map(([role, hex]) => `- ${role}: ${hex}`)
-          .join('\n');
-        const fontLine = ds.font.length > 0 ? ds.font.join(', ') : 'not specified (pick a fitting pair)';
-        const featuresLine = ds.features.length > 0 ? ds.features.join(', ') : 'none specified';
-        agentPrompt = `${agentPrompt}\n\n=== USER DESIGN SCHEME (MANDATORY — use these exact values, do not invent your own) ===\nPALETTE:\n${paletteLines}\n\nFONTS: ${fontLine}\n\nDESIGN FEATURES: ${featuresLine}\n=== END USER DESIGN SCHEME ===`;
-      }
-
-      /*
-       * Libraries: reference material the Builder can draw on (snippets, tokens,
-       * docs). Not commands — the model uses them where relevant.
-       */
-      if (role === 'builder' && opts?.libraries && opts.libraries.length > 0) {
-        const libBlock = opts.libraries.map((l) => `--- ${l.name} (${l.kind}) ---\n${l.content}`).join('\n\n');
-        agentPrompt = `${agentPrompt}\n\n=== REFERENCE LIBRARY (reusable material to draw on where relevant) ===\n${libBlock}\n=== END REFERENCE LIBRARY ===`;
       }
 
       logger.info(`[orchestrator] Running ${config.name} agent (maxSteps=${config.maxSteps})`);
@@ -909,8 +771,10 @@ export async function runOrchestratedBuild(
         await emitEvent(supabase, jobId, 'job_failed', 'Build cancelled by user — saving partial state...');
         abortController.abort();
 
-        // Write partial manifest immediately (don't wait for finally{} — the
-        // file map is still populated here).
+        /*
+         * Write partial manifest immediately (don't wait for finally{} — the
+         * file map is still populated here).
+         */
         await finalizePartial();
 
         overallSuccess = false;
@@ -1075,7 +939,18 @@ export async function runOrchestratedBuild(
        * We do NOT emit orchestrator-level events for these to avoid duplication.
        * Tools NOT in this set get an orchestrator-level event on tool-call.
        */
-      const SELF_EMITTING_TOOLS = new Set(['write_file', 'write_files', 'edit_file', 'delete_file', 'update_todos', 'done', 'ask_user', 'analyze_screenshot', 'generate_video', 'generate_image']);
+      const SELF_EMITTING_TOOLS = new Set([
+        'write_file',
+        'write_files',
+        'edit_file',
+        'delete_file',
+        'update_todos',
+        'done',
+        'ask_user',
+        'analyze_screenshot',
+        'generate_video',
+        'generate_image',
+      ]);
 
       const emitToolEvent = async (toolName: string, args: any) => {
         try {
@@ -1128,18 +1003,18 @@ export async function runOrchestratedBuild(
        * (orchestrator/researcher) on the smartest one, builders on a fast
        * coder, the tester on a checker. Falls back to the main model.
        */
-      const roleKey: 'brain' | 'builder' | 'tester' =
-        role === 'builder' ? 'builder' : role === 'tester' ? 'tester' : 'brain';
-      const agentModel = opts?.agentModels?.[roleKey] ?? model;
+      const agentModel = opts?.agentModels?.brain ?? model;
 
-      // ── PRE-FLIGHT TOKEN ESTIMATION ──────────────────────────────────
-      // Estimate input tokens BEFORE calling the LLM so we can fail early
-      // when the prompt is clearly too large for the model's context window.
-      // For the brain, the stored session messages are part of the request.
+      /*
+       * ── PRE-FLIGHT TOKEN ESTIMATION ──────────────────────────────────
+       * Estimate input tokens BEFORE calling the LLM so we can fail early
+       * when the prompt is clearly too large for the model's context window.
+       * For the brain, the stored session messages are part of the request.
+       */
       const sessionTokens = role === 'brain' ? estimateSessionTokens(session.messages) : 0;
       const estimatedInputTokens = Math.ceil((config.systemPrompt.length + agentPrompt.length) / 4) + sessionTokens;
-      const warnThreshold  = Math.floor(effectiveContextWindow * 0.80);
-      const failThreshold  = Math.floor(effectiveContextWindow * 0.95);
+      const warnThreshold = Math.floor(effectiveContextWindow * 0.8);
+      const failThreshold = Math.floor(effectiveContextWindow * 0.95);
 
       if (estimatedInputTokens > failThreshold) {
         const msg =
@@ -1172,14 +1047,18 @@ export async function runOrchestratedBuild(
         );
       }
 
-      // GUARANTEED FIRST EVENT — always emit before the LLM call so the user
-      // sees activity even if the provider is slow or the prompt is huge.
+      /*
+       * GUARANTEED FIRST EVENT — always emit before the LLM call so the user
+       * sees activity even if the provider is slow or the prompt is huge.
+       */
       const promptChars = agentPrompt.length;
       const estimatedTokens = Math.ceil(promptChars / 4);
       await emitEvent(
-        supabase, jobId, 'file_chunk' as any,
+        supabase,
+        jobId,
+        'file_chunk' as any,
         `🧠 ${config.name} is processing your request (${(promptChars / 1024).toFixed(1)}KB, ~${estimatedTokens} tokens)...`,
-        { agent: config.name, kind: 'agent_thinking', promptSize: promptChars, estimatedTokens }
+        { agent: config.name, kind: 'agent_thinking', promptSize: promptChars, estimatedTokens },
       );
 
       /*
@@ -1216,6 +1095,7 @@ export async function runOrchestratedBuild(
         ...(brainMessages ? { messages: brainMessages as any } : { prompt: agentPrompt }),
         tools: agentTools,
         maxSteps: config.maxSteps,
+
         /*
          * Deterministic tool-call repair (see repairStringifiedArgs above).
          * Fires only on InvalidToolArgumentsError; null = not repairable,
@@ -1240,6 +1120,7 @@ export async function runOrchestratedBuild(
         },
         temperature: 0.3, // Low temperature for consistent code generation (was 0.7 — too random)
         maxTokens: stepMaxTokens,
+
         /*
          * abortSignal — when abortController.abort() fires (either from the
          * 15-min hard timeout OR from the loop-detection below), streamText
@@ -1283,7 +1164,9 @@ export async function runOrchestratedBuild(
       const stallTimer = setInterval(() => {
         if (Date.now() - lastChunkAt > STALL_TIMEOUT_MS) {
           stalled = true;
-          logger.warn(`[orchestrator] ${config.name} stream stalled (${STALL_TIMEOUT_MS / 1000}s without a chunk) — aborting this attempt for retry`);
+          logger.warn(
+            `[orchestrator] ${config.name} stream stalled (${STALL_TIMEOUT_MS / 1000}s without a chunk) — aborting this attempt for retry`,
+          );
           attemptController.abort();
           clearInterval(stallTimer);
         }
@@ -1292,6 +1175,7 @@ export async function runOrchestratedBuild(
       try {
         for await (const part of streamResult.fullStream) {
           lastChunkAt = Date.now();
+
           switch (part.type) {
             /*
              * text-delta — the model's regular text output.
@@ -1408,6 +1292,7 @@ export async function runOrchestratedBuild(
 
                 if (filePath) {
                   fileWriteCounts.set(filePath, (fileWriteCounts.get(filePath) ?? 0) + 1);
+
                   const writes = fileWriteCounts.get(filePath)!;
 
                   /*
@@ -1434,9 +1319,12 @@ export async function runOrchestratedBuild(
                     logger.warn(
                       `[orchestrator] ${config.name} wrote ${filePath} ${writes}× — stopping this agent and salvaging the files built so far.`,
                     );
-                    // Silent: don't emit a user-visible error. The build continues
-                    // with the files already written. The brain will call done()
-                    // or the orchestrator will finalize with what's available.
+
+                    /*
+                     * Silent: don't emit a user-visible error. The build continues
+                     * with the files already written. The brain will call done()
+                     * or the orchestrator will finalize with what's available.
+                     */
                     attemptController.abort();
                     break;
                   }
@@ -1478,16 +1366,20 @@ export async function runOrchestratedBuild(
              */
             case 'error': {
               const errStr = String(part.error);
-              const errStack = (part.error instanceof Error) ? part.error.stack : '';
-              logger.error(`[orchestrator] Stream error in ${config.name}: ${errStr}${errStack ? '\n' + errStack : ''}`);
+              const errStack = part.error instanceof Error ? part.error.stack : '';
+              logger.error(
+                `[orchestrator] Stream error in ${config.name}: ${errStr}${errStack ? '\n' + errStack : ''}`,
+              );
               streamError = part.error instanceof Error ? part.error : new Error(errStr);
               break;
             }
 
             default:
-              // Other part types (tool-call-streaming-start, tool-call-delta,
-              // tool-result, step-start, source, file, reasoning-signature,
-              // redacted-reasoning) — not relevant to event emission.
+              /*
+               * Other part types (tool-call-streaming-start, tool-call-delta,
+               * tool-result, step-start, source, file, reasoning-signature,
+               * redacted-reasoning) — not relevant to event emission.
+               */
               break;
           }
 
@@ -1519,12 +1411,7 @@ export async function runOrchestratedBuild(
            * user cancel. The build deserves a fresh attempt: re-queue the
            * same agent and continue, exactly like the flaky-provider retry.
            */
-          if (
-            stalled &&
-            !abortController.signal.aborted &&
-            (role === 'brain' || role === 'builder') &&
-            builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES
-          ) {
+          if (stalled && !abortController.signal.aborted && builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES) {
             clearInterval(stallTimer);
             abortController.signal.removeEventListener('abort', onJobAbort);
             builderEmptyRetries++;
@@ -1570,8 +1457,10 @@ export async function runOrchestratedBuild(
             ).catch(() => undefined);
           }
 
-          // Tell the user honestly — a silent abort used to masquerade as a
-          // normal completion ("Build complete" with missing files).
+          /*
+           * Tell the user honestly — a silent abort used to masquerade as a
+           * normal completion ("Build complete" with missing files).
+           */
           await emitEvent(
             supabase,
             jobId,
@@ -1579,8 +1468,11 @@ export async function runOrchestratedBuild(
             `⏱️ ${config.name} hit the build time limit and was stopped — checking what was completed…`,
             { agent: config.name, kind: 'agent_aborted' },
           ).catch(() => undefined);
-          // Don't rethrow — just stop this agent's loop.
-          // The job_processor will see 0 files and fail the job cleanly.
+
+          /*
+           * Don't rethrow — just stop this agent's loop.
+           * The job_processor will see 0 files and fail the job cleanly.
+           */
           streamError = null;
 
           // Mark this agent as failed in results so the failure path triggers
@@ -1602,15 +1494,21 @@ export async function runOrchestratedBuild(
 
       if (streamError) {
         // CONTEXT OVERFLOW — never retry, fail immediately with clear message
-        const isContextOverflow = /context_length|too many tokens|token limit|input too large|max.?token|prompt too long|exceeds.*context/i.test(streamError.message);
+        const isContextOverflow =
+          /context_length|too many tokens|token limit|input too large|max.?token|prompt too long|exceeds.*context/i.test(
+            streamError.message,
+          );
 
         if (isContextOverflow) {
           logger.error(`[orchestrator] Context overflow detected: ${streamError.message.slice(0, 200)}`);
-          await emitEvent(supabase, jobId, 'file_chunk' as any,
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk' as any,
             `❌ Your prompt is too large for this model's context window. The system prompt + your request + project context exceeds the limit. ` +
-            `Please: (1) shorten your prompt, (2) use a model with a larger context (128K+), or (3) start a fresh chat. ` +
-            `Error: ${streamError.message.slice(0, 200)}`,
-            { kind: 'context_overflow', error: streamError.message.slice(0, 500) }
+              `Please: (1) shorten your prompt, (2) use a model with a larger context (128K+), or (3) start a fresh chat. ` +
+              `Error: ${streamError.message.slice(0, 200)}`,
+            { kind: 'context_overflow', error: streamError.message.slice(0, 500) },
           );
           throw streamError; // Don't retry context overflow errors
         }
@@ -1633,10 +1531,7 @@ export async function runOrchestratedBuild(
           !streamError.message.includes('authentication') &&
           !streamError.message.includes('API key');
 
-        const canRetry =
-          (role === 'builder' || role === 'brain') &&
-          builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES &&
-          isRecoverable;
+        const canRetry = builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES && isRecoverable;
 
         /*
          * SALVAGE GATE — a late tool-argument error (e.g. a malformed
@@ -1647,7 +1542,7 @@ export async function runOrchestratedBuild(
          * 88bdfbd4: app built, `npm run build` exit 0, then a broken
          * screenshot call failed the whole job three times in a row.
          */
-        if (role === 'brain' || role === 'builder') {
+        {
           const salvageFiles = getProjectFiles(jobId) as Record<string, string>;
           const salvageCount = Object.keys(salvageFiles).length;
           const salvageBuild = getBuildResult(jobId);
@@ -1663,6 +1558,7 @@ export async function runOrchestratedBuild(
               `✅ Build completed and verified (${salvageCount} files). A non-essential final step failed and was skipped.`,
               { kind: 'salvaged_success', error: streamError.message.slice(0, 200) },
             );
+
             // Keep session continuity for the salvaged turn too.
             if (role === 'brain') {
               await appendToSession(
@@ -1703,7 +1599,7 @@ export async function runOrchestratedBuild(
           streamError = null;
           builderEmptyRetries++;
           forceBuild = true;
-          agentQueue.unshift(role === 'brain' ? 'brain' : 'builder');
+          agentQueue.unshift('brain');
           continue; // skip the (unavailable) stream results; run the agent again
         }
 
@@ -1745,6 +1641,7 @@ export async function runOrchestratedBuild(
       }
 
       const agentDuration = Date.now() - agentStart;
+
       /*
        * Success criteria — only true when the LLM finished cleanly AND made at
        * least one tool call. The old code (result.finishReason !== 'error')
@@ -1785,7 +1682,7 @@ export async function runOrchestratedBuild(
          * only warn for the Builder, where hitting the cap means the file set
          * may genuinely be incomplete.
          */
-        if (role === 'builder') {
+        {
           await emitEvent(
             supabase,
             jobId,
@@ -1831,25 +1728,8 @@ export async function runOrchestratedBuild(
         }
       }
 
-      // Store context for next agent
-      if (role === 'researcher') {
-        researcherContext = agentText;
-      } else if (role === 'planner') {
-        plannerContext = agentText;
-
-        /*
-         * Persist the brief so future EDITS (which skip the Planner) still get
-         * the same identity/palette/media direction and keep the design
-         * consistent. Best-effort — a failed save never blocks the build.
-         */
-        if (agentText.trim()) {
-          try {
-            await putFile(buildWorkspaceKey(projectId, '.palmkit/design-brief.md'), agentText);
-          } catch (e) {
-            logger.warn(`[orchestrator] Failed to persist design brief: ${e}`);
-          }
-        }
-      } else if (role === 'builder' || role === 'brain') {
+      // Capture the agent's narration for the final summary + rawText.
+      {
         builderContext = agentText;
 
         /*
@@ -1905,25 +1785,17 @@ export async function runOrchestratedBuild(
           }
 
           if (summaryText.length > 30) {
-            await emitEvent(
-              supabase,
-              jobId,
-              'file_chunk' as any,
-              `📋 Build summary ready`,
-              {
-                agent: config.name,
-                role,
-                kind: 'build_summary',
-                text: summaryText,
-                isBuildSummary: true,
-              },
-            );
+            await emitEvent(supabase, jobId, 'file_chunk' as any, `📋 Build summary ready`, {
+              agent: config.name,
+              role,
+              kind: 'build_summary',
+              text: summaryText,
+              isBuildSummary: true,
+            });
           }
         } catch (e) {
           logger.warn(`[orchestrator] Failed to emit build_summary: ${e}`);
         }
-      } else if (role === 'tester') {
-        testerContext = agentText;
       }
 
       // Emit agent_completed — closes the activity stream group for this agent.
@@ -1940,10 +1812,15 @@ export async function runOrchestratedBuild(
        * ZERO files, the model planned without acting. Re-queue the Builder once
        * with a force-build directive (runs BEFORE the Tester) instead of failing.
        */
-      if ((role === 'builder' || role === 'brain') && builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES) {
+      if (builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES) {
         const curFiles = getProjectFiles(jobId) as Record<string, string>;
         const curPaths = Object.keys(curFiles);
-        const zeroFiles = curPaths.length === 0;
+
+        /*
+         * A deliberate done() with zero files = the model ANSWERED (question
+         * intent). Never force-build over a conscious reply.
+         */
+        const zeroFiles = curPaths.length === 0 && !getDoneSummary(jobId);
 
         /*
          * Under-generation gate. A Vite app (react/vue/nextjs) that finished
@@ -1979,7 +1856,7 @@ export async function runOrchestratedBuild(
         const isViteApp = detectedType === 'react' || detectedType === 'vue' || isViteType;
         const hasSufficientEntryPoint = isViteApp
           ? hasIndexHtml && hasSourceFile
-          : (hasIndexHtml || hasSourceFile || hasPyEntry || hasFlutterEntry);
+          : hasIndexHtml || hasSourceFile || hasPyEntry || hasFlutterEntry;
 
         const missingEntryPoint = !zeroFiles && !missingPkg && curPaths.length > 0 && !hasSufficientEntryPoint;
 
@@ -1987,7 +1864,7 @@ export async function runOrchestratedBuild(
           builderEmptyRetries++;
           forceBuild = true;
           incompleteBuild = !zeroFiles && (missingPkg || missingEntryPoint);
-          agentQueue.unshift(role === 'brain' ? 'brain' : 'builder'); // re-run the same agent type
+          agentQueue.unshift('brain'); // re-run the agent
 
           const reason = zeroFiles
             ? 'empty_builder_retry'
@@ -1995,47 +1872,18 @@ export async function runOrchestratedBuild(
               ? 'incomplete_build_retry'
               : 'no_entry_point_retry';
 
-          const agentName = role === 'brain' ? 'Brain' : 'Builder';
+          const agentName = 'Palmkit';
           const msg = zeroFiles
             ? `⚠️ No files written yet — re-prompting ${agentName} to build now (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`
             : missingPkg
               ? `⚠️ Build is missing package.json — a Vite app can't run without it. Asking ${agentName} to finish the scaffolding (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`
               : `⚠️ Build has ${curPaths.length} files but NO entry point (no index.html, no src/App.jsx). The preview will 404. Re-prompting ${agentName} to write the missing entry files (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`;
 
-          await emitEvent(
-            supabase,
-            jobId,
-            'file_chunk' as any,
-            msg,
-            { reason, attempt: builderEmptyRetries, currentFiles: curPaths },
-          );
-        }
-      }
-
-      /*
-       * Build-verification repair gate. After a Tester runs, inspect the real
-       * build result. If the build FAILED and we still have repair budget,
-       * enqueue a Builder repair round (fed the exact error) + another Tester.
-       * Otherwise clear the repair context.
-       */
-      if (role === 'tester') {
-        const br = getBuildResult(jobId);
-
-        logger.info(`[orchestrator] Tester finished. br=${br ? JSON.stringify({ passed: br.passed, command: br.command?.slice(0, 50) }) : 'null'}. media=${opts?.media ? 'present' : 'MISSING'}. visionApiKey=${opts?.media?.visionApiKey ? 'present' : 'MISSING'}. apiKey=${opts?.media?.apiKey ? 'present' : 'MISSING'}`);
-
-        if (br && !br.passed && repairRounds < MAX_REPAIR_ROUNDS) {
-          repairRounds++;
-          repairContext = `Failed build command: ${br.command}\n\nBuild error output (tail):\n${br.output}`;
-          agentQueue.push('builder', 'tester');
-          await emitEvent(
-            supabase,
-            jobId,
-            'file_chunk' as any,
-            `🔧 Build failed — starting repair attempt ${repairRounds}/${MAX_REPAIR_ROUNDS}…`,
-            { repairRound: repairRounds },
-          );
-        } else {
-          repairContext = '';
+          await emitEvent(supabase, jobId, 'file_chunk' as any, msg, {
+            reason,
+            attempt: builderEmptyRetries,
+            currentFiles: curPaths,
+          });
         }
       }
     }
@@ -2109,8 +1957,10 @@ export async function runOrchestratedBuild(
               // Need BOTH index.html AND a source file in src/
               const hasIndexHtml = filePaths.some((p) => /^index\.html$/i.test(p));
               const hasSourceFile = filePaths.some((p) => /^src\/.*(jsx|tsx|vue|js|ts)$/i.test(p));
+
               return hasIndexHtml && hasSourceFile;
             }
+
             // For other app types, any single pattern match is enough
             return filePaths.some((p) => patterns.some((re) => re.test(p)));
           })();
@@ -2165,6 +2015,17 @@ export async function runOrchestratedBuild(
     }
 
     /*
+     * ANSWER MODE — zero files + a deliberate done() = the model replied to
+     * a question/discussion. That is a successful turn, not a failed build.
+     */
+    const answered = fileCount === 0 && !!getDoneSummary(jobId) && agentResults.some((a) => a.success);
+
+    if (answered) {
+      overallSuccess = true;
+      logger.info(`[orchestrator] Answer mode: the agent replied without file changes.`);
+    }
+
+    /*
      * Honest completion gate. If files exist but the build STILL fails after
      * all repair attempts, keep the files (so the user can view/edit them) but
      * surface the failure clearly instead of presenting a broken preview as OK.
@@ -2177,25 +2038,27 @@ export async function runOrchestratedBuild(
         supabase,
         jobId,
         'file_chunk' as any,
-        `⚠️ Build still has errors after ${repairRounds} repair attempt(s). Files are saved so you can review/fix them, but the live preview may not run.`,
-        { buildVerified: false, repairRounds },
+        `Build finished with errors. Files are saved so you can review or fix them, but the live preview may not run.`,
+        { buildVerified: false },
       );
     }
 
     logger.info(
-      `[orchestrator] Build finished: ${fileCount} files, ${agentResults.length} agents ran, buildVerified=${buildVerified}, repairRounds=${repairRounds}`,
+      `[orchestrator] Build finished: ${fileCount} files, ${agentResults.length} agent runs, buildVerified=${buildVerified}`,
     );
 
-    // Write worklog + manifest + .palmkit/ memory
-    // Write EVEN on partial/failed builds if files were written — the next
-    // "edit" message needs this memory to know what exists. Without it, the
-    // model thinks the project is empty and rebuilds from scratch.
+    /*
+     * Write worklog + manifest + .palmkit/ memory
+     * Write EVEN on partial/failed builds if files were written — the next
+     * "edit" message needs this memory to know what exists. Without it, the
+     * model thinks the project is empty and rebuilds from scratch.
+     */
     const hasFiles = fileCount > 0;
 
     if (hasFiles) {
       const totalSize = Object.values(files).reduce((s: number, c: string) => s + c.length, 0);
       const duration = Date.now() - startTime;
-      const summary = testerContext || builderContext.slice(-500) || undefined;
+      const summary = builderContext.slice(-500) || undefined;
 
       if (overallSuccess) {
         await emitEvent(
@@ -2205,7 +2068,7 @@ export async function runOrchestratedBuild(
           `🚀 Orchestrated build complete: ${fileCount} files, ${totalSize} chars, ${agentResults.length} agents${
             buildVerified === true ? ' — build verified ✓' : buildVerified === false ? ' — build has errors ⚠️' : ''
           }`,
-          { fileCount, agents: agentResults.map((a) => a.role), buildVerified, repairRounds },
+          { fileCount, agents: agentResults.map((a) => a.role), buildVerified },
         );
       } else {
         await emitEvent(
@@ -2252,7 +2115,9 @@ export async function runOrchestratedBuild(
         manifest.apiRoutes = smartManifest.apiRoutes;
         manifest.qualityGates = smartManifest.qualityGates;
         manifest.lastKnownStatus = overallSuccess
-          ? (testerContext.includes('build pass') ? 'build_passed' : 'build_unknown')
+          ? buildVerified === true
+            ? 'build_passed'
+            : 'build_unknown'
           : 'partial';
         manifest.knownIssues = smartManifest.knownIssues;
         await writeManifest(manifest, supabase, userId);
@@ -2265,8 +2130,10 @@ export async function runOrchestratedBuild(
           userId,
         );
 
-        // 4. Palmkit.md — the project's primary memory file (injected at
-        //    session start on the next build).
+        /*
+         * 4. Palmkit.md — the project's primary memory file (injected at
+         *    session start on the next build).
+         */
         await writePalmkitProjectMemory(
           projectId,
           {
@@ -2282,22 +2149,24 @@ export async function runOrchestratedBuild(
           userId,
         );
 
-        // 5. Git checkpoint (M1) — flush the full file set to the project's
-        //    disk dir and commit this turn. Exports .palmkit/history.json
-        //    (hash + date + message, last 20) for the version-history UI.
+        /*
+         * 5. Git checkpoint (M1) — flush the full file set to the project's
+         *    disk dir and commit this turn. Exports .palmkit/history.json
+         *    (hash + date + message, last 20) for the version-history UI.
+         */
         const checkpoint = await commitProjectTurn(projectId, files, prompt, supabase, userId);
 
         if (checkpoint) {
-          await emitEvent(
-            supabase,
-            jobId,
-            'file_chunk' as any,
-            `🕘 Checkpoint saved (${checkpoint.hash})`,
-            { kind: 'checkpoint', hash: checkpoint.hash, message: checkpoint.message },
-          ).catch(() => undefined);
+          await emitEvent(supabase, jobId, 'file_chunk' as any, `🕘 Checkpoint saved (${checkpoint.hash})`, {
+            kind: 'checkpoint',
+            hash: checkpoint.hash,
+            message: checkpoint.message,
+          }).catch(() => undefined);
         }
 
-        logger.info(`[orchestrator] Worklog + manifest + .palmkit/ memory updated for ${projectId} (${overallSuccess ? 'success' : 'partial'})`);
+        logger.info(
+          `[orchestrator] Worklog + manifest + .palmkit/ memory updated for ${projectId} (${overallSuccess ? 'success' : 'partial'})`,
+        );
       } catch (e) {
         logger.warn(`[orchestrator] Failed to update memory: ${e}`);
       }
@@ -2312,6 +2181,7 @@ export async function runOrchestratedBuild(
 
     return {
       success: overallSuccess,
+      answered,
       files: fileOps,
       rawText: agentResults.map((a) => `[${a.role}]: ${a.text.slice(0, 200)}`).join('\n\n'),
       totalDuration: Date.now() - startTime,
@@ -2341,6 +2211,7 @@ export async function runOrchestratedBuild(
      */
     return {
       success: false,
+      answered: false,
       files: errFileOps,
       rawText: `orchestrator-error: ${err instanceof Error ? err.message : String(err)}`,
       totalDuration: Date.now() - startTime,
@@ -2372,15 +2243,23 @@ export async function runOrchestratedBuild(
     } catch {
       /* telemetry only */
     }
-    // Release this job's isolated file map (the result already holds a
-    // detached copy of the files, so this is safe and prevents the registry
-    // from growing without bound on the long-running worker).
+
+    /*
+     * Release this job's isolated file map (the result already holds a
+     * detached copy of the files, so this is safe and prevents the registry
+     * from growing without bound on the long-running worker).
+     */
     disposeProjectFiles(jobId);
     disposeBuildResult(jobId);
-    // Kill the job's persistent E2B sandbox (created lazily on the first
-    // run_shell). This is the ONLY place it's torn down, so it must run on
-    // every exit path — success, failure, timeout, or abort.
+    disposeDoneSummary(jobId);
+
+    /*
+     * Kill the job's persistent E2B sandbox (created lazily on the first
+     * run_shell). This is the ONLY place it's torn down, so it must run on
+     * every exit path — success, failure, timeout, or abort.
+     */
     await disposeSandbox(jobId);
+
     // Remove from the abort registry — the job is no longer cancellable.
     unregisterJobAbort(jobId);
   }

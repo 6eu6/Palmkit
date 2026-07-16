@@ -101,6 +101,22 @@ export function getJobFiles(jobId: string): Map<string, string> {
   return m;
 }
 
+/*
+ * Per-job record of done() having been called, with the model's summary.
+ * This is the ANSWER-MODE signal: a turn that finishes via done() with zero
+ * files is a deliberate reply (a question answered, advice given), not a
+ * failed build — the orchestrator treats it as success.
+ */
+const jobDoneSummaries = new Map<string, string>();
+
+export function getDoneSummary(jobId: string): string | undefined {
+  return jobDoneSummaries.get(jobId);
+}
+
+export function disposeDoneSummary(jobId: string): void {
+  jobDoneSummaries.delete(jobId);
+}
+
 /** Per-job count of write_file calls per path — used to nudge a looping model. */
 const jobWriteCounts = new Map<string, Map<string, number>>();
 
@@ -226,215 +242,213 @@ export function createAgentTools(
    * per-path hard lock, R2 persistence, and the file_written event.
    */
   const performWrite = async (path: string, content: any) => {
-        /*
-         * Convert object/array content to string. For .json files, raw JSON is
-         * correct. For JS/TS files it is NOT: models pass config objects for
-         * postcss.config.js / tailwind.config.js, and saving raw JSON into a
-         * .js file crashes Vite at startup ("Unexpected token ':'") — observed
-         * live, it took the whole preview down. Wrap it as a proper ES module.
-         */
-        let fileContent: string;
+    /*
+     * Convert object/array content to string. For .json files, raw JSON is
+     * correct. For JS/TS files it is NOT: models pass config objects for
+     * postcss.config.js / tailwind.config.js, and saving raw JSON into a
+     * .js file crashes Vite at startup ("Unexpected token ':'") — observed
+     * live, it took the whole preview down. Wrap it as a proper ES module.
+     */
+    let fileContent: string;
 
-        if (typeof content === 'string') {
-          /*
-           * JSON-UNWRAP GUARD. Some models (GLM-4.x, some OpenRouter models)
-           * wrap file content in a JSON envelope like {"content": "actual code"}
-           * or {"text": "actual code"} instead of passing the raw string.
-           * If the string looks like a JSON object with a single string-valued
-           * "content" / "text" / "code" key, extract the inner value — that's
-           * the actual file the model intended to write.
-           *
-           * Heuristic: starts with '{' AND contains a "content"/"text"/"code"
-           * key whose value is a string. Only unwrap if the inner string is
-           * longer than the wrapper (the wrapper is noise, the inner value is
-           * the real file). This avoids false positives on legitimate JSON files.
-           */
-          const trimmed = content.trimStart();
+    if (typeof content === 'string') {
+      /*
+       * JSON-UNWRAP GUARD. Some models (GLM-4.x, some OpenRouter models)
+       * wrap file content in a JSON envelope like {"content": "actual code"}
+       * or {"text": "actual code"} instead of passing the raw string.
+       * If the string looks like a JSON object with a single string-valued
+       * "content" / "text" / "code" key, extract the inner value — that's
+       * the actual file the model intended to write.
+       *
+       * Heuristic: starts with '{' AND contains a "content"/"text"/"code"
+       * key whose value is a string. Only unwrap if the inner string is
+       * longer than the wrapper (the wrapper is noise, the inner value is
+       * the real file). This avoids false positives on legitimate JSON files.
+       */
+      const trimmed = content.trimStart();
 
-          if (
-            trimmed.startsWith('{') &&
-            !path.endsWith('.json') &&
-            !path.endsWith('.json5')
-          ) {
-            try {
-              const parsed = JSON.parse(trimmed);
+      if (trimmed.startsWith('{') && !path.endsWith('.json') && !path.endsWith('.json5')) {
+        try {
+          const parsed = JSON.parse(trimmed);
 
-              if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-                const innerKey = ['content', 'text', 'code', 'source', 'file_content'].find(
-                  (k) => typeof parsed[k] === 'string' && parsed[k].length > trimmed.length * 0.5,
-                );
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            const innerKey = ['content', 'text', 'code', 'source', 'file_content'].find(
+              (k) => typeof parsed[k] === 'string' && parsed[k].length > trimmed.length * 0.5,
+            );
 
-                if (innerKey) {
-                  logger.info(
-                    `[agent] write_file: ${path} — unwrapped JSON envelope (key="${innerKey}", wrapper=${trimmed.length} chars, inner=${parsed[innerKey].length} chars)`,
-                  );
-                  fileContent = parsed[innerKey];
-                } else {
-                  fileContent = content;
-                }
-              } else {
-                fileContent = content;
-              }
-            } catch {
-              // Not valid JSON — use as-is
+            if (innerKey) {
+              logger.info(
+                `[agent] write_file: ${path} — unwrapped JSON envelope (key="${innerKey}", wrapper=${trimmed.length} chars, inner=${parsed[innerKey].length} chars)`,
+              );
+              fileContent = parsed[innerKey];
+            } else {
               fileContent = content;
             }
           } else {
             fileContent = content;
           }
-        } else {
-          const json = JSON.stringify(content, null, 2);
-
-          /*
-           * Include .jsx, .tsx, .mts, .cts in the JS/TS detection.
-           * Previously only .mjs/.js/.ts matched — so a model that passed an
-           * object for tailwind.config.js worked, but postcss.config.cjs or
-           * any .jsx content got raw JSON.stringified, crashing Vite.
-           */
-          if (/\.(mjs|jsx?|mts?|cts?)$/i.test(path)) {
-            fileContent = `export default ${json};\n`;
-          } else if (/\.cjs$/i.test(path)) {
-            fileContent = `module.exports = ${json};\n`;
-          } else {
-            fileContent = json;
-          }
+        } catch {
+          // Not valid JSON — use as-is
+          fileContent = content;
         }
+      } else {
+        fileContent = content;
+      }
+    } else {
+      const json = JSON.stringify(content, null, 2);
 
-        /*
-         * LOOP BREAKER. Some models (GLM-4.x) get stuck rewriting the same file
-         * over and over. If this write is IDENTICAL to what's already saved,
-         * it's a no-op — refuse it and firmly redirect the model, instead of
-         * silently accepting it and letting the loop continue until the
-         * orchestrator's backstop aborts the whole build.
-         */
-        const prevContent = projectFiles.get(path);
+      /*
+       * Include .jsx, .tsx, .mts, .cts in the JS/TS detection.
+       * Previously only .mjs/.js/.ts matched — so a model that passed an
+       * object for tailwind.config.js worked, but postcss.config.cjs or
+       * any .jsx content got raw JSON.stringified, crashing Vite.
+       */
+      if (/\.(mjs|jsx?|mts?|cts?)$/i.test(path)) {
+        fileContent = `export default ${json};\n`;
+      } else if (/\.cjs$/i.test(path)) {
+        fileContent = `module.exports = ${json};\n`;
+      } else {
+        fileContent = json;
+      }
+    }
 
-        if (prevContent !== undefined && prevContent === fileContent) {
-          logger.info(`[agent] write_file: ${path} unchanged — refusing redundant rewrite`);
-          bumpWriteCount(jobId, path);
+    /*
+     * LOOP BREAKER. Some models (GLM-4.x) get stuck rewriting the same file
+     * over and over. If this write is IDENTICAL to what's already saved,
+     * it's a no-op — refuse it and firmly redirect the model, instead of
+     * silently accepting it and letting the loop continue until the
+     * orchestrator's backstop aborts the whole build.
+     */
+    const prevContent = projectFiles.get(path);
 
-          return {
-            success: true,
-            path,
-            unchanged: true,
-            message:
-              `${path} is ALREADY saved with EXACTLY this content — nothing changed. ` +
-              `STOP rewriting ${path}. Move on to a different file that still needs work, ` +
-              `or call done() if the project is complete.`,
-          };
-        }
+    if (prevContent !== undefined && prevContent === fileContent) {
+      logger.info(`[agent] write_file: ${path} unchanged — refusing redundant rewrite`);
+      bumpWriteCount(jobId, path);
 
-        /*
-         * HARD LOCK. If this path has already been written several times, refuse
-         * further writes and force the model to make progress instead. This is
-         * the definitive loop breaker for models that keep re-editing one file
-         * with tiny changes (so the identical-content check above never fires)
-         * and never move on to the remaining files — which would otherwise leave
-         * the project incomplete and fail the build.
-         */
-        const priorCount = getWriteCount(jobId, path);
+      return {
+        success: true,
+        path,
+        unchanged: true,
+        message:
+          `${path} is ALREADY saved with EXACTLY this content — nothing changed. ` +
+          `STOP rewriting ${path}. Move on to a different file that still needs work, ` +
+          `or call done() if the project is complete.`,
+      };
+    }
 
-        if (priorCount >= 4) {
-          logger.warn(`[agent] write_file: ${path} LOCKED — ${priorCount} prior writes; refusing to break the loop`);
-          bumpWriteCount(jobId, path);
+    /*
+     * HARD LOCK. If this path has already been written several times, refuse
+     * further writes and force the model to make progress instead. This is
+     * the definitive loop breaker for models that keep re-editing one file
+     * with tiny changes (so the identical-content check above never fires)
+     * and never move on to the remaining files — which would otherwise leave
+     * the project incomplete and fail the build.
+     */
+    const priorCount = getWriteCount(jobId, path);
 
-          return {
-            success: false,
-            path,
-            locked: true,
-            message:
-              `REFUSED — ${path} is now LOCKED (you have written it ${priorCount} times). Rewriting it again will NOT help. ` +
-              `Create the files you have NOT written yet (e.g. the source/entry files), then call done(). ` +
-              `If every file already exists, call done() NOW.`,
-          };
-        }
+    if (priorCount >= 4) {
+      logger.warn(`[agent] write_file: ${path} LOCKED — ${priorCount} prior writes; refusing to break the loop`);
+      bumpWriteCount(jobId, path);
 
-        const writeCount = bumpWriteCount(jobId, path);
+      return {
+        success: false,
+        path,
+        locked: true,
+        message:
+          `REFUSED — ${path} is now LOCKED (you have written it ${priorCount} times). Rewriting it again will NOT help. ` +
+          `Create the files you have NOT written yet (e.g. the source/entry files), then call done(). ` +
+          `If every file already exists, call done() NOW.`,
+      };
+    }
 
-        // Store in memory
-        projectFiles.set(path, fileContent);
+    const writeCount = bumpWriteCount(jobId, path);
 
-        // M1: disk is the source of truth (fast, local, git-able).
-        try {
-          await writeProjectFileToDisk(projectId, path, fileContent);
-        } catch (e) {
-          logger.warn(`[agent] disk write failed for ${path}: ${e}`);
-        }
+    // Store in memory
+    projectFiles.set(path, fileContent);
 
-        // R2 stays as delivery + backup (the Cloudflare app serves from it).
-        try {
-          const r2Key = buildWorkspaceKey(projectId, path);
-          await putFile(r2Key, fileContent);
-        } catch (e) {
-          logger.warn(`[agent] R2 write failed for ${path}: ${e}`);
-          // Non-fatal — memory copy is enough for the build
-        }
+    // M1: disk is the source of truth (fast, local, git-able).
+    try {
+      await writeProjectFileToDisk(projectId, path, fileContent);
+    } catch (e) {
+      logger.warn(`[agent] disk write failed for ${path}: ${e}`);
+    }
 
-        // Emit progress event with filePath + content so the client can render the
-        // file in real-time WITHOUT a fetch round-trip to /api/workspace.
-        //
-        // The client (use-external-worker.ts) listens for `file_written` events
-        // and now reads `payload.filePath` + `payload.content` directly.
-        //
-        // We cap content at 100KB per event to keep Realtime payloads manageable
-        // (Supabase Realtime has a ~1MB message limit). For files > 100KB, the
-        // client falls back to fetching via /api/workspace at ready_for_preview.
-        const lines = fileContent.split('\n').length;
-        const inlineContent =
-          fileContent.length <= MAX_INLINE_CONTENT ? fileContent : undefined;
+    // R2 stays as delivery + backup (the Cloudflare app serves from it).
+    try {
+      const r2Key = buildWorkspaceKey(projectId, path);
+      await putFile(r2Key, fileContent);
+    } catch (e) {
+      logger.warn(`[agent] R2 write failed for ${path}: ${e}`);
 
-        await emitEvent(
-          supabase,
-          jobId,
-          'file_written' as any,
-          `📝 ${path} (${lines} lines, ${fileContent.length} chars)`,
-          {
-            filePath: path,
-            path,
-            lines,
-            size: fileContent.length,
-            content: inlineContent,
-            truncated: inlineContent === undefined,
-          },
-        );
+      // Non-fatal — memory copy is enough for the build
+    }
 
-        logger.info(
-          `[agent] write_file: ${path} (${fileContent.length} chars, ${lines} lines, inline=${inlineContent !== undefined})`,
-        );
+    /*
+     * Emit progress event with filePath + content so the client can render the
+     * file in real-time WITHOUT a fetch round-trip to /api/workspace.
+     *
+     * The client (use-external-worker.ts) listens for `file_written` events
+     * and now reads `payload.filePath` + `payload.content` directly.
+     *
+     * We cap content at 100KB per event to keep Realtime payloads manageable
+     * (Supabase Realtime has a ~1MB message limit). For files > 100KB, the
+     * client falls back to fetching via /api/workspace at ready_for_preview.
+     */
+    const lines = fileContent.split('\n').length;
+    const inlineContent = fileContent.length <= MAX_INLINE_CONTENT ? fileContent : undefined;
 
-        /*
-         * If the model has now written this same path several times (even with
-         * small changes each time), nudge it to stop fiddling and move on — this
-         * heads off the slow "rewrite the same file forever" loop before the
-         * orchestrator's hard backstop has to abort.
-         */
-        const loopNudge =
-          writeCount >= 3
-            ? ` NOTE: you have written ${path} ${writeCount} times now — this version is saved. Do NOT rewrite it again unless something is genuinely wrong; move on to another file or call done().`
-            : '';
+    await emitEvent(
+      supabase,
+      jobId,
+      'file_written' as any,
+      `📝 ${path} (${lines} lines, ${fileContent.length} chars)`,
+      {
+        filePath: path,
+        path,
+        lines,
+        size: fileContent.length,
+        content: inlineContent,
+        truncated: inlineContent === undefined,
+      },
+    );
 
-        return {
-          success: true,
-          path,
-          size: fileContent.length,
-          lines,
-          message: `File ${path} written successfully (${fileContent.length} chars, ${lines} lines).${loopNudge}`,
-        };
+    logger.info(
+      `[agent] write_file: ${path} (${fileContent.length} chars, ${lines} lines, inline=${inlineContent !== undefined})`,
+    );
+
+    /*
+     * If the model has now written this same path several times (even with
+     * small changes each time), nudge it to stop fiddling and move on — this
+     * heads off the slow "rewrite the same file forever" loop before the
+     * orchestrator's hard backstop has to abort.
+     */
+    const loopNudge =
+      writeCount >= 3
+        ? ` NOTE: you have written ${path} ${writeCount} times now — this version is saved. Do NOT rewrite it again unless something is genuinely wrong; move on to another file or call done().`
+        : '';
+
+    return {
+      success: true,
+      path,
+      size: fileContent.length,
+      lines,
+      message: `File ${path} written successfully (${fileContent.length} chars, ${lines} lines).${loopNudge}`,
+    };
   };
 
   return {
-    // ═══════════════════════════════════════════════════════════════════
-    // write_file — Write a single file to the project workspace
-    // ═══════════════════════════════════════════════════════════════════
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * write_file — Write a single file to the project workspace
+     * ═══════════════════════════════════════════════════════════════════
+     */
     write_file: tool({
       description:
         'Write ONE file to the project. Prefer write_files (batch) when creating several files at once. ' +
         'The file is saved instantly and can be read back with read_file to verify. ' +
         'If the file already exists, it will be overwritten with the new content.',
       parameters: z.object({
-        path: z
-          .string()
-          .describe('The file path, e.g. "index.html", "src/App.tsx", "styles.css"'),
+        path: z.string().describe('The file path, e.g. "index.html", "src/App.tsx", "styles.css"'),
         content: z
           .any()
           .describe(
@@ -444,11 +458,13 @@ export function createAgentTools(
       execute: async ({ path, content }) => performWrite(path, content),
     }),
 
-    // ═══════════════════════════════════════════════════════════════════
-    // write_files — Batch write: create MANY files in ONE tool call.
-    // Palmkit's fast path: the model plans silently, then ships the whole
-    // scaffolding in a single step instead of one LLM round trip per file.
-    // ═══════════════════════════════════════════════════════════════════
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * write_files — Batch write: create MANY files in ONE tool call.
+     * Palmkit's fast path: the model plans silently, then ships the whole
+     * scaffolding in a single step instead of one LLM round trip per file.
+     * ═══════════════════════════════════════════════════════════════════
+     */
     write_files: tool({
       description:
         'Write MULTIPLE files to the project in ONE call. This is the PREFERRED way to create a new project: ' +
@@ -535,17 +551,17 @@ export function createAgentTools(
       },
     }),
 
-    // ═══════════════════════════════════════════════════════════════════
-    // read_file — Read a file from the project (like Super Z's Read tool)
-    // ═══════════════════════════════════════════════════════════════════
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * read_file — Read a file from the project (like Super Z's Read tool)
+     * ═══════════════════════════════════════════════════════════════════
+     */
     read_file: tool({
       description:
         'Read a file from the current project. ALWAYS use this (not run_shell("cat")) to inspect file contents. ' +
         'Use this to verify your work after writing, or to read an existing file before modifying it.',
       parameters: z.object({
-        path: z
-          .string()
-          .describe('The file path to read, e.g. "index.html"'),
+        path: z.string().describe('The file path to read, e.g. "index.html"'),
       }),
       execute: async ({ path }) => {
         // Try memory first (faster, includes current build's changes)
@@ -594,9 +610,11 @@ export function createAgentTools(
       },
     }),
 
-    // ═══════════════════════════════════════════════════════════════════
-    // list_files — List all files in the project (like Super Z's LS/Glob)
-    // ═══════════════════════════════════════════════════════════════════
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * list_files — List all files in the project (like Super Z's LS/Glob)
+     * ═══════════════════════════════════════════════════════════════════
+     */
     list_files: tool({
       description:
         'List all files in the current project workspace. ' +
@@ -620,18 +638,20 @@ export function createAgentTools(
       },
     }),
 
-    // ═══════════════════════════════════════════════════════════════════
-    // edit_file — Edit a specific part of a file by replacing old text with new text.
-    //
-    // IMPORTANT: many LLMs (GLM-4.x/5.x included) sometimes pass `oldText` and
-    // `newText` as JSON objects/arrays instead of strings — even when the
-    // schema says string. This causes "Type validation failed" which aborts
-    // the entire build. We accept `z.any()` and coerce at runtime:
-    //   - string → use as-is
-    //   - object/array → JSON.stringify with 2-space indent
-    //   - number/boolean → String()
-    //   - null/undefined → empty string
-    // ═══════════════════════════════════════════════════════════════════
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * edit_file — Edit a specific part of a file by replacing old text with new text.
+     *
+     * IMPORTANT: many LLMs (GLM-4.x/5.x included) sometimes pass `oldText` and
+     * `newText` as JSON objects/arrays instead of strings — even when the
+     * schema says string. This causes "Type validation failed" which aborts
+     * the entire build. We accept `z.any()` and coerce at runtime:
+     *   - string → use as-is
+     *   - object/array → JSON.stringify with 2-space indent
+     *   - number/boolean → String()
+     *   - null/undefined → empty string
+     * ═══════════════════════════════════════════════════════════════════
+     */
     edit_file: tool({
       description:
         'Edit a specific part of a file by replacing old text with new text. ' +
@@ -640,12 +660,8 @@ export function createAgentTools(
         'Pass oldText and newText as STRINGS (not objects).',
       parameters: z.object({
         path: z.string().describe('The file path to edit'),
-        oldText: z
-          .any()
-          .describe('The exact text to find and replace (must match exactly). Pass as a STRING.'),
-        newText: z
-          .any()
-          .describe('The new text to replace it with. Pass as a STRING.'),
+        oldText: z.any().describe('The exact text to find and replace (must match exactly). Pass as a STRING.'),
+        newText: z.any().describe('The new text to replace it with. Pass as a STRING.'),
       }),
       execute: async ({ path, oldText: rawOld, newText: rawNew }) => {
         // Coerce to string — handles LLMs that pass objects/arrays/numbers
@@ -711,7 +727,9 @@ export function createAgentTools(
               content = r2Content;
               projectFiles.set(path, content);
             }
-          } catch { /* ignore */ }
+          } catch {
+            /* ignore */
+          }
         }
 
         if (!content) {
@@ -739,23 +757,16 @@ export function createAgentTools(
 
         // Emit file_written with the new content so the client UI updates live.
         const lines = updated.split('\n').length;
-        const inlineContent =
-          updated.length <= MAX_INLINE_CONTENT ? updated : undefined;
+        const inlineContent = updated.length <= MAX_INLINE_CONTENT ? updated : undefined;
 
-        await emitEvent(
-          supabase,
-          jobId,
-          'file_written' as any,
-          `✏️ ${path} edited (${lines} lines)`,
-          {
-            filePath: path,
-            path,
-            lines,
-            size: updated.length,
-            content: inlineContent,
-            truncated: inlineContent === undefined,
-          },
-        );
+        await emitEvent(supabase, jobId, 'file_written' as any, `✏️ ${path} edited (${lines} lines)`, {
+          filePath: path,
+          path,
+          lines,
+          size: updated.length,
+          content: inlineContent,
+          truncated: inlineContent === undefined,
+        });
 
         logger.info(`[agent] edit_file: ${path} (replaced ${oldText.length} chars with ${newText.length})`);
 
@@ -769,12 +780,13 @@ export function createAgentTools(
       },
     }),
 
-    // ═══════════════════════════════════════════════════════════════════
-    // delete_file — Delete a file from the project
-    // ═══════════════════════════════════════════════════════════════════
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * delete_file — Delete a file from the project
+     * ═══════════════════════════════════════════════════════════════════
+     */
     delete_file: tool({
-      description:
-        'Delete a file from the project. Use this to remove unused or obsolete files.',
+      description: 'Delete a file from the project. Use this to remove unused or obsolete files.',
       parameters: z.object({
         path: z.string().describe('The file path to delete'),
       }),
@@ -809,8 +821,10 @@ export function createAgentTools(
           m.set(path, 3);
         }
 
-        // Make the deletion visible in the build stream — silent destructive
-        // ops made post-mortems impossible.
+        /*
+         * Make the deletion visible in the build stream — silent destructive
+         * ops made post-mortems impossible.
+         */
         await emitEvent(supabase, jobId, 'file_chunk' as any, `🗑️ Deleted ${path}`, {
           agent: 'Palmkit',
           kind: 'file_deleted',
@@ -827,9 +841,11 @@ export function createAgentTools(
       },
     }),
 
-    // ═══════════════════════════════════════════════════════════════════
-    // run_tests — Run the project's test suite (separate from run_shell)
-    // ═══════════════════════════════════════════════════════════════════
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * run_tests — Run the project's test suite (separate from run_shell)
+     * ═══════════════════════════════════════════════════════════════════
+     */
     run_tests: tool({
       description:
         'Run the project test suite (npm test, vitest, jest, etc.). ' +
@@ -854,7 +870,7 @@ export function createAgentTools(
          */
         const result = await runInE2B(
           jobId,
-          "CI=true timeout 150 sh -c 'npm test 2>&1 || npx --yes vitest run 2>&1 || npx --yes jest --ci 2>&1 || echo \"No tests found\"'",
+          'CI=true timeout 150 sh -c \'npm test 2>&1 || npx --yes vitest run 2>&1 || npx --yes jest --ci 2>&1 || echo "No tests found"\'',
           files,
         );
 
@@ -874,9 +890,11 @@ export function createAgentTools(
       },
     }),
 
-    // ═══════════════════════════════════════════════════════════════════
-    // list_uploads — List files uploaded by the user (in uploads/ folder)
-    // ═══════════════════════════════════════════════════════════════════
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * list_uploads — List files uploaded by the user (in uploads/ folder)
+     * ═══════════════════════════════════════════════════════════════════
+     */
     list_uploads: tool({
       description:
         'List files that the user has uploaded to the project (in the uploads/ folder). ' +
@@ -904,9 +922,11 @@ export function createAgentTools(
       },
     }),
 
-    // ═══════════════════════════════════════════════════════════════════
-    // generate_image — Generate a REAL image asset (logo, hero, illustration)
-    // ═══════════════════════════════════════════════════════════════════
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * generate_image — Generate a REAL image asset (logo, hero, illustration)
+     * ═══════════════════════════════════════════════════════════════════
+     */
     generate_image: tool({
       description:
         'Generate a real image asset (logo, hero background, illustration, icon) from a text prompt ' +
@@ -917,9 +937,7 @@ export function createAgentTools(
         'Returns the import path; then import it in your code, e.g. ' +
         "`import logo from './assets/logo';` and use it as an <img src={logo} /> or a CSS background.",
       parameters: z.object({
-        name: z
-          .string()
-          .describe('Asset name, kebab-case, no extension (e.g. "logo", "hero-bg", "empty-state").'),
+        name: z.string().describe('Asset name, kebab-case, no extension (e.g. "logo", "hero-bg", "empty-state").'),
         prompt: z.string().describe('Detailed image description: subject, style, colors, background.'),
       }),
       execute: async ({ name, prompt }) => {
@@ -932,11 +950,12 @@ export function createAgentTools(
           };
         }
 
-        const safe = String(name)
-          .toLowerCase()
-          .replace(/[^a-z0-9-]+/g, '-')
-          .replace(/^-+|-+$/g, '')
-          .slice(0, 40) || 'asset';
+        const safe =
+          String(name)
+            .toLowerCase()
+            .replace(/[^a-z0-9-]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 40) || 'asset';
         const modulePath = `src/assets/${safe}.ts`;
 
         try {
@@ -953,9 +972,11 @@ export function createAgentTools(
             transparent,
           });
 
-          // Store as an importable ES module exporting the data URI. This flows
-          // through the existing text-only file pipeline (bundles + previews)
-          // without needing a binary asset path.
+          /*
+           * Store as an importable ES module exporting the data URI. This flows
+           * through the existing text-only file pipeline (bundles + previews)
+           * without needing a binary asset path.
+           */
           const mod =
             `// Generated by Palmkit (${img.mime}, ~${Math.round(img.bytes / 1024)}KB). Do not edit.\n` +
             `const src = ${JSON.stringify(img.dataUri)};\nexport default src;\n`;
@@ -989,6 +1010,7 @@ export function createAgentTools(
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           logger.warn(`[agent] generate_image "${safe}" failed: ${msg}`);
+
           return {
             ok: false,
             error: `Image generation failed (${msg}). Use a tasteful CSS/SVG placeholder instead — do not retry.`,
@@ -997,17 +1019,17 @@ export function createAgentTools(
       },
     }),
 
-    // ═══════════════════════════════════════════════════════════════════
-    // search_code — Search across all project files (like Super Z's Grep)
-    // ═══════════════════════════════════════════════════════════════════
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * search_code — Search across all project files (like Super Z's Grep)
+     * ═══════════════════════════════════════════════════════════════════
+     */
     search_code: tool({
       description:
         'Search for a pattern across all project files. Returns matching lines with file paths and line numbers. ' +
         'Use this to find where a function, variable, import, or string is used.',
       parameters: z.object({
-        pattern: z
-          .string()
-          .describe('The text or regex pattern to search for, e.g. "useState" or "app.get"'),
+        pattern: z.string().describe('The text or regex pattern to search for, e.g. "useState" or "app.get"'),
       }),
       execute: async ({ pattern }) => {
         const results: Array<{ path: string; line: number; text: string }> = [];
@@ -1017,10 +1039,12 @@ export function createAgentTools(
 
           for (const [path, content] of projectFiles.entries()) {
             const lines = content.split('\n');
+
             for (let i = 0; i < lines.length; i++) {
               if (regex.test(lines[i])) {
                 results.push({ path, line: i + 1, text: lines[i].trim().slice(0, 120) });
               }
+
               regex.lastIndex = 0; // reset regex state
             }
           }
@@ -1030,6 +1054,7 @@ export function createAgentTools(
 
           for (const [path, content] of projectFiles.entries()) {
             const lines = content.split('\n');
+
             for (let i = 0; i < lines.length; i++) {
               if (lines[i].toLowerCase().includes(lowerPattern)) {
                 results.push({ path, line: i + 1, text: lines[i].trim().slice(0, 120) });
@@ -1048,9 +1073,11 @@ export function createAgentTools(
       },
     }),
 
-    // ═══════════════════════════════════════════════════════════════════
-    // run_shell — Run a shell command in E2B sandbox (like Super Z's Bash)
-    // ═══════════════════════════════════════════════════════════════════
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * run_shell — Run a shell command in E2B sandbox (like Super Z's Bash)
+     * ═══════════════════════════════════════════════════════════════════
+     */
     run_shell: tool({
       description:
         'Run a shell command in an isolated sandbox to verify the build. Returns stdout, stderr, and exit code. ' +
@@ -1059,9 +1086,7 @@ export function createAgentTools(
         'IMPORTANT: Do NOT use this to check if files exist (use list_files and read_file instead). ' +
         'Only use this for: npm install, npm run build, npx prisma generate, npm run dev, etc.',
       parameters: z.object({
-        command: z
-          .string()
-          .describe('The shell command to run, e.g. "npm run build" or "ls -la"'),
+        command: z.string().describe('The shell command to run, e.g. "npm run build" or "ls -la"'),
       }),
       execute: async ({ command }) => {
         // Run in E2B sandbox — isolated, secure, with project files
@@ -1102,13 +1127,10 @@ export function createAgentTools(
            * UI shows the error prominently.
            */
           if (/billing spending limit|team is blocked|Billing limit/i.test(errMsg)) {
-            await emitEvent(
-              supabase,
-              jobId,
-              'job_failed',
-              `❌ E2B billing limit reached. ${errMsg}`,
-              { fatal: true, billing: true },
-            );
+            await emitEvent(supabase, jobId, 'job_failed', `❌ E2B billing limit reached. ${errMsg}`, {
+              fatal: true,
+              billing: true,
+            });
 
             return {
               command,
@@ -1129,18 +1151,12 @@ export function createAgentTools(
 
         logger.info(`[agent] run_shell (E2B): "${command}" → exit ${result.exitCode}`);
 
-        await emitEvent(
-          supabase,
-          jobId,
-          'shell_output' as any,
-          `$ ${command} → exit ${result.exitCode}`,
-          {
-            command,
-            exitCode: result.exitCode,
-            stdout: (result.stdout ?? '').slice(0, 3000),
-            stderr: (result.stderr ?? '').slice(0, 2000),
-          },
-        );
+        await emitEvent(supabase, jobId, 'shell_output' as any, `$ ${command} → exit ${result.exitCode}`, {
+          command,
+          exitCode: result.exitCode,
+          stdout: (result.stdout ?? '').slice(0, 3000),
+          stderr: (result.stderr ?? '').slice(0, 2000),
+        });
 
         /*
          * If this was a real build/compile command, record its result for the
@@ -1165,14 +1181,17 @@ export function createAgentTools(
       },
     }),
 
-    // ═══════════════════════════════════════════════════════════════════
-    // done — Signal that the build is complete (like Super Z's final response)
-    // ═══════════════════════════════════════════════════════════════════
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * done — Signal that the build is complete (like Super Z's final response)
+     * ═══════════════════════════════════════════════════════════════════
+     */
     done: tool({
       description:
         'Signal that you have finished building the project. Call this ONLY when all files ' +
         'have been written and verified. This marks the build as complete and triggers preview generation. ' +
         'Be HONEST in your summary — say what completed and what did not.',
+
       /*
        * Use z.any().optional() for array params — GLM-4.x serializes arrays
        * as JSON STRINGS ("[\"a\", \"b\"]") instead of actual arrays.
@@ -1183,37 +1202,57 @@ export function createAgentTools(
        * We parse strings in execute() (same pattern as update_todos).
        */
       parameters: z.object({
-        summary: z
-          .string()
-          .describe('A brief summary of what was built (1-2 sentences).'),
+        summary: z.string().describe('A brief summary of what was built (1-2 sentences).'),
         completed: z
           .any()
           .optional()
-          .describe('List of features that were successfully built. Pass as a JSON array of strings, e.g. ["counter with increment", "reset button", "dark theme"]'),
+          .describe(
+            'List of features that were successfully built. Pass as a JSON array of strings, e.g. ["counter with increment", "reset button", "dark theme"]',
+          ),
         incomplete: z
           .any()
           .optional()
-          .describe('Things that did not complete. Pass as a JSON array of objects, each with {item, reason, suggestion}.'),
+          .describe(
+            'Things that did not complete. Pass as a JSON array of objects, each with {item, reason, suggestion}.',
+          ),
         next_steps: z
           .any()
           .optional()
           .describe('Optional suggestions for what the user could do next. Pass as a JSON array of strings.'),
       }),
       execute: async (args) => {
+        // Answer-mode signal: the model deliberately finished this turn.
+        try {
+          jobDoneSummaries.set(jobId, String((args as any)?.summary ?? '').slice(0, 2000));
+        } catch {
+          jobDoneSummaries.set(jobId, 'done');
+        }
+
         /*
          * COERCE: GLM-4.x sends arrays as JSON strings. Parse them safely.
          */
         const parseStringArray = (v: any): string[] => {
-          if (Array.isArray(v)) return v.map(String);
-          if (typeof v === 'string') {
-            try { const p = JSON.parse(v); return Array.isArray(p) ? p.map(String) : []; }
-            catch { return v ? [v] : []; }
+          if (Array.isArray(v)) {
+            return v.map(String);
           }
+
+          if (typeof v === 'string') {
+            try {
+              const p = JSON.parse(v);
+              return Array.isArray(p) ? p.map(String) : [];
+            } catch {
+              return v ? [v] : [];
+            }
+          }
+
           return [];
         };
 
         const coerceIncomplete = (v: any): Array<{ item: string; reason: string; suggestion: string }> => {
-          if (!v) return [];
+          if (!v) {
+            return [];
+          }
+
           if (Array.isArray(v)) {
             return v.map((i: any) => ({
               item: typeof i === 'string' ? i : String(i?.item ?? ''),
@@ -1221,10 +1260,16 @@ export function createAgentTools(
               suggestion: typeof i === 'string' ? '' : String(i?.suggestion ?? ''),
             }));
           }
+
           if (typeof v === 'string') {
-            try { const p = JSON.parse(v); return Array.isArray(p) ? coerceIncomplete(p) : []; }
-            catch { return []; }
+            try {
+              const p = JSON.parse(v);
+              return Array.isArray(p) ? coerceIncomplete(p) : [];
+            } catch {
+              return [];
+            }
           }
+
           return [];
         };
 
@@ -1262,7 +1307,8 @@ export function createAgentTools(
          */
         const mainFile = filePaths.find((p) => /^src\/main\.(jsx|tsx|js|ts)$/i.test(p));
         const mainContent = mainFile ? (projectFiles.get(mainFile) ?? '') : '';
-        const importsApp = /from\s+['"]\.\/App['"]/i.test(mainContent) || /from\s+['"]\.\/App\.(jsx|tsx|js|ts)['"]/i.test(mainContent);
+        const importsApp =
+          /from\s+['"]\.\/App['"]/i.test(mainContent) || /from\s+['"]\.\/App\.(jsx|tsx|js|ts)['"]/i.test(mainContent);
         const hasAppFile = filePaths.some((p) => /^src\/App\.(jsx|tsx|js|ts)$/i.test(p));
         const missingAppFile = importsApp && !hasAppFile;
 
@@ -1278,7 +1324,9 @@ export function createAgentTools(
           }
 
           if (missingAppFile) {
-            missing.push('src/App.jsx (main.jsx imports "./App" but App.jsx does not exist — Vite will fail to resolve the import)');
+            missing.push(
+              'src/App.jsx (main.jsx imports "./App" but App.jsx does not exist — Vite will fail to resolve the import)',
+            );
           }
 
           const refuseMsg =
@@ -1316,16 +1364,23 @@ export function createAgentTools(
          */
         const fullSummary = [
           summary || '',
-          completed && completed.length > 0 ? `\n\n✅ Completed:\n${completed.map((c: string) => `- ${c}`).join('\n')}` : '',
-          incomplete && incomplete.length > 0
-            ? `\n\n⚠️ Incomplete:\n${incomplete.map((i: any) => {
-                const item = typeof i === 'string' ? i : (i?.item ?? 'unknown');
-                const reason = typeof i === 'string' ? '' : (i?.reason ?? '');
-                const suggestion = typeof i === 'string' ? '' : (i?.suggestion ?? '');
-                return `- ${item}${reason ? `: ${reason}` : ''}${suggestion ? ` → ${suggestion}` : ''}`;
-              }).join('\n')}`
+          completed && completed.length > 0
+            ? `\n\n✅ Completed:\n${completed.map((c: string) => `- ${c}`).join('\n')}`
             : '',
-          next_steps && next_steps.length > 0 ? `\n\n💡 Next steps:\n${next_steps.map((s: string) => `- ${s}`).join('\n')}` : '',
+          incomplete && incomplete.length > 0
+            ? `\n\n⚠️ Incomplete:\n${incomplete
+                .map((i: any) => {
+                  const item = typeof i === 'string' ? i : (i?.item ?? 'unknown');
+                  const reason = typeof i === 'string' ? '' : (i?.reason ?? '');
+                  const suggestion = typeof i === 'string' ? '' : (i?.suggestion ?? '');
+
+                  return `- ${item}${reason ? `: ${reason}` : ''}${suggestion ? ` → ${suggestion}` : ''}`;
+                })
+                .join('\n')}`
+            : '',
+          next_steps && next_steps.length > 0
+            ? `\n\n💡 Next steps:\n${next_steps.map((s: string) => `- ${s}`).join('\n')}`
+            : '',
         ].join('');
 
         /*
@@ -1334,10 +1389,14 @@ export function createAgentTools(
          * summary row) and the brain's done() tool already announced it. The
          * banner was a redundant, hardcoded second voice.
          */
-        await emitEvent(supabase, jobId, 'file_generation_completed' as any,
-          '',
-          { fileCount, totalSize, summary: fullSummary, completed, incomplete, next_steps },
-        );
+        await emitEvent(supabase, jobId, 'file_generation_completed' as any, '', {
+          fileCount,
+          totalSize,
+          summary: fullSummary,
+          completed,
+          incomplete,
+          next_steps,
+        });
 
         return {
           success: true,
@@ -1348,24 +1407,26 @@ export function createAgentTools(
       },
     }),
 
-    // ═══════════════════════════════════════════════════════════════════
-    // update_todos — Publish the agent's current task list (structured).
-    //
-    // The agent calls this whenever its plan changes — typically:
-    //   1. Once at the very start (all items "pending")
-    //   2. After completing each item (flip it to "done", next one to "in_progress")
-    //   3. Once at the end (all items "done")
-    //
-    // The frontend renders these as a checklist with green ✓ for done,
-    // spinner for in_progress, and empty ○ for pending — exactly like
-    // chat.z.ai / Claude Code / Cursor todos panel.
-    //
-    // IMPORTANT: many LLMs (notably GLM-4.x) serialize the `todos` array
-    // as a JSON STRING instead of a JSON array, even when the schema says
-    // array. We accept both forms and parse the string if needed — without
-    // this, the tool call fails with "Type validation failed" and the
-    // whole build aborts.
-    // ═══════════════════════════════════════════════════════════════════
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * update_todos — Publish the agent's current task list (structured).
+     *
+     * The agent calls this whenever its plan changes — typically:
+     *   1. Once at the very start (all items "pending")
+     *   2. After completing each item (flip it to "done", next one to "in_progress")
+     *   3. Once at the end (all items "done")
+     *
+     * The frontend renders these as a checklist with green ✓ for done,
+     * spinner for in_progress, and empty ○ for pending — exactly like
+     * chat.z.ai / Claude Code / Cursor todos panel.
+     *
+     * IMPORTANT: many LLMs (notably GLM-4.x) serialize the `todos` array
+     * as a JSON STRING instead of a JSON array, even when the schema says
+     * array. We accept both forms and parse the string if needed — without
+     * this, the tool call fails with "Type validation failed" and the
+     * whole build aborts.
+     * ═══════════════════════════════════════════════════════════════════
+     */
     update_todos: tool({
       description:
         'Publish your current task list so the user can see what you are working on. ' +
@@ -1374,6 +1435,7 @@ export function createAgentTools(
         'Only ONE task should be "in_progress" at a time. Keep task text short (max 80 chars). ' +
         'Pass the `todos` parameter as a JSON ARRAY (not a string), e.g. ' +
         '[{"text":"Create App.tsx","status":"in_progress"},{"text":"Add styles","status":"pending"}].',
+
       /*
        * `todos` is OPTIONAL on purpose. Some models (observed with GLM-5.2) call
        * update_todos with EMPTY args `{}`. If the param is required, the AI SDK
@@ -1395,8 +1457,10 @@ export function createAgentTools(
           ),
       }),
       execute: async ({ todos: rawTodos }) => {
-        // Coerce: if the LLM passed a JSON string, parse it. If it passed
-        // an array directly, use it as-is. If anything else, fail gracefully.
+        /*
+         * Coerce: if the LLM passed a JSON string, parse it. If it passed
+         * an array directly, use it as-is. If anything else, fail gracefully.
+         */
         let todos: Array<{ text: string; status: 'pending' | 'in_progress' | 'done' }>;
 
         if (typeof rawTodos === 'string') {
@@ -1408,7 +1472,7 @@ export function createAgentTools(
               success: false,
               error:
                 'Could not parse `todos` — pass a JSON array, not a string. ' +
-                  'Example: [{"text":"Create App.tsx","status":"in_progress"}]',
+                'Example: [{"text":"Create App.tsx","status":"in_progress"}]',
             };
           }
         } else if (Array.isArray(rawTodos)) {
@@ -1446,23 +1510,18 @@ export function createAgentTools(
           `[agent] update_todos: ${sanitized.length} items (${done} done, ${inProgress} in_progress, ${pending} pending)`,
         );
 
-        await emitEvent(
-          supabase,
-          jobId,
-          'todos_updated',
-          `📋 Todos: ${done}/${sanitized.length} done`,
-          {
-            todos: sanitized,
-            counts: { total: sanitized.length, done, inProgress, pending },
-            /*
-             * Include the agent name so the client can route the event to
-             * the correct agent's todo snapshot in agentTodosStore.
-             * Without this, dispatchJobEvent falls back to 'Worker' and
-             * the TodosPanel (which looks for 'Builder') never finds the data.
-             */
-            agent: 'Palmkit',
-          },
-        );
+        await emitEvent(supabase, jobId, 'todos_updated', `📋 Todos: ${done}/${sanitized.length} done`, {
+          todos: sanitized,
+          counts: { total: sanitized.length, done, inProgress, pending },
+
+          /*
+           * Include the agent name so the client can route the event to
+           * the correct agent's todo snapshot in agentTodosStore.
+           * Without this, dispatchJobEvent falls back to 'Worker' and
+           * the TodosPanel (which looks for 'Builder') never finds the data.
+           */
+          agent: 'Palmkit',
+        });
 
         return {
           success: true,
@@ -1472,23 +1531,25 @@ export function createAgentTools(
       },
     }),
 
-    // ═══════════════════════════════════════════════════════════════════
-    // analyze_screenshot — Take a screenshot AND analyze it with a VLM (RADICAL REBUILD)
-    // ═══════════════════════════════════════════════════════════════════
-    // The old `take_screenshot` tool returned a 300-char text dump of
-    // document.body.textContent — the model was BLIND. It could read the
-    // DOM text but couldn't see a single pixel. So it couldn't tell whether
-    // the hero was centered, whether colors clashed, or whether the layout
-    // was broken.
-    //
-    // This new tool:
-    //   1. Captures a REAL screenshot as base64 PNG via Playwright in E2B
-    //   2. Emits a `screenshot_captured` event so the UI shows the image inline
-    //   3. Sends the image to the Z.ai vision model (VLM) with the user's question
-    //   4. Returns the VLM's natural-language description to the model
-    //
-    // Now the agent can: build → screenshot → "is the hero centered?" →
-    // VLM says "no, the headline is clipped" → edit_file → re-screenshot → done.
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * analyze_screenshot — Take a screenshot AND analyze it with a VLM (RADICAL REBUILD)
+     * ═══════════════════════════════════════════════════════════════════
+     * The old `take_screenshot` tool returned a 300-char text dump of
+     * document.body.textContent — the model was BLIND. It could read the
+     * DOM text but couldn't see a single pixel. So it couldn't tell whether
+     * the hero was centered, whether colors clashed, or whether the layout
+     * was broken.
+     *
+     * This new tool:
+     *   1. Captures a REAL screenshot as base64 PNG via Playwright in E2B
+     *   2. Emits a `screenshot_captured` event so the UI shows the image inline
+     *   3. Sends the image to the Z.ai vision model (VLM) with the user's question
+     *   4. Returns the VLM's natural-language description to the model
+     *
+     * Now the agent can: build → screenshot → "is the hero centered?" →
+     * VLM says "no, the headline is clipped" → edit_file → re-screenshot → done.
+     */
     analyze_screenshot: tool({
       description:
         'PREFERRED way to verify the UI visually. Takes a real screenshot of the running app and ' +
@@ -1505,6 +1566,7 @@ export function createAgentTools(
             'Optional specific question about the screenshot, e.g. "is the navbar overlapping the hero?" ' +
               'If omitted, the VLM describes the layout and flags any visual problems.',
           ),
+
         /*
          * z.any() + runtime coercion, NOT z.enum(): GLM-4.x/5.x pass things
          * like '{"width": 390, "height": 844}' (a JSON string of dimensions)
@@ -1516,9 +1578,7 @@ export function createAgentTools(
         viewport: z
           .any()
           .optional()
-          .describe(
-            'Viewport to capture: "desktop" (default, 1280x720) or "mobile" (390x844) for responsive checks.',
-          ),
+          .describe('Viewport to capture: "desktop" (default, 1280x720) or "mobile" (390x844) for responsive checks.'),
       }),
       execute: async ({ question, viewport }) => {
         /* Coerce arbitrary viewport shapes to 'desktop' | 'mobile'. */
@@ -1552,30 +1612,30 @@ export function createAgentTools(
         const dims = vp === 'mobile' ? '390x844' : '1280x720';
 
         try {
-          await emitEvent(
-            supabase,
-            jobId,
-            'file_chunk' as any,
-            `📸 Capturing screenshot (${vp})…`,
-            { agent: 'Palmkit', kind: 'screenshot_start', viewport: vp },
-          );
+          await emitEvent(supabase, jobId, 'file_chunk' as any, `📸 Capturing screenshot (${vp})…`, {
+            agent: 'Palmkit',
+            kind: 'screenshot_start',
+            viewport: vp,
+          });
 
-          // Use headless chromium to capture the page.
-          //
-          // RADICAL REBUILD FIX: 'npx playwright install chromium' was failing
-          // in the E2B sandbox. 'apt-get install chromium-browser' also failed.
-          // The most reliable approach in E2B's Ubuntu sandbox is to install
-          // Chromium via snap or use the pre-installed google-chrome if available.
-          //
-          // We try multiple approaches in order:
-          //   1. Check if chromium-browser / chromium / google-chrome already exists
-          //   2. Try apt-get install chromium-browser (Ubuntu package)
-          //   3. Try apt-get install chromium (alternative package name)
-          //   4. Fall back to npx puppeteer with bundled chromium
-          //
-          // The sandbox URL pattern is: https://3000-<sandboxId>.e2b.app/preview/
-          // But we don't have the sandboxId here. Instead, try localhost:5173
-          // (Vite default) AND localhost:3000 — whichever responds.
+          /*
+           * Use headless chromium to capture the page.
+           *
+           * RADICAL REBUILD FIX: 'npx playwright install chromium' was failing
+           * in the E2B sandbox. 'apt-get install chromium-browser' also failed.
+           * The most reliable approach in E2B's Ubuntu sandbox is to install
+           * Chromium via snap or use the pre-installed google-chrome if available.
+           *
+           * We try multiple approaches in order:
+           *   1. Check if chromium-browser / chromium / google-chrome already exists
+           *   2. Try apt-get install chromium-browser (Ubuntu package)
+           *   3. Try apt-get install chromium (alternative package name)
+           *   4. Fall back to npx puppeteer with bundled chromium
+           *
+           * The sandbox URL pattern is: https://3000-<sandboxId>.e2b.app/preview/
+           * But we don't have the sandboxId here. Instead, try localhost:5173
+           * (Vite default) AND localhost:3000 — whichever responds.
+           */
           const width = dims.split('x')[0];
           const height = dims.split('x')[1];
 
@@ -1676,19 +1736,13 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
           }
 
           // Emit the screenshot to the UI so the user sees what the model sees
-          await emitEvent(
-            supabase,
-            jobId,
-            'file_chunk' as any,
-            `📸 Screenshot captured (${vp})`,
-            {
-              agent: 'Palmkit',
-              kind: 'screenshot_captured',
-              dataUrl: `data:image/png;base64,${base64}`,
-              viewport: vp,
-              isScreenshot: true,
-            },
-          );
+          await emitEvent(supabase, jobId, 'file_chunk' as any, `📸 Screenshot captured (${vp})`, {
+            agent: 'Palmkit',
+            kind: 'screenshot_captured',
+            dataUrl: `data:image/png;base64,${base64}`,
+            viewport: vp,
+            isScreenshot: true,
+          });
 
           // Analyze with the VLM — use the user's chosen Vision model
           const visionKey = media?.visionApiKey || media?.apiKey || '';
@@ -1697,13 +1751,16 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             return {
               ok: true,
               screenshot: '<shown in stream>',
-              analysis: '(No vision API key configured — screenshot was captured but not analyzed. Configure a Vision model in Settings to enable visual analysis.)',
+              analysis:
+                '(No vision API key configured — screenshot was captured but not analyzed. Configure a Vision model in Settings to enable visual analysis.)',
               viewport: vp,
             };
           }
 
-          // Use the user's configured vision model (BYOK via provider-registry)
-          // Falls back to Z.ai SDK if BYOK fails or isn't configured
+          /*
+           * Use the user's configured vision model (BYOK via provider-registry)
+           * Falls back to Z.ai SDK if BYOK fails or isn't configured
+           */
           const analysis = await analyzeScreenshot(base64, question, {
             model: media?.visionModel,
             apiKey: media?.visionApiKey || media?.apiKey,
@@ -1720,19 +1777,13 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
           }
 
           // Emit the analysis to the UI
-          await emitEvent(
-            supabase,
-            jobId,
-            'file_chunk' as any,
-            `👁️ Vision: ${analysis.description.slice(0, 150)}…`,
-            {
-              agent: 'Palmkit',
-              kind: 'vision_analysis',
-              text: analysis.description,
-              isVisionAnalysis: true,
-              viewport: vp,
-            },
-          );
+          await emitEvent(supabase, jobId, 'file_chunk' as any, `👁️ Vision: ${analysis.description.slice(0, 150)}…`, {
+            agent: 'Palmkit',
+            kind: 'vision_analysis',
+            text: analysis.description,
+            isVisionAnalysis: true,
+            viewport: vp,
+          });
 
           return {
             ok: true,
@@ -1743,22 +1794,25 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           logger.warn(`[agent] analyze_screenshot failed: ${msg}`);
+
           return { ok: false, error: msg };
         }
       },
     }),
 
-    // ═══════════════════════════════════════════════════════════════════
-    // generate_video — Generate a looping video asset for hero backgrounds (RADICAL REBUILD)
-    // ═══════════════════════════════════════════════════════════════════
-    // There was NO video generation capability in Palmkit. The user asked
-    // for "a video of a person coding as a hero background, looped" and
-    // the model couldn't even attempt it.
-    //
-    // This tool calls the Z.ai video generation API (or OpenRouter fallback)
-    // and returns an importable MP4 module. The Builder writes:
-    //   import heroBg from './assets/hero-coding-bg';
-    //   <video src={heroBg} autoPlay muted loop playsinline />
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * generate_video — Generate a looping video asset for hero backgrounds (RADICAL REBUILD)
+     * ═══════════════════════════════════════════════════════════════════
+     * There was NO video generation capability in Palmkit. The user asked
+     * for "a video of a person coding as a hero background, looped" and
+     * the model couldn't even attempt it.
+     *
+     * This tool calls the Z.ai video generation API (or OpenRouter fallback)
+     * and returns an importable MP4 module. The Builder writes:
+     *   import heroBg from './assets/hero-coding-bg';
+     *   <video src={heroBg} autoPlay muted loop playsinline />
+     */
     generate_video: tool({
       description:
         'Generate a short looping video asset (2-10s) for use as a hero background, animated illustration, ' +
@@ -1791,9 +1845,11 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
         const prompt: string = String(args.prompt || '');
         const durationNum = typeof args.duration === 'string' ? parseInt(args.duration, 10) : args.duration;
         const duration = Math.min(10, Math.max(2, Number(durationNum) || 5));
-        const aspectRatio = (typeof args.aspectRatio === 'string' && ['16:9', '9:16', '1:1'].includes(args.aspectRatio)
-          ? args.aspectRatio
-          : '16:9') as '16:9' | '9:16' | '1:1';
+        const aspectRatio = (
+          typeof args.aspectRatio === 'string' && ['16:9', '9:16', '1:1'].includes(args.aspectRatio)
+            ? args.aspectRatio
+            : '16:9'
+        ) as '16:9' | '9:16' | '1:1';
         const safe = name.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
 
         if (!media?.videoApiKey && !media?.apiKey) {
@@ -1801,7 +1857,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             ok: false,
             error:
               'Video generation requires an API key. Configure a Media model in Settings. ' +
-                'If you do not have one, use generate_image for a still hero background instead, or use a CSS animation.',
+              'If you do not have one, use generate_image for a still hero background instead, or use a CSS animation.',
           };
         }
 
@@ -1821,8 +1877,10 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             provider: media.videoProvider || 'zai',
           });
 
-          // Fetch the MP4 bytes and store as a base64 data-URI ES module
-          // (same pattern as generate_image — the asset is bundled into the app)
+          /*
+           * Fetch the MP4 bytes and store as a base64 data-URI ES module
+           * (same pattern as generate_image — the asset is bundled into the app)
+           */
           const resp = await fetch(video.url);
 
           if (!resp.ok) {
@@ -1866,13 +1924,13 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           logger.warn(`[agent] generate_video "${safe}" failed: ${msg}`);
-          await emitEvent(
-            supabase,
-            jobId,
-            'file_chunk' as any,
-            `⚠️ Video "${safe}" failed: ${msg.slice(0, 120)}`,
-            { agent: 'Palmkit', kind: 'video_error', name: safe, error: msg },
-          );
+          await emitEvent(supabase, jobId, 'file_chunk' as any, `⚠️ Video "${safe}" failed: ${msg.slice(0, 120)}`, {
+            agent: 'Palmkit',
+            kind: 'video_error',
+            name: safe,
+            error: msg,
+          });
+
           return {
             ok: false,
             error: msg,
@@ -1906,14 +1964,13 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
         'Ask the user a clarifying question. Use sparingly — only when a missing detail would make the build fail or produce a wrong result. The user sees the question in the chat stream. If they do not answer in time, proceed with sensible defaults. IMPORTANT: Do NOT use this tool if the user is asking YOU to make a change — just make the change directly.',
       parameters: z.object({
         question: z.string().describe('The question to ask the user (keep it short, one sentence).'),
-        options: z
-          .array(z.string())
-          .optional()
-          .describe('Optional list of suggested answers the user can pick from.'),
+        options: z.array(z.string()).optional().describe('Optional list of suggested answers the user can pick from.'),
         default_choice: z
           .string()
           .optional()
-          .describe('What you will do if the user does not answer. Proceed with this. If omitted, you will proceed with your best judgment.'),
+          .describe(
+            'What you will do if the user does not answer. Proceed with this. If omitted, you will proceed with your best judgment.',
+          ),
       }),
       execute: async (args) => {
         const { question, options, default_choice } = args;
@@ -1939,22 +1996,24 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
       },
     }),
 
-    // ═══════════════════════════════════════════════════════════════════
-    // spawn_subagent — Launch a sub-agent with a specific task (RADICAL REBUILD)
-    // ═══════════════════════════════════════════════════════════════════
-    // The brain can delegate focused tasks to sub-agents. Each sub-agent
-    // runs independently with its own context, then returns a text result
-    // to the brain. The brain decides WHEN and WHETHER to use sub-agents.
-    //
-    // Use cases:
-    //   - "Analyze this error and suggest a fix" (complex error diagnosis)
-    //   - "Read all files and summarize the architecture" (codebase understanding)
-    //   - "Design the data model for this e-commerce app" (planning)
-    //   - "Test these specific features and report issues" (focused testing)
-    //
-    // Sub-agents have READ-ONLY tools (read_file, list_files, search_code,
-    // run_shell) — they CANNOT write or edit files. They return analysis/
-    // suggestions as text. The brain acts on their findings.
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * spawn_subagent — Launch a sub-agent with a specific task (RADICAL REBUILD)
+     * ═══════════════════════════════════════════════════════════════════
+     * The brain can delegate focused tasks to sub-agents. Each sub-agent
+     * runs independently with its own context, then returns a text result
+     * to the brain. The brain decides WHEN and WHETHER to use sub-agents.
+     *
+     * Use cases:
+     *   - "Analyze this error and suggest a fix" (complex error diagnosis)
+     *   - "Read all files and summarize the architecture" (codebase understanding)
+     *   - "Design the data model for this e-commerce app" (planning)
+     *   - "Test these specific features and report issues" (focused testing)
+     *
+     * Sub-agents have READ-ONLY tools (read_file, list_files, search_code,
+     * run_shell) — they CANNOT write or edit files. They return analysis/
+     * suggestions as text. The brain acts on their findings.
+     */
     spawn_subagent: tool({
       description:
         'Launch a sub-agent to handle a focused task. The sub-agent runs independently and returns a text result. ' +
@@ -1964,11 +2023,15 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
       parameters: z.object({
         task: z
           .string()
-          .describe('A clear, specific task for the sub-agent. Example: "Read all source files and summarize the component structure and data flow."'),
+          .describe(
+            'A clear, specific task for the sub-agent. Example: "Read all source files and summarize the component structure and data flow."',
+          ),
         context: z
           .string()
           .optional()
-          .describe('Additional context for the task — e.g. an error message to analyze, or a specific file to focus on.'),
+          .describe(
+            'Additional context for the task — e.g. an error message to analyze, or a specific file to focus on.',
+          ),
       }),
       execute: async ({ task, context }) => {
         if (!model) {
@@ -1982,23 +2045,19 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
         logger.info(`[agent] spawn_subagent: ${task.slice(0, 100)}`);
 
         // Emit start event so the UI shows the sub-agent in the stream
-        await emitEvent(
-          supabase,
-          jobId,
-          'file_chunk' as any,
-          `🔄 Sub-agent: ${task.slice(0, 120)}`,
-          {
-            agent: 'Brain',
-            kind: 'subagent_start',
-            task,
-            subAgentId,
-          },
-        );
+        await emitEvent(supabase, jobId, 'file_chunk' as any, `🔄 Sub-agent: ${task.slice(0, 120)}`, {
+          agent: 'Brain',
+          kind: 'subagent_start',
+          task,
+          subAgentId,
+        });
 
         try {
-          // Build a focused read-only toolset for the sub-agent.
-          // These are standalone implementations that don't depend on the
-          // outer tool object — they read from the same projectFiles map.
+          /*
+           * Build a focused read-only toolset for the sub-agent.
+           * These are standalone implementations that don't depend on the
+           * outer tool object — they read from the same projectFiles map.
+           */
           const subTools = {
             read_file: tool({
               description: 'Read a file from the project',
@@ -2006,15 +2065,20 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
               execute: async (args: any) => {
                 const path = args.path;
                 let content: string | undefined = projectFiles.get(path);
+
                 if (!content) {
                   try {
                     const fetched = await getFileText(buildWorkspaceKey(projectId, path));
+
                     if (fetched) {
                       content = fetched;
                       projectFiles.set(path, content);
                     }
-                  } catch { /* not found */ }
+                  } catch {
+                    /* not found */
+                  }
                 }
+
                 return {
                   path,
                   content: content || '',
@@ -2042,33 +2106,53 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
                 const pattern = args.pattern;
                 const results: any[] = [];
                 let regex: RegExp;
+
                 try {
                   regex = new RegExp(pattern, 'gi');
                 } catch {
                   const lower = pattern.toLowerCase();
+
                   for (const [path, content] of projectFiles) {
                     const lines = content.split('\n');
+
                     for (let i = 0; i < lines.length; i++) {
                       if (lines[i].toLowerCase().includes(lower)) {
                         results.push({ path, line: i + 1, text: lines[i].trim().slice(0, 200) });
-                        if (results.length >= 50) break;
+
+                        if (results.length >= 50) {
+                          break;
+                        }
                       }
                     }
-                    if (results.length >= 50) break;
-                  }
-                  return { pattern, totalMatches: results.length, results };
-                }
-                for (const [path, content] of projectFiles) {
-                  const lines = content.split('\n');
-                  for (let i = 0; i < lines.length; i++) {
-                    regex.lastIndex = 0;
-                    if (regex.test(lines[i])) {
-                      results.push({ path, line: i + 1, text: lines[i].trim().slice(0, 200) });
-                      if (results.length >= 50) break;
+
+                    if (results.length >= 50) {
+                      break;
                     }
                   }
-                  if (results.length >= 50) break;
+
+                  return { pattern, totalMatches: results.length, results };
                 }
+
+                for (const [path, content] of projectFiles) {
+                  const lines = content.split('\n');
+
+                  for (let i = 0; i < lines.length; i++) {
+                    regex.lastIndex = 0;
+
+                    if (regex.test(lines[i])) {
+                      results.push({ path, line: i + 1, text: lines[i].trim().slice(0, 200) });
+
+                      if (results.length >= 50) {
+                        break;
+                      }
+                    }
+                  }
+
+                  if (results.length >= 50) {
+                    break;
+                  }
+                }
+
                 return { pattern, totalMatches: results.length, results };
               },
             }),
@@ -2078,6 +2162,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
               execute: async (args: any) => {
                 const files = Object.fromEntries(projectFiles);
                 const result = await runInE2B(jobId, args.command, files);
+
                 return {
                   command: args.command,
                   exitCode: result.exitCode,
@@ -2114,23 +2199,19 @@ Do NOT call done() — just return your findings as your final message.`;
           const subAgentSteps = await result.steps;
           const subAgentDuration = Date.now();
 
-          logger.info(`[agent] spawn_subagent completed: ${subAgentText.length} chars, ${subAgentSteps?.length || 0} steps`);
+          logger.info(
+            `[agent] spawn_subagent completed: ${subAgentText.length} chars, ${subAgentSteps?.length || 0} steps`,
+          );
 
           // Emit completion event with the result
-          await emitEvent(
-            supabase,
-            jobId,
-            'file_chunk' as any,
-            `✅ Sub-agent done: ${task.slice(0, 80)}`,
-            {
-              agent: 'Brain',
-              kind: 'subagent_complete',
-              task,
-              subAgentId,
-              result: subAgentText.slice(0, 2000),
-              steps: subAgentSteps?.length || 0,
-            },
-          );
+          await emitEvent(supabase, jobId, 'file_chunk' as any, `✅ Sub-agent done: ${task.slice(0, 80)}`, {
+            agent: 'Brain',
+            kind: 'subagent_complete',
+            task,
+            subAgentId,
+            result: subAgentText.slice(0, 2000),
+            steps: subAgentSteps?.length || 0,
+          });
 
           return {
             ok: true,
@@ -2143,19 +2224,13 @@ Do NOT call done() — just return your findings as your final message.`;
           const msg = err?.message ?? String(err);
           logger.error(`[agent] spawn_subagent failed: ${msg}`);
 
-          await emitEvent(
-            supabase,
-            jobId,
-            'file_chunk' as any,
-            `⚠️ Sub-agent failed: ${msg.slice(0, 120)}`,
-            {
-              agent: 'Brain',
-              kind: 'subagent_error',
-              task,
-              subAgentId,
-              error: msg,
-            },
-          );
+          await emitEvent(supabase, jobId, 'file_chunk' as any, `⚠️ Sub-agent failed: ${msg.slice(0, 120)}`, {
+            agent: 'Brain',
+            kind: 'subagent_error',
+            task,
+            subAgentId,
+            error: msg,
+          });
 
           return {
             ok: false,
