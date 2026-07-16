@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyLiveChunks, type LiveStreamState } from './live-stream';
 
-const empty: LiveStreamState = { text: '', tool: null, active: false, updatedAt: 0 };
+const empty: LiveStreamState = { text: '', thinking: '', thinkingStartedAt: 0, tool: null, active: false, updatedAt: 0 };
 
 describe('applyLiveChunks', () => {
   it('accumulates text deltas token by token', () => {

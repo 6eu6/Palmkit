@@ -19,6 +19,7 @@
  */
 
 import { createOpenAI } from '@ai-sdk/openai';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createCohere } from '@ai-sdk/cohere';
@@ -119,30 +120,40 @@ const REGISTRY: Record<string, ProviderConfig> = {
   },
 
   // ─── Aggregator ──────────────────────────────────────────────────────────
-  // OpenRouter via OpenAI-compatible endpoint.
+  // OpenRouter via the OFFICIAL @openrouter/ai-sdk-provider@0.7.x (the
+  // ai-sdk-v4 line, peer ai ^4.3.17 — exactly our version).
   //
-  // The official @openrouter/ai-sdk-provider@^1 requires ai@5 (we're on ai@4).
-  // Using createOpenAI with OpenRouter's OpenAI-compatible baseURL works
-  // perfectly — OpenRouter accepts the ~ tilde prefix for model aliases.
+  // ROOT-CAUSE FIX (measured live): OpenRouter streams thinking models'
+  // reasoning in `delta.reasoning` — for GLM-4.7 that was 120 of 127 delta
+  // chunks (~94% of the model's live output). The previous createOpenAI
+  // adapter parses NEITHER `delta.reasoning` nor a `reasoning` request
+  // param, so (1) the entire thinking phase was invisible to the stream —
+  // minutes of blank screen — and (2) the user's thinking-effort setting
+  // was silently never sent. The official provider fixes both: verified
+  // empirically — 100 reasoning parts through fullStream, first thinking
+  // token at 987ms, tool calls + multi-step intact.
   //
-  // Reasoning tokens (DeepSeek-R1, GLM-5.2 reasoning, etc.) are passed through
-  // `providerOptions.openrouter.reasoning` at the generateText call site in
-  // orchestrator.ts (added in this commit). OpenRouter returns them in the
-  // `delta.reasoning` field which the OpenAI SDK exposes via `providerOptions`.
+  // `reasoningEffort` arrives via options from the job processor and is
+  // baked into the model settings ('off' disables thinking entirely).
   OpenRouter: {
     apiTokenKey: 'OPENROUTER_API_KEY',
-    createModel: (model, apiKey) =>
-      createOpenAI({
+    createModel: (model, apiKey, options) => {
+      const effort = options?.reasoningEffort as 'off' | 'medium' | 'max' | undefined;
+      const reasoning =
+        effort === 'off'
+          ? ({ enabled: false, exclude: true, effort: 'low' } as const)
+          : effort === 'max'
+            ? ({ effort: 'high' } as const)
+            : ({ effort: 'medium' } as const); // default: medium — visible thinking without runaway minutes
+
+      return createOpenRouter({
         apiKey,
-        baseURL: 'https://openrouter.ai/api/v1',
         headers: {
           'HTTP-Referer': 'https://palmkit.app',
           'X-Title': 'Palmkit Build Worker',
         },
-        // Forward OpenRouter-specific options via providerOptions at call site
-        // — this is how reasoning is enabled (see orchestrator.ts).
-        name: 'openrouter',
-      })(model),
+      })(model, { reasoning });
+    },
   },
 
   // ─── Z.ai ─────────────────────────────────────────────────────────────

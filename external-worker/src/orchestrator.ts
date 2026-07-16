@@ -956,24 +956,12 @@ export async function runOrchestratedBuild(
        * 3. Harmless for non-reasoning models
        */
       /*
-       * Thinking control (Design v2): the user picks off/medium/max in the
-       * composer. 'off' disables reasoning tokens entirely (fastest,
-       * cheapest); 'medium'/'max' map to OpenRouter effort levels. When
-       * unset we keep the old behavior (enabled, provider decides).
+       * Thinking control now lives in the MODEL ITSELF: the job processor
+       * bakes reasoningEffort into getModelInstance() (the official
+       * OpenRouter provider takes it at construction). The old
+       * providerOptions.openrouter path was silently ignored by the
+       * previous adapter — the setting never reached the request.
        */
-      const effort = opts?.reasoningEffort;
-      const providerOptions = {
-        openrouter: {
-          reasoning:
-            effort === 'off'
-              ? { enabled: false }
-              : effort === 'max'
-                ? { effort: 'high' }
-                : effort === 'medium'
-                  ? { effort: 'medium' }
-                  : { enabled: true },
-        },
-      } as any;
 
       /*
        * STREAMING — use streamText (not generateText) so the LLM's text and
@@ -1001,7 +989,8 @@ export async function runOrchestratedBuild(
        * so the user sees live streaming without flooding the event system.
        */
       let stepId = 0;
-      let textBuffer = '';
+      let textBuffer = ''; // narration — the model's spoken text
+      let thinkBuffer = ''; // thinking — reasoning tokens (S2 channel split)
       let lastFlushTime = Date.now();
 
       /*
@@ -1021,13 +1010,25 @@ export async function runOrchestratedBuild(
       const FLUSH_INTERVAL_MS = 2000;
       const FLUSH_CHARS = 700;
 
-      const flushText = async (isFinal: boolean) => {
-        if (textBuffer.length === 0) {
+      /*
+       * S2 CHANNEL SPLIT — thinking and narration flush as SEPARATE durable
+       * rows, each tagged payload.channel, so the UI renders reasoning as a
+       * dim collapsible "Thinking" block and narration as the reply text.
+       * The live layer gets the same split via sendDelta's channel.
+       */
+      const flushChannel = async (channel: 'thinking' | 'narration', isFinal: boolean) => {
+        const text = channel === 'thinking' ? thinkBuffer : textBuffer;
+
+        if (text.length === 0) {
           return;
         }
 
-        const text = textBuffer;
-        textBuffer = '';
+        if (channel === 'thinking') {
+          thinkBuffer = '';
+        } else {
+          textBuffer = '';
+        }
+
         lastFlushTime = Date.now();
 
         try {
@@ -1035,13 +1036,14 @@ export async function runOrchestratedBuild(
             supabase,
             jobId,
             'reasoning',
-            `💭 ${config.name}: ${text.slice(0, 200)}${text.length > 200 ? '…' : ''}`,
+            `${config.name}: ${text.slice(0, 180)}${text.length > 180 ? '…' : ''}`,
             {
               agent: config.name,
               role,
               text,
               stepId,
               isFinal,
+              channel,
             },
           );
         } catch {
@@ -1049,13 +1051,22 @@ export async function runOrchestratedBuild(
         }
       };
 
-      /* Flush only when the buffer is big enough or the interval elapsed. */
+      const flushText = async (isFinal: boolean) => {
+        await flushChannel('thinking', isFinal);
+        await flushChannel('narration', isFinal);
+      };
+
+      /* Flush only when a buffer is big enough or the interval elapsed. */
       const maybeFlush = async () => {
+        const pending = textBuffer.length + thinkBuffer.length;
+
         if (
+          thinkBuffer.length >= FLUSH_CHARS ||
           textBuffer.length >= FLUSH_CHARS ||
-          (textBuffer.length > 0 && Date.now() - lastFlushTime > FLUSH_INTERVAL_MS)
+          (pending > 0 && Date.now() - lastFlushTime > FLUSH_INTERVAL_MS)
         ) {
-          await flushText(false);
+          await flushChannel('thinking', false);
+          await flushChannel('narration', false);
         }
       };
 
@@ -1229,7 +1240,6 @@ export async function runOrchestratedBuild(
         },
         temperature: 0.3, // Low temperature for consistent code generation (was 0.7 — too random)
         maxTokens: stepMaxTokens,
-        providerOptions,
         /*
          * abortSignal — when abortController.abort() fires (either from the
          * 15-min hard timeout OR from the loop-detection below), streamText
@@ -1258,7 +1268,15 @@ export async function runOrchestratedBuild(
        * (npm install is capped at 300s in the E2B runner) — the watchdog
        * must outlast the slowest tool, not race it.
        */
-      const STALL_TIMEOUT_MS = 400_000;
+      /*
+       * 180s (was 400s): with the S1 root fix, thinking tokens stream
+       * continuously, so a genuinely silent stream is now measurable —
+       * only long tool executions (npm install ≤300s) pause chunks, and
+       * those arrive as tool-call/tool-result boundaries around the gap.
+       * Kept above the typical install by resetting on tool parts too
+       * (every fullStream part refreshes lastChunkAt).
+       */
+      const STALL_TIMEOUT_MS = 400_000; // conservative: tool executions emit no chunks while running
       let lastChunkAt = Date.now();
       let stalled = false;
 
@@ -1283,7 +1301,7 @@ export async function runOrchestratedBuild(
              */
             case 'text-delta': {
               textBuffer += part.textDelta;
-              sendDelta(jobId, part.textDelta); // M2: instant live layer (fire-and-forget)
+              sendDelta(jobId, part.textDelta, 'narration'); // instant live layer (fire-and-forget)
               await maybeFlush();
 
               break;
@@ -1296,8 +1314,9 @@ export async function runOrchestratedBuild(
              * Thought Process panel.
              */
             case 'reasoning': {
-              textBuffer += part.textDelta;
-              sendDelta(jobId, part.textDelta); // M2: instant live layer
+              // S1 root fix made these flow (94% of a thinking model's output).
+              thinkBuffer += part.textDelta;
+              sendDelta(jobId, part.textDelta, 'thinking');
               await maybeFlush();
 
               break;

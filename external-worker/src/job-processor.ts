@@ -192,7 +192,16 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
      * 'model is not defined'.
      */
     const { getModelInstance } = await import('./provider-registry');
-    const model = getModelInstance(providerName, modelName, apiKey);
+
+    /*
+     * Thinking effort — read ONCE here and baked into every model instance
+     * (the OpenRouter provider needs it at model-construction time; the old
+     * providerOptions path silently never sent it). Default: medium.
+     */
+    const jobReasoningEffort =
+      (job.validation_result?.reasoningEffort as 'off' | 'medium' | 'max' | undefined) ?? 'medium';
+
+    const model = getModelInstance(providerName, modelName, apiKey, { reasoningEffort: jobReasoningEffort });
 
     /*
      * Per-role model overrides (Model Router). Built once — used by both
@@ -787,10 +796,14 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
                 // createAgentTools can pass them to the VLM/video-gen
                 // wrappers. We don't add them to the brain/builder/tester
                 // loop.
-                agentModels[roleName as 'brain' | 'builder' | 'tester'] = getModelInstance(providerName, id, apiKey) as any;
+                agentModels[roleName as 'brain' | 'builder' | 'tester'] = getModelInstance(providerName, id, apiKey, {
+                  reasoningEffort: jobReasoningEffort,
+                }) as any;
                 logger.info(`Job ${job.id}: model router — ${roleName} → ${id} (tool model)`);
               } else {
-                agentModels[roleName] = getModelInstance(providerName, id, apiKey);
+                agentModels[roleName] = getModelInstance(providerName, id, apiKey, {
+                  reasoningEffort: jobReasoningEffort,
+                });
                 logger.info(`Job ${job.id}: model router — ${roleName} → ${id}`);
               }
             } catch (e) {

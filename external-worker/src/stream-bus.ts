@@ -16,7 +16,8 @@
  *     ship as ONE broadcast message carrying an array of chunks — smooth to
  *     the eye, gentle on Realtime.
  *   - Compact chunk protocol (small payloads):
- *       { t: 'd',    x: string }                      text/reasoning delta
+ *       { t: 'd',    x: string }                      narration (spoken text) delta
+ *       { t: 'r',    x: string }                      thinking (reasoning) delta
  *       { t: 'tool', n: string, d?: string }          tool call started
  *       { t: 'step' }                                 step boundary
  *   - Lossy by design: a dropped broadcast costs nothing — the durable
@@ -28,7 +29,7 @@
 import { logger } from './logger';
 
 interface StreamChunk {
-  t: 'd' | 'tool' | 'step';
+  t: 'd' | 'r' | 'tool' | 'step';
   x?: string;
   n?: string;
   d?: string;
@@ -40,6 +41,9 @@ interface JobStream {
   chunksSent: number;
   batchesSent: number;
   failures: number;
+  /** Per-channel counters for the stream_stats verification marker. */
+  thinkingChunks: number;
+  narrationChunks: number;
 }
 
 const FLUSH_MS = 120;
@@ -55,7 +59,7 @@ function getStream(jobId: string): JobStream {
   let s = streams.get(jobId);
 
   if (!s) {
-    s = { buffer: [], timer: null, chunksSent: 0, batchesSent: 0, failures: 0 };
+    s = { buffer: [], timer: null, chunksSent: 0, batchesSent: 0, failures: 0, thinkingChunks: 0, narrationChunks: 0 };
     streams.set(jobId, s);
   }
 
@@ -135,13 +139,25 @@ function enqueue(jobId: string, chunk: StreamChunk): void {
   }
 }
 
-/** Broadcast a text/reasoning delta. Fire-and-forget — never await in the hot loop. */
-export function sendDelta(jobId: string, text: string): void {
+/**
+ * Broadcast a model delta. Fire-and-forget — never await in the hot loop.
+ * `channel` distinguishes thinking (reasoning tokens) from narration (the
+ * model's spoken text) so the UI can style them differently.
+ */
+export function sendDelta(jobId: string, text: string, channel: 'thinking' | 'narration' = 'narration'): void {
   if (!text) {
     return;
   }
 
-  enqueue(jobId, { t: 'd', x: text });
+  const s = getStream(jobId);
+
+  if (channel === 'thinking') {
+    s.thinkingChunks++;
+  } else {
+    s.narrationChunks++;
+  }
+
+  enqueue(jobId, { t: channel === 'thinking' ? 'r' : 'd', x: text });
 }
 
 /** Broadcast that a tool call just started (name + short human detail). */
@@ -160,7 +176,7 @@ export function sendStep(jobId: string): void {
  */
 export async function closeJobStream(
   jobId: string,
-): Promise<{ chunksSent: number; batchesSent: number; failures: number }> {
+): Promise<{ chunksSent: number; batchesSent: number; failures: number; thinkingChunks: number; narrationChunks: number }> {
   await flush(jobId).catch(() => undefined);
 
   const s = streams.get(jobId);
@@ -168,6 +184,8 @@ export async function closeJobStream(
     chunksSent: s?.chunksSent ?? 0,
     batchesSent: s?.batchesSent ?? 0,
     failures: s?.failures ?? 0,
+    thinkingChunks: s?.thinkingChunks ?? 0,
+    narrationChunks: s?.narrationChunks ?? 0,
   };
 
   if (s?.timer) {

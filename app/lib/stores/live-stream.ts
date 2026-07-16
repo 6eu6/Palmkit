@@ -20,7 +20,7 @@
 import { atom } from 'nanostores';
 
 export interface LiveChunk {
-  t: 'd' | 'tool' | 'step';
+  t: 'd' | 'r' | 'tool' | 'step';
   x?: string;
   n?: string;
   d?: string;
@@ -32,13 +32,27 @@ export interface LiveTool {
 }
 
 export interface LiveStreamState {
+  /** Narration tail — the model's spoken text since the last durable flush. */
   text: string;
+
+  /** Thinking tail — reasoning tokens since the last durable flush. */
+  thinking: string;
+
+  /** Epoch ms when the current thinking run started (drives the live seconds counter). */
+  thinkingStartedAt: number;
   tool: LiveTool | null;
   active: boolean;
   updatedAt: number;
 }
 
-const EMPTY: LiveStreamState = { text: '', tool: null, active: false, updatedAt: 0 };
+const EMPTY: LiveStreamState = {
+  text: '',
+  thinking: '',
+  thinkingStartedAt: 0,
+  tool: null,
+  active: false,
+  updatedAt: 0,
+};
 
 /** Cap the live tail — the durable rows carry the full text anyway. */
 const MAX_TAIL_CHARS = 4000;
@@ -50,7 +64,7 @@ export const liveStreamStore = atom<LiveStreamState>(EMPTY);
  * Exported for unit tests.
  */
 export function applyLiveChunks(state: LiveStreamState, chunks: LiveChunk[], now = Date.now()): LiveStreamState {
-  let { text, tool } = state;
+  let { text, thinking, thinkingStartedAt, tool } = state;
   let touched = false;
 
   for (const c of chunks ?? []) {
@@ -61,12 +75,21 @@ export function applyLiveChunks(state: LiveStreamState, chunks: LiveChunk[], now
     if (c.t === 'd' && typeof c.x === 'string' && c.x.length > 0) {
       text = (text + c.x).slice(-MAX_TAIL_CHARS);
       touched = true;
+    } else if (c.t === 'r' && typeof c.x === 'string' && c.x.length > 0) {
+      if (thinking.length === 0) {
+        thinkingStartedAt = now;
+      }
+
+      thinking = (thinking + c.x).slice(-MAX_TAIL_CHARS);
+      touched = true;
     } else if (c.t === 'tool' && typeof c.n === 'string') {
       tool = { name: c.n, detail: typeof c.d === 'string' ? c.d : undefined };
       touched = true;
     } else if (c.t === 'step') {
       // Step boundary: the durable flush for this segment is imminent.
       text = '';
+      thinking = '';
+      thinkingStartedAt = 0;
       tool = null;
       touched = true;
     }
@@ -76,7 +99,7 @@ export function applyLiveChunks(state: LiveStreamState, chunks: LiveChunk[], now
     return state;
   }
 
-  return { text, tool, active: true, updatedAt: now };
+  return { text, thinking, thinkingStartedAt, tool, active: true, updatedAt: now };
 }
 
 /** Ingest a broadcast batch (called from the Realtime handler). */
@@ -93,6 +116,15 @@ export function clearLiveText(): void {
 
   if (s.text) {
     liveStreamStore.set({ ...s, text: '', updatedAt: Date.now() });
+  }
+}
+
+/** A durable thinking row landed — the folded stream takes over the thought. */
+export function clearLiveThinking(): void {
+  const s = liveStreamStore.get();
+
+  if (s.thinking) {
+    liveStreamStore.set({ ...s, thinking: '', updatedAt: Date.now() });
   }
 }
 

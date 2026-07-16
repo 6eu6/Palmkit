@@ -36,6 +36,7 @@ import { WORK_DIR } from '~/utils/constants';
 import {
   ingestLiveChunks,
   clearLiveText,
+  clearLiveThinking,
   clearLiveTool,
   resetLiveStream,
   type LiveChunk,
@@ -111,10 +112,14 @@ function dispatchJobEvent(ev: JobEvent): void {
 
         /*
          * M2 reconciliation: this durable row carries the same characters
-         * the live tail streamed — clear the tail so the folded stream
-         * takes over without duplication.
+         * the live tail streamed — clear the matching channel's tail so
+         * the folded stream takes over without duplication.
          */
-        clearLiveText();
+        if ((payload.channel as string | undefined) === 'thinking') {
+          clearLiveThinking();
+        } else {
+          clearLiveText();
+        }
 
         if (text) {
           upsertReasoning({

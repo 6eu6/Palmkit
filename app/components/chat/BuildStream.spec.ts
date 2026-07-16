@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { foldEvents } from './BuildStream';
+import { foldEvents, stripEmoji } from './BuildStream';
 import type { WorkerEvent } from '~/lib/stores/build-status';
 
 let seq = 0;
@@ -93,5 +93,51 @@ describe('foldEvents status kinds', () => {
     const texts = sections.flatMap((s) => s.rows).filter((r) => r.kind === 'system') as Array<{ text: string }>;
     expect(texts.some((r) => r.text.includes('Build completed and verified'))).toBe(true);
     expect(texts.some((r) => r.text.includes('restarting the agent'))).toBe(true);
+  });
+});
+
+describe('foldEvents thinking channel (S2)', () => {
+  it('folds thinking-channel reasoning into a thought row, narration into text', () => {
+    const sections = foldEvents([
+      ev('agent_started', 'Palmkit agent starting...', { agent: 'Palmkit', role: 'brain' }),
+      ev('reasoning', 'Palmkit: planning', {
+        agent: 'Palmkit',
+        text: 'Plan the layout first. ',
+        stepId: 0,
+        channel: 'thinking',
+      }),
+      ev('reasoning', 'Palmkit: planning', {
+        agent: 'Palmkit',
+        text: 'Then pick colors.',
+        stepId: 0,
+        channel: 'thinking',
+      }),
+      ev('reasoning', 'Palmkit: building', {
+        agent: 'Palmkit',
+        text: 'Building the restaurant site now.',
+        stepId: 0,
+        channel: 'narration',
+      }),
+      ev('file_written', 'index.html', { path: 'index.html' }),
+    ]);
+
+    const rows = sections.flatMap((s) => s.rows);
+    const thought = rows.find((r) => r.kind === 'thought') as { text: string } | undefined;
+    const narration = rows.find((r) => r.kind === 'thinking') as { text: string } | undefined;
+
+    expect(thought?.text).toBe('Plan the layout first. Then pick colors.');
+    expect(narration?.text).toBe('Building the restaurant site now.');
+    expect(rows.indexOf(rows.find((r) => r.kind === 'thought')!)).toBeLessThan(
+      rows.indexOf(rows.find((r) => r.kind === 'thinking')!),
+    );
+  });
+});
+
+describe('stripEmoji', () => {
+  it('removes emojis and keeps text intact', () => {
+    expect(stripEmoji('📝 src/App.jsx (10 lines)')).toBe('src/App.jsx (10 lines)');
+    expect(stripEmoji('✅ Build completed and verified (12 files).')).toBe('Build completed and verified (12 files).');
+    expect(stripEmoji('Checkpoint saved (fd7db1f) 🕘')).toBe('Checkpoint saved (fd7db1f)');
+    expect(stripEmoji('plain text stays')).toBe('plain text stays');
   });
 });

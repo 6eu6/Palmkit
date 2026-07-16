@@ -13,7 +13,7 @@
  * Built with UnoCSS (presetUno utilities + presetIcons `i-ph:*`) and the
  * existing `palmkit-elements-*` theme tokens — no new dependencies.
  */
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '@nanostores/react';
 import { workerEventsStore, workerProgressStore, type WorkerEvent } from '~/lib/stores/build-status';
 import { liveStreamStore } from '~/lib/stores/live-stream';
@@ -30,6 +30,21 @@ const STREAM_STYLES = `
 .pk-caret { display: inline-block; width: 0.55em; animation: pk-caret-blink 1s steps(1) infinite; }
 .pk-row-in { animation: pk-row-in 0.25s ease-out; }
 `;
+
+/*
+ * Emoji-free stream: every rendered text passes through stripEmoji so the
+ * UI stays clean regardless of what the worker (or legacy events) put in
+ * message strings. Icons — not emojis — carry the semantics of each row.
+ */
+const EMOJI_RE =
+  /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}\u{2190}-\u{21FF}\u{2300}-\u{23FF}]/gu;
+
+export function stripEmoji(text: string): string {
+  return (text ?? '')
+    .replace(EMOJI_RE, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
 
 /*
  * Tool → icon for the live activity chip ("what is the agent literally doing
@@ -79,18 +94,46 @@ const LIVE_TOOL_LABEL: Record<string, string> = {
 const LiveTail = memo(() => {
   const live = useStore(liveStreamStore);
 
-  if (!live.active || (!live.text && !live.tool)) {
+  // 1s ticker for the live "Thinking · Ns" counter.
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!live.thinking) {
+      return undefined;
+    }
+
+    const t = setInterval(() => setTick((n) => n + 1), 1000);
+
+    return () => clearInterval(t);
+  }, [live.thinking.length > 0]);
+
+  if (!live.active || (!live.text && !live.thinking && !live.tool)) {
     return null;
   }
 
-  // Show a readable tail — full text lands in the folded stream anyway.
+  // Show readable tails — the full text lands in the folded stream anyway.
+  const thinkTail = live.thinking.length > 600 ? `…${live.thinking.slice(-600)}` : live.thinking;
   const tail = live.text.length > 700 ? `…${live.text.slice(-700)}` : live.text;
+  const thinkSecs = live.thinkingStartedAt ? Math.max(1, Math.round((Date.now() - live.thinkingStartedAt) / 1000)) : 0;
   const toolIcon = live.tool ? (LIVE_TOOL_ICON[live.tool.name] ?? 'i-ph:gear-bold') : '';
   const toolLabel = live.tool ? (LIVE_TOOL_LABEL[live.tool.name] ?? live.tool.name) : '';
 
   return (
-    <div className="relative pl-5 pb-3 space-y-1.5">
+    <div className="relative pl-5 pb-3 space-y-2">
       <div className="absolute left-[7px] top-0 bottom-0 w-px bg-palmkit-elements-borderColor/40" />
+      {thinkTail && (
+        <div className="rounded-lg border border-palmkit-elements-borderColor/50 bg-palmkit-elements-background-depth-2/60 px-3 py-2">
+          <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-palmkit-elements-textTertiary">
+            <span className="i-ph:brain shrink-0 text-[13px]" />
+            <span>Thinking</span>
+            {thinkSecs > 0 && <span className="tabular-nums">· {thinkSecs}s</span>}
+          </div>
+          <div className="max-h-32 overflow-hidden text-xs italic leading-relaxed text-palmkit-elements-textTertiary whitespace-pre-wrap">
+            {thinkTail}
+            <span className="pk-caret text-[var(--pk-accent)]">▍</span>
+          </div>
+        </div>
+      )}
       {tail && (
         <div className="text-sm leading-relaxed text-palmkit-elements-textSecondary whitespace-pre-wrap">
           {tail}
@@ -110,6 +153,47 @@ const LiveTail = memo(() => {
 });
 
 LiveTail.displayName = 'LiveTail';
+
+/*
+ * ThoughtRow — a completed thinking segment from the durable stream.
+ * Collapsed to a single-line preview by default (the thought already served
+ * its purpose); expandable for users who want to read the model's mind.
+ */
+const ThoughtRow = memo(({ text }: { text: string }) => {
+  const [expanded, setExpanded] = useState(false);
+  const preview =
+    text
+      .split('\n')
+      .find((l) => l.trim().length > 0)
+      ?.slice(0, 90) ?? '';
+
+  return (
+    <div className="rounded-lg border border-palmkit-elements-borderColor/50 bg-palmkit-elements-background-depth-2/60">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="flex w-full items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-palmkit-elements-textTertiary"
+      >
+        <span className="i-ph:brain shrink-0 text-[13px]" />
+        <span className="shrink-0">Thought</span>
+        {!expanded && (
+          <span className="min-w-0 flex-1 truncate text-left font-normal italic opacity-70">{preview}</span>
+        )}
+        <span
+          className="i-ph:caret-down ml-auto shrink-0 transition-transform"
+          style={{ transform: expanded ? 'rotate(180deg)' : 'none' }}
+        />
+      </button>
+      {expanded && (
+        <div className="border-t border-palmkit-elements-borderColor/40 px-3 py-2 text-xs italic leading-relaxed text-palmkit-elements-textTertiary whitespace-pre-wrap">
+          {text}
+        </div>
+      )}
+    </div>
+  );
+});
+
+ThoughtRow.displayName = 'ThoughtRow';
 
 /*
  * Lightweight inline markdown renderer for the build summary.
@@ -437,7 +521,8 @@ export type Row =
   | { kind: 'video'; url?: string; name: string; status: 'generating' | 'ready' | 'error' }
   | { kind: 'image'; dataUrl: string; name: string; size?: number }
   | { kind: 'subagent'; task: string; result?: string; status: 'running' | 'done' | 'error' }
-  | { kind: 'system'; text: string }
+  | { kind: 'thought'; text: string }
+  | { kind: 'system'; text: string; icon?: string }
   | { kind: 'error'; text: string }
   | { kind: 'progress'; text: string }
   | { kind: 'summary'; text: string };
@@ -536,9 +621,13 @@ export function foldEvents(events: WorkerEvent[]): Section[] {
     }
   }
 
-  // reasoning accumulation state (per contiguous run)
+  /*
+   * reasoning accumulation state (per contiguous run), split by channel:
+   * thoughtBuf = the model's thinking tokens; reasoningBuf = spoken narration.
+   */
   let reasoningBuf = '';
   let reasoningStep: number | undefined;
+  let thoughtBuf = '';
 
   /*
    * Ensure a section exists before pushing rows into it. If no agent has
@@ -556,6 +645,18 @@ export function foldEvents(events: WorkerEvent[]): Section[] {
   };
 
   const flushReasoning = () => {
+    /*
+     * Thinking flushes BEFORE narration — chronologically the model thinks,
+     * then speaks.
+     */
+    const thought = thoughtBuf.trim();
+
+    if (thought) {
+      ensureSection().rows.push({ kind: 'thought', text: thought });
+    }
+
+    thoughtBuf = '';
+
     const text = reasoningBuf.trim();
 
     if (text) {
@@ -591,6 +692,18 @@ export function foldEvents(events: WorkerEvent[]): Section[] {
     if (ev.type === 'reasoning') {
       const step = p.stepId as number | undefined;
       const text = (p.text as string | undefined) ?? '';
+
+      // Channel split (S2): thinking accumulates separately from narration.
+      if ((p.channel as string | undefined) === 'thinking') {
+        thoughtBuf += text;
+        continue;
+      }
+
+      // Narration arriving closes the thought that preceded it.
+      if (thoughtBuf.trim()) {
+        ensureSection().rows.push({ kind: 'thought', text: thoughtBuf.trim() });
+        thoughtBuf = '';
+      }
 
       if (reasoningBuf && step !== undefined && step !== reasoningStep) {
         reasoningBuf += '\n\n';
@@ -778,22 +891,28 @@ export function foldEvents(events: WorkerEvent[]): Section[] {
          * dropped by the fallback chain below.
          */
         if (p.kind === 'checkpoint' || p.kind === 'salvaged_success' || p.reason === 'stall_retry') {
-          ensureSection().rows.push({ kind: 'system', text: m.replace(/^[🕘✅🔁]+\s*/u, '') });
+          const icon =
+            p.kind === 'checkpoint'
+              ? 'i-ph:clock-counter-clockwise'
+              : p.kind === 'salvaged_success'
+                ? 'i-ph:check-circle'
+                : 'i-ph:arrow-clockwise';
+          ensureSection().rows.push({ kind: 'system', text: stripEmoji(m), icon });
           break;
         }
 
         if (/^🔧/.test(m) || /repair attempt/i.test(m)) {
           // Build-verification repair round kicking off.
-          ensureSection().rows.push({ kind: 'system', text: m.replace(/^🔧\s*/, '') });
+          ensureSection().rows.push({ kind: 'system', text: stripEmoji(m), icon: 'i-ph:wrench' });
         } else if (/^⚠️/.test(m) || /Build still has errors/i.test(m)) {
-          ensureSection().rows.push({ kind: 'error', text: m.replace(/^⚠️\s*/, '') });
+          ensureSection().rows.push({ kind: 'error', text: stripEmoji(m) });
         } else if (p.command || /Run:/.test(m) || /^⚡/.test(m)) {
           ensureSection().rows.push({
             kind: 'command',
-            text: (p.command as string) ?? m.replace(/^.*?Run:\s*/, '').replace(/^⚡\s*/, ''),
+            text: stripEmoji((p.command as string) ?? m.replace(/^.*?Run:\s*/, '')),
           });
         } else if (/Read:/.test(m) || /^📖/.test(m)) {
-          ensureSection().rows.push({ kind: 'read', text: m.replace(/^📖\s*/, '') });
+          ensureSection().rows.push({ kind: 'read', text: stripEmoji(m) });
         } else if (/Screenshot/i.test(m) || /^📸/.test(m)) {
           /*
            * Don't render the text-only screenshot messages here — they're
@@ -818,9 +937,9 @@ export function foldEvents(events: WorkerEvent[]): Section[] {
         const sec = ensureSection();
 
         if (ev.message.includes('cancelled by user') || ev.message.includes('saving partial state')) {
-          sec.rows.push({ kind: 'system', text: ev.message });
+          sec.rows.push({ kind: 'system', text: stripEmoji(ev.message), icon: 'i-ph:hand-palm' });
         } else {
-          sec.rows.push({ kind: 'error', text: ev.message });
+          sec.rows.push({ kind: 'error', text: stripEmoji(ev.message) });
         }
 
         break;
@@ -1306,7 +1425,7 @@ export const BuildStreamView = memo(
     // Human-readable failure reason for the unified failure card.
     const failureReason = (() => {
       const fail = [...events].reverse().find((e) => e.type === 'job_failed');
-      const msg = (fail?.message ?? '').replace(/^[❌⚠️\s]+/, '').trim();
+      const msg = stripEmoji(fail?.message ?? '');
 
       return msg.length > 0 ? msg : null;
     })();
@@ -1511,12 +1630,63 @@ export const BuildStreamView = memo(
             ))}
             {/* M2: instant layer — in-flight model text + current tool chip */}
             {!past && !done && !failed && <LiveTail />}
+            {!past && !done && !failed && <StreamScrollPin depsA={events.length} />}
           </div>
         )}
       </div>
     );
   },
 );
+
+/*
+ * StreamScrollPin — smart follow-the-stream scrolling. A zero-height
+ * sentinel at the stream's end: while the user is near the bottom of the
+ * scroll container, every new row / live delta keeps the view pinned to
+ * the latest content; the moment they scroll up to read, we stop pulling
+ * them down. No layout cost, no scroll hijacking.
+ */
+const StreamScrollPin = memo(({ depsA }: { depsA: number }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const live = useStore(liveStreamStore);
+
+  useEffect(() => {
+    const el = ref.current;
+
+    if (!el) {
+      return;
+    }
+
+    // Find the nearest scrollable ancestor (the chat scroller).
+    let parent: HTMLElement | null = el.parentElement;
+
+    while (parent) {
+      const style = window.getComputedStyle(parent);
+
+      if (/(auto|scroll)/.test(style.overflowY) && parent.scrollHeight > parent.clientHeight) {
+        break;
+      }
+
+      parent = parent.parentElement;
+    }
+
+    const scroller = parent ?? document.scrollingElement;
+
+    if (!scroller) {
+      return;
+    }
+
+    const distanceFromBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+
+    // Pinned = within ~160px of the bottom. Otherwise the user is reading.
+    if (distanceFromBottom < 160) {
+      el.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    }
+  }, [depsA, live.updatedAt]);
+
+  return <div ref={ref} className="h-0" />;
+});
+
+StreamScrollPin.displayName = 'StreamScrollPin';
 
 BuildStreamView.displayName = 'BuildStreamView';
 
