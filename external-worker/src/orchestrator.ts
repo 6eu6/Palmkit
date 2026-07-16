@@ -1228,7 +1228,15 @@ export async function runOrchestratedBuild(
                    * if there's no valid entry point. A looping model that had
                    * already written a working app shouldn't lose the whole build.
                    */
-                  const LOOP_ABORT_AT = 8; // tolerate iteration on complex multi-file projects
+                  /*
+                   * Thresholds differ by tool. Many small edit_file calls on
+                   * one file is NORMAL editing (a color swap touches the same
+                   * file a dozen times) — observed live on job a1ac463b where
+                   * 8 legitimate targeted edits tripped the abort and killed
+                   * the session save. Full write_file rewrites are the real
+                   * loop signature and keep the tight threshold.
+                   */
+                  const LOOP_ABORT_AT = part.toolName === 'edit_file' ? 25 : 8;
 
                   if (writes >= LOOP_ABORT_AT) {
                     logger.warn(
@@ -1310,6 +1318,31 @@ export async function runOrchestratedBuild(
 
         if (isAbort) {
           logger.warn(`[orchestrator] Stream aborted for ${config.name} (timeout or loop detection)`);
+
+          /*
+           * Preserve session continuity even on aborted turns: record the
+           * user message + a synthetic note so the NEXT turn still knows this
+           * exchange happened (the files it produced are in the workspace).
+           * Without this, an aborted-but-salvaged edit leaves a hole in the
+           * session (observed on job a1ac463b).
+           */
+          if (role === 'brain') {
+            const abortedFiles = Object.keys(getProjectFiles(jobId) as Record<string, string>);
+            await appendToSession(
+              projectId,
+              session.messages,
+              session.turns,
+              [
+                { role: 'user', content: agentPrompt },
+                {
+                  role: 'assistant',
+                  content: `(This turn was cut short by a safety limit, but the work landed: the workspace now has ${abortedFiles.length} files — ${abortedFiles.slice(0, 12).join(', ')}. Use read_file to inspect current contents.)`,
+                },
+              ],
+              supabase,
+              userId,
+            ).catch(() => undefined);
+          }
 
           // Tell the user honestly — a silent abort used to masquerade as a
           // normal completion ("Build complete" with missing files).
@@ -1400,6 +1433,24 @@ export async function runOrchestratedBuild(
               `✅ Build completed and verified (${salvageCount} files). A non-essential final step failed and was skipped.`,
               { kind: 'salvaged_success', error: streamError.message.slice(0, 200) },
             );
+            // Keep session continuity for the salvaged turn too.
+            if (role === 'brain') {
+              await appendToSession(
+                projectId,
+                session.messages,
+                session.turns,
+                [
+                  { role: 'user', content: agentPrompt },
+                  {
+                    role: 'assistant',
+                    content: `(Turn finished early after a tool error, but the build succeeded: ${salvageCount} files in the workspace, build verified. Use read_file to inspect current contents.)`,
+                  },
+                ],
+                supabase,
+                userId,
+              ).catch(() => undefined);
+            }
+
             agentResults.push({ role, success: true, text: builderContext || '', duration: Date.now() - agentStart });
             streamError = null;
             break; // exit the agent queue — finalize with what was built
