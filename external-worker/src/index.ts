@@ -240,7 +240,7 @@ cleanupOrphanedJobsOnStartup().then(() => {
  * healthy, actively-running job) and recovers them: re-queue (back to pending)
  * up to a cap, then fail cleanly so the user isn't left hanging.
  */
-const STUCK_THRESHOLD_MS = 25 * 60 * 1000; // 25 min — safely past the 15-min hard timeout
+const STUCK_THRESHOLD_MS = 35 * 60 * 1000; // 35 min — 40-file projects need 25-30 min build time
 const MAX_STUCK_REQUEUE = 2;
 
 async function reapStuckJobs() {
