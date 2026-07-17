@@ -3176,15 +3176,17 @@ Rules:
 When done, return a brief summary of what you wrote.`;
 
           /*
-           * Manual timeout via AbortController — 15 min for large file batches.
-           * The old 5-min timeout was too short for 8-file batches with GLM-4.7
-           * (each file ~200 lines). 15 min matches the brain's own step budget.
+           * Manual timeout via AbortController — 5 min for file batches.
+           * Was 15 min, but GLM-4.7 stalls on large sub-agent tasks and
+           * the long timeout just delays the inevitable. 5 min is enough
+           * for 5-8 files. If the sub-agent stalls, it fails fast and the
+           * main model writes files directly (proven to work).
            */
           const subAbortController = new AbortController();
           const subTimeout = setTimeout(() => {
-            logger.warn(`[agent] Sub-agent timeout (900s) — aborting`);
+            logger.warn(`[agent] Sub-agent timeout (300s) — aborting`);
             subAbortController.abort();
-          }, 900_000);
+          }, 300_000);
 
           /*
            * RETRY ON RATE LIMIT (429) — OpenRouter throttles concurrent
@@ -3201,7 +3203,7 @@ When done, return a brief summary of what you wrote.`;
                 system: subSystemPrompt,
                 prompt: task,
                 tools: subTools as any,
-                maxSteps: 25,
+                maxSteps: 40,
                 maxTokens: 16000,
                 temperature: 0.3,
                 abortSignal: subAbortController.signal,
