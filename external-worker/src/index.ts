@@ -178,6 +178,56 @@ async function pollLoop() {
 const pollTimer = setInterval(pollLoop, POLL_INTERVAL_MS);
 
 /*
+ * STARTUP CLEANUP — fail orphaned jobs from previous worker instance.
+ *
+ * When the worker restarts (auto-pull deploy, crash, or manual restart),
+ * any jobs that were "generating" are now orphaned — the old process is
+ * dead, the streamText call is gone, but the DB still shows "generating".
+ *
+ * Without this cleanup, the user sees "Building..." for 25 minutes until
+ * the stuck-job reaper catches it. With this cleanup, the user sees an
+ * immediate failure and can retry.
+ *
+ * This runs ONCE at startup, BEFORE the poll loop starts claiming new jobs.
+ */
+async function cleanupOrphanedJobsOnStartup() {
+  try {
+    const { data: orphaned, error } = await supabase
+      .from('build_jobs')
+      .select('id, retry_count')
+      .eq('status', 'generating')
+      .limit(50);
+
+    if (error || !orphaned || orphaned.length === 0) {
+      logger.info('[startup] No orphaned jobs found.');
+      return;
+    }
+
+    logger.warn(`[startup] Found ${orphaned.length} orphaned job(s) in "generating" state — failing them now.`);
+
+    for (const job of orphaned) {
+      await supabase
+        .from('build_jobs')
+        .update({
+          status: 'failed_clean',
+          error_summary: 'Worker restarted while this job was running. Please try again — the build will start fresh.',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', job.id);
+
+      logger.info(`[startup] Failed orphaned job ${job.id}`);
+    }
+  } catch (err: any) {
+    logger.error('[startup] Failed to cleanup orphaned jobs:', err.message);
+  }
+}
+
+// Run cleanup before starting the poll loop.
+cleanupOrphanedJobsOnStartup().then(() => {
+  logger.info('[startup] Cleanup complete. Starting poll loop.');
+});
+
+/*
  * Stuck-job reaper.
  *
  * A job goes pending → generating when a worker claims it. If that worker then
