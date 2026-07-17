@@ -3198,21 +3198,49 @@ When done, return a brief summary of what you wrote.`;
 
           for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-              const result = await streamText({
-                model,
-                system: subSystemPrompt,
-                prompt: task,
-                tools: subTools as any,
-                maxSteps: 40,
-                maxTokens: 16000,
-                temperature: 0.3,
-                abortSignal: subAbortController.signal,
+              /*
+               * PROMISE.RACE TIMEOUT — AbortController.abort() does NOT work
+               * reliably in Bun's runtime for streamText (known issue: the
+               * abort signal fires but streamText ignores it, hanging forever).
+               *
+               * Instead of relying on abort, we race the streamText result
+               * against a 5-min timeout promise. If the timeout wins, we
+               * return an error IMMEDIATELY — the hung streamText becomes
+               * an orphaned promise that will eventually GC.
+               *
+               * This guarantees the sub-agent ALWAYS returns within 5 min,
+               * regardless of whether abort works. The main model can then
+               * recover and write files directly.
+               */
+              const SUB_AGENT_TIMEOUT_MS = 300_000; // 5 min
+
+              const subAgentPromise = (async () => {
+                const result = await streamText({
+                  model,
+                  system: subSystemPrompt,
+                  prompt: task,
+                  tools: subTools as any,
+                  maxSteps: 40,
+                  maxTokens: 16000,
+                  temperature: 0.3,
+                  abortSignal: subAbortController.signal,
+                });
+
+                const subAgentText = await result.text;
+                const subAgentSteps = await result.steps;
+                return { text: subAgentText, steps: subAgentSteps };
+              })();
+
+              const timeoutPromise = new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error('SUB_AGENT_TIMEOUT')), SUB_AGENT_TIMEOUT_MS);
               });
 
-              clearTimeout(subTimeout);
+              const { text: subAgentText, steps: subAgentSteps } = await Promise.race([
+                subAgentPromise,
+                timeoutPromise,
+              ]);
 
-              const subAgentText = await result.text;
-              const subAgentSteps = await result.steps;
+              clearTimeout(subTimeout);
 
               logger.info(
                 `[agent] spawn_subagent completed (attempt ${attempt}): ${subAgentText.length} chars, ${subAgentSteps?.length || 0} steps`,
@@ -3237,24 +3265,25 @@ When done, return a brief summary of what you wrote.`;
             } catch (subErr: any) {
               lastErr = subErr;
               const subMsg = subErr?.message ?? String(subErr);
+              const isTimeout = subMsg.includes('SUB_AGENT_TIMEOUT');
               const isAbort = subErr?.name === 'AbortError' || subMsg.includes('abort');
               const isRateLimit = subMsg.includes('429') || subMsg.includes('rate') || subMsg.includes('Rate');
 
-              if (isAbort) {
+              if (isTimeout || isAbort) {
                 clearTimeout(subTimeout);
-                logger.error(`[agent] spawn_subagent aborted: ${subMsg}`);
+                logger.error(`[agent] spawn_subagent timed out (5 min Promise.race): ${subMsg}`);
 
                 await emitEvent(supabase, jobId, 'file_chunk',
-                  `⏱️ Sub-agent timed out (15 min) — writing files directly`,
-                  { agent: 'Brain', kind: 'subagent_error', task, subAgentId, error: subMsg },
+                  `⏱️ Sub-agent timed out (5 min) — write files YOURSELF now`,
+                  { agent: 'Brain', kind: 'subagent_error', task, subAgentId, error: 'timeout' },
                 );
 
                 return {
                   ok: false,
                   task,
-                  error: subMsg,
+                  error: 'Sub-agent timed out after 5 minutes (streamText hung — likely GLM-4.7 stall).',
                   timedOut: true,
-                  message: `Sub-agent timed out after 15 minutes. Write the files YOURSELF using write_files NOW.`,
+                  message: `Sub-agent timed out after 5 minutes. The streamText call hung (known Bun/GLM issue). Write the files YOURSELF using write_files NOW — do NOT spawn another sub-agent for this task.`,
                 };
               }
 
