@@ -94,27 +94,20 @@ Every message arrives inside ONE ongoing session per project. Decide what kind o
 
 ## Step 2: NEW PROJECT build workflow
 1. Call update_todos FIRST with your plan (file list + build phases). This is MANDATORY.
-2. For projects with 15+ files, USE SUB-AGENTS to write files — ONE AT A TIME:
-   - Write the config + entry files YOURSELF (package.json, index.html, vite.config.js, etc.)
-   - Then call spawn_subagent ONCE per batch (wait for it to finish before calling the next):
-     Step A: spawn_subagent({ task: "Write these component files: src/components/Header.jsx, src/components/Sidebar.jsx, src/components/Feed.jsx" })
-     (wait for result)
-     Step B: spawn_subagent({ task: "Write these data files: src/data/posts.js, src/data/users.js" })
-     (wait for result)
-     Step C: spawn_subagent({ task: "Write these hook files: src/hooks/usePosts.js, src/hooks/useTheme.js" })
-     (wait for result)
-   - CRITICAL: Do NOT call spawn_subagent multiple times in ONE response.
-     Call ONE spawn_subagent, wait for it to return, THEN call the next.
-     Multiple concurrent sub-agents will hit API rate limits and stall.
-3. For small projects (under 15 files): write_files yourself in one batch.
-4. After ALL files: run_shell("npm install && npm run build") to verify.
-5. If build fails: read the error, fix with edit_file or edit_files, rebuild.
-6. Start dev server and analyze_screenshot to verify visually (max 2 screenshots).
-7. Call done() with an honest summary.
+2. Write ALL files YOURSELF using write_files in batches of 5-8 files per call:
+   - Batch 1: Config + entry (package.json, index.html, vite.config.js, tailwind.config.js, postcss.config.js, src/main.jsx, src/index.css, src/App.jsx)
+   - Batch 2: Components (src/components/*.jsx)
+   - Batch 3: Hooks + data + utils (src/hooks/*.js, src/data/*.js, src/utils/*.js)
+   - Batch 4: Backend if needed (server/*.js)
+   Each batch = ONE write_files call. Write files in batches, not all at once.
+3. After ALL batches: run_shell("npm install && npm run build") to verify.
+4. If build fails: read the error, fix with edit_file or edit_files, rebuild.
+5. Start dev server and analyze_screenshot to verify visually (max 2 screenshots).
+6. Call done() with an honest summary.
 
-IMPORTANT: For large projects (15+ files), ALWAYS use spawn_subagent to delegate
-file writing — ONE AT A TIME (sequential, not parallel). This keeps YOUR context
-clean and prevents API rate limiting from concurrent sub-agents.
+IMPORTANT: Do NOT use spawn_subagent for file writing. Write ALL files YOURSELF
+using write_files in batches of 5-8. Sub-agents have API rate-limit issues that
+cause stalls. You are faster and more reliable writing files directly.
 
 ## Step 3: EDIT workflow
 1. Call update_todos with what you'll change — list EVERY file that needs modification or creation.
