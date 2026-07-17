@@ -1345,11 +1345,13 @@ export async function runOrchestratedBuild(
        * Kept above the typical install by resetting on tool parts too
        * (every fullStream part refreshes lastChunkAt).
        */
-      const STALL_TIMEOUT_MS = 240_000; // 4 min — catches model stalls fast. npm install (≤300s) resets lastChunkAt on tool parts, so this is safe.
+      const STALL_TIMEOUT_MS = 240_000; // 4 min — catches model stalls fast.
       let lastChunkAt = Date.now();
       let stalled = false;
+      let toolExecuting = false; // true while a tool (esp. spawn_subagent) runs — pauses stall watchdog
 
       const stallTimer = setInterval(() => {
+        if (toolExecuting) return; // don't fire while tool is executing (sub-agents take 5-15 min)
         if (Date.now() - lastChunkAt > STALL_TIMEOUT_MS) {
           stalled = true;
           logger.warn(
@@ -1406,6 +1408,7 @@ export async function runOrchestratedBuild(
              * during execution — we don't duplicate them here.
              */
             case 'tool-call': {
+              toolExecuting = true; // pause stall watchdog while tool runs
               await flushText(true);
 
               /*
@@ -1528,6 +1531,7 @@ export async function runOrchestratedBuild(
              * next text-delta starts a fresh reasoning entry in the client.
              */
             case 'step-finish': {
+              toolExecuting = false; // resume stall watchdog — all tools in this step done
               await flushText(true);
               sendStep(jobId); // M2: close the live text segment
               stepId++;
@@ -1561,7 +1565,7 @@ export async function runOrchestratedBuild(
             default:
               /*
                * Other part types (tool-call-streaming-start, tool-call-delta,
-               * tool-result, step-start, source, file, reasoning-signature,
+               * step-start, source, file, reasoning-signature,
                * redacted-reasoning) — not relevant to event emission.
                */
               break;
