@@ -2887,45 +2887,88 @@ Rules:
 
 When done, return a brief summary of what you wrote.`;
 
-          const result = await streamText({
-            model,
-            system: subSystemPrompt,
-            prompt: task,
-            tools: subTools as any,
-            maxSteps: 20,
-            maxTokens: 16000,
-            temperature: 0.3,
-            abortSignal: AbortSignal.timeout(300_000), // 5 min per sub-agent — prevents indefinite stall on API rate limits
-          });
+          /*
+           * Manual timeout via AbortController — AbortSignal.timeout() does NOT
+           * work reliably in Bun's runtime for streamText (observed: sub-agent
+           * hung for 15 min with no abort despite 5-min timeout). Using a
+           * manual setTimeout + AbortController ensures the abort actually fires.
+           */
+          const subAbortController = new AbortController();
+          const subTimeout = setTimeout(() => {
+            logger.warn(`[agent] Sub-agent timeout (300s) — aborting`);
+            subAbortController.abort();
+          }, 300_000);
 
-          const subAgentText = await result.text;
-          const subAgentSteps = await result.steps;
+          try {
+            const result = await streamText({
+              model,
+              system: subSystemPrompt,
+              prompt: task,
+              tools: subTools as any,
+              maxSteps: 20,
+              maxTokens: 16000,
+              temperature: 0.3,
+              abortSignal: subAbortController.signal,
+            });
 
-          logger.info(
-            `[agent] spawn_subagent completed: ${subAgentText.length} chars, ${subAgentSteps?.length || 0} steps`,
-          );
+            clearTimeout(subTimeout);
 
-          await emitEvent(supabase, jobId, 'file_chunk', `✅ Sub-agent done: ${task.slice(0, 80)}`, {
-            agent: 'Brain',
-            kind: 'subagent_complete',
-            task,
-            subAgentId,
-            result: subAgentText.slice(0, 2000),
-            steps: subAgentSteps?.length || 0,
-          });
+            const subAgentText = await result.text;
+            const subAgentSteps = await result.steps;
 
-          return {
-            ok: true,
-            task,
-            result: subAgentText,
-            steps: subAgentSteps?.length || 0,
-            message: `Sub-agent completed: ${task}`,
-          };
+            logger.info(
+              `[agent] spawn_subagent completed: ${subAgentText.length} chars, ${subAgentSteps?.length || 0} steps`,
+            );
+
+            await emitEvent(supabase, jobId, 'file_chunk', `✅ Sub-agent done: ${task.slice(0, 80)}`, {
+              agent: 'Brain',
+              kind: 'subagent_complete',
+              task,
+              subAgentId,
+              result: subAgentText.slice(0, 2000),
+              steps: subAgentSteps?.length || 0,
+            });
+
+            return {
+              ok: true,
+              task,
+              result: subAgentText,
+              steps: subAgentSteps?.length || 0,
+              message: `Sub-agent completed: ${task}`,
+            };
+          } catch (subErr: any) {
+            clearTimeout(subTimeout);
+            const subMsg = subErr?.message ?? String(subErr);
+            const isAbort = subErr?.name === 'AbortError' || subMsg.includes('abort');
+
+            logger.error(`[agent] spawn_subagent failed: ${subMsg}`);
+
+            await emitEvent(supabase, jobId, 'file_chunk',
+              isAbort ? `⏱️ Sub-agent timed out (5 min) — writing files directly` : `⚠️ Sub-agent failed: ${subMsg.slice(0, 120)}`,
+              { agent: 'Brain', kind: 'subagent_error', task, subAgentId, error: subMsg },
+            );
+
+            /*
+             * FALLBACK: if sub-agent fails/times out, return a clear error so
+             * the brain knows it must write the files ITSELF. The brain's
+             * system prompt already says "if sub-agent fails, write files
+             * directly with write_files".
+             */
+            return {
+              ok: false,
+              task,
+              error: subMsg,
+              timedOut: isAbort,
+              message: isAbort
+                ? `Sub-agent timed out after 5 minutes. Write the files YOURSELF using write_files NOW.`
+                : `Sub-agent failed: ${subMsg}. Write the files YOURSELF using write_files.`,
+            };
+          }
         } catch (err: any) {
           const msg = err?.message ?? String(err);
-          logger.error(`[agent] spawn_subagent failed: ${msg}`);
+          logger.error(`[agent] spawn_subagent outer catch: ${msg}`);
 
-          await emitEvent(supabase, jobId, 'file_chunk', `⚠️ Sub-agent failed: ${msg.slice(0, 120)}`, {
+          await emitEvent(supabase, jobId, 'file_chunk', `⚠️ Sub-agent error: ${msg.slice(0, 120)}`, {
             agent: 'Brain',
             kind: 'subagent_error',
             task,
