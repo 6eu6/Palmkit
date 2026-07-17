@@ -1214,6 +1214,94 @@ export async function runOrchestratedBuild(
             }
           }
 
+          /*
+           * ═══════════════════════════════════════════════════════════════════
+           * DEEP REPAIR #3: extract code from RAW args when JSON.parse fails.
+           *
+           * ROOT CAUSE (confirmed via Supabase job_events on edit job
+           * 21b17abb): GLM-4.7 generates the correct file content in its
+           * reasoning stream, but the write_file tool-call args arrive as
+           * MALFORMED JSON — the content string contains unescaped newlines,
+           * quotes, or backticks that break JSON.parse. The model then loops:
+           *   "I keep making the same mistake" (30+ times)
+           *   → never reaches write_file → auto-repair never fires → build stalls.
+           *
+           * FIX: instead of giving up when JSON.parse fails, scan the RAW args
+           * string for code-block fences (```jsx\n...```) or for path/content
+           * pairs using regex. Reconstruct valid JSON from what we found.
+           * This is the DEFINITIVE fix — it works even when the model's JSON
+           * is completely unparseable, because the code itself is still in
+           * the raw text.
+           * ═══════════════════════════════════════════════════════════════════
+           */
+          if (toolCall.toolName === 'write_file' || toolCall.toolName === 'write_files') {
+            const rawArgs = toolCall.args;
+
+            // Try to extract a path from the raw args (even if JSON is broken)
+            const pathMatch = rawArgs.match(/"path"\s*:\s*"([^"]+)"/);
+            if (pathMatch) {
+              const filePath = pathMatch[1];
+
+              // Strategy A: look for code-block fences in the raw args
+              const fenceMatch = rawArgs.match(/```(?:[a-z]*)\n?([\s\S]*?)```/);
+              if (fenceMatch && fenceMatch[1] && fenceMatch[1].trim().length > 10) {
+                const code = fenceMatch[1].trim();
+                const repairedJson = JSON.stringify({ path: filePath, content: code });
+
+                logger.warn(
+                  `[orchestrator] DEEP REPAIR: extracted code from fence in write_file args (path=${filePath}, ${code.length} chars)`,
+                );
+
+                return { ...toolCall, args: repairedJson };
+              }
+
+              // Strategy B: look for "content":"..." even in broken JSON
+              // (grab everything between "content":" and the next unescaped ")
+              const contentMatch = rawArgs.match(/"content"\s*:\s*"([\s\S]*?)(?<!\\)"/);
+              if (contentMatch && contentMatch[1] && contentMatch[1].length > 5) {
+                // Unescape the captured content
+                let code = contentMatch[1]
+                  .replace(/\\n/g, '\n')
+                  .replace(/\\t/g, '\t')
+                  .replace(/\\"/g, '"')
+                  .replace(/\\\\/g, '\\');
+
+                const repairedJson = JSON.stringify({ path: filePath, content: code });
+
+                logger.warn(
+                  `[orchestrator] DEEP REPAIR: extracted content from broken JSON in write_file args (path=${filePath}, ${code.length} chars)`,
+                );
+
+                return { ...toolCall, args: repairedJson };
+              }
+            }
+
+            // Strategy C: for write_files, try to find MULTIPLE path/content pairs
+            if (toolCall.toolName === 'write_files') {
+              const files: Array<{ path: string; content: string }> = [];
+              const fileRegex = /"path"\s*:\s*"([^"]+)"[\s\S]*?"content"\s*:\s*"([\s\S]*?)(?<!\\)"/g;
+              let m;
+              while ((m = fileRegex.exec(rawArgs)) !== null) {
+                const fp = m[1];
+                let code = m[2]
+                  .replace(/\\n/g, '\n')
+                  .replace(/\\t/g, '\t')
+                  .replace(/\\"/g, '"')
+                  .replace(/\\\\/g, '\\');
+                if (code.length > 5) files.push({ path: fp, content: code });
+              }
+              if (files.length > 0) {
+                const repairedJson = JSON.stringify({ files });
+
+                logger.warn(
+                  `[orchestrator] DEEP REPAIR: extracted ${files.length} files from broken write_files args`,
+                );
+
+                return { ...toolCall, args: repairedJson };
+              }
+            }
+          }
+
           return null;
         },
         temperature: 0.3, // Low temperature for consistent code generation (was 0.7 — too random)
