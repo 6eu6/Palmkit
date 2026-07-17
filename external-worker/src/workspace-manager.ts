@@ -126,17 +126,6 @@ export interface ProjectManifest {
  * .palmkit/ memory layer files.
  * These give the agent structured memory instead of just a short worklog.
  */
-export interface PalmkitMemory {
-  projectMd: string;        // Human-readable project description
-  currentTask: string;      // What the agent should do now
-  decisions: string;        // Why certain choices were made
-  agentInstructions: string; // How the agent should work on this project
-  apiMap: object | null;    // API routes and contracts
-  fileMap: object | null;   // File → purpose mapping
-  testResults: object | null; // Last test run results
-  errors: string[];         // Recent errors
-}
-
 /**
  * Mirror a file to Supabase Storage so /api/workspace (which reads from
  * Supabase Storage, not R2 directly) can access it.
@@ -532,51 +521,6 @@ const PALMKIT_PREFIX = '.palmkit';
 
 function buildPalmkitKey(projectId: string, filename: string): string {
   return buildWorkspaceKey(projectId, `${PALMKIT_PREFIX}/${filename}`);
-}
-
-/**
- * Read all .palmkit/ memory files for a project.
- * Returns null for any file that doesn't exist.
- */
-export async function readPalmkitMemory(projectId: string): Promise<PalmkitMemory> {
-  const read = async (filename: string): Promise<string> => {
-    try {
-      return (await readWorkspaceFile(projectId, `${PALMKIT_PREFIX}/${filename}`)) || '';
-    } catch {
-      return '';
-    }
-  };
-
-  const readJson = async (filename: string): Promise<object | null> => {
-    try {
-      const text = await read(filename);
-      return text ? JSON.parse(text) : null;
-    } catch {
-      return null;
-    }
-  };
-
-  const [projectMd, currentTask, decisions, agentInstructions, apiMap, fileMap, testResults, errorsText] =
-    await Promise.all([
-      read('project.md'),
-      read('current-task.md'),
-      read('decisions.md'),
-      read('agent-instructions.md'),
-      readJson('api-map.json'),
-      readJson('file-map.json'),
-      readJson('test-results.json'),
-      read('errors.json'),
-    ]);
-
-  let errors: string[] = [];
-
-  try {
-    errors = errorsText ? JSON.parse(errorsText) : [];
-  } catch {
-    errors = [];
-  }
-
-  return { projectMd, currentTask, decisions, agentInstructions, apiMap, fileMap, testResults, errors };
 }
 
 /**

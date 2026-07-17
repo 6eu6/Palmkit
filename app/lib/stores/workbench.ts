@@ -458,7 +458,34 @@ export class WorkbenchStore {
   }
 
   abortAllActions() {
-    // TODO: what do we wanna do and how do we wanna recover from this?
+    /*
+     * Stop ALL in-flight actions across ALL artifacts.
+     * Previously this was an empty TODO — clicking Stop did nothing locally.
+     * The server-side cancel (cancelExtJob) still fires, but the browser-side
+     * shell commands / file writes / dev servers were left running until they
+     * finished or timed out. Now we iterate every artifact's ActionRunner
+     * and call abortAll() on each.
+     */
+    const artifacts = this.artifacts.get();
+    let totalAborted = 0;
+
+    for (const artifact of Object.values(artifacts)) {
+      if (artifact?.runner) {
+        const actions = artifact.runner.actions.get();
+        const pendingCount = Object.values(actions).filter(
+          (a) => a.status === 'pending' || a.status === 'running',
+        ).length;
+
+        if (pendingCount > 0) {
+          artifact.runner.abortAll();
+          totalAborted += pendingCount;
+        }
+      }
+    }
+
+    if (totalAborted > 0) {
+      console.log(`[workbench] Aborted ${totalAborted} in-flight action(s) across artifacts`);
+    }
   }
 
   setReloadedMessages(messages: string[]) {

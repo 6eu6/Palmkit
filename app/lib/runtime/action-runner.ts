@@ -928,4 +928,25 @@ export class ActionRunner {
       details: `Command: ${trimmedCommand}\n\nOutput: ${output || 'No output available'}${suggestion}`,
     };
   }
+
+  /**
+   * Abort ALL in-flight actions (shell commands, file writes, dev servers).
+   * Called when the user clicks Stop — every pending/running action gets its
+   * AbortController fired so fetch streams close and shell processes die.
+   */
+  abortAll() {
+    const actions = this.actions.get();
+    let aborted = 0;
+
+    for (const action of Object.values(actions)) {
+      if (action.status === 'pending' || action.status === 'running') {
+        action.abort();
+        aborted++;
+      }
+    }
+
+    if (aborted > 0) {
+      logger.info(`[ActionRunner] Aborted ${aborted} in-flight action(s)`);
+    }
+  }
 }
