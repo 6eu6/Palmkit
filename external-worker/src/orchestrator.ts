@@ -1802,6 +1802,62 @@ export async function runOrchestratedBuild(
       );
 
       /*
+       * ENTRY-POINT VERIFICATION (radical fix for incomplete builds).
+       *
+       * The done() tool has an entry-point gate, but it only fires if the
+       * model CALLS done(). When the model ends with finishReason='unknown'
+       * or 'stop' without calling done() (observed live on a complex
+       * e-commerce build: 12 files written but NO App.jsx — the main.jsx
+       * imports './App' which doesn't exist → Vite fails → broken preview),
+       * the orchestrator accepted it as success because agentSuccess only
+       * checked finishReason !== 'error'.
+       *
+       * Now: AFTER the agent finishes, verify the project has a valid entry
+       * point. If not, mark agentSuccess=false so the build is treated as
+       * incomplete (salvage gate will still save files, but the user sees
+       * a clear "incomplete" status, not a false "success").
+       *
+       * This is the difference between a "code generator" and a "vibe coding
+       * CLI" — a real CLI verifies the project actually runs.
+       */
+      if (role === 'brain' && agentSuccess) {
+        const files = getProjectFiles(jobId);
+        const filePaths = Object.keys(files);
+        const hasIndexHtml = filePaths.some((p) => /^index\.html$/i.test(p));
+        const hasSourceFile = filePaths.some((p) => /^src\/.*(jsx|tsx|vue|js|ts)$/i.test(p));
+        const hasPyEntry = filePaths.some((p) => /^(app|main|server|run)\.py$/i.test(p));
+
+        // Check: if main.jsx exists and imports './App', does App.jsx exist?
+        const mainFile = filePaths.find((p) => /^src\/main\.(jsx|tsx|js|ts)$/i.test(p));
+        const mainContent = mainFile ? (files[mainFile] ?? '') : '';
+        const importsApp = /from\s+['"]\.\/App['"]/i.test(mainContent) || /from\s+['"]\.\/App\.(jsx|tsx|js|ts)['"]/i.test(mainContent);
+        const hasAppFile = filePaths.some((p) => /^src\/App\.(jsx|tsx|js|ts)$/i.test(p));
+        const missingAppFile = importsApp && !hasAppFile;
+
+        const hasAnyEntryPoint = hasIndexHtml || hasSourceFile || hasPyEntry;
+
+        if ((!hasAnyEntryPoint && filePaths.length > 0) || missingAppFile) {
+          logger.warn(
+            `[orchestrator] ${config.name} finished but project has NO valid entry point! ` +
+            `Files: ${filePaths.join(', ')}. ` +
+            `missingAppFile=${missingAppFile}, hasIndexHtml=${hasIndexHtml}, hasSourceFile=${hasSourceFile}`,
+          );
+          // Mark as FAILURE — the build is incomplete
+          agentResults[agentResults.length - 1].success = false;
+
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk',
+            `⚠️ Build incomplete: ${missingAppFile ? 'src/App.jsx is missing (main.jsx imports it)' : 'no entry point found'}. ` +
+            `The model wrote ${filePaths.length} files but didn't finish the project. ` +
+            `Try sending the request again, or add the missing files manually.`,
+            { agent: 'Palmkit', kind: 'build_incomplete', missingAppFile, filePaths },
+          );
+        }
+      }
+
+      /*
        * Persist this exchange into the project session. response.messages
        * carries the assistant + tool messages exactly as the SDK produced
        * them, so the next build replays real history (compacted) instead of
