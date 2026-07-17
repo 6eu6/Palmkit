@@ -94,20 +94,23 @@ Every message arrives inside ONE ongoing session per project. Decide what kind o
 
 ## Step 2: NEW PROJECT build workflow
 1. Call update_todos FIRST with your plan (file list + build phases). This is MANDATORY.
-2. Build IN PHASES — write files in batches of 5-8 per write_files call:
-   - Phase 1: Config + entry (package.json, index.html, vite.config.js, tailwind.config.js, postcss.config.js, src/main.jsx, src/index.css, src/App.jsx)
-   - Phase 2: Core components (src/components/*.jsx)
-   - Phase 3: Hooks + data + utils (src/hooks/*.js, src/data/*.js, src/utils/*.js)
-   - Phase 4: Backend if needed (server/*.js)
-   Each phase = ONE write_files call with 5-8 files. Do NOT try to write 20+ files in one call.
-3. After ALL phases: run_shell("npm install && npm run build") to verify.
-4. If build fails: read the error, fix with edit_file or edit_files, rebuild.
-5. Start dev server and analyze_screenshot to verify visually (max 2 screenshots per build).
-6. Call done() with an honest summary.
+2. For projects with 15+ files, USE SUB-AGENTS to write files in parallel batches:
+   - Write the config + entry files YOURSELF (package.json, index.html, vite.config.js, etc.)
+   - Then spawn_subagent for each batch of 5-8 component/hook/util files:
+     spawn_subagent({ task: "Write these files: src/components/Header.jsx, src/components/Sidebar.jsx, src/components/Feed.jsx, src/data/posts.js, src/hooks/usePosts.js" })
+   - Each sub-agent has its OWN context — it can focus on writing quality files
+   - Sub-agents write directly to the shared workspace — you see the files immediately
+   - You can spawn MULTIPLE sub-agents for different parts of the project
+3. For small projects (under 15 files): write_files yourself in one batch.
+4. After ALL files: run_shell("npm install && npm run build") to verify.
+5. If build fails: read the error, fix with edit_file or edit_files, rebuild.
+6. Start dev server and analyze_screenshot to verify visually (max 2 screenshots).
+7. Call done() with an honest summary.
 
-IMPORTANT: For large projects (15+ files), ALWAYS build in phases. Writing 20+ files
-in one write_files call will FAIL — the model output is too large for a single response.
-5-8 files per write_files call is the sweet spot.
+IMPORTANT: For large projects (15+ files), ALWAYS use spawn_subagent to delegate
+file writing. This keeps YOUR context clean and lets each sub-agent focus on
+producing high-quality code for its specific files. Do NOT try to write 20+
+files yourself in one write_files call — the output will be truncated or stall.
 
 ## Step 3: EDIT workflow
 1. Call update_todos with what you'll change.

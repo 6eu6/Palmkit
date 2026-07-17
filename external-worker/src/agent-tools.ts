@@ -2541,21 +2541,23 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
      */
     spawn_subagent: tool({
       description:
-        'Launch a sub-agent to handle a focused task. The sub-agent runs independently and returns a text result. ' +
-        'Use this for complex analysis, codebase understanding, error diagnosis, or design planning. ' +
-        'The sub-agent has read-only tools (read_file, list_files, search_code, run_shell) — it analyzes and reports, but cannot write files. ' +
-        'Do NOT use this for simple tasks — only delegate when the task benefits from focused analysis.',
+        'Launch a sub-agent to handle a focused task. The sub-agent runs independently with its OWN context window. ' +
+        'It can READ and WRITE files, run shell commands, and search code. ' +
+        'Use this to delegate file writing for large projects: "Write the following files: src/components/Header.jsx, src/components/Sidebar.jsx, ..." ' +
+        'The sub-agent writes files directly into the shared project workspace — no need to copy results back. ' +
+        'For projects with 15+ files, ALWAYS use sub-agents to write files in batches of 5-8 per sub-agent call. ' +
+        'This keeps the main context clean and prevents output overflow.',
       parameters: z.object({
         task: z
           .string()
           .describe(
-            'A clear, specific task for the sub-agent. Example: "Read all source files and summarize the component structure and data flow."',
+            'A clear, specific task for the sub-agent. Example: "Write these 6 files with complete content: src/components/Header.jsx (navigation bar), src/components/Sidebar.jsx (sidebar nav), src/components/Feed.jsx (main feed), src/data/posts.js (10 mock posts), src/hooks/usePosts.js (post state), src/utils/format.js (date/text helpers)."',
           ),
         context: z
           .string()
           .optional()
           .describe(
-            'Additional context for the task — e.g. an error message to analyze, or a specific file to focus on.',
+            'Additional context — e.g. the project\'s design scheme, existing file list, or API contracts the sub-agent should follow.',
           ),
       }),
       execute: async ({ task, context }) => {
@@ -2569,7 +2571,6 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
         const subAgentId = `subagent-${Date.now()}`;
         logger.info(`[agent] spawn_subagent: ${task.slice(0, 100)}`);
 
-        // Emit start event so the UI shows the sub-agent in the stream
         await emitEvent(supabase, jobId, 'file_chunk', `🔄 Sub-agent: ${task.slice(0, 120)}`, {
           agent: 'Brain',
           kind: 'subagent_start',
@@ -2579,11 +2580,17 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
 
         try {
           /*
-           * Build a focused read-only toolset for the sub-agent.
-           * These are standalone implementations that don't depend on the
-           * outer tool object — they read from the same projectFiles map.
+           * Sub-agent toolset — NOW WRITE-CAPABLE.
+           *
+           * The sub-agent shares the SAME projectFiles Map as the brain.
+           * Files it writes are immediately visible to the brain (via
+           * list_files/read_file) and to subsequent sub-agents.
+           *
+           * This mirrors how Z.ai Code's Task tool works: sub-agents
+           * get their own context window but share the filesystem.
            */
           const subTools = {
+            // ── READ tools (same as before) ──
             read_file: tool({
               description: 'Read a file from the project',
               parameters: z.object({ path: z.string() }),
@@ -2594,22 +2601,14 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
                 if (!content) {
                   try {
                     const fetched = await getFileText(buildWorkspaceKey(projectId, path));
-
                     if (fetched) {
                       content = fetched;
                       projectFiles.set(path, content);
                     }
-                  } catch {
-                    /* not found */
-                  }
+                  } catch { /* not found */ }
                 }
 
-                return {
-                  path,
-                  content: content || '',
-                  size: content?.length || 0,
-                  lines: content?.split('\n').length || 0,
-                };
+                return { path, content: content || '', size: content?.length || 0, lines: content?.split('\n').length || 0 };
               },
             }),
             list_files: tool({
@@ -2617,9 +2616,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
               parameters: z.object({}),
               execute: async () => {
                 const files = Array.from(projectFiles.entries()).map(([path, content]) => ({
-                  path,
-                  size: content.length,
-                  lines: content.split('\n').length,
+                  path, size: content.length, lines: content.split('\n').length,
                 }));
                 return { totalFiles: files.length, files };
               },
@@ -2631,63 +2628,132 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
                 const pattern = args.pattern;
                 const results: any[] = [];
                 let regex: RegExp;
-
-                try {
-                  regex = new RegExp(pattern, 'gi');
-                } catch {
+                try { regex = new RegExp(pattern, 'gi'); } catch {
                   const lower = pattern.toLowerCase();
-
                   for (const [path, content] of projectFiles) {
                     const lines = content.split('\n');
-
                     for (let i = 0; i < lines.length; i++) {
                       if (lines[i].toLowerCase().includes(lower)) {
                         results.push({ path, line: i + 1, text: lines[i].trim().slice(0, 200) });
-
-                        if (results.length >= 50) {
-                          break;
-                        }
+                        if (results.length >= 50) break;
                       }
                     }
-
-                    if (results.length >= 50) {
-                      break;
-                    }
+                    if (results.length >= 50) break;
                   }
-
                   return { pattern, totalMatches: results.length, results };
                 }
-
                 for (const [path, content] of projectFiles) {
                   const lines = content.split('\n');
-
                   for (let i = 0; i < lines.length; i++) {
                     regex.lastIndex = 0;
-
                     if (regex.test(lines[i])) {
                       results.push({ path, line: i + 1, text: lines[i].trim().slice(0, 200) });
-
-                      if (results.length >= 50) {
-                        break;
-                      }
+                      if (results.length >= 50) break;
                     }
                   }
-
-                  if (results.length >= 50) {
-                    break;
-                  }
+                  if (results.length >= 50) break;
                 }
-
                 return { pattern, totalMatches: results.length, results };
               },
             }),
+
+            // ── WRITE tools (NEW — sub-agent can now write files!) ──
+            write_file: tool({
+              description: 'Write a file to the project. Content MUST be a raw string.',
+              parameters: z.object({
+                path: z.string().describe('File path, e.g. "src/components/Header.jsx"'),
+                content: z.any().describe('Complete file content as a raw string'),
+              }),
+              execute: async (args: any) => {
+                const path = args.path;
+                let fileContent: string = args.content;
+
+                if (typeof fileContent !== 'string') {
+                  fileContent = JSON.stringify(fileContent, null, 2);
+                }
+
+                // Content validation (same as main write_file)
+                const validationError = validateFileContent(path, fileContent);
+                if (validationError) {
+                  return { success: false, path, corrupted: true, message: validationError };
+                }
+
+                // Write to shared projectFiles map (brain sees it immediately)
+                projectFiles.set(path, fileContent);
+
+                // Also write to disk + R2 (same as performWrite)
+                try { await writeProjectFileToDisk(projectId, path, fileContent); } catch { /* best-effort */ }
+                try { await putFile(buildWorkspaceKey(projectId, path), fileContent); } catch { /* best-effort */ }
+
+                const lines = fileContent.split('\n').length;
+                const inlineContent = fileContent.length <= MAX_INLINE_CONTENT ? fileContent : undefined;
+
+                await emitEvent(supabase, jobId, 'file_written', `📝 [sub-agent] ${path} (${lines} lines)`, {
+                  filePath: path, path, lines, size: fileContent.length, content: inlineContent, truncated: inlineContent === undefined,
+                });
+
+                logger.info(`[sub-agent] write_file: ${path} (${fileContent.length} chars, ${lines} lines)`);
+
+                return { success: true, path, size: fileContent.length, lines, message: `File ${path} written successfully.` };
+              },
+            }),
+            write_files: tool({
+              description: 'Write MULTIPLE files in ONE call. PREFERRED for batch writing.',
+              parameters: z.object({
+                files: z.any().describe('Array of {path, content} objects'),
+              }),
+              execute: async (args: any) => {
+                let fileList: any[] = [];
+                if (Array.isArray(args.files)) fileList = args.files;
+                else if (typeof args.files === 'string') {
+                  try { fileList = JSON.parse(args.files); } catch { return { success: false, error: 'files must be an array' }; }
+                } else if (args.files && typeof args.files === 'object') fileList = [args.files];
+                else return { success: false, error: 'files must be an array' };
+
+                let written = 0;
+                const errors: string[] = [];
+
+                for (const f of fileList) {
+                  const path = f.path;
+                  let content: string = f.content;
+                  if (typeof content !== 'string') content = JSON.stringify(content, null, 2);
+
+                  const validationError = validateFileContent(path, content);
+                  if (validationError) { errors.push(`${path}: ${validationError}`); continue; }
+
+                  projectFiles.set(path, content);
+                  try { await writeProjectFileToDisk(projectId, path, content); } catch { /* best-effort */ }
+                  try { await putFile(buildWorkspaceKey(projectId, path), content); } catch { /* best-effort */ }
+
+                  const lines = content.split('\n').length;
+                  const inlineContent = content.length <= MAX_INLINE_CONTENT ? content : undefined;
+
+                  await emitEvent(supabase, jobId, 'file_written', `📝 [sub-agent] ${path} (${lines} lines)`, {
+                    filePath: path, path, lines, size: content.length, content: inlineContent, truncated: inlineContent === undefined,
+                  });
+
+                  written++;
+                }
+
+                logger.info(`[sub-agent] write_files: ${written}/${fileList.length} files written`);
+
+                return {
+                  success: errors.length === 0,
+                  written,
+                  total: fileList.length,
+                  errors: errors.length > 0 ? errors : undefined,
+                  message: `Wrote ${written}/${fileList.length} files.`,
+                };
+              },
+            }),
+
+            // ── SHELL tool (same as before) ──
             run_shell: tool({
               description: 'Run a shell command in the sandbox',
               parameters: z.object({ command: z.string() }),
               execute: async (args: any) => {
                 const files = Object.fromEntries(projectFiles);
                 const result = await runInE2B(jobId, args.command, files);
-
                 return {
                   command: args.command,
                   exitCode: result.exitCode,
@@ -2699,36 +2765,41 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             }),
           };
 
-          const subSystemPrompt = `You are a focused sub-agent. You have been given a specific task by the main agent.
+          const subSystemPrompt = `You are a focused sub-agent working inside a Palmkit build.
 
 Your task: ${task}
 ${context ? `\nAdditional context:\n${context}` : ''}
 
-You have read-only tools: read_file, list_files, search_code, run_shell.
-You CANNOT write or edit files — you analyze and report.
+You have WRITE-CAPABLE tools: write_file, write_files, read_file, list_files, search_code, run_shell.
 
-Do your task thoroughly, then return a clear, concise report with your findings.
-Do NOT call done() — just return your findings as your final message.`;
+Files you write go directly into the shared project workspace — the main agent and other sub-agents can see them immediately.
+
+Rules:
+- File content is ALWAYS a raw string (never JSON, never arrays).
+- Write COMPLETE files (no placeholders, no "rest stays the same").
+- Use write_files (batch) when writing 2+ files — it's faster.
+- If you're told to write specific files, write EXACTLY those files with full content.
+- Do NOT call done() — just write the files and return a summary.
+
+When done, return a brief summary of what you wrote.`;
 
           const result = await streamText({
             model,
             system: subSystemPrompt,
             prompt: task,
             tools: subTools as any,
-            maxSteps: 10,
-            maxTokens: 8000,
+            maxSteps: 20,          // was 10 — more room for writing
+            maxTokens: 16000,      // was 8000 — more room for file content
             temperature: 0.3,
           });
 
           const subAgentText = await result.text;
           const subAgentSteps = await result.steps;
-          const subAgentDuration = Date.now();
 
           logger.info(
             `[agent] spawn_subagent completed: ${subAgentText.length} chars, ${subAgentSteps?.length || 0} steps`,
           );
 
-          // Emit completion event with the result
           await emitEvent(supabase, jobId, 'file_chunk', `✅ Sub-agent done: ${task.slice(0, 80)}`, {
             agent: 'Brain',
             kind: 'subagent_complete',
@@ -2757,12 +2828,7 @@ Do NOT call done() — just return your findings as your final message.`;
             error: msg,
           });
 
-          return {
-            ok: false,
-            task,
-            error: msg,
-            message: `Sub-agent failed: ${msg}`,
-          };
+          return { ok: false, task, error: msg, message: `Sub-agent failed: ${msg}` };
         }
       },
     }),

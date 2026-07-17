@@ -159,7 +159,7 @@ app.post('/admin/update', async (c) => {
  *   - Future:     switch to Cloudflare Queues + Durable Objects for zero-timeout
  */
 const POLL_INTERVAL_MS = 2000;
-const MAX_CONCURRENT_JOBS = 10;
+const MAX_CONCURRENT_JOBS = 3; // 3 concurrent jobs — each uses ~160MB RAM + LLM API calls
 let activeJobs = 0;
 
 async function pollLoop() {
