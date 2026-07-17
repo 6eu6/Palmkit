@@ -197,7 +197,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
      * providerOptions path silently never sent it). Default: medium.
      */
     const jobReasoningEffort =
-      (job.validation_result?.reasoningEffort as 'off' | 'medium' | 'max' | undefined) ?? 'medium';
+      (job.validation_result?.reasoningEffort as 'off' | 'medium' | 'max' | undefined) ?? 'off';
 
     const model = getModelInstance(providerName, modelName, apiKey, { reasoningEffort: jobReasoningEffort });
 
