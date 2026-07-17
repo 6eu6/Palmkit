@@ -1411,7 +1411,7 @@ export async function runOrchestratedBuild(
                    * the session save. Full write_file rewrites are the real
                    * loop signature and keep the tight threshold.
                    */
-                  const LOOP_ABORT_AT = part.toolName === 'edit_file' ? 25 : 8;
+                  const LOOP_ABORT_AT = part.toolName === 'edit_file' ? 5 : 4;
 
                   if (writes >= LOOP_ABORT_AT) {
                     logger.warn(

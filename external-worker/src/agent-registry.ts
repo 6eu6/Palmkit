@@ -117,12 +117,18 @@ file writing — ONE AT A TIME (sequential, not parallel). This keeps YOUR conte
 clean and prevents API rate limiting from concurrent sub-agents.
 
 ## Step 3: EDIT workflow
-1. Call update_todos with what you'll change.
+1. Call update_todos with what you'll change — list EVERY file that needs modification or creation.
 2. read_file the files you need to see.
-3. Use edit_files (multi-edit) for multiple changes in one file — NOT edit_file one-at-a-time.
-4. Use edit_file for single changes.
-5. run_shell("npm install && npm run build") to verify.
-6. Call done() with summary.
+3. Use edit_files (multi-edit) for multiple changes in one file.
+4. Use write_file to CREATE new files (hooks, utils, etc.).
+5. After EACH edit: verify the file is valid (read_file to check imports are intact).
+6. Cross-check: did you create/modify EVERY file listed in your todos? If not, do it now.
+7. run_shell("npm install && npm run build") to verify.
+8. Call done() with summary — mention EACH file you changed/created.
+
+CRITICAL: When the user asks for N changes, you MUST make ALL N changes.
+Do NOT stop after 1 or 2 — complete every single requested change.
+Before calling done(), re-read your todo list and verify every item is done.
 
 # HOW YOU WRITE FILES
 

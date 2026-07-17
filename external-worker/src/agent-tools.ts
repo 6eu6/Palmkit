@@ -976,6 +976,47 @@ export function createAgentTools(
         }
 
         const updated = content.replace(oldText, newText);
+
+        // POST-EDIT INTEGRITY CHECK (same as edit_files)
+        const editExt = path.split('.').pop()?.toLowerCase() ?? '';
+        const editIsJs = ['jsx', 'tsx', 'js', 'ts', 'mjs', 'cjs'].includes(editExt);
+
+        if (editIsJs && updated.length > 0) {
+          const first20 = updated.trimStart().slice(0, 20);
+          const validStarts = ['import', 'export', 'const', 'let', 'var', 'function', 'class', '//', '/*', '{', "'", '"', '`'];
+          const isValidStart = validStarts.some((s) => first20.startsWith(s));
+
+          if (!isValidStart) {
+            logger.warn(`[agent] edit_file: POST-EDIT REJECTED — ${path} starts with: "${first20}"`);
+            return {
+              success: false,
+              path,
+              corrupted: true,
+              message:
+                `REFUSED — edit_file corrupted ${path}. After replacing, the file starts with "${first20}" ` +
+                `which is not valid JavaScript. Your oldText likely matched inside an import statement. ` +
+                `Re-read the file and use more specific oldText with surrounding context.`,
+            };
+          }
+
+          if (editExt === 'jsx' || editExt === 'tsx') {
+            const opens = (updated.match(/[{[(]/g) || []).length;
+            const closes = (updated.match(/[}\])]/g) || []).length;
+
+            if (Math.abs(opens - closes) > 2) {
+              logger.warn(`[agent] edit_file: POST-EDIT REJECTED — ${path} brace imbalance: ${opens} vs ${closes}`);
+              return {
+                success: false,
+                path,
+                corrupted: true,
+                message:
+                  `REFUSED — edit_file corrupted ${path}. Brace/bracket/paren count unbalanced ` +
+                  `(${opens} opens vs ${closes} closes). Re-read and retry with precise edits.`,
+              };
+            }
+          }
+        }
+
         projectFiles.set(path, updated);
 
         // Write to R2
@@ -1191,6 +1232,69 @@ export function createAgentTools(
             appliedEdits: failedIndex,
             totalEdits: editList.length,
           };
+        }
+
+        /*
+         * POST-EDIT INTEGRITY CHECK — prevent corrupted edits.
+         *
+         * Problem: edit_files uses String.replace(oldText, newText) which replaces
+         * the FIRST occurrence. If oldText is too short or matches inside a
+         * string literal, the replacement can corrupt the file (e.g., destroying
+         * an import statement). Observed live: Sidebar.jsx's import line became
+         * `{ "react": "nimport { Home" }` after edit_files — the oldText matched
+         * part of the import and replaced it with garbage.
+         *
+         * Fix: after all edits, verify the file still has valid structure:
+         * 1. For .jsx/.tsx/.js/.ts: must start with `import`, `export`, `const`,
+         *    `function`, `class`, `//`, `/*`, or `{` (JSON module).
+         *    If it starts with a fragment of an import (e.g., `"nimport`), REJECT.
+         * 2. For .jsx/.tsx: count opening vs closing braces — if unbalanced, REJECT.
+         * 3. If rejected: return the ORIGINAL content (undo all edits) + error.
+         */
+        const ext = path.split('.').pop()?.toLowerCase() ?? '';
+        const isJsFile = ['jsx', 'tsx', 'js', 'ts', 'mjs', 'cjs'].includes(ext);
+
+        if (isJsFile && updated.length > 0) {
+          const firstChar = updated.trimStart()[0];
+          const first20 = updated.trimStart().slice(0, 20);
+
+          // Valid JS file starts
+          const validStarts = ['import', 'export', 'const', 'let', 'var', 'function', 'class', '//', '/*', '{', "'", '"', '`'];
+          const isValidStart = validStarts.some((s) => first20.startsWith(s));
+
+          if (!isValidStart) {
+            logger.warn(`[agent] edit_files: POST-EDIT REJECTED — ${path} starts with invalid content: "${first20}"`);
+            return {
+              success: false,
+              path,
+              corrupted: true,
+              message:
+                `REFUSED — edit_files corrupted ${path}. After applying edits, the file starts with "${first20}" ` +
+                `which is not valid JavaScript. The oldText in one of your edits likely matched inside an ` +
+                `import statement or string literal, destroying the file structure. ` +
+                `Re-read the file with read_file, then retry with more specific oldText that includes ` +
+                `enough surrounding context to match uniquely.`,
+            };
+          }
+
+          // Brace balance check for JSX/TSX
+          if (ext === 'jsx' || ext === 'tsx') {
+            const opens = (updated.match(/[{[(]/g) || []).length;
+            const closes = (updated.match(/[}\])]/g) || []).length;
+
+            if (Math.abs(opens - closes) > 2) {
+              logger.warn(`[agent] edit_files: POST-EDIT REJECTED — ${path} brace imbalance: ${opens} opens vs ${closes} closes`);
+              return {
+                success: false,
+                path,
+                corrupted: true,
+                message:
+                  `REFUSED — edit_files corrupted ${path}. After applying edits, brace/bracket/paren ` +
+                  `count is unbalanced (${opens} opens vs ${closes} closes). One of your edits likely ` +
+                  `cut off part of a JSX expression. Re-read the file and retry with more precise edits.`,
+              };
+            }
+          }
         }
 
         // Content validation (same as write_file)
