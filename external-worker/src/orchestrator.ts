@@ -118,6 +118,7 @@ import {
   generateSmartManifest,
   writePalmkitMemory,
   writePalmkitProjectMemory,
+  writePalmkitFile,
 } from './workspace-manager';
 import { loadSession, appendToSession, estimateSessionTokens, type SessionMessage } from './session-manager';
 import { commitProjectTurn } from './git-manager';
@@ -327,6 +328,42 @@ export async function runOrchestratedBuild(
    * start so the agent always knows what project it is working on.
    */
   const palmkitMd = await readWorkspaceFile(projectId, 'Palmkit.md');
+
+  /*
+   * .palmkit/ MEMORY LAYER — deep project memory that was previously WRITTEN
+   * but NEVER READ (dead code). This radical fix loads the full memory layer
+   * and injects it into the brain's prompt, giving the agent real context
+   * across turns:
+   *
+   * - worklog.md: WHAT was built in previous turns (agent-authored narrative)
+   * - current-task.md: WHAT the user asked for last (the active task)
+   * - decisions.md: WHY certain choices were made (design decisions)
+   * - errors.json: errors encountered in previous turns (avoid repeating)
+   *
+   * Without this, the brain sees only Palmkit.md (a 15-line summary) and
+   * loses all turn-by-turn context. With it, the brain can say "last turn
+   * you asked me to add a dark mode toggle — I see it's already there,
+   * what would you like to change?"
+   */
+  const [worklogMd, currentTaskMd, decisionsMd, errorsJson] = await Promise.all([
+    readWorkspaceFile(projectId, '.palmkit/worklog.md').catch(() => null),
+    readWorkspaceFile(projectId, '.palmkit/current-task.md').catch(() => null),
+    readWorkspaceFile(projectId, '.palmkit/decisions.md').catch(() => null),
+    readWorkspaceFile(projectId, '.palmkit/errors.json').catch(() => null),
+  ]);
+
+  let previousErrors: string[] = [];
+
+  try {
+    if (errorsJson) {
+      const parsed = JSON.parse(errorsJson);
+      if (Array.isArray(parsed)) {
+        previousErrors = parsed.slice(-5); // last 5 errors only
+      }
+    }
+  } catch {
+    // not valid JSON — ignore
+  }
 
   /*
    * CONTINUATION HANDOFF — when this project was forked from another chat
@@ -555,6 +592,35 @@ export async function runOrchestratedBuild(
           agentPrompt += `\n\n=== Palmkit.md (PROJECT MEMORY) ===\n${palmkitMd}\n=== END Palmkit.md ===`;
         } else if (hasWorklog) {
           agentPrompt += `\n\nPROJECT MEMORY (worklog.md):\n${worklog}`;
+        }
+
+        /*
+         * DEEP MEMORY INJECTION — turn-by-turn context from .palmkit/ layer.
+         * This gives the brain real conversation memory, not just a summary.
+         * Each block is conditional (only injected if the file exists).
+         */
+        if (currentTaskMd) {
+          agentPrompt += `\n\n=== CURRENT TASK (what you were working on) ===\n${currentTaskMd}\n=== END TASK ===`;
+        }
+
+        if (worklogMd) {
+          // Truncate worklog to last 2000 chars to avoid context bloat
+          const truncatedWorklog = worklogMd.length > 2000
+            ? '...(earlier entries truncated)...\n' + worklogMd.slice(-2000)
+            : worklogMd;
+          agentPrompt += `\n\n=== WORKLOG (what was built in previous turns) ===\n${truncatedWorklog}\n=== END WORKLOG ===`;
+        }
+
+        if (decisionsMd) {
+          // Truncate decisions to last 1500 chars
+          const truncatedDecisions = decisionsMd.length > 1500
+            ? '...(earlier decisions truncated)...\n' + decisionsMd.slice(-1500)
+            : decisionsMd;
+          agentPrompt += `\n\n=== DESIGN DECISIONS (why certain choices were made) ===\n${truncatedDecisions}\n=== END DECISIONS ===`;
+        }
+
+        if (previousErrors.length > 0) {
+          agentPrompt += `\n\n=== PREVIOUS ERRORS (avoid repeating these) ===\n${previousErrors.map((e, i) => `${i + 1}. ${e.slice(0, 200)}`).join('\n')}\n=== END ERRORS ===`;
         }
 
         if (existingBrief) {
@@ -2123,6 +2189,34 @@ export async function runOrchestratedBuild(
           duration,
         });
         await appendToWorklog(projectId, worklogEntry, supabase, userId);
+
+        // 1b. current-task.md — write the ACTIVE task for the next turn.
+        // This was a DEAD POINTER (agent-instructions.md told the brain to
+        // read it, but no code wrote it). Now it's a real feature: the brain
+        // sees what the user asked for last + what was done, so it can
+        // continue intelligently instead of rebuilding from scratch.
+        const currentTaskContent = [
+          '# Current Task',
+          '',
+          `**Last request:** ${prompt.slice(0, 500)}`,
+          '',
+          `**Status:** ${overallSuccess ? (buildVerified ? 'completed and verified' : 'completed') : 'partial — needs follow-up'}`,
+          '',
+          `**Files:** ${fileCount} files (${totalSize} chars total)`,
+          '',
+          `**App type:** ${appType ?? 'unknown'}`,
+          '',
+          summary ? `**Summary:** ${summary.slice(0, 1000)}` : '**Summary:** (no summary provided)',
+          '',
+          '---',
+          '',
+          '## What to do next',
+          'If the user sends a new message, you are CONTINUING this project.',
+          'Read the files that exist (use list_files), make targeted edits,',
+          'and verify with `npm install && npm run build` before calling done().',
+        ].join('\n');
+
+        await writePalmkitFile(projectId, 'current-task.md', currentTaskContent, supabase, userId);
 
         // 2. Smart manifest
         const smartManifest = generateSmartManifest({

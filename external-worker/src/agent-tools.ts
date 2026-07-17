@@ -2021,6 +2021,14 @@ export function createAgentTools(
         return {
           success: true,
           counts: { total: sanitized.length, done, inProgress, pending },
+          /*
+           * RETURN THE FULL TODO LIST so the brain can read it back.
+           * Previously this was publish-only (the brain forgot what it
+           * planned as soon as it sent the event). Now the brain sees its
+           * own task list in the tool result, enabling it to track progress
+           * across steps without re-reading from disk.
+           */
+          todos: sanitized,
           message: `Todos updated: ${done}/${sanitized.length} done, ${inProgress} in progress`,
         };
       },
