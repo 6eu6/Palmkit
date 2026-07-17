@@ -1013,6 +1013,251 @@ export function createAgentTools(
 
     /*
      * ═══════════════════════════════════════════════════════════════════
+     * edit_files — Multi-edit: apply MULTIPLE edits to ONE file in a single call.
+     * This is the PREFERRED way to make several changes to the same file —
+     * it avoids the LLM round-trip cost of calling edit_file N times.
+     * Each edit is applied sequentially (order matters — earlier edits
+     * change the file content for later edits).
+     * ═══════════════════════════════════════════════════════════════════
+     */
+    edit_files: tool({
+      description:
+        'Apply MULTIPLE edits to ONE file in a single call. PREFERRED over edit_file when you need to change several parts of the same file — saves LLM round trips. ' +
+        'Each edit is applied sequentially (earlier edits affect later ones). ' +
+        'Each oldText must match EXACTLY (including whitespace). Pass oldText and newText as STRINGS.',
+      parameters: z.object({
+        path: z.string().describe('The file path to edit'),
+        edits: z
+          .any()
+          .describe(
+            'An ARRAY of {oldText, newText} objects. ' +
+              'Example: [{oldText: "const x = 1", newText: "const x = 2"}, {oldText: "return x", newText: "return x + 1"}]',
+          ),
+      }),
+      execute: async ({ path, edits: rawEdits }) => {
+        // Coerce edits to an array of {oldText, newText} — handles GLM
+        // passing edits as a JSON string or single object.
+        const coerceText = (v: any): string => {
+          if (v === null || v === undefined) {
+            return '';
+          }
+
+          if (typeof v === 'string') {
+            // JSON-unwrap guard (same as edit_file)
+            const trimmed = v.trimStart();
+
+            if (trimmed.startsWith('{')) {
+              try {
+                const parsed = JSON.parse(trimmed);
+
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                  const innerKey = ['content', 'text', 'code', 'source'].find(
+                    (k) => typeof parsed[k] === 'string' && parsed[k].length > trimmed.length * 0.5,
+                  );
+
+                  if (innerKey) {
+                    return parsed[innerKey];
+                  }
+                }
+              } catch {
+                // not JSON — use as-is
+              }
+            }
+
+            return v;
+          }
+
+          if (typeof v === 'number' || typeof v === 'boolean') {
+            return String(v);
+          }
+
+          try {
+            return JSON.stringify(v, null, 2);
+          } catch {
+            return String(v);
+          }
+        };
+
+        // Normalize edits to an array
+        let editList: any[] = [];
+
+        if (Array.isArray(rawEdits)) {
+          editList = rawEdits;
+        } else if (typeof rawEdits === 'string') {
+          // GLM sometimes passes the array as a JSON string
+          try {
+            const parsed = JSON.parse(rawEdits);
+
+            if (Array.isArray(parsed)) {
+              editList = parsed;
+            } else {
+              editList = [parsed];
+            }
+          } catch {
+            return {
+              success: false,
+              path,
+              error: `edits must be an array of {oldText, newText} objects — received a non-JSON string`,
+            };
+          }
+        } else if (rawEdits && typeof rawEdits === 'object') {
+          // Single object — wrap in array
+          editList = [rawEdits];
+        } else {
+          return {
+            success: false,
+            path,
+            error: `edits must be an array of {oldText, newText} objects`,
+          };
+        }
+
+        if (editList.length === 0) {
+          return {
+            success: false,
+            path,
+            error: 'edits array is empty — nothing to do',
+          };
+        }
+
+        // Read the file (memory → disk → R2, same as edit_file)
+        let content = projectFiles.get(path);
+
+        if (!content) {
+          const fromDisk = await readProjectFileFromDisk(projectId, path);
+
+          if (fromDisk !== null) {
+            content = fromDisk;
+            projectFiles.set(path, content);
+          }
+        }
+
+        if (!content) {
+          try {
+            const r2Key = buildWorkspaceKey(projectId, path);
+            const r2Content = await getFileText(r2Key);
+
+            if (r2Content) {
+              content = r2Content;
+              projectFiles.set(path, content);
+            }
+          } catch (e) {
+            logger.warn(`[agent] edit_files: R2 read failed for ${path}: ${e}`);
+          }
+        }
+
+        if (!content) {
+          return {
+            success: false,
+            path,
+            error: `File not found: ${path}`,
+            availableFiles: Array.from(projectFiles.keys()),
+          };
+        }
+
+        // Apply edits sequentially
+        let updated = content;
+        const results: Array<{ oldText: string; found: boolean }> = [];
+        let failedIndex = -1;
+
+        for (let i = 0; i < editList.length; i++) {
+          const edit = editList[i];
+          const oldText = coerceText(edit?.oldText);
+          const newText = coerceText(edit?.newText);
+
+          if (!oldText) {
+            failedIndex = i;
+            results.push({ oldText: '(empty)', found: false });
+            break;
+          }
+
+          if (!updated.includes(oldText)) {
+            failedIndex = i;
+            results.push({ oldText: oldText.slice(0, 100), found: false });
+            break;
+          }
+
+          updated = updated.replace(oldText, newText);
+          results.push({ oldText: oldText.slice(0, 100), found: true });
+        }
+
+        if (failedIndex >= 0) {
+          return {
+            success: false,
+            path,
+            error: `Edit #${failedIndex + 1} failed — oldText not found in file. ` +
+              `The file may have been modified by a previous edit, or the oldText doesn't match exactly. ` +
+              `Applied ${failedIndex} of ${editList.length} edits successfully. ` +
+              `Use read_file to see the current file content and retry.`,
+            appliedEdits: failedIndex,
+            totalEdits: editList.length,
+          };
+        }
+
+        // Content validation (same as write_file)
+        const validationError = validateFileContent(path, updated);
+
+        if (validationError) {
+          return {
+            success: false,
+            path,
+            corrupted: true,
+            message: validationError,
+          };
+        }
+
+        // Save (same as performWrite — memory + disk + R2 + event)
+        projectFiles.set(path, updated);
+
+        try {
+          await writeProjectFileToDisk(projectId, path, updated);
+        } catch (e) {
+          logger.warn(`[agent] edit_files: disk write failed for ${path}: ${e}`);
+        }
+
+        try {
+          const r2Key = buildWorkspaceKey(projectId, path);
+          await putFile(r2Key, updated);
+        } catch (e) {
+          logger.warn(`[agent] edit_files: R2 write failed for ${path}: ${e}`);
+        }
+
+        bumpWriteCount(jobId, path);
+
+        const lines = updated.split('\n').length;
+        const inlineContent = updated.length <= MAX_INLINE_CONTENT ? updated : undefined;
+
+        await emitEvent(
+          supabase,
+          jobId,
+          'file_written',
+          `✏️ ${path} edited (${editList.length} edits, ${lines} lines)`,
+          {
+            filePath: path,
+            path,
+            lines,
+            size: updated.length,
+            content: inlineContent,
+            truncated: inlineContent === undefined,
+          },
+        );
+
+        logger.info(
+          `[agent] edit_files: ${path} — ${editList.length} edits applied (${content.length} → ${updated.length} chars)`,
+        );
+
+        return {
+          success: true,
+          path,
+          editsApplied: editList.length,
+          oldLength: content.length,
+          newLength: updated.length,
+          message: `Applied ${editList.length} edits to ${path} successfully.`,
+        };
+      },
+    }),
+
+    /*
+     * ═══════════════════════════════════════════════════════════════════
      * delete_file — Delete a file from the project
      * ═══════════════════════════════════════════════════════════════════
      */
