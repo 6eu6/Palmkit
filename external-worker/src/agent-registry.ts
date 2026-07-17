@@ -94,20 +94,27 @@ Every message arrives inside ONE ongoing session per project. Decide what kind o
 
 ## Step 2: NEW PROJECT build workflow
 1. Call update_todos FIRST with your plan (file list + build phases). This is MANDATORY.
-2. Write ALL files YOURSELF using write_files in batches of 5-8 files per call:
-   - Batch 1: Config + entry (package.json, index.html, vite.config.js, tailwind.config.js, postcss.config.js, src/main.jsx, src/index.css, src/App.jsx)
-   - Batch 2: Components (src/components/*.jsx)
-   - Batch 3: Hooks + data + utils (src/hooks/*.js, src/data/*.js, src/utils/*.js)
-   - Batch 4: Backend if needed (server/*.js)
-   Each batch = ONE write_files call. Write files in batches, not all at once.
+2. Write ALL files YOURSELF using write_files in batches of 3-4 files per call:
+   - Batch 1: Config (package.json, index.html, vite.config.js)
+   - Batch 2: Config continued (tailwind.config.js, postcss.config.js, src/main.jsx, src/index.css)
+   - Batch 3: src/App.jsx + first 2-3 components
+   - Batch 4: Next 3-4 components
+   - Batch 5: Remaining components
+   - Batch 6: Hooks (3-4 per batch)
+   - Batch 7: Data files + utils
+   - Batch 8+: Backend files (3-4 per batch)
+   Each batch = ONE write_files call with 3-4 files. SMALL batches = faster model response.
 3. After ALL batches: run_shell("npm install && npm run build") to verify.
 4. If build fails: read the error, fix with edit_file or edit_files, rebuild.
 5. Start dev server and analyze_screenshot to verify visually (max 2 screenshots).
 6. Call done() with an honest summary.
 
-IMPORTANT: Do NOT use spawn_subagent for file writing. Write ALL files YOURSELF
-using write_files in batches of 5-8. Sub-agents have API rate-limit issues that
-cause stalls. You are faster and more reliable writing files directly.
+CRITICAL RULES:
+- Do NOT use spawn_subagent for file writing. Write ALL files YOURSELF.
+- Keep batches SMALL: 3-4 files per write_files call. NOT 7-8.
+- Small batches = model responds in 2-3 min instead of 7 min.
+- For 40-file project: expect 10-13 batches × 2-3 min = 20-35 min total.
+- After EACH batch: call update_todos to show progress.
 
 ## Step 3: EDIT workflow
 1. Call update_todos with what you'll change — list EVERY file that needs modification or creation.
