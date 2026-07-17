@@ -1255,7 +1255,7 @@ export async function runOrchestratedBuild(
        * Kept above the typical install by resetting on tool parts too
        * (every fullStream part refreshes lastChunkAt).
        */
-      const STALL_TIMEOUT_MS = 400_000; // conservative: tool executions emit no chunks while running
+      const STALL_TIMEOUT_MS = 600_000; // 10 min — GLM-4.7 reasoning on complex multi-file builds can take 400s+
       let lastChunkAt = Date.now();
       let stalled = false;
 
