@@ -2014,24 +2014,41 @@ export async function runOrchestratedBuild(
 
         const missingEntryPoint = !zeroFiles && !missingPkg && curPaths.length > 0 && !hasSufficientEntryPoint;
 
-        if (zeroFiles || missingPkg || missingEntryPoint) {
+        /*
+         * MISSING APP FILE check (radical fix for incomplete builds).
+         * If main.jsx imports './App' but App.jsx doesn't exist, the build
+         * will fail at runtime (Vite can't resolve the import). This is
+         * different from missingEntryPoint — the entry point EXISTS
+         * (main.jsx), but it references a file that doesn't.
+         */
+        const mainFile = curPaths.find((p) => /^src\/main\.(jsx|tsx|js|ts)$/i.test(p));
+        const mainContent = mainFile ? (curFiles[mainFile] ?? '') : '';
+        const importsApp = /from\s+['"]\.\/App['"]/i.test(mainContent) || /from\s+['"]\.\/App\.(jsx|tsx|js|ts)['"]/i.test(mainContent);
+        const hasAppFile = curPaths.some((p) => /^src\/App\.(jsx|tsx|js|ts)$/i.test(p));
+        const missingAppFile = importsApp && !hasAppFile;
+
+        if (zeroFiles || missingPkg || missingEntryPoint || missingAppFile) {
           builderEmptyRetries++;
           forceBuild = true;
-          incompleteBuild = !zeroFiles && (missingPkg || missingEntryPoint);
+          incompleteBuild = !zeroFiles && (missingPkg || missingEntryPoint || missingAppFile);
           agentQueue.unshift('brain'); // re-run the agent
 
           const reason = zeroFiles
             ? 'empty_builder_retry'
             : missingPkg
               ? 'incomplete_build_retry'
-              : 'no_entry_point_retry';
+              : missingAppFile
+                ? 'missing_app_file_retry'
+                : 'no_entry_point_retry';
 
           const agentName = 'Palmkit';
           const msg = zeroFiles
             ? `⚠️ No files written yet — re-prompting ${agentName} to build now (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`
             : missingPkg
               ? `⚠️ Build is missing package.json — a Vite app can't run without it. Asking ${agentName} to finish the scaffolding (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`
-              : `⚠️ Build has ${curPaths.length} files but NO entry point (no index.html, no src/App.jsx). The preview will 404. Re-prompting ${agentName} to write the missing entry files (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`;
+              : missingAppFile
+                ? `⚠️ main.jsx imports './App' but App.jsx does NOT exist! Vite will fail. Re-prompting ${agentName} to write src/App.jsx NOW (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`
+                : `⚠️ Build has ${curPaths.length} files but NO entry point (no index.html, no src/App.jsx). The preview will 404. Re-prompting ${agentName} to write the missing entry files (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}).`;
 
           await emitEvent(supabase, jobId, 'file_chunk', msg, {
             reason,
