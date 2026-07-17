@@ -32,7 +32,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { streamText, type LanguageModelV1 } from 'ai';
 import { putFile, getFileText, buildWorkspaceKey } from './r2-client';
-import { writeProjectFileToDisk, readProjectFileFromDisk } from './workspace-manager';
+import { writeProjectFileToDisk, readProjectFileFromDisk, readWorklog, appendToWorklog } from './workspace-manager';
 import { logger } from './logger';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { emitEvent } from './event-emitter';
@@ -1655,6 +1655,181 @@ export function createAgentTools(
 
     /*
      * ═══════════════════════════════════════════════════════════════════
+     * grep_files — Fast regex search across project files (like Z.ai Code's Grep)
+     * ═══════════════════════════════════════════════════════════════════
+     * More efficient than search_code for large projects — supports path
+     * filtering and returns structured output. The model uses this for
+     * targeted code navigation.
+     */
+    grep_files: tool({
+      description:
+        'Fast regex search across project files. Returns matching lines with file paths and line numbers. ' +
+        'Supports optional path filter (glob like "src/**/*.jsx"). Use this for finding where functions, imports, or strings are used. ' +
+        'More efficient than search_code for large projects.',
+      parameters: z.object({
+        pattern: z.string().describe('The regex pattern to search for, e.g. "useState|useEffect" or "app\\.get\\("'),
+        path: z.string().optional().describe('Optional glob filter, e.g. "src/components/**" to only search in that directory'),
+        maxResults: z.number().optional().describe('Max results to return (default 50)'),
+      }),
+      execute: async ({ pattern, path: pathFilter, maxResults }) => {
+        const cap = maxResults ?? 50;
+        const results: Array<{ path: string; line: number; text: string }> = [];
+
+        let regex: RegExp;
+        try {
+          regex = new RegExp(pattern, 'gi');
+        } catch {
+          // Fallback: literal search
+          regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        }
+
+        // Convert glob filter to regex (simple: ** → .*, * → [^/]*)
+        let filterRegex: RegExp | null = null;
+        if (pathFilter) {
+          const re = pathFilter
+            .replace(/\*\*/g, '\x00') // placeholder
+            .replace(/\*/g, '[^/]*')
+            .replace(/\x00/g, '.*');
+          filterRegex = new RegExp(`^${re}$`, 'i');
+        }
+
+        for (const [fpath, content] of projectFiles.entries()) {
+          if (filterRegex && !filterRegex.test(fpath)) continue;
+
+          const lines = content.split('\n');
+          for (let i = 0; i < lines.length; i++) {
+            regex.lastIndex = 0;
+            if (regex.test(lines[i])) {
+              results.push({ path: fpath, line: i + 1, text: lines[i].trim().slice(0, 200) });
+              if (results.length >= cap) break;
+            }
+          }
+          if (results.length >= cap) break;
+        }
+
+        logger.info(`[agent] grep_files: "${pattern}" in ${pathFilter || 'all'} → ${results.length} matches`);
+
+        return {
+          pattern,
+          pathFilter: pathFilter || null,
+          totalMatches: results.length,
+          results,
+        };
+      },
+    }),
+
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * glob_files — Find files by name pattern (like Z.ai Code's Glob)
+     * ═══════════════════════════════════════════════════════════════════
+     * Returns file paths matching a glob pattern. Use this to find all
+     * .jsx files, all files in src/components/, etc.
+     */
+    glob_files: tool({
+      description:
+        'Find files by name pattern. Returns matching file paths sorted by modification. ' +
+        'Examples: "src/**/*.jsx" (all JSX in src), "**/*.css" (all CSS), "src/components/*" (direct children). ' +
+        'Use this to discover project structure without reading every file.',
+      parameters: z.object({
+        pattern: z.string().describe('Glob pattern, e.g. "src/**/*.jsx" or "**/*.py" or "server/**"'),
+      }),
+      execute: async ({ pattern }) => {
+        // Convert glob to regex
+        const re = pattern
+          .replace(/\*\*/g, '\x00')
+          .replace(/\*/g, '[^/]*')
+          .replace(/\x00/g, '.*')
+          .replace(/\?/g, '[^/]');
+        const regex = new RegExp(`^${re}$`, 'i');
+
+        const matches = Array.from(projectFiles.keys())
+          .filter((p) => regex.test(p))
+          .sort();
+
+        logger.info(`[agent] glob_files: "${pattern}" → ${matches.length} files`);
+
+        return {
+          pattern,
+          totalFiles: matches.length,
+          files: matches,
+        };
+      },
+    }),
+
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * read_worklog — Read the project worklog (ACTIVE memory, like Z.ai Code)
+     * ═══════════════════════════════════════════════════════════════════
+     * The worklog is the project's persistent memory. The agent reads it
+     * at the start of every turn to understand what was built, what
+     * decisions were made, and what errors were encountered.
+     *
+     * This mirrors Z.ai Code's pattern where the agent reads
+     * /home/z/my-project/worklog.md before starting work.
+     */
+    read_worklog: tool({
+      description:
+        'Read the project worklog — the persistent memory of what was built, decisions made, and errors encountered. ' +
+        'ALWAYS call this at the start of a turn when continuing an existing project. ' +
+        'The worklog tells you the project history so you do not repeat mistakes or ask about things already decided.',
+      parameters: z.object({}),
+      execute: async () => {
+        const worklog = await readWorklog(projectId);
+
+        logger.info(`[agent] read_worklog: ${worklog ? `${worklog.length} chars` : 'empty'}`);
+
+        return {
+          exists: !!worklog,
+          worklog: worklog || '(no worklog yet — this is a new project)',
+          length: worklog?.length || 0,
+        };
+      },
+    }),
+
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * append_worklog — Append to the project worklog (ACTIVE memory)
+     * ═══════════════════════════════════════════════════════════════════
+     * After each phase (planning, files written, build verified, etc.),
+     * the agent appends what it did to the worklog. This is the agent's
+     * own memory — it writes it, not the orchestrator.
+     *
+     * This mirrors Z.ai Code's pattern where each agent appends to
+     * /home/z/my-project/worklog.md after completing its task.
+     */
+    append_worklog: tool({
+      description:
+        'Append a section to the project worklog. Call this after each phase of work: after planning, after writing files, after verifying the build, after fixing errors. ' +
+        'The worklog is YOUR memory — future turns read it with read_worklog. ' +
+        'Format: write what you did, what files you created/modified, what decisions you made, what errors you hit. ' +
+        'Be concise but complete — this is how future-you understands the project.',
+      parameters: z.object({
+        section: z.string().describe('The worklog entry. Example: "## Phase 2: Backend\\n\\nWrote server/index.js (Express server), server/routes/auth.js (login/register), server/db.js (SQLite connection). Build passed. Decision: using JWT for auth."'),
+      }),
+      execute: async ({ section }) => {
+        try {
+          await appendToWorklog(projectId, section, supabase, undefined);
+
+          logger.info(`[agent] append_worklog: ${section.length} chars appended`);
+
+          return {
+            success: true,
+            appendedChars: section.length,
+            message: 'Worklog updated. Future turns will see this context.',
+          };
+        } catch (err: any) {
+          logger.error(`[agent] append_worklog failed: ${err.message}`);
+          return {
+            success: false,
+            error: err.message,
+            message: 'Failed to update worklog, but work continues.',
+          };
+        }
+      },
+    }),
+
+    /*
+     * ═══════════════════════════════════════════════════════════════════
      * run_shell — Run a shell command in E2B sandbox (like Super Z's Bash)
      * ═══════════════════════════════════════════════════════════════════
      */
@@ -2646,11 +2821,11 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
     spawn_subagent: tool({
       description:
         'Launch a sub-agent to handle a focused task. The sub-agent runs independently with its OWN context window. ' +
-        'It can READ and WRITE files, run shell commands, and search code. ' +
-        'Use this to delegate file writing for large projects: "Write the following files: src/components/Header.jsx, src/components/Sidebar.jsx, ..." ' +
-        'The sub-agent writes files directly into the shared project workspace — no need to copy results back. ' +
-        'For projects with 15+ files, ALWAYS use sub-agents to write files in batches of 5-8 per sub-agent call. ' +
-        'This keeps the main context clean and prevents output overflow.',
+        'It can READ and WRITE files, run shell commands, search code, and append to the worklog. ' +
+        'Files it writes go directly into the shared project workspace — you see them immediately. ' +
+        'Use this for: batch file writing on large projects, focused analysis, complex error diagnosis, parallel work. ' +
+        'You decide when and how to use sub-agents — they are a first-class tool, fully trusted. ' +
+        'Example: spawn_subagent({ task: "Write these 6 files with complete content: src/components/Header.jsx (nav bar), src/components/Sidebar.jsx, src/data/posts.js (10 mock posts), src/hooks/usePosts.js, src/utils/format.js, src/App.jsx (imports all)" })',
       parameters: z.object({
         task: z
           .string()
@@ -2888,82 +3063,120 @@ Rules:
 When done, return a brief summary of what you wrote.`;
 
           /*
-           * Manual timeout via AbortController — AbortSignal.timeout() does NOT
-           * work reliably in Bun's runtime for streamText (observed: sub-agent
-           * hung for 15 min with no abort despite 5-min timeout). Using a
-           * manual setTimeout + AbortController ensures the abort actually fires.
+           * Manual timeout via AbortController — 15 min for large file batches.
+           * The old 5-min timeout was too short for 8-file batches with GLM-4.7
+           * (each file ~200 lines). 15 min matches the brain's own step budget.
            */
           const subAbortController = new AbortController();
           const subTimeout = setTimeout(() => {
-            logger.warn(`[agent] Sub-agent timeout (300s) — aborting`);
+            logger.warn(`[agent] Sub-agent timeout (900s) — aborting`);
             subAbortController.abort();
-          }, 300_000);
+          }, 900_000);
 
-          try {
-            const result = await streamText({
-              model,
-              system: subSystemPrompt,
-              prompt: task,
-              tools: subTools as any,
-              maxSteps: 20,
-              maxTokens: 16000,
-              temperature: 0.3,
-              abortSignal: subAbortController.signal,
-            });
+          /*
+           * RETRY ON RATE LIMIT (429) — OpenRouter throttles concurrent
+           * streamText calls. Instead of failing the sub-agent, wait and
+           * retry. Up to 3 attempts with exponential backoff (2s, 4s, 8s).
+           */
+          const maxRetries = 3;
+          let lastErr: any = null;
 
-            clearTimeout(subTimeout);
+          for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+              const result = await streamText({
+                model,
+                system: subSystemPrompt,
+                prompt: task,
+                tools: subTools as any,
+                maxSteps: 25,
+                maxTokens: 16000,
+                temperature: 0.3,
+                abortSignal: subAbortController.signal,
+              });
 
-            const subAgentText = await result.text;
-            const subAgentSteps = await result.steps;
+              clearTimeout(subTimeout);
 
-            logger.info(
-              `[agent] spawn_subagent completed: ${subAgentText.length} chars, ${subAgentSteps?.length || 0} steps`,
-            );
+              const subAgentText = await result.text;
+              const subAgentSteps = await result.steps;
 
-            await emitEvent(supabase, jobId, 'file_chunk', `✅ Sub-agent done: ${task.slice(0, 80)}`, {
-              agent: 'Brain',
-              kind: 'subagent_complete',
-              task,
-              subAgentId,
-              result: subAgentText.slice(0, 2000),
-              steps: subAgentSteps?.length || 0,
-            });
+              logger.info(
+                `[agent] spawn_subagent completed (attempt ${attempt}): ${subAgentText.length} chars, ${subAgentSteps?.length || 0} steps`,
+              );
 
-            return {
-              ok: true,
-              task,
-              result: subAgentText,
-              steps: subAgentSteps?.length || 0,
-              message: `Sub-agent completed: ${task}`,
-            };
-          } catch (subErr: any) {
-            clearTimeout(subTimeout);
-            const subMsg = subErr?.message ?? String(subErr);
-            const isAbort = subErr?.name === 'AbortError' || subMsg.includes('abort');
+              await emitEvent(supabase, jobId, 'file_chunk', `✅ Sub-agent done: ${task.slice(0, 80)}`, {
+                agent: 'Brain',
+                kind: 'subagent_complete',
+                task,
+                subAgentId,
+                result: subAgentText.slice(0, 2000),
+                steps: subAgentSteps?.length || 0,
+              });
 
-            logger.error(`[agent] spawn_subagent failed: ${subMsg}`);
+              return {
+                ok: true,
+                task,
+                result: subAgentText,
+                steps: subAgentSteps?.length || 0,
+                message: `Sub-agent completed: ${task}`,
+              };
+            } catch (subErr: any) {
+              lastErr = subErr;
+              const subMsg = subErr?.message ?? String(subErr);
+              const isAbort = subErr?.name === 'AbortError' || subMsg.includes('abort');
+              const isRateLimit = subMsg.includes('429') || subMsg.includes('rate') || subMsg.includes('Rate');
 
-            await emitEvent(supabase, jobId, 'file_chunk',
-              isAbort ? `⏱️ Sub-agent timed out (5 min) — writing files directly` : `⚠️ Sub-agent failed: ${subMsg.slice(0, 120)}`,
-              { agent: 'Brain', kind: 'subagent_error', task, subAgentId, error: subMsg },
-            );
+              if (isAbort) {
+                clearTimeout(subTimeout);
+                logger.error(`[agent] spawn_subagent aborted: ${subMsg}`);
 
-            /*
-             * FALLBACK: if sub-agent fails/times out, return a clear error so
-             * the brain knows it must write the files ITSELF. The brain's
-             * system prompt already says "if sub-agent fails, write files
-             * directly with write_files".
-             */
-            return {
-              ok: false,
-              task,
-              error: subMsg,
-              timedOut: isAbort,
-              message: isAbort
-                ? `Sub-agent timed out after 5 minutes. Write the files YOURSELF using write_files NOW.`
-                : `Sub-agent failed: ${subMsg}. Write the files YOURSELF using write_files.`,
-            };
+                await emitEvent(supabase, jobId, 'file_chunk',
+                  `⏱️ Sub-agent timed out (15 min) — writing files directly`,
+                  { agent: 'Brain', kind: 'subagent_error', task, subAgentId, error: subMsg },
+                );
+
+                return {
+                  ok: false,
+                  task,
+                  error: subMsg,
+                  timedOut: true,
+                  message: `Sub-agent timed out after 15 minutes. Write the files YOURSELF using write_files NOW.`,
+                };
+              }
+
+              if (isRateLimit && attempt < maxRetries) {
+                const backoffMs = 2000 * Math.pow(2, attempt - 1);
+                logger.warn(`[agent] spawn_subagent rate-limited (429) — retry ${attempt}/${maxRetries} in ${backoffMs}ms`);
+                await emitEvent(supabase, jobId, 'file_chunk',
+                  `⏳ Sub-agent rate-limited, retrying in ${backoffMs / 1000}s...`,
+                  { agent: 'Brain', kind: 'subagent_retry', task, subAgentId, attempt, backoffMs },
+                );
+                await new Promise((r) => setTimeout(r, backoffMs));
+                continue;
+              }
+
+              // Non-retryable error or out of retries
+              break;
+            }
           }
+
+          // All retries exhausted — return failure
+          clearTimeout(subTimeout);
+          const failMsg = lastErr?.message ?? String(lastErr);
+
+          logger.error(`[agent] spawn_subagent failed after ${maxRetries} attempts: ${failMsg}`);
+
+          await emitEvent(supabase, jobId, 'file_chunk',
+            `⚠️ Sub-agent failed: ${failMsg.slice(0, 120)}`,
+            { agent: 'Brain', kind: 'subagent_error', task, subAgentId, error: failMsg },
+          );
+
+          return {
+            ok: false,
+            task,
+            error: failMsg,
+            timedOut: false,
+            message: `Sub-agent failed after ${maxRetries} attempts: ${failMsg}. Write the files YOURSELF using write_files.`,
+          };
         } catch (err: any) {
           const msg = err?.message ?? String(err);
           logger.error(`[agent] spawn_subagent outer catch: ${msg}`);

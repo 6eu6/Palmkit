@@ -1394,24 +1394,20 @@ export async function runOrchestratedBuild(
                   const writes = fileWriteCounts.get(filePath)!;
 
                   /*
-                   * LOOP SALVAGE (not hard-fail). The write_file tool already
-                   * no-ops identical rewrites and tells the model to stop, which
-                   * breaks most loops. This is the last-resort backstop: if a
-                   * file is STILL being rewritten many times, stop the stream —
-                   * but DON'T fail the job. Fall through to the normal finalize
-                   * gate, which keeps the files already generated and only fails
-                   * if there's no valid entry point. A looping model that had
-                   * already written a working app shouldn't lose the whole build.
+                   * LOOP BACKSTOP (very high threshold — trust the model).
+                   *
+                   * The old thresholds (8-10) killed legitimate work: a model
+                   * making 12 targeted edits to one file, or rewriting a file
+                   * 9 times during a complex refactor, would get aborted mid-
+                   * build. Z.ai Code does NOT have loop detection at all — the
+                   * model self-corrects because it reads its own output.
+                   *
+                   * We keep a SAFETY NET at 40 writes to the same file — this
+                   * is only hit by a truly stuck model (40 rewrites of the same
+                   * file is never legitimate). At that point we salvage. Normal
+                   * builds, even complex 40-file projects, never approach this.
                    */
-                  /*
-                   * Thresholds differ by tool. Many small edit_file calls on
-                   * one file is NORMAL editing (a color swap touches the same
-                   * file a dozen times) — observed live on job a1ac463b where
-                   * 8 legitimate targeted edits tripped the abort and killed
-                   * the session save. Full write_file rewrites are the real
-                   * loop signature and keep the tight threshold.
-                   */
-                  const LOOP_ABORT_AT = part.toolName === 'edit_file' ? 10 : 8;
+                  const LOOP_ABORT_AT = 40;
 
                   if (writes >= LOOP_ABORT_AT) {
                     logger.warn(
