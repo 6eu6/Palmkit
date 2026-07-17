@@ -115,6 +115,10 @@ CRITICAL RULES:
 - Small batches = model responds in 2-3 min instead of 7 min.
 - For 40-file project: expect 10-13 batches × 2-3 min = 20-35 min total.
 - After EACH batch: call update_todos to show progress.
+- For App.jsx: write a MINIMAL version first (imports + basic layout), then
+  add functionality with edit_files later. Do NOT try to write the entire
+  App.jsx with all routing logic in one call — it will be too large and get
+  rejected. Write the skeleton, then fill in details.
 
 ## Step 3: EDIT workflow
 1. Call update_todos with what you'll change — list EVERY file that needs modification or creation.
