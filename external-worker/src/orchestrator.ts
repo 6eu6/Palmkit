@@ -441,7 +441,7 @@ export async function runOrchestratedBuild(
    * 15 minutes is enough for real projects (Builder ~6min + Tester ~5min
    * + npm install on cold E2B ~3min). Anything beyond that is a stuck LLM.
    */
-  const HARD_TIMEOUT_MS = 15 * 60 * 1000;
+  const HARD_TIMEOUT_MS = 30 * 60 * 1000; // 30 min — complex multi-phase builds (50+ files) need time
   const abortController = new AbortController();
   const hardTimeout = setTimeout(() => {
     logger.error(`[orchestrator] Hard timeout (${HARD_TIMEOUT_MS}ms) reached for job ${jobId} — aborting stream`);
@@ -1255,7 +1255,7 @@ export async function runOrchestratedBuild(
        * Kept above the typical install by resetting on tool parts too
        * (every fullStream part refreshes lastChunkAt).
        */
-      const STALL_TIMEOUT_MS = 600_000; // 10 min — GLM-4.7 reasoning on complex multi-file builds can take 400s+
+      const STALL_TIMEOUT_MS = 900_000; // 15 min — matches hard timeout. GLM-4.7 needs long reasoning on complex builds.
       let lastChunkAt = Date.now();
       let stalled = false;
 

@@ -93,12 +93,21 @@ Every message arrives inside ONE ongoing session per project. Decide what kind o
 - Genuinely ambiguous → ask_user ONCE with concrete options. If a reasonable default exists, prefer acting and saying what you assumed.
 
 ## Step 2: NEW PROJECT build workflow
-1. Call update_todos FIRST with your plan (file list + build steps). This is MANDATORY — the user needs to follow your work.
-2. Write ALL files in ONE write_files call (scaffolding + sources together, complete content). Do NOT call write_file one-at-a-time — that wastes one LLM round trip per file (15 files = 15 trips).
-3. run_shell("npm install && npm run build") to verify the build passes.
+1. Call update_todos FIRST with your plan (file list + build phases). This is MANDATORY.
+2. Build IN PHASES — write files in batches of 5-8 per write_files call:
+   - Phase 1: Config + entry (package.json, index.html, vite.config.js, tailwind.config.js, postcss.config.js, src/main.jsx, src/index.css, src/App.jsx)
+   - Phase 2: Core components (src/components/*.jsx)
+   - Phase 3: Hooks + data + utils (src/hooks/*.js, src/data/*.js, src/utils/*.js)
+   - Phase 4: Backend if needed (server/*.js)
+   Each phase = ONE write_files call with 5-8 files. Do NOT try to write 20+ files in one call.
+3. After ALL phases: run_shell("npm install && npm run build") to verify.
 4. If build fails: read the error, fix with edit_file or edit_files, rebuild.
 5. Start dev server and analyze_screenshot to verify visually (max 2 screenshots per build).
 6. Call done() with an honest summary.
+
+IMPORTANT: For large projects (15+ files), ALWAYS build in phases. Writing 20+ files
+in one write_files call will FAIL — the model output is too large for a single response.
+5-8 files per write_files call is the sweet spot.
 
 ## Step 3: EDIT workflow
 1. Call update_todos with what you'll change.
