@@ -210,7 +210,7 @@ Match complexity to the request. A counter doesn't need 8 files. An e-commerce p
     'spawn_subagent',
     'done',
   ],
-  maxSteps: 80,
+  maxSteps: 200, // Was 80 — too low for 40+ file projects. Each file = 1+ steps.
   maxTokens: 32000,
 };
 

@@ -546,7 +546,7 @@ export async function runOrchestratedBuild(
    * blunt "stop planning, write the files now" directive.
    */
   let builderEmptyRetries = 0;
-  const MAX_BUILDER_EMPTY_RETRIES = 3;
+  const MAX_BUILDER_EMPTY_RETRIES = 6;
   let forceBuild = false;
   let incompleteBuild = false; // Vite build finished but is missing scaffolding (e.g. package.json)
 
@@ -788,13 +788,15 @@ export async function runOrchestratedBuild(
        * blunt directive to act now. Takes precedence over the normal prompts.
        */
       if (forceBuild) {
+        const existingFiles = Object.keys(getProjectFiles(jobId) as Record<string, string>);
         agentPrompt = incompleteBuild
           ? `${prompt}\n\n` +
-            `CRITICAL: The project is INCOMPLETE and cannot run. It is missing required scaffolding — ` +
-            `at minimum package.json (a Vite app cannot install deps or build without it), and possibly ` +
-            `src/main.* (the React/Vue mount), vite.config.*, tailwind.config.js, or index.html. ` +
-            `Use list_files/read_file to see what already exists, then use write_file to add EVERY missing file ` +
-            `so the app installs and builds. Do NOT rewrite files that are already correct. After all files exist, call done().`
+            `CRITICAL: You STALLED on your last turn. ${existingFiles.length} files are already written:\n` +
+            existingFiles.map(f => `  ✓ ${f}`).join('\n') + '\n\n' +
+            `DO NOT rewrite these files. DO NOT re-plan. Call list_files to confirm, then IMMEDIATELY write the REMAINING files.\n` +
+            `If 15+ files remain, use spawn_subagent to delegate batches of 5-8 files to sub-agents — this prevents stalling.\n` +
+            `Write source files FIRST (App.jsx, components, routes), then verify with npm install && npm run build.\n` +
+            `After all files exist and build passes, call done().`
           : `${prompt}\n\n` +
             `CRITICAL: You produced NO files on your last turn — you only planned. ` +
             `STOP planning and explaining. RIGHT NOW, use the write_file tool to create EVERY file the project needs, ` +
@@ -1343,7 +1345,7 @@ export async function runOrchestratedBuild(
        * Kept above the typical install by resetting on tool parts too
        * (every fullStream part refreshes lastChunkAt).
        */
-      const STALL_TIMEOUT_MS = 900_000; // 15 min — matches hard timeout. GLM-4.7 needs long reasoning on complex builds.
+      const STALL_TIMEOUT_MS = 240_000; // 4 min — catches model stalls fast. npm install (≤300s) resets lastChunkAt on tool parts, so this is safe.
       let lastChunkAt = Date.now();
       let stalled = false;
 
@@ -1600,12 +1602,28 @@ export async function runOrchestratedBuild(
             logger.warn(
               `[orchestrator] ${config.name} stalled — retrying (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES})`,
             );
+
+            /*
+             * STALL RECOVERY: inject the list of already-written files so the
+             * model CONTINUES from where it left off instead of restarting.
+             * Without this, the model re-plans from scratch and stalls again
+             * at the same point (observed on 40+ file builds).
+             */
+            const existingFiles = Object.keys(getProjectFiles(jobId) as Record<string, string>);
+            if (existingFiles.length > 0) {
+              forceBuild = true; // signal to the prompt builder to inject continuation context
+              incompleteBuild = true;
+              logger.info(
+                `[orchestrator] Stall retry ${builderEmptyRetries}: ${existingFiles.length} files already written — model will continue from here`,
+              );
+            }
+
             await emitEvent(
               supabase,
               jobId,
               'file_chunk',
-              `🔁 The model went silent for ${Math.round(STALL_TIMEOUT_MS / 1000)}s — restarting the agent (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES})…`,
-              { reason: 'stall_retry', attempt: builderEmptyRetries },
+              `🔁 The model went silent for ${Math.round(STALL_TIMEOUT_MS / 1000)}s — restarting with ${existingFiles.length} files already saved (attempt ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES})…`,
+              { reason: 'stall_retry', attempt: builderEmptyRetries, existingFiles: existingFiles.length },
             ).catch(() => undefined);
             agentResults.push({ role, success: false, text: '', duration: Date.now() - agentStart });
             agentQueue.unshift(role);
