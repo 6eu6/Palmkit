@@ -46,6 +46,7 @@ import {
   checkRemoteStatus,
   resumeRemoteSandbox,
 } from '~/lib/sandbox/remoteSandbox';
+import { getStackCommandsForAppType } from '~/lib/sandbox/stack-commands';
 
 export type SandboxRunState = 'idle' | 'writing' | 'installing' | 'starting' | 'ready' | 'error';
 
@@ -426,12 +427,31 @@ async function _runInE2B(
   setState('installing');
 
   /*
-   * Start the dev server in the background. This returns quickly because
-   * the server runs `npm install && npm run dev` as a background process.
-   * We DON'T await the full install — we poll for readiness below.
+   * Start the dev server in the background. Now stack-aware: passes the
+   * correct install + dev commands for the detected appType instead of
+   * hardcoding npm for everything.
+   *
+   * StackRegistry (in external-worker) maps appType → {install, dev, port}.
+   * For JS stacks: npm install + npm run dev (same as before).
+   * For Python: pip install + python app.py.
+   * For Flutter: flutter pub get + flutter run -d web-server.
+   * For static: npx serve.
    */
-  console.log('[worker-sandbox] starting dev server...');
-  startRemoteSandbox(sandbox.id, { port: 3000 })
+  const stackCommands = getStackCommandsForAppType(appType);
+  console.log(
+    '[worker-sandbox] starting dev server (stack:',
+    appType,
+    'install:',
+    stackCommands.install,
+    'dev:',
+    stackCommands.dev,
+    ')',
+  );
+  startRemoteSandbox(sandbox.id, {
+    install: stackCommands.install,
+    dev: stackCommands.dev,
+    port: stackCommands.port,
+  })
     .then((url) => {
       console.log('[worker-sandbox] dev server started:', url);
     })
