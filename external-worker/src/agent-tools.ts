@@ -2788,9 +2788,10 @@ When done, return a brief summary of what you wrote.`;
             system: subSystemPrompt,
             prompt: task,
             tools: subTools as any,
-            maxSteps: 20,          // was 10 — more room for writing
-            maxTokens: 16000,      // was 8000 — more room for file content
+            maxSteps: 20,
+            maxTokens: 16000,
             temperature: 0.3,
+            abortSignal: AbortSignal.timeout(300_000), // 5 min per sub-agent — prevents indefinite stall on API rate limits
           });
 
           const subAgentText = await result.text;
