@@ -15,7 +15,10 @@ jobs:
     if: contains(github.event.head_commit.message, '[deploy-worker]') || contains(github.event.head_commit.message, '[diagnose-worker]')
     runs-on: ubuntu-latest
     env:
-      DIAG_ONLY: ${{ contains(github.event.head_commit.message, '[diagnose-worker]') && !contains(github.event.head_commit.message, '[deploy-worker]') }}
+      # The diagnose tag WINS whenever present — mentioning the deploy tag in
+      # prose elsewhere in a message must never cause a surprise restart
+      # (exactly that happened on this workflow's first run).
+      DIAG_ONLY: ${{ contains(github.event.head_commit.message, '[diagnose-worker]') }}
       DEPLOY_REF: ${{ github.ref_name }}
     steps:
       - name: Deploy ${{ github.ref_name }} to worker 1
