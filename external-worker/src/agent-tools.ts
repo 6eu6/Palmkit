@@ -3085,9 +3085,38 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
           logger.info(`[agent] spawn_subagent: Worker script at ${workerScript}`);
 
           const result = await new Promise<any>((resolve) => {
+            // Bun Worker: needs execArgv to resolve node_modules
             const worker = new Worker(workerScript, {
-              // Pass ALL env vars to the worker
               env: process.env,
+              execArgv: ['--smol'], // Bun: reduce memory, faster startup
+              workerData: {
+                type: 'run',
+                jobId,
+                projectId,
+                task,
+                context,
+                provider: subModelConfig.provider,
+                model: subModelConfig.model,
+                apiKey: subModelConfig.apiKey,
+                reasoningEffort: subModelConfig.reasoningEffort || 'off',
+                supabaseUrl: process.env.SUPABASE_URL || '',
+                supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+              },
+            });
+
+            // Also send via postMessage as fallback
+            worker.postMessage({
+              type: 'run',
+              jobId,
+              projectId,
+              task,
+              context,
+              provider: subModelConfig.provider,
+              model: subModelConfig.model,
+              apiKey: subModelConfig.apiKey,
+              reasoningEffort: subModelConfig.reasoningEffort || 'off',
+              supabaseUrl: process.env.SUPABASE_URL || '',
+              supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
             });
 
             const timeout = setTimeout(() => {
