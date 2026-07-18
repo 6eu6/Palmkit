@@ -3055,7 +3055,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
            * 5. Returns result via postMessage (non-blocking for main)
            */
 
-          // Get model config FIRST (before creating worker)
+          // Get model config FIRST
           const subModelConfig = modelConfig || {
             provider: 'OpenRouter',
             model: 'z-ai/glm-4.7',
@@ -3063,64 +3063,39 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             reasoningEffort: 'off' as const,
           };
 
-          const { Worker } = await import('worker_threads');
+          // Use child_process.fork for TRUE process isolation
+          // Worker Threads had node_modules resolution issues on Oracle VM
+          const { fork } = await import('child_process');
           const path = await import('path');
+          const fs = await import('fs');
 
-          // Try multiple paths — __dirname may differ on Oracle VM
+          // Find the fork script
           const possiblePaths = [
-            path.join(__dirname, 'sub-agent-thread.ts'),
-            path.join(process.cwd(), 'src', 'sub-agent-thread.ts'),
-            path.join(process.cwd(), 'external-worker', 'src', 'sub-agent-thread.ts'),
-            '/opt/palmkit-worker/external-worker/src/sub-agent-thread.ts',
+            path.join(__dirname, 'sub-agent-fork.ts'),
+            path.join(process.cwd(), 'src', 'sub-agent-fork.ts'),
+            path.join(process.cwd(), 'external-worker', 'src', 'sub-agent-fork.ts'),
+            '/opt/palmkit-worker/external-worker/src/sub-agent-fork.ts',
           ].filter(Boolean);
 
-          let workerScript = possiblePaths[0];
-          const fs = await import('fs');
+          let forkScript = possiblePaths[0];
           for (const p of possiblePaths) {
-            try {
-              if (fs.existsSync(p)) { workerScript = p; break; }
-            } catch {}
+            try { if (fs.existsSync(p)) { forkScript = p; break; } } catch {}
           }
 
-          logger.info(`[agent] spawn_subagent: Worker script at ${workerScript}`);
+          logger.info(`[agent] spawn_subagent: forking ${forkScript}`);
 
           const result = await new Promise<any>((resolve) => {
-            // Bun Worker: needs execArgv to resolve node_modules
-            const worker = new Worker(workerScript, {
+            // Fork creates a completely separate Bun process
+            // It has its own node_modules resolution, env, and API connection
+            const child = fork(forkScript, [], {
               env: process.env,
-              execArgv: ['--smol'], // Bun: reduce memory, faster startup
-              workerData: {
-                type: 'run',
-                jobId,
-                projectId,
-                task,
-                context,
-                provider: subModelConfig.provider,
-                model: subModelConfig.model,
-                apiKey: subModelConfig.apiKey,
-                reasoningEffort: subModelConfig.reasoningEffort || 'off',
-                supabaseUrl: process.env.SUPABASE_URL || '',
-                supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-              },
-            });
-
-            // Also send via postMessage as fallback
-            worker.postMessage({
-              type: 'run',
-              jobId,
-              projectId,
-              task,
-              context,
-              provider: subModelConfig.provider,
-              model: subModelConfig.model,
-              apiKey: subModelConfig.apiKey,
-              reasoningEffort: subModelConfig.reasoningEffort || 'off',
-              supabaseUrl: process.env.SUPABASE_URL || '',
-              supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+              stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+              cwd: path.dirname(forkScript),
             });
 
             const timeout = setTimeout(() => {
-              try { worker.terminate(); } catch {}
+              try { child.kill('SIGTERM'); } catch {}
+              setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 1000);
               resolve({
                 ok: false,
                 error: 'SUB_AGENT_TIMEOUT',
@@ -3129,17 +3104,17 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
                 filesFailed: [],
                 timedOut: true,
               });
-            }, 300_000); // 5 min hard timeout via terminate()
+            }, 300_000); // 5 min
 
-            worker.on('message', (msg: any) => {
+            child.on('message', (msg: any) => {
               clearTimeout(timeout);
-              try { worker.terminate(); } catch {}
+              try { child.kill('SIGTERM'); } catch {}
               resolve(msg);
             });
 
-            worker.on('error', (err: any) => {
+            child.on('error', (err: any) => {
               clearTimeout(timeout);
-              try { worker.terminate(); } catch {}
+              try { child.kill('SIGKILL'); } catch {}
               resolve({
                 ok: false,
                 error: err.message,
@@ -3150,12 +3125,12 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
               });
             });
 
-            worker.on('exit', (code: number) => {
-              if (code !== 0) {
-                clearTimeout(timeout);
+            child.on('exit', (code: number) => {
+              clearTimeout(timeout);
+              if (code !== 0 && code !== null) {
                 resolve({
                   ok: false,
-                  error: `Worker exited with code ${code}`,
+                  error: `Process exited with code ${code}`,
                   filesWritten: [],
                   filesVerified: [],
                   filesFailed: [],
@@ -3164,8 +3139,8 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
               }
             });
 
-            // Send the task to the worker
-            worker.postMessage({
+            // Send the task
+            child.send({
               type: 'run',
               jobId,
               projectId,
