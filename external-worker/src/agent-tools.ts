@@ -3066,10 +3066,29 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
           const { Worker } = await import('worker_threads');
           const path = await import('path');
 
-          const workerScript = path.join(__dirname, 'sub-agent-thread.ts');
+          // Try multiple paths — __dirname may differ on Oracle VM
+          const possiblePaths = [
+            path.join(__dirname, 'sub-agent-thread.ts'),
+            path.join(process.cwd(), 'src', 'sub-agent-thread.ts'),
+            path.join(process.cwd(), 'external-worker', 'src', 'sub-agent-thread.ts'),
+            '/opt/palmkit-worker/external-worker/src/sub-agent-thread.ts',
+          ].filter(Boolean);
+
+          let workerScript = possiblePaths[0];
+          const fs = await import('fs');
+          for (const p of possiblePaths) {
+            try {
+              if (fs.existsSync(p)) { workerScript = p; break; }
+            } catch {}
+          }
+
+          logger.info(`[agent] spawn_subagent: Worker script at ${workerScript}`);
 
           const result = await new Promise<any>((resolve) => {
-            const worker = new Worker(workerScript);
+            const worker = new Worker(workerScript, {
+              // Pass ALL env vars to the worker
+              env: process.env,
+            });
 
             const timeout = setTimeout(() => {
               try { worker.terminate(); } catch {}
