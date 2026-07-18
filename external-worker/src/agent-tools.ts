@@ -3105,12 +3105,13 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
           fs.writeFileSync(tmpFile, taskData);
 
           const result = await new Promise<any>((resolve) => {
-            // Use bun run to execute the TS file directly
-            const bunPath = process.env.BUN_INSTALL ?? `${process.env.HOME}/.bun`;
-            const bunBin = `${bunPath}/bin/bun`;
+            // Find bun binary — try multiple paths
+            const bunBin = process.env.BUN_INSTALL
+              ? `${process.env.BUN_INSTALL}/bin/bun`
+              : '/home/opc/.bun/bin/bun'; // Oracle VM default path
 
             const child = spawn(bunBin, ['run', forkScript, tmpFile], {
-              env: process.env,
+              env: { ...process.env, BUN_INSTALL: process.env.BUN_INSTALL || '/home/opc/.bun' },
               cwd: path.dirname(forkScript),
               stdio: ['pipe', 'pipe', 'pipe'],
             });
