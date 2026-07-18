@@ -14,6 +14,10 @@
  *
  * Files are written to R2 (shared storage) — the main agent can
  * read them immediately via read_file (R2 is the source of truth).
+ *
+ * DEBUGGING: This file emits 'file_written' and 'subagent_debug' events
+ * directly to Supabase so we can monitor what's happening inside the Worker
+ * from the palmkit.app UI.
  */
 import { streamText } from 'ai';
 import { putFile, getFileText, buildWorkspaceKey } from './r2-client';
@@ -71,13 +75,28 @@ export async function runInWorkerThread(msg: SubAgentMessage): Promise<SubAgentR
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  // Debug helper — emit events to Supabase so we can monitor the Worker remotely
+  const debug = async (message: string, payload?: any) => {
+    try {
+      await supabase.from('job_events').insert({
+        job_id: jobId,
+        type: 'file_chunk',
+        seq: Date.now() + Math.random(),
+        message: `[sub-agent] ${message.slice(0, 200)}`,
+        payload: { source: 'sub-agent', ...payload },
+      });
+    } catch {}
+  };
+
+  await debug(`Worker started: ${task.slice(0, 80)}`, { provider, modelName });
+
   const filesWritten: string[] = [];
   const filesVerified: string[] = [];
   const filesFailed: string[] = [];
 
   async function writeProjectFile(path: string, content: string): Promise<boolean> {
     const err = validateFileContent(path, content);
-    if (err) { filesFailed.push(path); return false; }
+    if (err) { filesFailed.push(path); await debug(`validation failed: ${err}`); return false; }
     try {
       const r2Key = buildWorkspaceKey(projectId, path);
       await putFile(r2Key, content);
@@ -103,8 +122,13 @@ export async function runInWorkerThread(msg: SubAgentMessage): Promise<SubAgentR
       // Self-verify
       const readBack = await getFileText(r2Key);
       if (readBack) filesVerified.push(path);
+      await debug(`wrote ${path} (${lines} lines)`);
       return true;
-    } catch { filesFailed.push(path); return false; }
+    } catch (e: any) {
+      filesFailed.push(path);
+      await debug(`write failed for ${path}: ${e?.message}`);
+      return false;
+    }
   }
 
   // ─── Sub-agent tools ───
@@ -200,14 +224,17 @@ QUALITY: components 150-400 lines, routes 100-200 lines, models 80-150 lines.
 Dark theme. Mobile responsive. Production-grade.`;
 
   // Create model instance (INDEPENDENT API connection — own rate limit)
+  await debug(`Creating model instance: ${provider}/${modelName}`);
   const { getModelInstance } = await import('./provider-registry');
   const model = getModelInstance(provider, modelName, apiKey, { reasoningEffort: msg.reasoningEffort as any || 'off' });
+  await debug(`Model instance created. Starting streamText...`);
 
   const abortController = new AbortController();
   let timedOut = false;
   const timeoutId = setTimeout(() => {
     timedOut = true;
     try { abortController.abort(); } catch {}
+    debug(`Timeout fired — aborting streamText`);
   }, SUB_AGENT_TIMEOUT_MS);
 
   try {
@@ -224,6 +251,7 @@ Dark theme. Mobile responsive. Production-grade.`;
 
     const text = await result.text;
     clearTimeout(timeoutId);
+    await debug(`streamText completed. Files: ${filesWritten.length} written, ${filesVerified.length} verified, ${filesFailed.length} failed`);
 
     return {
       type: 'done',
@@ -235,6 +263,7 @@ Dark theme. Mobile responsive. Production-grade.`;
   } catch (err: any) {
     clearTimeout(timeoutId);
     const isTimeout = timedOut || (err?.message || '').includes('abort');
+    await debug(`streamText ${isTimeout ? 'timed out' : 'failed'}: ${err?.message}. Files written: ${filesWritten.length}`);
     return {
       type: isTimeout ? 'done' : 'error',
       ok: filesWritten.length > 0,
