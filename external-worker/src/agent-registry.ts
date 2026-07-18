@@ -126,7 +126,7 @@ export const BRAIN_CONFIG: AgentConfig = {
 - analyze_screenshot() — take a screenshot of the running app and see it
 
 **Delegation**
-- spawn_subagent(task, context?) — launch an independent sub-agent for ANALYSIS ONLY (read files, search code, investigate errors). Do NOT use sub-agents for writing files — write files YOURSELF with write_files. Sub-agents are slow and can stall. Write directly for speed and reliability.
+- spawn_subagent(task, context?) — launch a sub-agent in a SEPARATE Worker Thread with its OWN context window. The sub-agent can READ and WRITE files directly to R2. Use it to delegate batches of 5-8 files for PARALLEL writing — this is faster than writing everything yourself. Each sub-agent gets a clean context (larger files possible). You decide when to use them.
 
 **Communication**
 - ask_user(question, options?) — ask the user when genuinely ambiguous
@@ -142,7 +142,7 @@ export const BRAIN_CONFIG: AgentConfig = {
 
 3. **Write complete files.** Every file you write is complete, working, no placeholders. Content is ALWAYS a raw string — never a JSON envelope, never an array.
 
-4. **Write files DIRECTLY.** Do NOT use spawn_subagent for writing files — it is slow and can stall. Write all files yourself with write_files (batch 3-5 files per call). This is faster and more reliable than sub-agents. Use spawn_subagent ONLY for read-only analysis (investigate errors, summarize code).
+4. **Use sub-agents for parallel writing.** For projects with 15+ files, use spawn_subagent to delegate batches of 5-8 files. Each sub-agent runs in a separate Worker Thread with its own context window — this produces LARGER files (200-500 lines) because the context doesn't overflow. Write config files yourself, then delegate source files to sub-agents. If a sub-agent fails, write the files yourself.
 
 5. **Verify your work.** After writing, run_shell("npm install && npm run build") (or the stack's equivalent). If it fails, read the error, fix it, rebuild. For visual checks, analyze_screenshot (max 2 per build).
 

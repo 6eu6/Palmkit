@@ -43,7 +43,7 @@ import {
 } from '~/lib/stores/live-stream';
 
 const FLAG_KEY = 'palmkit_use_external_worker';
-const POLL_INTERVAL_MS = 1500;
+const POLL_INTERVAL_MS = 1000; // 1s — faster updates for smoother streaming feel
 
 /*
  * dispatchJobEvent — route a single job event to the appropriate progress store.

@@ -3006,37 +3006,27 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
      */
     spawn_subagent: tool({
       description:
-        'Launch a sub-agent to handle a focused task. The sub-agent runs independently with its OWN context window. ' +
-        'It can READ and WRITE files, run shell commands, search code, and append to the worklog. ' +
-        'Files it writes go directly into the shared project workspace — you see them immediately. ' +
-        'Use this for: batch file writing on large projects, focused analysis, complex error diagnosis, parallel work. ' +
-        'You decide when and how to use sub-agents — they are a first-class tool, fully trusted. ' +
-        'Example: spawn_subagent({ task: "Write these 6 files with complete content: src/components/Header.jsx (nav bar), src/components/Sidebar.jsx, src/data/posts.js (10 mock posts), src/hooks/usePosts.js, src/utils/format.js, src/App.jsx (imports all)" })',
+        'Launch a sub-agent in a SEPARATE Worker Thread to handle a focused task. ' +
+        'The sub-agent has its OWN context window, independent rate limit, and writes directly to R2. ' +
+        'Use for: writing batches of 5-8 files, focused analysis, error diagnosis. ' +
+        'The sub-agent is NON-BLOCKING — you can continue working while it runs. ' +
+        'Example: spawn_subagent({ task: "Write these 6 frontend components with complete content: Header.jsx, Sidebar.jsx, Footer.jsx, Nav.jsx, SearchBar.jsx, ProductCard.jsx" })',
       parameters: z.object({
         task: z
           .string()
           .describe(
-            'A clear, specific task for the sub-agent. Example: "Write these 6 files with complete content: src/components/Header.jsx (navigation bar), src/components/Sidebar.jsx (sidebar nav), src/components/Feed.jsx (main feed), src/data/posts.js (10 mock posts), src/hooks/usePosts.js (post state), src/utils/format.js (date/text helpers)."',
+            'A clear, specific task for the sub-agent. Example: "Write these 6 files: src/components/Header.jsx, src/components/Sidebar.jsx, src/components/Footer.jsx, src/components/Nav.jsx, src/components/SearchBar.jsx, src/components/ProductCard.jsx"',
           ),
         context: z
           .string()
           .optional()
-          .describe(
-            'Additional context — e.g. the project\'s design scheme, existing file list, or API contracts the sub-agent should follow.',
-          ),
+          .describe('Additional context — design scheme, existing file list, API contracts.'),
       }),
       execute: async ({ task, context }) => {
-        if (!model) {
-          return {
-            ok: false,
-            error: 'Sub-agent requires a model instance. This should not happen — report it.',
-          };
-        }
-
         const subAgentId = `subagent-${Date.now()}`;
-        logger.info(`[agent] spawn_subagent: ${task.slice(0, 100)}`);
+        logger.info(`[agent] spawn_subagent (Worker Thread): ${task.slice(0, 100)}`);
 
-        await emitEvent(supabase, jobId, 'file_chunk', `🔄 Sub-agent: ${task.slice(0, 120)}`, {
+        await emitEvent(supabase, jobId, 'file_chunk', `🔄 Sub-agent (Worker Thread): ${task.slice(0, 120)}`, {
           agent: 'Brain',
           kind: 'subagent_start',
           task,
@@ -3045,355 +3035,99 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
 
         try {
           /*
-           * Sub-agent toolset — NOW WRITE-CAPABLE.
+           * WORKER THREAD IMPLEMENTATION (mirrors Z.ai Code's Task tool).
            *
-           * The sub-agent shares the SAME projectFiles Map as the brain.
-           * Files it writes are immediately visible to the brain (via
-           * list_files/read_file) and to subsequent sub-agents.
+           * Instead of running streamText in the same process (which blocks
+           * the main stream, shares rate limits, and can't be aborted in Bun),
+           * we use Bun's Worker to run the sub-agent in a separate thread.
            *
-           * This mirrors how Z.ai Code's Task tool works: sub-agents
-           * get their own context window but share the filesystem.
+           * The worker:
+           * 1. Creates its own model instance (independent rate limit)
+           * 2. Has its own context window (clean, no overflow from main)
+           * 3. Writes directly to R2 (shared workspace)
+           * 4. Returns result via postMessage (non-blocking)
+           *
+           * If Worker is unavailable, falls back to runSubAgentWorker()
+           * (which uses Promise.race timeout instead).
            */
-          const subTools = {
-            // ── READ tools (same as before) ──
-            read_file: tool({
-              description: 'Read a file from the project',
-              parameters: z.object({ path: z.string() }),
-              execute: async (args: any) => {
-                const path = args.path;
-                let content: string | undefined = projectFiles.get(path);
+          const { runSubAgentWorker } = await import('./sub-agent-worker');
 
-                if (!content) {
-                  try {
-                    const fetched = await getFileText(buildWorkspaceKey(projectId, path));
-                    if (fetched) {
-                      content = fetched;
-                      projectFiles.set(path, content);
-                    }
-                  } catch { /* not found */ }
-                }
-
-                return { path, content: content || '', size: content?.length || 0, lines: content?.split('\n').length || 0 };
-              },
-            }),
-            list_files: tool({
-              description: 'List all files in the project',
-              parameters: z.object({}),
-              execute: async () => {
-                const files = Array.from(projectFiles.entries()).map(([path, content]) => ({
-                  path, size: content.length, lines: content.split('\n').length,
-                }));
-                return { totalFiles: files.length, files };
-              },
-            }),
-            search_code: tool({
-              description: 'Search for a pattern across all files',
-              parameters: z.object({ pattern: z.string() }),
-              execute: async (args: any) => {
-                const pattern = args.pattern;
-                const results: any[] = [];
-                let regex: RegExp;
-                try { regex = new RegExp(pattern, 'gi'); } catch {
-                  const lower = pattern.toLowerCase();
-                  for (const [path, content] of projectFiles) {
-                    const lines = content.split('\n');
-                    for (let i = 0; i < lines.length; i++) {
-                      if (lines[i].toLowerCase().includes(lower)) {
-                        results.push({ path, line: i + 1, text: lines[i].trim().slice(0, 200) });
-                        if (results.length >= 50) break;
-                      }
-                    }
-                    if (results.length >= 50) break;
-                  }
-                  return { pattern, totalMatches: results.length, results };
-                }
-                for (const [path, content] of projectFiles) {
-                  const lines = content.split('\n');
-                  for (let i = 0; i < lines.length; i++) {
-                    regex.lastIndex = 0;
-                    if (regex.test(lines[i])) {
-                      results.push({ path, line: i + 1, text: lines[i].trim().slice(0, 200) });
-                      if (results.length >= 50) break;
-                    }
-                  }
-                  if (results.length >= 50) break;
-                }
-                return { pattern, totalMatches: results.length, results };
-              },
-            }),
-
-            // ── WRITE tools (NEW — sub-agent can now write files!) ──
-            write_file: tool({
-              description: 'Write a file to the project. Content MUST be a raw string.',
-              parameters: z.object({
-                path: z.string().describe('File path, e.g. "src/components/Header.jsx"'),
-                content: z.any().describe('Complete file content as a raw string'),
-              }),
-              execute: async (args: any) => {
-                const path = args.path;
-                let fileContent: string = args.content;
-
-                if (typeof fileContent !== 'string') {
-                  fileContent = JSON.stringify(fileContent, null, 2);
-                }
-
-                // Content validation (same as main write_file)
-                const validationError = validateFileContent(path, fileContent);
-                if (validationError) {
-                  return { success: false, path, corrupted: true, message: validationError };
-                }
-
-                // Write to shared projectFiles map (brain sees it immediately)
-                projectFiles.set(path, fileContent);
-
-                // Also write to disk + R2 (same as performWrite)
-                try { await writeProjectFileToDisk(projectId, path, fileContent); } catch { /* best-effort */ }
-                try { await putFile(buildWorkspaceKey(projectId, path), fileContent); } catch { /* best-effort */ }
-
-                const lines = fileContent.split('\n').length;
-                const inlineContent = fileContent.length <= MAX_INLINE_CONTENT ? fileContent : undefined;
-
-                await emitEvent(supabase, jobId, 'file_written', `📝 [sub-agent] ${path} (${lines} lines)`, {
-                  filePath: path, path, lines, size: fileContent.length, content: inlineContent, truncated: inlineContent === undefined,
-                });
-
-                logger.info(`[sub-agent] write_file: ${path} (${fileContent.length} chars, ${lines} lines)`);
-
-                return { success: true, path, size: fileContent.length, lines, message: `File ${path} written successfully.` };
-              },
-            }),
-            write_files: tool({
-              description: 'Write MULTIPLE files in ONE call. PREFERRED for batch writing.',
-              parameters: z.object({
-                files: z.any().describe('Array of {path, content} objects'),
-              }),
-              execute: async (args: any) => {
-                let fileList: any[] = [];
-                if (Array.isArray(args.files)) fileList = args.files;
-                else if (typeof args.files === 'string') {
-                  try { fileList = JSON.parse(args.files); } catch { return { success: false, error: 'files must be an array' }; }
-                } else if (args.files && typeof args.files === 'object') fileList = [args.files];
-                else return { success: false, error: 'files must be an array' };
-
-                let written = 0;
-                const errors: string[] = [];
-
-                for (const f of fileList) {
-                  const path = f.path;
-                  let content: string = f.content;
-                  if (typeof content !== 'string') content = JSON.stringify(content, null, 2);
-
-                  const validationError = validateFileContent(path, content);
-                  if (validationError) { errors.push(`${path}: ${validationError}`); continue; }
-
-                  projectFiles.set(path, content);
-                  try { await writeProjectFileToDisk(projectId, path, content); } catch { /* best-effort */ }
-                  try { await putFile(buildWorkspaceKey(projectId, path), content); } catch { /* best-effort */ }
-
-                  const lines = content.split('\n').length;
-                  const inlineContent = content.length <= MAX_INLINE_CONTENT ? content : undefined;
-
-                  await emitEvent(supabase, jobId, 'file_written', `📝 [sub-agent] ${path} (${lines} lines)`, {
-                    filePath: path, path, lines, size: content.length, content: inlineContent, truncated: inlineContent === undefined,
-                  });
-
-                  written++;
-                }
-
-                logger.info(`[sub-agent] write_files: ${written}/${fileList.length} files written`);
-
-                return {
-                  success: errors.length === 0,
-                  written,
-                  total: fileList.length,
-                  errors: errors.length > 0 ? errors : undefined,
-                  message: `Wrote ${written}/${fileList.length} files.`,
-                };
-              },
-            }),
-
-            // ── SHELL tool (same as before) ──
-            run_shell: tool({
-              description: 'Run a shell command in the sandbox',
-              parameters: z.object({ command: z.string() }),
-              execute: async (args: any) => {
-                const files = Object.fromEntries(projectFiles);
-                const result = await runInE2B(jobId, args.command, files);
-                return {
-                  command: args.command,
-                  exitCode: result.exitCode,
-                  stdout: (result.stdout || '').slice(0, 3000),
-                  stderr: (result.stderr || '').slice(0, 2000),
-                  success: result.exitCode === 0,
-                };
-              },
-            }),
+          // Get model config from the current model instance
+          const modelConfig = {
+            provider: (model as any)?._provider || 'OpenRouter',
+            model: (model as any)?._model || 'z-ai/glm-4.7',
+            apiKey: (model as any)?._apiKey || process.env.OPENROUTER_API_KEY || '',
+            reasoningEffort: 'off' as const,
           };
 
-          const subSystemPrompt = `You are a focused sub-agent working inside a Palmkit build.
+          const supabaseConfig = {
+            url: process.env.SUPABASE_URL || '',
+            serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+          };
 
-Your task: ${task}
-${context ? `\nAdditional context:\n${context}` : ''}
+          const r2Config = {
+            accountId: process.env.R2_ACCOUNT_ID || '',
+            accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+            secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+            bucket: process.env.R2_BUCKET || 'palmkit-files',
+          };
 
-You have WRITE-CAPABLE tools: write_file, write_files, read_file, list_files, search_code, run_shell.
+          const result = await runSubAgentWorker({
+            jobId,
+            projectId,
+            task,
+            context,
+            modelConfig,
+            supabaseConfig,
+            r2Config,
+          });
 
-Files you write go directly into the shared project workspace — the main agent and other sub-agents can see them immediately.
+          if (result.ok) {
+            logger.info(`[agent] spawn_subagent completed: ${result.filesWritten.length} files written`);
 
-Rules:
-- File content is ALWAYS a raw string (never JSON, never arrays).
-- Write COMPLETE files (no placeholders, no "rest stays the same").
-- Use write_files (batch) when writing 2+ files — it's faster.
-- If you're told to write specific files, write EXACTLY those files with full content.
-- Do NOT call done() — just write the files and return a summary.
+            await emitEvent(supabase, jobId, 'file_chunk',
+              `✅ Sub-agent done: ${result.filesWritten.length} files written`,
+              { agent: 'Brain', kind: 'subagent_complete', task, subAgentId, files: result.filesWritten },
+            );
 
-When done, return a brief summary of what you wrote.`;
+            return {
+              ok: true,
+              task,
+              result: result.result || `Sub-agent wrote ${result.filesWritten.length} files: ${result.filesWritten.join(', ')}`,
+              filesWritten: result.filesWritten,
+              message: `Sub-agent completed: ${result.filesWritten.length} files written`,
+            };
+          } else {
+            logger.warn(`[agent] spawn_subagent failed: ${result.error}`);
 
-          /*
-           * Manual timeout via AbortController — 5 min for file batches.
-           * Was 15 min, but GLM-4.7 stalls on large sub-agent tasks and
-           * the long timeout just delays the inevitable. 5 min is enough
-           * for 5-8 files. If the sub-agent stalls, it fails fast and the
-           * main model writes files directly (proven to work).
-           */
-          const subAbortController = new AbortController();
-          const subTimeout = setTimeout(() => {
-            logger.warn(`[agent] Sub-agent timeout (300s) — aborting`);
-            subAbortController.abort();
-          }, 300_000);
+            await emitEvent(supabase, jobId, 'file_chunk',
+              result.timedOut
+                ? `⏱️ Sub-agent timed out (5 min) — ${result.filesWritten.length} files written before timeout`
+                : `⚠️ Sub-agent failed: ${result.error?.slice(0, 120)}`,
+              { agent: 'Brain', kind: 'subagent_error', task, subAgentId, error: result.error },
+            );
 
-          /*
-           * RETRY ON RATE LIMIT (429) — OpenRouter throttles concurrent
-           * streamText calls. Instead of failing the sub-agent, wait and
-           * retry. Up to 3 attempts with exponential backoff (2s, 4s, 8s).
-           */
-          const maxRetries = 3;
-          let lastErr: any = null;
-
-          for (let attempt = 1; attempt <= maxRetries; attempt++) {
-            try {
-              /*
-               * PROMISE.RACE TIMEOUT — AbortController.abort() does NOT work
-               * reliably in Bun's runtime for streamText (known issue: the
-               * abort signal fires but streamText ignores it, hanging forever).
-               *
-               * Instead of relying on abort, we race the streamText result
-               * against a 5-min timeout promise. If the timeout wins, we
-               * return an error IMMEDIATELY — the hung streamText becomes
-               * an orphaned promise that will eventually GC.
-               *
-               * This guarantees the sub-agent ALWAYS returns within 5 min,
-               * regardless of whether abort works. The main model can then
-               * recover and write files directly.
-               */
-              const SUB_AGENT_TIMEOUT_MS = 300_000; // 5 min
-
-              const subAgentPromise = (async () => {
-                const result = await streamText({
-                  model,
-                  system: subSystemPrompt,
-                  prompt: task,
-                  tools: subTools as any,
-                  maxSteps: 40,
-                  maxTokens: 16000,
-                  temperature: 0.3,
-                  abortSignal: subAbortController.signal,
-                });
-
-                const subAgentText = await result.text;
-                const subAgentSteps = await result.steps;
-                return { text: subAgentText, steps: subAgentSteps };
-              })();
-
-              const timeoutPromise = new Promise<never>((_, reject) => {
-                setTimeout(() => reject(new Error('SUB_AGENT_TIMEOUT')), SUB_AGENT_TIMEOUT_MS);
-              });
-
-              const { text: subAgentText, steps: subAgentSteps } = await Promise.race([
-                subAgentPromise,
-                timeoutPromise,
-              ]);
-
-              clearTimeout(subTimeout);
-
-              logger.info(
-                `[agent] spawn_subagent completed (attempt ${attempt}): ${subAgentText.length} chars, ${subAgentSteps?.length || 0} steps`,
-              );
-
-              await emitEvent(supabase, jobId, 'file_chunk', `✅ Sub-agent done: ${task.slice(0, 80)}`, {
-                agent: 'Brain',
-                kind: 'subagent_complete',
-                task,
-                subAgentId,
-                result: subAgentText.slice(0, 2000),
-                steps: subAgentSteps?.length || 0,
-              });
-
+            // If files were written (partial success), report them
+            if (result.filesWritten.length > 0) {
               return {
                 ok: true,
                 task,
-                result: subAgentText,
-                steps: subAgentSteps?.length || 0,
-                message: `Sub-agent completed: ${task}`,
+                result: `Sub-agent wrote ${result.filesWritten.length} files: ${result.filesWritten.join(', ')}`,
+                filesWritten: result.filesWritten,
+                message: `Sub-agent wrote ${result.filesWritten.length} files (partial — ${result.error?.slice(0, 80)})`,
               };
-            } catch (subErr: any) {
-              lastErr = subErr;
-              const subMsg = subErr?.message ?? String(subErr);
-              const isTimeout = subMsg.includes('SUB_AGENT_TIMEOUT');
-              const isAbort = subErr?.name === 'AbortError' || subMsg.includes('abort');
-              const isRateLimit = subMsg.includes('429') || subMsg.includes('rate') || subMsg.includes('Rate');
-
-              if (isTimeout || isAbort) {
-                clearTimeout(subTimeout);
-                logger.error(`[agent] spawn_subagent timed out (5 min Promise.race): ${subMsg}`);
-
-                await emitEvent(supabase, jobId, 'file_chunk',
-                  `⏱️ Sub-agent timed out (5 min) — write files YOURSELF now`,
-                  { agent: 'Brain', kind: 'subagent_error', task, subAgentId, error: 'timeout' },
-                );
-
-                return {
-                  ok: false,
-                  task,
-                  error: 'Sub-agent timed out after 5 minutes (streamText hung — likely GLM-4.7 stall).',
-                  timedOut: true,
-                  message: `Sub-agent timed out after 5 minutes. The streamText call hung (known Bun/GLM issue). Write the files YOURSELF using write_files NOW — do NOT spawn another sub-agent for this task.`,
-                };
-              }
-
-              if (isRateLimit && attempt < maxRetries) {
-                const backoffMs = 2000 * Math.pow(2, attempt - 1);
-                logger.warn(`[agent] spawn_subagent rate-limited (429) — retry ${attempt}/${maxRetries} in ${backoffMs}ms`);
-                await emitEvent(supabase, jobId, 'file_chunk',
-                  `⏳ Sub-agent rate-limited, retrying in ${backoffMs / 1000}s...`,
-                  { agent: 'Brain', kind: 'subagent_retry', task, subAgentId, attempt, backoffMs },
-                );
-                await new Promise((r) => setTimeout(r, backoffMs));
-                continue;
-              }
-
-              // Non-retryable error or out of retries
-              break;
             }
+
+            return {
+              ok: false,
+              task,
+              error: result.error,
+              timedOut: result.timedOut,
+              message: result.timedOut
+                ? `Sub-agent timed out after 5 minutes. Write the files YOURSELF.`
+                : `Sub-agent failed: ${result.error}. Write the files YOURSELF.`,
+            };
           }
-
-          // All retries exhausted — return failure
-          clearTimeout(subTimeout);
-          const failMsg = lastErr?.message ?? String(lastErr);
-
-          logger.error(`[agent] spawn_subagent failed after ${maxRetries} attempts: ${failMsg}`);
-
-          await emitEvent(supabase, jobId, 'file_chunk',
-            `⚠️ Sub-agent failed: ${failMsg.slice(0, 120)}`,
-            { agent: 'Brain', kind: 'subagent_error', task, subAgentId, error: failMsg },
-          );
-
-          return {
-            ok: false,
-            task,
-            error: failMsg,
-            timedOut: false,
-            message: `Sub-agent failed after ${maxRetries} attempts: ${failMsg}. Write the files YOURSELF using write_files.`,
-          };
         } catch (err: any) {
           const msg = err?.message ?? String(err);
           logger.error(`[agent] spawn_subagent outer catch: ${msg}`);
