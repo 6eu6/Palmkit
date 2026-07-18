@@ -501,14 +501,19 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
         /*
          * A cancelled job uses status='failed_clean' + error_summary='Cancelled
-         * by user' (the DB CHECK constraint doesn't allow 'cancelled'). That's
-         * NOT a real failure — the orchestrator wrote a partial manifest. So
-         * only treat it as failed if error_summary is something else. If the
-         * manifest is already there (partial), the loop above already broke;
-         * if not yet, keep waiting — the partial manifest lands shortly after
-         * the cancel.
+         * by user'. When the user cancels and immediately sends a new command,
+         * we must NOT wait 5 min for a manifest that will never arrive.
+         * Instead, proceed immediately with a fresh build (the user clearly
+         * wants something new). The partial manifest (if any) will be used;
+         * if none exists, the edit job becomes a new build.
          */
-        if (targetStatus === 'failed_clean' && targetError !== 'Cancelled by user') {
+        if (targetStatus === 'failed_clean' && targetError === 'Cancelled by user') {
+          // Cancelled by user — don't wait, proceed with fresh context
+          logger.info(`[job-processor] Previous build was cancelled by user — proceeding without manifest`);
+          break;
+        }
+
+        if (targetStatus === 'failed_clean') {
           targetFailed = true;
           break;
         }
