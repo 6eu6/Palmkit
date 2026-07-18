@@ -3133,7 +3133,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
 
             await emitEvent(supabase, jobId, 'file_chunk',
               result.timedOut
-                ? `⏱️ Sub-agent timed out (10 min) — ${result.filesWritten.length} files written before timeout`
+                ? `⏱️ Sub-agent timed out (3 min) — ${result.filesWritten.length} files written before timeout`
                 : `⚠️ Sub-agent failed: ${result.error?.slice(0, 120)}`,
               { agent: 'Brain', kind: 'subagent_error', task, subAgentId, error: result.error },
             );
@@ -3157,7 +3157,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
               error: result.error,
               timedOut: result.timedOut,
               message: result.timedOut
-                ? `Sub-agent timed out after 10 minutes (0 files written). WRITE THE FILES YOURSELF NOW using write_files. Do NOT spawn another sub-agent for this task.`
+                ? `Sub-agent timed out after 3 minutes (0 files written). WRITE THE FILES YOURSELF NOW using write_files. Do NOT spawn another sub-agent for this task.`
                 : `Sub-agent failed: ${result.error}. WRITE THE FILES YOURSELF using write_files.`,
             };
           }

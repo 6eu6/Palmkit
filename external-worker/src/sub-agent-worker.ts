@@ -374,10 +374,46 @@ When done, return a brief summary of what you wrote and verified.`;
 
   // Create model instance with REAL API key
   const { getModelInstance } = await import('./provider-registry');
+
+  // If apiKey is empty, try to fetch from Supabase (same as main agent)
+  let apiKey = modelConfig.apiKey;
+  if (!apiKey) {
+    try {
+      const { data: keyData } = await supabase
+        .from('api_keys')
+        .select('encrypted_key')
+        .eq('user_id', (await supabase.from('build_jobs').select('user_id').eq('id', jobId).single()).data?.user_id)
+        .eq('provider', modelConfig.provider)
+        .single();
+      if (keyData?.encrypted_key) {
+        // Decrypt — same logic as key-fetcher.ts
+        const { decryptSecret } = await import('./crypto');
+        const masterKey = process.env.API_KEY_ENCRYPTION_KEY || '';
+        apiKey = await decryptSecret(keyData.encrypted_key, masterKey);
+        logger.info(`[sub-agent] fetched API key from Supabase for provider ${modelConfig.provider}`);
+      }
+    } catch (e) {
+      logger.warn(`[sub-agent] failed to fetch API key: ${e}`);
+    }
+  }
+
+  if (!apiKey) {
+    logger.error(`[sub-agent] no API key available — sub-agent cannot run`);
+    return {
+      ok: false,
+      task: taskText,
+      error: 'No API key available for sub-agent',
+      filesWritten: [],
+      filesVerified: [],
+      filesFailed: [],
+      timedOut: false,
+    };
+  }
+
   const model = getModelInstance(
     modelConfig.provider,
     modelConfig.model,
-    modelConfig.apiKey,
+    apiKey,
     { reasoningEffort: modelConfig.reasoningEffort || 'off' },
   );
 
