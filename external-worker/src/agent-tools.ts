@@ -32,7 +32,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { streamText, type LanguageModelV1 } from 'ai';
 import { putFile, getFileText, buildWorkspaceKey } from './r2-client';
-import { writeProjectFileToDisk, readProjectFileFromDisk, readWorklog, appendToWorklog } from './workspace-manager';
+import { writeProjectFileToDisk, readProjectFileFromDisk, readWorklog, appendToWorklog, listWorkspaceFiles } from './workspace-manager';
 import { logger } from './logger';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { emitEvent } from './event-emitter';
@@ -728,6 +728,35 @@ export function createAgentTools(
     }
 
     /*
+     * LIVE MANIFEST: write project_files_manifest row on EVERY file write.
+     * This ensures the manifest is ALWAYS up-to-date, even if the build
+     * stalls or the worker restarts. The edit path reads this table to
+     * find existing files — without live manifest, edits fail.
+     *
+     * This mirrors Z.ai Code: every write_file immediately persists to disk.
+     * Here, R2 + manifest table = the disk equivalent.
+     */
+    try {
+      await supabase
+        .from('project_files_manifest')
+        .upsert({
+          job_id: jobId,
+          project_id: null,
+          user_id: null,
+          path,
+          version: 1,
+          hash: '',
+          size_bytes: new TextEncoder().encode(fileContent).length,
+          mime_type: 'text/plain',
+          storage_provider: 'r2',
+          storage_key: buildWorkspaceKey(projectId, path),
+          integrity: 'complete',
+        }, { onConflict: 'job_id,path' });
+    } catch {
+      /* non-fatal — finalize will write complete manifest */
+    }
+
+    /*
      * Emit progress event with filePath + content so the client can render the
      * file in real-time WITHOUT a fetch round-trip to /api/workspace.
      *
@@ -908,21 +937,13 @@ export function createAgentTools(
         path: z.string().describe('The file path to read, e.g. "index.html"'),
       }),
       execute: async ({ path }) => {
-        // Try memory first (faster, includes current build's changes)
+        // R2 is the SINGLE SOURCE OF TRUTH (like Z.ai Code's disk).
+        // Memory Map is just a cache for the current job's writes.
+        // This ensures files from PREVIOUS builds are always readable.
         let content = projectFiles.get(path);
 
-        // M1: then the project's disk dir (source of truth on this box)
         if (!content) {
-          const fromDisk = await readProjectFileFromDisk(projectId, path);
-
-          if (fromDisk !== null) {
-            content = fromDisk;
-            projectFiles.set(path, content);
-          }
-        }
-
-        // Finally R2 (legacy projects / projects built on another box)
-        if (!content) {
+          // R2 first — this is where files from previous builds live
           try {
             const r2Key = buildWorkspaceKey(projectId, path);
             const r2Content = await getFileText(r2Key);
@@ -931,8 +952,18 @@ export function createAgentTools(
               content = r2Content;
               projectFiles.set(path, content); // Cache in memory
             }
-          } catch (e) {
-            logger.warn(`[agent] R2 read failed for ${path}: ${e}`);
+          } catch {
+            /* not in R2 */
+          }
+        }
+
+        // Then disk (local cache for this box)
+        if (!content) {
+          const fromDisk = await readProjectFileFromDisk(projectId, path);
+
+          if (fromDisk !== null) {
+            content = fromDisk;
+            projectFiles.set(path, content);
           }
         }
 
@@ -965,15 +996,25 @@ export function createAgentTools(
         'ALWAYS use this (not run_shell("ls")) to see what files exist. Returns paths, sizes, and line counts.',
       parameters: z.object({}),
       execute: async () => {
-        const files = Array.from(projectFiles.entries()).map(([path, content]) => ({
-          path,
-          size: content.length,
-          lines: content.split('\n').length,
-        }));
+        // R2 is the source of truth — list files from R2 workspace.
+        // Memory Map may be empty for a new job (edit on existing project).
+        // This mirrors Z.ai Code's Glob tool: the filesystem is always the source.
+        let filePaths = await listWorkspaceFiles(projectId).catch(() => []);
 
-        files.sort((a, b) => a.path.localeCompare(b.path));
+        // Merge with memory Map (current job's writes may not be in R2 yet)
+        const memPaths = Array.from(projectFiles.keys());
+        const allPaths = Array.from(new Set([...filePaths, ...memPaths])).sort();
 
-        logger.info(`[agent] list_files: ${files.length} files`);
+        const files = allPaths.map((path) => {
+          const content = projectFiles.get(path) ?? '';
+          return {
+            path,
+            size: content.length || 0,
+            lines: content ? content.split('\n').length : 0,
+          };
+        });
+
+        logger.info(`[agent] list_files: ${files.length} files (R2: ${filePaths.length}, memory: ${memPaths.length})`);
 
         return {
           totalFiles: files.length,
