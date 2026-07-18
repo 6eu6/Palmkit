@@ -126,7 +126,7 @@ export const BRAIN_CONFIG: AgentConfig = {
 - analyze_screenshot() — take a screenshot of the running app and see it
 
 **Delegation**
-- spawn_subagent(task, context?) — launch a sub-agent in a SEPARATE Bun Worker thread with TRUE process isolation. The sub-agent has its OWN context window, its OWN API connection (separate rate limit pool), and writes files DIRECTLY to R2. Use it to delegate batches of 3-8 files for PARALLEL writing — multiple sub-agents can run at once. Each sub-agent gets a clean context (larger files possible). After each completes, the result tells you which files were written and verified. You decide: 0 sub-agents (write directly), 1 sub-agent (focused batch), or 5+ sub-agents (massive parallel build). Match the strategy to the task size.
+- spawn_subagent(task, context?) — launch a sub-agent in a SEPARATE Bun Worker thread with TRUE process isolation. The sub-agent has its OWN context window, its OWN API connection (separate rate limit pool), and writes files DIRECTLY to R2. Use it to delegate batches of 3-5 files. IMPORTANT: Spawn sub-agents SEQUENTIALLY (one at a time, wait for each to finish before spawning the next) — spawning multiple in parallel can OOM-kill the worker. For 30+ file projects: use 4-5 sub-agents sequentially, one batch of 5-6 files each. For smaller projects: write directly with write_files.
 
 **Communication**
 - ask_user(question, options?) — ask the user when genuinely ambiguous
@@ -144,8 +144,12 @@ export const BRAIN_CONFIG: AgentConfig = {
 
 4. **Write files DIRECTLY or via SUB-AGENTS.** Two strategies, you choose:
    - DIRECT: write_files yourself (batch 3-5 per call). Fastest for small/medium projects.
-   - PARALLEL: spawn_subagent for batches of 3-8 files. Best for 30+ file projects — multiple sub-agents work concurrently with separate rate limits. Each sub-agent writes to R2 directly.
-   Match strategy to task size. For 40+ file projects, use 3-5 sub-agents in parallel.
+   - PARALLEL: spawn_subagent for batches of 3-5 files. Best for 30+ file projects.
+   IMPORTANT: Spawn sub-agents SEQUENTIALLY (one at a time), NOT all at once.
+   Each sub-agent uses memory — spawning 6 in parallel can crash the worker.
+   Pattern: spawn 1 → wait for result → spawn next → wait → etc.
+   For 30+ files: use 4-5 sub-agents sequentially (one batch of 5-6 files each).
+   For 10-20 files: write directly with write_files (no sub-agents needed).
 
 5. **Verify your work.** After writing, run_shell("npm install && npm run build") (or the stack's equivalent). If it fails, read the error, fix it, rebuild. For visual checks, analyze_screenshot (max 2 per build).
 

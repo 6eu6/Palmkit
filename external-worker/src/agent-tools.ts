@@ -419,6 +419,13 @@ export function createAgentTools(
   // Per-job file map — isolated from any other build running concurrently.
   const projectFiles = getJobFiles(jobId);
 
+  // SEMAPHORE for spawn_subagent — only ONE sub-agent at a time per job.
+  // Prevents OOM-kill on Oracle VM (MemoryMax=5500M) when multiple Workers
+  // run in parallel. Each Worker loads its own streamText + model instance
+  // + Supabase client, which adds ~800MB-1.2GB per Worker. With 6 parallel
+  // Workers, memory easily exceeds 5.5GB → systemd kills the whole process.
+  let spawnSubagentInProgress = false;
+
   /*
    * Fetch user_id for manifest writes. Cached after first fetch.
    * The project_files_manifest table requires user_id NOT NULL.
@@ -3033,6 +3040,17 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
         const subAgentId = `subagent-${Date.now()}`;
         logger.info(`[agent] spawn_subagent (Bun Worker): ${task.slice(0, 100)}`);
 
+        // SEMAPHORE: only ONE sub-agent at a time (prevents OOM-kill on Oracle VM
+        // with MemoryMax=5500M). Multiple parallel Workers can exceed memory and
+        // cause systemd to kill the entire palmkit-worker process.
+        // This is a HARD limit — even if the model tries to spawn multiple, they
+        // queue up and run sequentially.
+        while (spawnSubagentInProgress) {
+          logger.info(`[agent] spawn_subagent: waiting for previous sub-agent to finish (semaphore)`);
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+        spawnSubagentInProgress = true;
+
         await emitEvent(supabase, jobId, 'file_chunk', `🔄 Sub-agent started: ${task.slice(0, 120)}`, {
           agent: 'Brain',
           kind: 'subagent_start',
@@ -3260,6 +3278,9 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
           });
 
           return { ok: false, task, error: msg, message: `Sub-agent failed: ${msg}` };
+        } finally {
+          // Release the semaphore — allow the next sub-agent to run
+          spawnSubagentInProgress = false;
         }
       },
     }),
