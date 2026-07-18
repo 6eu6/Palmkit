@@ -3090,49 +3090,75 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
           });
 
           if (result.ok) {
-            logger.info(`[agent] spawn_subagent completed: ${result.filesWritten.length} files written`);
+            logger.info(`[agent] spawn_subagent completed: ${result.filesWritten.length} written, ${result.filesVerified.length} verified, ${result.filesFailed.length} failed`);
+
+            // Report verification results
+            const verifiedCount = result.filesVerified.length;
+            const failedCount = result.filesFailed.length;
 
             await emitEvent(supabase, jobId, 'file_chunk',
-              `✅ Sub-agent done: ${result.filesWritten.length} files written`,
-              { agent: 'Brain', kind: 'subagent_complete', task, subAgentId, files: result.filesWritten },
+              `✅ Sub-agent done: ${result.filesWritten.length} files (${verifiedCount} verified${failedCount > 0 ? `, ${failedCount} failed` : ''})`,
+              {
+                agent: 'Brain',
+                kind: 'subagent_complete',
+                task,
+                subAgentId,
+                files: result.filesWritten,
+                verified: result.filesVerified,
+                failed: result.filesFailed,
+              },
             );
+
+            // If some files failed, tell the model to rewrite them
+            if (failedCount > 0) {
+              return {
+                ok: true,
+                task,
+                result: result.result || `Sub-agent wrote ${result.filesWritten.length} files`,
+                filesWritten: result.filesWritten,
+                filesFailed: result.filesFailed,
+                message: `Sub-agent wrote ${result.filesWritten.length} files (${verifiedCount} verified). FAILED files: ${result.filesFailed.join(', ')}. REWRITE these files YOURSELF with write_file.`,
+              };
+            }
 
             return {
               ok: true,
               task,
-              result: result.result || `Sub-agent wrote ${result.filesWritten.length} files: ${result.filesWritten.join(', ')}`,
+              result: result.result || `Sub-agent wrote ${result.filesWritten.length} files (all verified): ${result.filesWritten.join(', ')}`,
               filesWritten: result.filesWritten,
-              message: `Sub-agent completed: ${result.filesWritten.length} files written`,
+              message: `Sub-agent completed: ${result.filesWritten.length} files written and verified. READ them with read_file to confirm quality, then continue.`,
             };
           } else {
             logger.warn(`[agent] spawn_subagent failed: ${result.error}`);
 
             await emitEvent(supabase, jobId, 'file_chunk',
               result.timedOut
-                ? `⏱️ Sub-agent timed out (5 min) — ${result.filesWritten.length} files written before timeout`
+                ? `⏱️ Sub-agent timed out (10 min) — ${result.filesWritten.length} files written before timeout`
                 : `⚠️ Sub-agent failed: ${result.error?.slice(0, 120)}`,
               { agent: 'Brain', kind: 'subagent_error', task, subAgentId, error: result.error },
             );
 
-            // If files were written (partial success), report them
+            // Partial success — files were written before timeout
             if (result.filesWritten.length > 0) {
               return {
                 ok: true,
                 task,
-                result: `Sub-agent wrote ${result.filesWritten.length} files: ${result.filesWritten.join(', ')}`,
+                result: `Sub-agent wrote ${result.filesWritten.length} files before ${result.timedOut ? 'timeout' : 'failure'}: ${result.filesWritten.join(', ')}`,
                 filesWritten: result.filesWritten,
-                message: `Sub-agent wrote ${result.filesWritten.length} files (partial — ${result.error?.slice(0, 80)})`,
+                filesFailed: result.filesFailed,
+                message: `Sub-agent wrote ${result.filesWritten.length} files (partial). Missing files — write them YOURSELF. Files written: ${result.filesWritten.join(', ')}`,
               };
             }
 
+            // Complete failure — model must write files itself
             return {
               ok: false,
               task,
               error: result.error,
               timedOut: result.timedOut,
               message: result.timedOut
-                ? `Sub-agent timed out after 5 minutes. Write the files YOURSELF.`
-                : `Sub-agent failed: ${result.error}. Write the files YOURSELF.`,
+                ? `Sub-agent timed out after 10 minutes (0 files written). WRITE THE FILES YOURSELF NOW using write_files. Do NOT spawn another sub-agent for this task.`
+                : `Sub-agent failed: ${result.error}. WRITE THE FILES YOURSELF using write_files.`,
             };
           }
         } catch (err: any) {

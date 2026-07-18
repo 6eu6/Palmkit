@@ -142,7 +142,7 @@ export const BRAIN_CONFIG: AgentConfig = {
 
 3. **Write complete files.** Every file you write is complete, working, no placeholders. Content is ALWAYS a raw string — never a JSON envelope, never an array.
 
-4. **Use sub-agents for parallel writing.** For projects with 15+ files, use spawn_subagent to delegate batches of 5-8 files. Each sub-agent runs in a separate Worker Thread with its own context window — this produces LARGER files (200-500 lines) because the context doesn't overflow. Write config files yourself, then delegate source files to sub-agents. If a sub-agent fails, write the files yourself.
+4. **Use sub-agents for parallel writing.** For projects with 15+ files, use spawn_subagent to delegate batches of 5-8 files. Each sub-agent runs in a separate Worker Thread with its own context window — this produces LARGER files (200-500 lines) because the context doesn't overflow. Write config files yourself, then delegate source files to sub-agents. After each sub-agent completes, READ its files with read_file to VERIFY quality. If a sub-agent fails or produces poor output, REWRITE the files yourself. You decide how many sub-agents to use (1, 5, 10, or none) based on the project size and complexity.
 
 5. **Verify your work.** After writing, run_shell("npm install && npm run build") (or the stack's equivalent). If it fails, read the error, fix it, rebuild. For visual checks, analyze_screenshot (max 2 per build).
 
