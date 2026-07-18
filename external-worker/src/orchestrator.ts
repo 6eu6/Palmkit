@@ -1444,7 +1444,12 @@ export async function runOrchestratedBuild(
              */
             case 'tool-call': {
               toolExecuting = true; // pause stall watchdog while tool runs
-              lastToolCallAt = Date.now(); // reset tool-call watchdog
+              // Only reset tool-call watchdog for PRODUCTIVE tools (write/edit/spawn)
+              // Non-productive tools (update_todos, list_files, read_file) don't count
+              // — the model can loop on those forever without making progress
+              if (['write_file', 'write_files', 'edit_file', 'edit_files', 'spawn_subagent'].includes(part.toolName)) {
+                lastToolCallAt = Date.now();
+              }
               await flushText(true);
 
               /*
