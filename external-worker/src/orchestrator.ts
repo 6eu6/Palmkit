@@ -1443,10 +1443,15 @@ export async function runOrchestratedBuild(
              * during execution — we don't duplicate them here.
              */
             case 'tool-call': {
-              toolExecuting = true; // pause stall watchdog while tool runs
-              // Only reset tool-call watchdog for PRODUCTIVE tools (write/edit/spawn)
-              // Non-productive tools (update_todos, list_files, read_file) don't count
-              // — the model can loop on those forever without making progress
+              // Only pause watchdog for LONG-RUNNING tools (sub-agent, shell).
+              // File writes/reads/edits complete in <1s — no need to pause.
+              // This was the bug: toolExecuting stayed true for update_todos,
+              // blocking the watchdog while the model reasoned endlessly.
+              const isLongRunning = ['spawn_subagent', 'run_shell', 'run_tests', 'analyze_screenshot', 'generate_image', 'generate_video'].includes(part.toolName);
+              if (isLongRunning) {
+                toolExecuting = true;
+              }
+              // Reset tool-call watchdog for PRODUCTIVE tools only
               if (['write_file', 'write_files', 'edit_file', 'edit_files', 'spawn_subagent'].includes(part.toolName)) {
                 lastToolCallAt = Date.now();
               }

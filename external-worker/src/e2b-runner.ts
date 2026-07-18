@@ -317,7 +317,7 @@ export async function runInE2B(
      *   Tester's screenshot step
      * - other commands: 3 minutes
      */
-    const timeoutMs = isDevCommand ? 600_000 : isInstallCommand ? 300_000 : 180_000;
+    const timeoutMs = isDevCommand ? 900_000 : isInstallCommand ? 600_000 : 180_000;
 
     let result;
 
