@@ -206,22 +206,25 @@ export async function runInWorkerThread(msg: SubAgentMessage): Promise<SubAgentR
     }),
   };
 
-  const systemPrompt = `You are an INTELLIGENT sub-agent. You are autonomous and self-verifying.
+  const systemPrompt = `You are a FOCUSED sub-agent. Write the requested files efficiently.
 
 TASK: ${task}
 ${context ? `\nCONTEXT:\n${context}` : ''}
 
-TOOLS: write_file, write_files (PREFERRED for 2+), read_file, list_files, grep_files, glob_files.
+TOOLS: write_files (PREFERRED for 2+), write_file, read_file, list_files.
 
 RULES:
 1. Content is ALWAYS a raw string (never JSON).
-2. Write COMPLETE files (200-400+ lines each).
-3. After writing, READ BACK your files to verify.
-4. If a file has errors, REWRITE it.
-5. Do NOT call done() — just write, verify, return summary.
+2. Write COMPLETE files (150-300 lines each).
+3. Use write_files for ALL files in ONE call (most efficient).
+4. Do NOT read back files after writing — just write and return.
+5. Do NOT call done() — just write, return summary.
 
-QUALITY: components 150-400 lines, routes 100-200 lines, models 80-150 lines.
-Dark theme. Mobile responsive. Production-grade.`;
+QUALITY: components 150-300 lines, routes 100-200 lines, models 80-150 lines.
+Dark theme. Mobile responsive. Production-grade.
+
+EFFICIENCY: Write ALL files in a SINGLE write_files call when possible.
+Minimize reasoning. Act fast. Don't over-explain.`;
 
   // Create model instance (INDEPENDENT API connection — own rate limit)
   await debug(`Creating model instance: ${provider}/${modelName}`);
@@ -243,10 +246,22 @@ Dark theme. Mobile responsive. Production-grade.`;
       system: systemPrompt,
       prompt: task,
       tools: subTools as any,
-      maxSteps: 20,
-      maxTokens: 16000,
+      maxSteps: 12,           // Reduced from 20 — 6 files need ~7-8 steps (1 plan + 6 writes)
+      maxTokens: 8000,        // Reduced from 16000 — 6 files × 200 lines = ~6K tokens, 8K is enough
       temperature: 0.3,
       abortSignal: abortController.signal,
+      onStepFinish: async ({ toolCalls, toolResults }: any) => {
+        // Emit progress event for each tool call — gives remote visibility
+        for (const tc of toolCalls || []) {
+          const toolName = tc?.toolName || 'unknown';
+          const args = tc?.args || {};
+          if (toolName === 'write_file' || toolName === 'write_files') {
+            await debug(`tool_call: ${toolName} for ${args.path || (Array.isArray(args.files) ? args.files.length + ' files' : 'files')}`);
+          } else {
+            await debug(`tool_call: ${toolName}`);
+          }
+        }
+      },
     });
 
     const text = await result.text;
