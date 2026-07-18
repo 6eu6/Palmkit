@@ -3234,12 +3234,15 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             logger.warn(`[agent] spawn_subagent failed: ${result.error}`);
 
             const writtenCount = result.filesWritten?.length || 0;
+            const errorMsg = result.error || (result.timedOut
+              ? 'Sub-agent timed out after 5 minutes'
+              : 'Sub-agent completed but wrote 0 files (model did not call write_files)');
 
             await emitEvent(supabase, jobId, 'file_chunk',
               result.timedOut
                 ? `⏱️ Sub-agent timed out (5 min) — ${writtenCount} files written before timeout`
-                : `⚠️ Sub-agent failed: ${(result.error || '').slice(0, 120)}`,
-              { agent: 'Brain', kind: 'subagent_error', task, subAgentId, error: result.error },
+                : `⚠️ Sub-agent failed: ${errorMsg.slice(0, 150)}`,
+              { agent: 'Brain', kind: 'subagent_error', task, subAgentId, error: errorMsg },
             );
 
             // Partial success — files were written before timeout
@@ -3258,11 +3261,11 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             return {
               ok: false,
               task,
-              error: result.error,
+              error: errorMsg,
               timedOut: result.timedOut,
               message: result.timedOut
                 ? `Sub-agent timed out after 5 minutes (0 files written). WRITE THE FILES YOURSELF NOW using write_files. Do NOT spawn another sub-agent for this task.`
-                : `Sub-agent failed: ${result.error}. WRITE THE FILES YOURSELF using write_files.`,
+                : `Sub-agent failed (0 files written): ${errorMsg}. WRITE THE FILES YOURSELF using write_files — do NOT retry spawn_subagent.`,
             };
           }
         } catch (err: any) {

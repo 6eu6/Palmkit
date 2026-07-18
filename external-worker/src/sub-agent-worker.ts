@@ -206,25 +206,31 @@ export async function runInWorkerThread(msg: SubAgentMessage): Promise<SubAgentR
     }),
   };
 
-  const systemPrompt = `You are a FOCUSED sub-agent. Write the requested files efficiently.
+  const systemPrompt = `You are a FILE WRITER sub-agent. Your ONLY job is to write files.
 
 TASK: ${task}
 ${context ? `\nCONTEXT:\n${context}` : ''}
 
-TOOLS: write_files (PREFERRED for 2+), write_file, read_file, list_files.
+CRITICAL INSTRUCTIONS:
+1. IMMEDIATELY call write_files with ALL requested files. Do NOT plan, do NOT explain, do NOT reason.
+2. Content is ALWAYS a raw string (never JSON, never array).
+3. Each file must be COMPLETE (150-300 lines), working, no placeholders.
+4. After write_files returns, you are DONE. Do not read back, do not verify, do not call done().
+5. If write_files fails, call it again with corrected content.
 
-RULES:
-1. Content is ALWAYS a raw string (never JSON).
-2. Write COMPLETE files (150-300 lines each).
-3. Use write_files for ALL files in ONE call (most efficient).
-4. Do NOT read back files after writing — just write and return.
-5. Do NOT call done() — just write, return summary.
+EXAMPLE flow:
+  User: "Write 3 files: A.jsx, B.jsx, C.jsx"
+  You: [call write_files with all 3 files]
+  You: [return summary "Wrote 3 files"]
 
-QUALITY: components 150-300 lines, routes 100-200 lines, models 80-150 lines.
-Dark theme. Mobile responsive. Production-grade.
+DO NOT:
+- Plan or explain what you'll do
+- Read existing files first
+- Call list_files or read_file unnecessarily
+- Reason about architecture
+- Call done() — there is no done() tool
 
-EFFICIENCY: Write ALL files in a SINGLE write_files call when possible.
-Minimize reasoning. Act fast. Don't over-explain.`;
+ACT FAST. WRITE FILES. RETURN.`;
 
   // Create model instance (INDEPENDENT API connection — own rate limit)
   await debug(`Creating model instance: ${provider}/${modelName}`);
