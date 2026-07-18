@@ -3112,7 +3112,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
 
             const child = spawn(bunBin, ['run', forkScript, tmpFile], {
               env: { ...process.env, BUN_INSTALL: process.env.BUN_INSTALL || '/home/opc/.bun' },
-              cwd: '/opt/palmkit-worker/external-worker', // node_modules are here
+              cwd: '/opt/palmkit-worker/external-worker',
               stdio: ['pipe', 'pipe', 'pipe'],
             });
 
@@ -3121,12 +3121,21 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
 
             child.stdout?.on('data', (data: Buffer) => {
               stdout += data.toString();
+              logger.info(`[sub-agent-spawn] stdout: ${data.toString().slice(0, 200)}`);
             });
 
             child.stderr?.on('data', (data: Buffer) => {
               stderr += data.toString();
-              logger.info(`[sub-agent-spawn] stderr: ${data.toString().slice(0, 200)}`);
+              const msg = data.toString().slice(0, 300);
+              logger.warn(`[sub-agent-spawn] stderr: ${msg}`);
+              // Emit to Supabase so we can see it
+              emitEvent(supabase, jobId, 'file_chunk', `📝 [sub-agent-spawn] stderr: ${msg.slice(0, 150)}`, {
+                agent: 'Brain', kind: 'subagent_debug', stderr: msg
+              }).catch(() => {});
             });
+
+            // Log spawn start
+            logger.info(`[sub-agent-spawn] started PID ${child.pid}, bun=${bunBin}, script=${forkScript}, tmpFile=${tmpFile}`);
 
             const timeout = setTimeout(() => {
               try { child.kill('SIGTERM'); } catch {}
