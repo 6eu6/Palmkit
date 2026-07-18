@@ -22,7 +22,7 @@ import { makeProjectSpec, detectAppTypeFromFiles, type GenerationResult } from '
 import { runOrchestratedBuild } from './orchestrator';
 import { createRunner } from './build-runner';
 import { putFile, getFileText, buildKey, buildWorkspaceKey } from './r2-client';
-import { hydrateWorkspaceFromStorage, readWorklog, readWorkspaceFile } from './workspace-manager';
+import { hydrateWorkspaceFromStorage, readWorklog, readWorkspaceFile, listWorkspaceFiles } from './workspace-manager';
 import { getUserApiKey } from './key-fetcher';
 import { DEFAULT_IMAGE_MODEL } from './image-gen';
 import { emitEvent, emitFileWritten } from './event-emitter';
@@ -1191,6 +1191,34 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
     // ─── Phase 4: UPLOAD TO R2 ─────────────────────────────────────────
     await updateJobProgress(supabase, job.id, 70, 'uploading_snapshot');
+
+    /*
+     * FALLBACK: if result.files is empty (orchestrator wrote files directly
+     * to R2 but didn't populate result.files), fetch the file list from R2.
+     * This ensures the manifest is ALWAYS written so edits work.
+     */
+    if (!result || !result.files || result.files.length === 0) {
+      logger.info(`[job-processor] result.files empty — fetching from R2 workspace for manifest`);
+      const chatId = (job.validation_result as any)?.chatId as string | undefined;
+      const fallbackProjectId = chatId ?? job.project_id ?? job.id;
+      const workspaceFiles = await listWorkspaceFiles(fallbackProjectId).catch(() => []);
+
+      if (workspaceFiles.length > 0) {
+        const fetchedFiles = await Promise.all(
+          workspaceFiles.map(async (path) => {
+            const content = await getFileText(buildWorkspaceKey(fallbackProjectId, path)).catch(() => '');
+            return { op: 'write_file' as const, path, content: content ?? '' };
+          }),
+        );
+        result = {
+          files: fetchedFiles,
+          complete: true,
+          rawText: result?.rawText ?? '',
+          appType: result?.appType ?? 'static',
+        };
+        logger.info(`[job-processor] Fetched ${fetchedFiles.length} files from R2 for manifest`);
+      }
+    }
 
     /*
      * `Finalizing your project...` banner removed — empty event message.
