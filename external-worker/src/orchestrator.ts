@@ -1384,8 +1384,9 @@ export async function runOrchestratedBuild(
       let lastToolCallAt = Date.now();
 
       const stallTimer = setInterval(() => {
-        if (toolExecuting) return; // don't fire while tool is executing (sub-agents take 5-15 min)
-        if (Date.now() - lastChunkAt > STALL_TIMEOUT_MS) {
+        // Stall watchdog: catches SILENT streams (no chunks at all)
+        // Only pause for long-running tools (sub-agents, shell)
+        if (!toolExecuting && Date.now() - lastChunkAt > STALL_TIMEOUT_MS) {
           stalled = true;
           logger.warn(
             `[orchestrator] ${config.name} stream stalled (${STALL_TIMEOUT_MS / 1000}s without a chunk) — aborting this attempt for retry`,
@@ -1394,11 +1395,17 @@ export async function runOrchestratedBuild(
           clearInterval(stallTimer);
           return;
         }
-        // Tool-call watchdog: reasoning flowing but no tool calls for 3 min
+
+        // Tool-call watchdog: catches ACTIVE-but-unproductive streams
+        // (reasoning flowing but no productive tool calls for 3 min)
+        // This fires EVEN IF toolExecuting is true — because a tool
+        // that's been "executing" for 3+ min without producing files
+        // is stuck (e.g., spawn_subagent that's hanging).
+        // Also fires when model reasons without calling ANY tools.
         if (Date.now() - lastToolCallAt > TOOL_CALL_TIMEOUT_MS) {
           stalled = true;
           logger.warn(
-            `[orchestrator] ${config.name} reasoning without action (${TOOL_CALL_TIMEOUT_MS / 1000}s without a tool call) — aborting for phase boundary`,
+            `[orchestrator] ${config.name} reasoning without action (${TOOL_CALL_TIMEOUT_MS / 1000}s without a productive tool call) — aborting for phase boundary`,
           );
           attemptController.abort();
           clearInterval(stallTimer);
