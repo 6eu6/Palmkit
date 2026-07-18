@@ -3120,11 +3120,27 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
           };
 
           // Create the Worker — Bun natively handles TS files
-          const worker = new Worker(workerScript, {
-            workerData: taskData,
-            // Pass env explicitly so the Worker has everything it needs
-            env: { ...process.env, ...taskData } as any,
-          });
+          logger.info(`[agent] spawn_subagent: creating Worker with script ${workerScript}`);
+          await emitEvent(supabase, jobId, 'file_chunk', `🔧 Creating Worker thread...`, {
+            agent: 'Brain', kind: 'subagent_debug', workerScript,
+          }).catch(() => {});
+
+          let worker: any;
+          try {
+            worker = new Worker(workerScript, {
+              workerData: taskData,
+              // Pass env explicitly so the Worker has everything it needs
+              env: { ...process.env, ...taskData } as any,
+            });
+            logger.info(`[agent] spawn_subagent: Worker created, PID=${worker.threadId}`);
+          } catch (createErr: any) {
+            const msg = `Worker creation failed: ${createErr?.message}`;
+            logger.error(`[agent] spawn_subagent: ${msg}`);
+            await emitEvent(supabase, jobId, 'file_chunk', `❌ ${msg}`, {
+              agent: 'Brain', kind: 'subagent_error', error: msg,
+            }).catch(() => {});
+            return { ok: false, task, error: msg, message: `Sub-agent Worker creation failed: ${msg}. Write the files YOURSELF using write_files.` };
+          }
 
           let workerResolved = false;
 
@@ -3139,11 +3155,15 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             worker.on('error', (err: Error) => {
               if (workerResolved) return;
               workerResolved = true;
-              logger.error(`[sub-agent-worker] error: ${err.message}`);
+              const errMsg = err?.message || String(err);
+              logger.error(`[sub-agent-worker] error: ${errMsg}`);
+              emitEvent(supabase, jobId, 'file_chunk', `❌ Worker error: ${errMsg.slice(0, 200)}`, {
+                agent: 'Brain', kind: 'subagent_error', error: errMsg,
+              }).catch(() => {});
               resolve({
                 type: 'error',
                 ok: false,
-                error: `Worker error: ${err.message}`,
+                error: `Worker error: ${errMsg}`,
                 filesWritten: [],
                 filesVerified: [],
                 filesFailed: [],
@@ -3154,11 +3174,15 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             worker.on('exit', (code: number) => {
               if (workerResolved) return;
               workerResolved = true;
-              logger.warn(`[sub-agent-worker] exited code=${code} without sending message`);
+              const exitMsg = `Worker exited (code ${code}) without posting a result`;
+              logger.warn(`[sub-agent-worker] ${exitMsg}`);
+              emitEvent(supabase, jobId, 'file_chunk', `⚠️ ${exitMsg}. Check worker stderr in logs.`, {
+                agent: 'Brain', kind: 'subagent_error', error: exitMsg, code,
+              }).catch(() => {});
               resolve({
                 type: 'error',
                 ok: false,
-                error: `Worker exited (code ${code}) without posting a result. Check sub-agent-thread.ts for runtime errors.`,
+                error: `${exitMsg}. Check sub-agent-thread.ts for runtime errors.`,
                 filesWritten: [],
                 filesVerified: [],
                 filesFailed: [],
