@@ -3042,17 +3042,37 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
         'IMPORTANT: after finishing your own files, call wait_subagents() BEFORE build verification or done(). ' +
         'Example: spawn_subagent({ task: "Write these 4 components: src/components/Header.jsx (nav+logo+mobile menu), src/components/Footer.jsx (links+social), src/components/Card.jsx (product card), src/components/Modal.jsx (a11y modal)" })',
       parameters: z.object({
+        /*
+         * z.any(), not z.string(): GLM-4.x occasionally emits {} or a
+         * malformed envelope for this tool. A strict schema makes the SDK
+         * reject the call BEFORE execute() and the whole agent turn dies
+         * (observed live 17:24 UTC: "Type validation failed: Value: {}" →
+         * agent restart). Coerce and refuse gracefully inside instead.
+         */
         task: z
-          .string()
+          .any()
+          .optional()
           .describe(
             'A specific batch task with EXACT file paths and per-file requirements, e.g. "Write these 5 files: server/routes/tasks.js (full CRUD + validation), ..."',
           ),
         context: z
-          .string()
+          .any()
           .optional()
           .describe('Design scheme, API contracts, naming conventions the files must follow.'),
       }),
-      execute: async ({ task, context }) => {
+      execute: async (rawArgs: any) => {
+        const task = typeof rawArgs?.task === 'string' ? rawArgs.task : '';
+        const context = typeof rawArgs?.context === 'string' ? rawArgs.context : undefined;
+
+        if (!task.trim()) {
+          return {
+            ok: false,
+            error: 'spawn_subagent called without a task',
+            message:
+              'REFUSED — spawn_subagent needs a task string with exact file paths. ' +
+              'Call it again like: spawn_subagent({ task: "Write these 4 files: src/pages/A.jsx (...), ..." }) — or write the files yourself with write_files.',
+          };
+        }
         const subModelConfig = modelConfig || {
           provider: 'OpenRouter',
           model: 'z-ai/glm-4.7',
