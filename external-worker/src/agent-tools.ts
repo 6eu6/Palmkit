@@ -413,6 +413,24 @@ export function createAgentTools(
   // Per-job file map — isolated from any other build running concurrently.
   const projectFiles = getJobFiles(jobId);
 
+  /*
+   * Fetch user_id for manifest writes. Cached after first fetch.
+   * The project_files_manifest table requires user_id NOT NULL.
+   */
+  let cachedUserId: string | null = null;
+  const getUserId = async (): Promise<string | null> => {
+    if (cachedUserId) return cachedUserId;
+    try {
+      const { data } = await supabase
+        .from('build_jobs')
+        .select('user_id')
+        .eq('id', jobId)
+        .single();
+      cachedUserId = data?.user_id ?? null;
+    } catch { /* ignore */ }
+    return cachedUserId;
+  };
+
   /**
    * Register a generated text file exactly like write_file does: memory map +
    * R2 workspace + a file_written event (content inlined only when small). Used
@@ -739,6 +757,7 @@ export function createAgentTools(
      * Use delete+insert (not upsert) to avoid constraint issues.
      */
     try {
+      const userId = await getUserId();
       // Delete existing row for this (job_id, path) if any, then insert
       await supabase
         .from('project_files_manifest')
@@ -751,7 +770,7 @@ export function createAgentTools(
         .insert({
           job_id: jobId,
           project_id: null,
-          user_id: null,
+          user_id: userId,
           path,
           version: 1,
           hash: '',
