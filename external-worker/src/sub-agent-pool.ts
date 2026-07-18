@@ -27,7 +27,7 @@
  * separate write path to drift.
  */
 
-import { streamText, tool } from 'ai';
+import { generateText, tool } from 'ai';
 import { z } from 'zod';
 import { logger } from './logger';
 import { getModelInstance } from './provider-registry';
@@ -251,7 +251,18 @@ export class SubAgentPool {
     try {
       const fileList = await this.io.listFiles().catch(() => [] as string[]);
 
-      const stream = streamText({
+      logger.info(`[subagent ${id}] starting generateText (${this.modelConfig.provider}/${this.modelConfig.model})`);
+
+      /*
+       * NON-streaming on purpose. Nobody watches a sub-agent's tokens live —
+       * its output surfaces through the shared write pipeline. And nested
+       * SSE consumption is exactly what silently stalled on the Oracle box
+       * (observed twice: worker_threads sub-agents AND in-process streamText
+       * sub-agents both hit their full timeout with 0 chunks, while the main
+       * agent's own stream on the same key kept flowing). generateText gives
+       * plain request/response semantics per step — nothing to stall.
+       */
+      const gen = generateText({
         model,
         system: SUB_AGENT_SYSTEM(task, context, fileList),
         prompt: 'Complete the task now. Write the files, then reply with one summary line.',
@@ -260,19 +271,31 @@ export class SubAgentPool {
         maxTokens: 16_000,
         temperature: 0.3,
         abortSignal: abort.signal,
+        onStepFinish: (step: any) => {
+          logger.info(
+            `[subagent ${id}] step: ${step.toolCalls?.length ?? 0} tool call(s), finish=${step.finishReason}, ${filesWritten.length} files so far`,
+          );
+        },
       });
 
+      // If the race abandons gen, its later settlement must not become an
+      // unhandled rejection.
+      (gen as Promise<unknown>).catch(() => undefined);
+
       /*
-       * Belt AND suspenders: abortSignal is forwarded to fetch, but Bun has
-       * shown abort gaps mid-stream — so the timeout also short-circuits the
-       * await. Files written before the cut persist (live write pipeline).
+       * Belt AND suspenders: abortSignal covers the in-flight request, and
+       * the race covers any hang the signal fails to cut (seen in Bun).
+       * Files written before the cut persist (live write pipeline).
        */
-      const text = await Promise.race([
-        stream.text,
-        new Promise<string>((res) =>
-          setTimeout(() => res(''), SUB_AGENT_TIMEOUT_MS + 5_000),
-        ),
+      const result = await Promise.race([
+        gen,
+        new Promise<null>((res) => setTimeout(() => res(null), SUB_AGENT_TIMEOUT_MS + 5_000)),
       ]);
+      const text = result?.text ?? '';
+
+      if (result) {
+        logger.info(`[subagent ${id}] finished: reason=${result.finishReason}, usage=${JSON.stringify(result.usage ?? {})}`);
+      }
 
       clearTimeout(timer);
       const durationMs = Date.now() - startedAt;
@@ -297,6 +320,11 @@ export class SubAgentPool {
       clearTimeout(timer);
       const durationMs = Date.now() - startedAt;
       const aborted = timedOut || /abort/i.test(err?.message ?? '');
+
+      logger.warn(
+        `[subagent ${id}] ${aborted ? 'aborted' : 'ERROR'} after ${Math.round(durationMs / 1000)}s: ${err?.message ?? err} ` +
+          `(cause: ${err?.cause?.message ?? 'n/a'})`,
+      );
 
       return {
         id,
