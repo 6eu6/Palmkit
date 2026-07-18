@@ -735,11 +735,20 @@ export function createAgentTools(
      *
      * This mirrors Z.ai Code: every write_file immediately persists to disk.
      * Here, R2 + manifest table = the disk equivalent.
+     *
+     * Use delete+insert (not upsert) to avoid constraint issues.
      */
     try {
+      // Delete existing row for this (job_id, path) if any, then insert
       await supabase
         .from('project_files_manifest')
-        .upsert({
+        .delete()
+        .eq('job_id', jobId)
+        .eq('path', path);
+
+      const { error: manifestInsertErr } = await supabase
+        .from('project_files_manifest')
+        .insert({
           job_id: jobId,
           project_id: null,
           user_id: null,
@@ -751,9 +760,13 @@ export function createAgentTools(
           storage_provider: 'r2',
           storage_key: buildWorkspaceKey(projectId, path),
           integrity: 'complete',
-        }, { onConflict: 'job_id,path' });
-    } catch {
-      /* non-fatal — finalize will write complete manifest */
+        });
+
+      if (manifestInsertErr) {
+        logger.warn(`[agent] live manifest insert failed for ${path}: ${manifestInsertErr.message}`);
+      }
+    } catch (e: any) {
+      logger.warn(`[agent] live manifest error for ${path}: ${e?.message || e}`);
     }
 
     /*
