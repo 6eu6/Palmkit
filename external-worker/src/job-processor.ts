@@ -403,7 +403,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
     // Server-measured context pressure for this build (both edit + new-build paths).
     let contextPressure: { tokens: number; window: number; ratio: number; truncated: boolean } | null = null;
 
-    let result: GenerationResult;
+    let result: GenerationResult | undefined;
 
     /*
      * Whether the generation phase already emitted a `file_written` event for
@@ -541,18 +541,22 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
       if (manifestErr || !manifest || manifest.length === 0) {
         /*
-         * The previous build didn't produce a manifest within 5 min (still
-         * running, or failed/cancelled). Fail with a clear, actionable
-         * message so the user knows to wait or start fresh.
+         * The previous build didn't produce a manifest. If the previous build
+         * FAILED (failed_clean), the user's intent is to start fresh — fall
+         * through to the new-build path instead of failing.
          */
-        const reason = targetFailed ? 'the previous build failed' : 'the previous build is still running after 5 min';
-        await failJob(
-          supabase,
-          job.id,
-          `Could not load the previous build's files (${reason}). Please wait for it to finish or start a new build.`,
-        );
-
-        return;
+        if (targetFailed) {
+          logger.info(`[job-processor] Previous build failed — falling through to new-build path`);
+          editJobId = null;
+          manifest = [];
+        } else {
+          await failJob(
+            supabase,
+            job.id,
+            `Could not load the previous build's files (the previous build is still running after 5 min). Please wait for it to finish or start a new build.`,
+          );
+          return;
+        }
       }
 
       /*
@@ -572,9 +576,16 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       }
 
       if (existingFiles.length === 0) {
-        await failJob(supabase, job.id, 'Failed to read project files from storage — try a new build instead');
-        return;
+        /*
+         * No files to edit (previous build failed without producing files).
+         * Fall through to the new-build path instead of failing.
+         */
+        logger.info(`[job-processor] No existing files to edit — falling through to new-build path`);
+        editJobId = null;
       }
+
+      if (editJobId && existingFiles.length > 0) {
+        // ─── EDIT PATH: load existing files + run agent ───
 
       await recordStep(supabase, job.id, {
         type: 'plan',
@@ -756,6 +767,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
       result = { files: mergedFiles, complete: true, rawText: '', appType: editAppType };
       logger.info(`Job ${job.id}: edit complete → ${mergedFiles.length} files (${editAppType})`);
+      }
     } else {
       /*
        * ─── Phase 1: PLAN ─────────────────────────────────────────────────
@@ -993,7 +1005,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
           const detectedAppType = detectAppTypeFromFiles(filesRecord);
 
-          if (detectedAppType && detectedAppType !== result.appType) {
+          if (detectedAppType && result && detectedAppType !== result.appType) {
             logger.info(`Job ${job.id}: appType refined ${result.appType} → ${detectedAppType} (from generated files)`);
             result.appType = detectedAppType;
 
@@ -1157,14 +1169,14 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         type: 'generate_file',
         status: 'completed',
         order: 2,
-        outputSummary: `${result.files.length} files (${result.appType}), ${result.rawText.length} chars`,
+        outputSummary: `${result?.files ?? [].length} files (${result?.appType ?? "static"}), ${result?.rawText ?? "".length} chars`,
       });
 
-      logger.info(`Job ${job.id}: generation complete → ${result.files.length} files (${result.appType})`);
+      logger.info(`Job ${job.id}: generation complete → ${result?.files.length ?? 0} files (${result?.appType ?? 'unknown'})`);
     }
 
     // Initialise the correct runner for this app type.
-    const runner = createRunner(result.appType);
+    const runner = createRunner(result?.appType ?? "static");
 
     // ─── Phase 3: VALIDATION (skipped — the orchestrator handles verification) ─
     await updateJobProgress(supabase, job.id, 50, 'validate');
@@ -1199,7 +1211,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
     const projectId = chatId ?? job.project_id ?? job.id;
     const manifestEntries: Array<Record<string, unknown>> = [];
 
-    for (const file of result.files) {
+    for (const file of result?.files ?? []) {
       /*
        * R2 workspace is the single source of truth (the agent already wrote
        * here during generation via agent-tools.ts:write_file). The legacy
@@ -1334,9 +1346,9 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         has_completion_marker: true,
         validation_result: {
           ...job.validation_result,
-          fileCount: result.files.length,
+          fileCount: result?.files ?? [].length,
           completeness: 'complete',
-          appType: result.appType,
+          appType: result?.appType ?? "static",
           runtimeMode: runner.runtimeMode,
           prompt: (job.validation_result?.prompt ?? prompt).slice(0, 200),
           ...(editJobId ? { editJobId } : {}),
