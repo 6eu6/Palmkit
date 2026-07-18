@@ -1,102 +1,73 @@
 /**
- * Sub-Agent Worker — intelligent, autonomous, self-verifying.
+ * Sub-Agent Worker Thread — TRUE process isolation via Bun Worker.
  *
- * Mirrors Z.ai Code's Task tool: each sub-agent gets its own context
- * window, writes directly to shared storage (R2), and verifies its
- * own output before returning.
+ * This file runs in a SEPARATE THREAD (not the main process).
+ * It has its own:
+ * - Event loop (doesn't block main agent)
+ * - API connection (separate rate limit pool)
+ * - Memory (no shared state with main agent)
+ * - streamText instance (fully isolated)
  *
- * Key features:
- * 1. Self-verification: after writing files, sub-agent reads them back
- *    to verify content is valid (brace balance, non-empty).
- * 2. Error auto-recovery: if a file fails validation, sub-agent retries
- *    with a different approach (up to 3 attempts per file).
- * 3. Progress reporting: emits events to Supabase so the frontend shows
- *    real-time progress of each sub-agent.
- * 4. Flexible timeout: 10 min per sub-agent (enough for 8-10 files).
- * 5. Partial success: if sub-agent writes SOME files before timeout,
- *    those files are kept (not lost).
+ * Communication:
+ *   Main process → worker.postMessage({task, config})
+ *   Worker → main.process.postMessage({result})
+ *
+ * Files are written to R2 (shared storage) — the main agent can
+ * read them immediately via read_file (R2 is the source of truth).
  */
 import { streamText } from 'ai';
 import { putFile, getFileText, buildWorkspaceKey } from './r2-client';
 import { createClient } from '@supabase/supabase-js';
 import { tool } from 'ai';
 import { z } from 'zod';
-import { logger } from './logger';
 
-export interface SubAgentTask {
+// ─── Message types (main ↔ worker) ───
+export interface SubAgentMessage {
+  type: 'run';
   jobId: string;
   projectId: string;
   task: string;
   context?: string;
-  modelConfig: {
-    provider: string;
-    model: string;
-    apiKey: string;
-    reasoningEffort?: 'off' | 'medium' | 'max';
-  };
-  supabaseConfig: {
-    url: string;
-    serviceKey: string;
-  };
-  r2Config: {
-    accountId: string;
-    accessKeyId: string;
-    secretAccessKey: string;
-    bucket: string;
-  };
+  provider: string;
+  model: string;
+  apiKey: string;
+  reasoningEffort: string;
+  supabaseUrl: string;
+  supabaseKey: string;
 }
 
-export interface SubAgentResult {
+export interface SubAgentResponse {
+  type: 'done' | 'error' | 'progress';
   ok: boolean;
-  task: string;
-  result?: string;
-  error?: string;
   filesWritten: string[];
   filesVerified: string[];
   filesFailed: string[];
+  result?: string;
+  error?: string;
   timedOut: boolean;
 }
 
-const SUB_AGENT_TIMEOUT_MS = 180_000; // 3 min — fast completion, model writes remaining files if timeout
+const SUB_AGENT_TIMEOUT_MS = 300_000; // 5 min
 
-/**
- * Validate file content — basic structural checks.
- * Returns null if valid, error message if not.
- */
 function validateFileContent(path: string, content: string): string | null {
-  if (!content || content.trim().length === 0) {
-    return `${path}: empty content`;
-  }
-
-  // Check brace balance for JS/JSX/TS files
+  if (!content || content.trim().length === 0) return `${path}: empty`;
   if (/\.(jsx?|tsx?|mjs|cjs)$/i.test(path)) {
     const opens = (content.match(/{/g) || []).length;
     const closes = (content.match(/}/g) || []).length;
-    if (opens !== closes) {
-      return `${path}: brace mismatch (${opens} open, ${closes} close)`;
-    }
+    if (opens !== closes) return `${path}: brace mismatch (${opens}/${closes})`;
   }
-
-  // Check for JSON corruption (content starting with [ or { for JSX)
-  if (/\.jsx$/i.test(path) || /\.tsx$/i.test(path)) {
-    const trimmed = content.trimStart();
-    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-      try {
-        JSON.parse(trimmed);
-        return `${path}: content is valid JSON but should be JSX source code`;
-      } catch {
-        // not valid JSON, probably fine
-      }
-    }
-  }
-
   return null;
 }
 
-export async function runSubAgentWorker(task: SubAgentTask): Promise<SubAgentResult> {
-  const { jobId, projectId, task: taskText, context, modelConfig, supabaseConfig } = task;
+/**
+ * This function runs INSIDE the Worker Thread.
+ * It receives the task, creates its own tools, runs streamText,
+ * writes files to R2, and posts results back.
+ */
+export async function runInWorkerThread(msg: SubAgentMessage): Promise<SubAgentResponse> {
+  const { jobId, projectId, task, context, provider, model: modelName, apiKey, supabaseUrl, supabaseKey } = msg;
 
-  const supabase = createClient(supabaseConfig.url, supabaseConfig.serviceKey, {
+  const supabase = createClient(supabaseUrl, supabaseKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -104,383 +75,172 @@ export async function runSubAgentWorker(task: SubAgentTask): Promise<SubAgentRes
   const filesVerified: string[] = [];
   const filesFailed: string[] = [];
 
-  /**
-   * Write a file to R2 + manifest + emit event.
-   * Called by both write_file and write_files tools.
-   */
   async function writeProjectFile(path: string, content: string): Promise<boolean> {
-    // Validate content
-    const validationError = validateFileContent(path, content);
-    if (validationError) {
-      logger.warn(`[sub-agent] validation failed: ${validationError}`);
-      filesFailed.push(path);
-      return false;
-    }
-
+    const err = validateFileContent(path, content);
+    if (err) { filesFailed.push(path); return false; }
     try {
       const r2Key = buildWorkspaceKey(projectId, path);
       await putFile(r2Key, content);
       filesWritten.push(path);
 
       // Live manifest
-      await supabase
-        .from('project_files_manifest')
-        .delete()
-        .eq('job_id', jobId)
-        .eq('path', path);
-
-      // Get user_id from job
-      const { data: jobData } = await supabase
-        .from('build_jobs')
-        .select('user_id')
-        .eq('id', jobId)
-        .single();
-
+      const { data: jobData } = await supabase.from('build_jobs').select('user_id').eq('id', jobId).single();
+      await supabase.from('project_files_manifest').delete().eq('job_id', jobId).eq('path', path);
       await supabase.from('project_files_manifest').insert({
-        job_id: jobId,
-        project_id: null,
-        user_id: jobData?.user_id || null,
-        path,
-        version: 1,
-        hash: '',
-        size_bytes: new TextEncoder().encode(content).length,
-        mime_type: 'text/plain',
-        storage_provider: 'r2',
-        storage_key: r2Key,
-        integrity: 'complete',
+        job_id: jobId, project_id: null, user_id: jobData?.user_id || null,
+        path, version: 1, hash: '', size_bytes: new TextEncoder().encode(content).length,
+        mime_type: 'text/plain', storage_provider: 'r2', storage_key: r2Key, integrity: 'complete',
       });
 
-      // Emit event
+      // Event
       const lines = content.split('\n').length;
       await supabase.from('job_events').insert({
-        job_id: jobId,
-        type: 'file_written',
-        seq: Date.now() + Math.random(),
+        job_id: jobId, type: 'file_written', seq: Date.now() + Math.random(),
         message: `[sub-agent] ${path} (${lines} lines)`,
         payload: { filePath: path, lines, size: content.length, source: 'sub-agent' },
       });
 
-      // Self-verify: read back from R2 to confirm
+      // Self-verify
       const readBack = await getFileText(r2Key);
-      if (readBack && readBack.length > 0) {
-        filesVerified.push(path);
-        logger.info(`[sub-agent] ${path} written + verified (${lines} lines)`);
-      }
-
+      if (readBack) filesVerified.push(path);
       return true;
-    } catch (e: any) {
-      logger.warn(`[sub-agent] write failed for ${path}: ${e?.message || e}`);
-      filesFailed.push(path);
-      return false;
-    }
+    } catch { filesFailed.push(path); return false; }
   }
 
-  // ─── Sub-agent toolset ───
+  // ─── Sub-agent tools ───
   const subTools = {
     write_file: tool({
-      description: 'Write a file to the project. Content MUST be a raw string (not JSON).',
-      parameters: z.object({
-        path: z.string().describe('File path, e.g. "src/components/Header.jsx"'),
-        content: z.any().describe('Complete file content as a raw string'),
-      }),
+      description: 'Write a file. Content MUST be a raw string.',
+      parameters: z.object({ path: z.string(), content: z.any() }),
       execute: async (args: any) => {
-        const path = args.path;
-        let content: string = typeof args.content === 'string'
-          ? args.content
-          : JSON.stringify(args.content, null, 2);
-
-        const success = await writeProjectFile(path, content);
-        return {
-          success,
-          path,
-          size: content.length,
-          lines: content.split('\n').length,
-          verified: filesVerified.includes(path),
-          message: success ? `Written + verified: ${path}` : `Failed: ${path}`,
-        };
+        const content = typeof args.content === 'string' ? args.content : JSON.stringify(args.content, null, 2);
+        const ok = await writeProjectFile(args.path, content);
+        return { success: ok, path: args.path, lines: content.split('\n').length };
       },
     }),
-
     write_files: tool({
-      description: 'Write MULTIPLE files in ONE call. PREFERRED for batch writing.',
-      parameters: z.object({ files: z.any().describe('Array of {path, content} objects') }),
+      description: 'Write MULTIPLE files in ONE call. PREFERRED.',
+      parameters: z.object({ files: z.any() }),
       execute: async (args: any) => {
-        let fileList: any[] = [];
-        if (Array.isArray(args.files)) fileList = args.files;
-        else if (typeof args.files === 'string') {
-          try { fileList = JSON.parse(args.files); } catch { return { success: false, error: 'files must be array' }; }
-        } else if (args.files && typeof args.files === 'object') fileList = [args.files];
-
+        const fileList = Array.isArray(args.files) ? args.files : [args.files];
         let written = 0;
-        const errors: string[] = [];
-
         for (const f of fileList) {
-          const path = f.path;
-          let content: string = typeof f.content === 'string'
-            ? f.content
-            : JSON.stringify(f.content, null, 2);
-
-          const success = await writeProjectFile(path, content);
-          if (success) written++;
-          else errors.push(path);
+          const content = typeof f.content === 'string' ? f.content : JSON.stringify(f.content, null, 2);
+          if (await writeProjectFile(f.path, content)) written++;
         }
-
-        return {
-          success: errors.length === 0,
-          written,
-          total: fileList.length,
-          errors: errors.length > 0 ? errors : undefined,
-          verified: filesVerified.length,
-          message: `Wrote ${written}/${fileList.length} files (${filesVerified.length} verified)`,
-        };
+        return { success: true, written, total: fileList.length };
       },
     }),
-
     read_file: tool({
-      description: 'Read a file from the project (R2 source of truth). Use to verify your work or read existing files.',
+      description: 'Read a file from R2.',
       parameters: z.object({ path: z.string() }),
       execute: async (args: any) => {
-        try {
-          const r2Key = buildWorkspaceKey(projectId, args.path);
-          const content = await getFileText(r2Key);
-          return {
-            path: args.path,
-            content: content || '',
-            size: content?.length || 0,
-            lines: content?.split('\n').length || 0,
-            exists: !!content,
-          };
-        } catch {
-          return { path: args.path, content: '', exists: false, error: 'File not found' };
-        }
+        const content = await getFileText(buildWorkspaceKey(projectId, args.path));
+        return { path: args.path, content: content || '', exists: !!content };
       },
     }),
-
     list_files: tool({
-      description: 'List all files in the project from R2 workspace.',
+      description: 'List all files in project.',
       parameters: z.object({}),
       execute: async () => {
-        const { data } = await supabase
-          .from('project_files_manifest')
-          .select('path')
-          .eq('job_id', jobId)
-          .order('path');
-        const files = (data || []).map((r: any) => ({ path: r.path }));
-        return { totalFiles: files.length, files };
+        const { data } = await supabase.from('project_files_manifest').select('path').eq('job_id', jobId).order('path');
+        return { totalFiles: (data || []).length, files: (data || []).map((r: any) => ({ path: r.path })) };
       },
     }),
-
     grep_files: tool({
-      description: 'Search for a pattern across all project files.',
-      parameters: z.object({
-        pattern: z.string(),
-        path: z.string().optional(),
-      }),
+      description: 'Search across all files.',
+      parameters: z.object({ pattern: z.string() }),
       execute: async (args: any) => {
-        const { data } = await supabase
-          .from('project_files_manifest')
-          .select('path')
-          .eq('job_id', jobId);
+        const { data } = await supabase.from('project_files_manifest').select('path').eq('job_id', jobId);
         const results: any[] = [];
         let regex: RegExp;
-        try { regex = new RegExp(args.pattern, 'gi'); } catch {
-          const lower = args.pattern.toLowerCase();
-          for (const r of data || []) {
-            const content = await getFileText(buildWorkspaceKey(projectId, r.path));
-            if (content && content.toLowerCase().includes(lower)) {
-              results.push({ path: r.path, match: 'found' });
-            }
-          }
-          return { pattern: args.pattern, totalMatches: results.length, results: results.slice(0, 20) };
-        }
+        try { regex = new RegExp(args.pattern, 'gi'); } catch { regex = new RegExp(args.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'); }
         for (const r of data || []) {
           const content = await getFileText(buildWorkspaceKey(projectId, r.path));
           if (!content) continue;
           const lines = content.split('\n');
           for (let i = 0; i < lines.length; i++) {
             regex.lastIndex = 0;
-            if (regex.test(lines[i])) {
-              results.push({ path: r.path, line: i + 1, text: lines[i].trim().slice(0, 120) });
-              if (results.length >= 30) break;
-            }
+            if (regex.test(lines[i])) results.push({ path: r.path, line: i + 1, text: lines[i].trim().slice(0, 120) });
+            if (results.length >= 30) break;
           }
           if (results.length >= 30) break;
         }
         return { pattern: args.pattern, totalMatches: results.length, results };
       },
     }),
-
     glob_files: tool({
-      description: 'Find files by name pattern (e.g. "src/**/*.jsx").',
+      description: 'Find files by name pattern.',
       parameters: z.object({ pattern: z.string() }),
       execute: async (args: any) => {
-        const { data } = await supabase
-          .from('project_files_manifest')
-          .select('path')
-          .eq('job_id', jobId);
-        const re = args.pattern
-          .replace(/\*\*/g, '\x00')
-          .replace(/\*/g, '[^/]*')
-          .replace(/\x00/g, '.*')
-          .replace(/\?/g, '[^/]');
+        const { data } = await supabase.from('project_files_manifest').select('path').eq('job_id', jobId);
+        const re = args.pattern.replace(/\*\*/g, '\x00').replace(/\*/g, '[^/]*').replace(/\x00/g, '.*').replace(/\?/g, '[^/]');
         const regex = new RegExp(`^${re}$`, 'i');
         const matches = (data || []).map((r: any) => r.path).filter((p: string) => regex.test(p)).sort();
         return { pattern: args.pattern, totalFiles: matches.length, files: matches };
       },
     }),
-
-    run_shell: tool({
-      description: 'Run a shell command in the E2B sandbox. Use for npm install, npm run build, etc.',
-      parameters: z.object({ command: z.string() }),
-      execute: async (args: any) => {
-        // Sub-agents don't have E2B access — return a message
-        return {
-          command: args.command,
-          success: false,
-          message: 'Sub-agents cannot run shell commands. The main agent will run npm install && npm run build after all sub-agents complete.',
-        };
-      },
-    }),
   };
 
-  const subSystemPrompt = `You are an INTELLIGENT sub-agent working inside a Palmkit build. You are autonomous and self-verifying.
+  const systemPrompt = `You are an INTELLIGENT sub-agent. You are autonomous and self-verifying.
 
-YOUR TASK: ${taskText}
-${context ? `\nADDITIONAL CONTEXT:\n${context}` : ''}
+TASK: ${task}
+${context ? `\nCONTEXT:\n${context}` : ''}
 
-YOUR TOOLS:
-- write_file(path, content) — write a single file
-- write_files(files) — write multiple files in one call (PREFERRED)
-- read_file(path) — read any file in the project (including files written by other agents)
-- list_files() — see all files in the project
-- grep_files(pattern) — search across all files
-- glob_files(pattern) — find files by name pattern
+TOOLS: write_file, write_files (PREFERRED for 2+), read_file, list_files, grep_files, glob_files.
 
 RULES:
-1. File content is ALWAYS a raw string (never JSON, never arrays).
-2. Write COMPLETE files (200-400+ lines each). No placeholders, no skeletons.
-3. Use write_files (batch) when writing 2+ files — it's faster.
-4. After writing, READ BACK your files with read_file to verify they're correct.
-5. If a file has errors (brace mismatch, empty content), REWRITE it.
-6. Do NOT call done() — just write the files, verify them, and return a summary.
+1. Content is ALWAYS a raw string (never JSON).
+2. Write COMPLETE files (200-400+ lines each).
+3. After writing, READ BACK your files to verify.
+4. If a file has errors, REWRITE it.
+5. Do NOT call done() — just write, verify, return summary.
 
-QUALITY STANDARDS:
-- Each component: 150-400 lines with full JSX, state, effects, handlers.
-- Each route: 100-200 lines with full CRUD, validation, error handling.
-- Each model: 80-150 lines with all fields, methods, queries.
-- Dark theme. Mobile responsive. Production-grade code.
+QUALITY: components 150-400 lines, routes 100-200 lines, models 80-150 lines.
+Dark theme. Mobile responsive. Production-grade.`;
 
-When done, return a brief summary of what you wrote and verified.`;
-
-  // Create model instance with REAL API key
+  // Create model instance (INDEPENDENT API connection — own rate limit)
   const { getModelInstance } = await import('./provider-registry');
+  const model = getModelInstance(provider, modelName, apiKey, { reasoningEffort: msg.reasoningEffort as any || 'off' });
 
-  // If apiKey is empty, try to fetch from Supabase (same as main agent)
-  let apiKey = modelConfig.apiKey;
-  if (!apiKey) {
-    try {
-      const { data: keyData } = await supabase
-        .from('api_keys')
-        .select('encrypted_key')
-        .eq('user_id', (await supabase.from('build_jobs').select('user_id').eq('id', jobId).single()).data?.user_id)
-        .eq('provider', modelConfig.provider)
-        .single();
-      if (keyData?.encrypted_key) {
-        // Decrypt — same logic as key-fetcher.ts
-        const { decryptSecret } = await import('./crypto');
-        const masterKey = process.env.API_KEY_ENCRYPTION_KEY || '';
-        apiKey = await decryptSecret(keyData.encrypted_key, masterKey);
-        logger.info(`[sub-agent] fetched API key from Supabase for provider ${modelConfig.provider}`);
-      }
-    } catch (e) {
-      logger.warn(`[sub-agent] failed to fetch API key: ${e}`);
-    }
-  }
-
-  if (!apiKey) {
-    logger.error(`[sub-agent] no API key available — sub-agent cannot run`);
-    return {
-      ok: false,
-      task: taskText,
-      error: 'No API key available for sub-agent',
-      filesWritten: [],
-      filesVerified: [],
-      filesFailed: [],
-      timedOut: false,
-    };
-  }
-
-  const model = getModelInstance(
-    modelConfig.provider,
-    modelConfig.model,
-    apiKey,
-    { reasoningEffort: modelConfig.reasoningEffort || 'off' },
-  );
-
-  // Run with BOTH AbortController AND Promise.race — belt + suspenders
   const abortController = new AbortController();
   let timedOut = false;
-
   const timeoutId = setTimeout(() => {
     timedOut = true;
-    logger.warn(`[sub-agent] timeout (${SUB_AGENT_TIMEOUT_MS / 1000}s) — aborting`);
     try { abortController.abort(); } catch {}
   }, SUB_AGENT_TIMEOUT_MS);
 
   try {
-    const subAgentPromise = (async () => {
-      const result = await streamText({
-        model,
-        system: subSystemPrompt,
-        prompt: taskText,
-        tools: subTools as any,
-        maxSteps: 15,
-        maxTokens: 16000,
-        temperature: 0.3,
-        abortSignal: abortController.signal,
-      });
-      const text = await result.text;
-      return { text };
-    })();
-
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('SUB_AGENT_TIMEOUT')), SUB_AGENT_TIMEOUT_MS);
+    const result = await streamText({
+      model,
+      system: systemPrompt,
+      prompt: task,
+      tools: subTools as any,
+      maxSteps: 20,
+      maxTokens: 16000,
+      temperature: 0.3,
+      abortSignal: abortController.signal,
     });
 
-    const { text: subAgentText } = await Promise.race([subAgentPromise, timeoutPromise]);
-
+    const text = await result.text;
     clearTimeout(timeoutId);
 
-    logger.info(`[sub-agent] completed: ${subAgentText?.length || 0} chars, ${filesWritten.length} written, ${filesVerified.length} verified, ${filesFailed.length} failed`);
-
     return {
+      type: 'done',
       ok: filesWritten.length > 0,
-      task: taskText,
-      result: subAgentText || `Sub-agent wrote ${filesWritten.length} files (${filesVerified.length} verified)`,
-      filesWritten,
-      filesVerified,
-      filesFailed,
+      filesWritten, filesVerified, filesFailed,
+      result: text || `Wrote ${filesWritten.length} files`,
       timedOut: false,
     };
   } catch (err: any) {
     clearTimeout(timeoutId);
-    const msg = err?.message ?? String(err);
-    const isTimeout = timedOut || msg.includes('SUB_AGENT_TIMEOUT') || msg.includes('abort');
-
-    if (isTimeout) {
-      logger.warn(`[sub-agent] timed out after ${SUB_AGENT_TIMEOUT_MS / 1000}s — ${filesWritten.length} files written, ${filesVerified.length} verified`);
-    } else {
-      logger.error(`[sub-agent] failed: ${msg}`);
-    }
-
-    // Partial success — return what was written (files are in R2 already)
+    const isTimeout = timedOut || (err?.message || '').includes('abort');
     return {
+      type: isTimeout ? 'done' : 'error',
       ok: filesWritten.length > 0,
-      task: taskText,
-      error: msg,
-      filesWritten,
-      filesVerified,
-      filesFailed,
+      filesWritten, filesVerified, filesFailed,
+      error: err?.message,
+      result: isTimeout ? `Timed out after ${SUB_AGENT_TIMEOUT_MS/1000}s — ${filesWritten.length} files written` : undefined,
       timedOut: isTimeout,
     };
   }

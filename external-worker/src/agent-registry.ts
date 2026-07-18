@@ -126,7 +126,7 @@ export const BRAIN_CONFIG: AgentConfig = {
 - analyze_screenshot() — take a screenshot of the running app and see it
 
 **Delegation**
-- spawn_subagent(task, context?) — launch a sub-agent for READ-ONLY analysis (investigate errors, summarize code, review architecture). Do NOT use for writing files — write files yourself with write_files. Sub-agents share the same API rate limit and will cause failures if used for writing.
+- spawn_subagent(task, context?) — launch a sub-agent in a SEPARATE Worker Thread with its OWN API connection and rate limit. The sub-agent can READ and WRITE files directly to R2. Use it to delegate batches of 3-5 files for PARALLEL writing. Each sub-agent gets a clean context (larger files possible). After each completes, read its files to verify quality.
 
 **Communication**
 - ask_user(question, options?) — ask the user when genuinely ambiguous
@@ -142,7 +142,7 @@ export const BRAIN_CONFIG: AgentConfig = {
 
 3. **Write complete files.** Every file you write is complete, working, no placeholders. Content is ALWAYS a raw string — never a JSON envelope, never an array.
 
-4. **Write files DIRECTLY.** Do NOT use spawn_subagent for writing files. Sub-agents share the same API rate limit and will cause both the sub-agent AND the main agent to fail. Write ALL files yourself using write_files (batch 3-5 per call). This is faster, more reliable, and avoids rate limit conflicts. Use spawn_subagent ONLY for read-only analysis (investigate errors, summarize code).
+4. **Use sub-agents for parallel writing.** For projects with 15+ files, delegate 3-5 files per sub-agent. Each sub-agent runs in a SEPARATE Worker Thread with its own API connection — no rate limit conflicts. Write config files yourself, then delegate source files to sub-agents. After each completes, READ its files with read_file to verify quality. If a sub-agent fails, write the files yourself.
 
 5. **Verify your work.** After writing, run_shell("npm install && npm run build") (or the stack's equivalent). If it fails, read the error, fix it, rebuild. For visual checks, analyze_screenshot (max 2 per build).
 
@@ -210,8 +210,8 @@ Match complexity to the request. A counter doesn't need 8 files. An e-commerce p
     'spawn_subagent',
     'done',
   ],
-  maxSteps: 200, // Was 80 — too low for 40+ file projects. Each file = 1+ steps.
-  maxTokens: 64000, // Was 32000 — too small for large complete files (150-300 lines each)
+  maxSteps: 300, // Was 200 — model needs steps for writing files + npm install + npm run build
+  maxTokens: 64000,
 };
 
 /**

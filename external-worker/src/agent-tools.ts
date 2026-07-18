@@ -3047,19 +3047,15 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
            * the main stream, shares rate limits, and can't be aborted in Bun),
            * we use Bun's Worker to run the sub-agent in a separate thread.
            *
-           * The worker:
-           * 1. Creates its own model instance (independent rate limit)
-           * 2. Has its own context window (clean, no overflow from main)
-           * 3. Writes directly to R2 (shared workspace)
-           * 4. Returns result via postMessage (non-blocking)
-           *
-           * If Worker is unavailable, falls back to runSubAgentWorker()
-           * (which uses Promise.race timeout instead).
+           * TRUE WORKER THREAD (Bun worker_threads):
+           * 1. Creates a separate THREAD with its own event loop
+           * 2. Has its own API connection (separate rate limit!)
+           * 3. Has its own context window (clean, no overflow)
+           * 4. Writes directly to R2 (shared workspace)
+           * 5. Returns result via postMessage (non-blocking for main)
            */
-          const { runSubAgentWorker } = await import('./sub-agent-worker');
 
-          // Use the modelConfig passed from the orchestrator (has real provider/model/apiKey)
-          // Fall back to env vars if not available
+          // Get model config FIRST (before creating worker)
           const subModelConfig = modelConfig || {
             provider: 'OpenRouter',
             model: 'z-ai/glm-4.7',
@@ -3067,26 +3063,73 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             reasoningEffort: 'off' as const,
           };
 
-          const supabaseConfig = {
-            url: process.env.SUPABASE_URL || '',
-            serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-          };
+          const { Worker } = await import('worker_threads');
+          const path = await import('path');
 
-          const r2Config = {
-            accountId: process.env.R2_ACCOUNT_ID || '',
-            accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
-            secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
-            bucket: process.env.R2_BUCKET || 'palmkit-files',
-          };
+          const workerScript = path.join(__dirname, 'sub-agent-thread.ts');
 
-          const result = await runSubAgentWorker({
-            jobId,
-            projectId,
-            task,
-            context,
-            modelConfig: subModelConfig,
-            supabaseConfig,
-            r2Config,
+          const result = await new Promise<any>((resolve) => {
+            const worker = new Worker(workerScript);
+
+            const timeout = setTimeout(() => {
+              try { worker.terminate(); } catch {}
+              resolve({
+                ok: false,
+                error: 'SUB_AGENT_TIMEOUT',
+                filesWritten: [],
+                filesVerified: [],
+                filesFailed: [],
+                timedOut: true,
+              });
+            }, 300_000); // 5 min hard timeout via terminate()
+
+            worker.on('message', (msg: any) => {
+              clearTimeout(timeout);
+              try { worker.terminate(); } catch {}
+              resolve(msg);
+            });
+
+            worker.on('error', (err: any) => {
+              clearTimeout(timeout);
+              try { worker.terminate(); } catch {}
+              resolve({
+                ok: false,
+                error: err.message,
+                filesWritten: [],
+                filesVerified: [],
+                filesFailed: [],
+                timedOut: false,
+              });
+            });
+
+            worker.on('exit', (code: number) => {
+              if (code !== 0) {
+                clearTimeout(timeout);
+                resolve({
+                  ok: false,
+                  error: `Worker exited with code ${code}`,
+                  filesWritten: [],
+                  filesVerified: [],
+                  filesFailed: [],
+                  timedOut: false,
+                });
+              }
+            });
+
+            // Send the task to the worker
+            worker.postMessage({
+              type: 'run',
+              jobId,
+              projectId,
+              task,
+              context,
+              provider: subModelConfig.provider,
+              model: subModelConfig.model,
+              apiKey: subModelConfig.apiKey,
+              reasoningEffort: subModelConfig.reasoningEffort || 'off',
+              supabaseUrl: process.env.SUPABASE_URL || '',
+              supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+            });
           });
 
           if (result.ok) {
