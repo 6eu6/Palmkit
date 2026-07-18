@@ -692,6 +692,12 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
             designScheme,
             preloadFiles,
             conversationHistory,
+            modelConfig: {
+              provider: providerName,
+              model: modelName,
+              apiKey,
+              reasoningEffort: jobReasoningEffort,
+            },
             userImages: userImageDataUrls,
           },
         );
@@ -940,6 +946,12 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
             designScheme,
             conversationHistory: newBuildConversationHistory,
             userImages: userImageDataUrls,
+            modelConfig: {
+              provider: providerName,
+              model: modelName,
+              apiKey,
+              reasoningEffort: jobReasoningEffort,
+            },
           },
         );
 

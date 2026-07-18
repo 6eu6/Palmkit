@@ -409,6 +409,12 @@ export function createAgentTools(
   projectId: string,
   media?: MediaConfig,
   model?: LanguageModelV1,
+  modelConfig?: {
+    provider: string;
+    model: string;
+    apiKey: string;
+    reasoningEffort?: 'off' | 'medium' | 'max';
+  },
 ) {
   // Per-job file map — isolated from any other build running concurrently.
   const projectFiles = getJobFiles(jobId);
@@ -3052,11 +3058,12 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
            */
           const { runSubAgentWorker } = await import('./sub-agent-worker');
 
-          // Get model config from the current model instance
-          const modelConfig = {
-            provider: (model as any)?._provider || 'OpenRouter',
-            model: (model as any)?._model || 'z-ai/glm-4.7',
-            apiKey: (model as any)?._apiKey || process.env.OPENROUTER_API_KEY || '',
+          // Use the modelConfig passed from the orchestrator (has real provider/model/apiKey)
+          // Fall back to env vars if not available
+          const subModelConfig = modelConfig || {
+            provider: 'OpenRouter',
+            model: 'z-ai/glm-4.7',
+            apiKey: process.env.OPENROUTER_API_KEY || '',
             reasoningEffort: 'off' as const,
           };
 
@@ -3077,7 +3084,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             projectId,
             task,
             context,
-            modelConfig,
+            modelConfig: subModelConfig,
             supabaseConfig,
             r2Config,
           });

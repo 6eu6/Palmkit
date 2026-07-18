@@ -187,6 +187,14 @@ export async function runOrchestratedBuild(
     /** User-enabled Libraries — reference material injected into the Builder. */
     libraries?: { name: string; kind: string; content: string }[];
 
+    /** Model config for sub-agents (passed through so they can create their own model instance) */
+    modelConfig?: {
+      provider: string;
+      model: string;
+      apiKey: string;
+      reasoningEffort?: 'off' | 'medium' | 'max';
+    };
+
     /** Optional pipeline phases the user toggled (Researcher / Tester). */
     agentConfig?: { researcher: boolean; tester: boolean };
 
@@ -404,7 +412,7 @@ export async function runOrchestratedBuild(
    * Create all tools (shared across agents, filtered per agent)
    * Pass the model so spawn_subagent can create sub-agents
    */
-  const allTools = createAgentTools(jobId, supabase, projectId, opts?.media, model);
+  const allTools = createAgentTools(jobId, supabase, projectId, opts?.media, model, opts?.modelConfig);
 
   // Keep-alive timer (every 10s instead of 5s to reduce Realtime events)
   const keepAlive = setInterval(async () => {
