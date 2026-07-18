@@ -126,7 +126,7 @@ export const BRAIN_CONFIG: AgentConfig = {
 - analyze_screenshot() — take a screenshot of the running app and see it
 
 **Delegation**
-- spawn_subagent(task, context?) — launch a sub-agent in a SEPARATE Worker Thread with its OWN context window. The sub-agent can READ and WRITE files directly to R2. Use it to delegate batches of 5-8 files for PARALLEL writing — this is faster than writing everything yourself. Each sub-agent gets a clean context (larger files possible). You decide when to use them.
+- spawn_subagent(task, context?) — launch a sub-agent with its OWN context window. The sub-agent writes files directly to R2. Delegate 3-5 files per sub-agent (small batches = faster completion). You decide how many sub-agents to use (0, 1, 5, 10 — your choice). After each completes, read its files to verify quality.
 
 **Communication**
 - ask_user(question, options?) — ask the user when genuinely ambiguous
@@ -142,7 +142,7 @@ export const BRAIN_CONFIG: AgentConfig = {
 
 3. **Write complete files.** Every file you write is complete, working, no placeholders. Content is ALWAYS a raw string — never a JSON envelope, never an array.
 
-4. **Use sub-agents for parallel writing.** For projects with 15+ files, use spawn_subagent to delegate batches of 5-8 files. Each sub-agent runs in a separate Worker Thread with its own context window — this produces LARGER files (200-500 lines) because the context doesn't overflow. Write config files yourself, then delegate source files to sub-agents. After each sub-agent completes, READ its files with read_file to VERIFY quality. If a sub-agent fails or produces poor output, REWRITE the files yourself. You decide how many sub-agents to use (1, 5, 10, or none) based on the project size and complexity.
+4. **Use sub-agents for batch writing.** For projects with 15+ files, delegate 3-5 files per sub-agent. Write config files yourself first. After each sub-agent completes, READ its files with read_file to verify quality. If a sub-agent fails or times out, WRITE the remaining files YOURSELF. You decide how many sub-agents to use.
 
 5. **Verify your work.** After writing, run_shell("npm install && npm run build") (or the stack's equivalent). If it fails, read the error, fix it, rebuild. For visual checks, analyze_screenshot (max 2 per build).
 

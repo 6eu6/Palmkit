@@ -57,7 +57,7 @@ export interface SubAgentResult {
   timedOut: boolean;
 }
 
-const SUB_AGENT_TIMEOUT_MS = 600_000; // 10 min
+const SUB_AGENT_TIMEOUT_MS = 180_000; // 3 min — fast completion, model writes remaining files if timeout
 
 /**
  * Validate file content — basic structural checks.
@@ -381,7 +381,16 @@ When done, return a brief summary of what you wrote and verified.`;
     { reasoningEffort: modelConfig.reasoningEffort || 'off' },
   );
 
-  // Run with Promise.race timeout
+  // Run with BOTH AbortController AND Promise.race — belt + suspenders
+  const abortController = new AbortController();
+  let timedOut = false;
+
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    logger.warn(`[sub-agent] timeout (${SUB_AGENT_TIMEOUT_MS / 1000}s) — aborting`);
+    try { abortController.abort(); } catch {}
+  }, SUB_AGENT_TIMEOUT_MS);
+
   try {
     const subAgentPromise = (async () => {
       const result = await streamText({
@@ -389,13 +398,13 @@ When done, return a brief summary of what you wrote and verified.`;
         system: subSystemPrompt,
         prompt: taskText,
         tools: subTools as any,
-        maxSteps: 40,
-        maxTokens: 32000,
+        maxSteps: 15,
+        maxTokens: 16000,
         temperature: 0.3,
+        abortSignal: abortController.signal,
       });
       const text = await result.text;
-      const steps = await result.steps;
-      return { text, steps };
+      return { text };
     })();
 
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -404,7 +413,9 @@ When done, return a brief summary of what you wrote and verified.`;
 
     const { text: subAgentText } = await Promise.race([subAgentPromise, timeoutPromise]);
 
-    logger.info(`[sub-agent] completed: ${subAgentText.length} chars, ${filesWritten.length} written, ${filesVerified.length} verified, ${filesFailed.length} failed`);
+    clearTimeout(timeoutId);
+
+    logger.info(`[sub-agent] completed: ${subAgentText?.length || 0} chars, ${filesWritten.length} written, ${filesVerified.length} verified, ${filesFailed.length} failed`);
 
     return {
       ok: filesWritten.length > 0,
@@ -416,8 +427,9 @@ When done, return a brief summary of what you wrote and verified.`;
       timedOut: false,
     };
   } catch (err: any) {
+    clearTimeout(timeoutId);
     const msg = err?.message ?? String(err);
-    const isTimeout = msg.includes('SUB_AGENT_TIMEOUT');
+    const isTimeout = timedOut || msg.includes('SUB_AGENT_TIMEOUT') || msg.includes('abort');
 
     if (isTimeout) {
       logger.warn(`[sub-agent] timed out after ${SUB_AGENT_TIMEOUT_MS / 1000}s — ${filesWritten.length} files written, ${filesVerified.length} verified`);
@@ -425,9 +437,9 @@ When done, return a brief summary of what you wrote and verified.`;
       logger.error(`[sub-agent] failed: ${msg}`);
     }
 
-    // Partial success — return what was written
+    // Partial success — return what was written (files are in R2 already)
     return {
-      ok: filesWritten.length > 0, // partial success if any files were written
+      ok: filesWritten.length > 0,
       task: taskText,
       error: msg,
       filesWritten,
