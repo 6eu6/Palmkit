@@ -193,20 +193,28 @@ Rules: content is raw string, write complete files, use write_files for 2+, veri
   }
 }
 
-// Entry point for forked process
-if (typeof process !== 'undefined' && process.send) {
-  process.on('message', async (msg: SubAgentForkMessage) => {
-    if (msg.type !== 'run') return;
-    try {
-      const result = await runInForkedProcess(msg);
-      process.send!(result);
-    } catch (err: any) {
-      process.send!({
-        type: 'error', ok: false,
-        filesWritten: [], filesVerified: [], filesFailed: [],
-        error: err?.message || String(err), timedOut: false,
-      });
+// ─── Entry point: reads task from file argument, writes result to stdout ───
+// Usage: bun run sub-agent-fork.ts /tmp/subagent-task-xxx.json
+// The task JSON is passed as a file path argument.
+// Result is written to stdout as JSON.
+if (typeof process !== 'undefined' && process.argv[2]) {
+  const taskFile = process.argv[2];
+  try {
+    const fs = await import('fs');
+    const taskData = JSON.parse(fs.readFileSync(taskFile, 'utf-8')) as SubAgentForkMessage;
+
+    if (taskData.type === 'run') {
+      const result = await runInForkedProcess(taskData);
+      // Write result to stdout as JSON (last line)
+      console.log(JSON.stringify(result));
+      process.exit(0);
     }
-    setTimeout(() => process.exit(0), 100);
-  });
+  } catch (err: any) {
+    console.log(JSON.stringify({
+      type: 'error', ok: false,
+      filesWritten: [], filesVerified: [], filesFailed: [],
+      error: err?.message || String(err), timedOut: false,
+    }));
+    process.exit(1);
+  }
 }

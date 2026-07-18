@@ -3063,9 +3063,10 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             reasoningEffort: 'off' as const,
           };
 
-          // Use child_process.fork for TRUE process isolation
-          // Worker Threads had node_modules resolution issues on Oracle VM
-          const { fork } = await import('child_process');
+          // Use child_process.spawn with `bun run` for TRUE process isolation
+          // fork() didn't work because it can't load .ts files on Oracle VM
+          // spawn('bun', ['run', script]) uses Bun's TS loader directly
+          const { spawn } = await import('child_process');
           const path = await import('path');
           const fs = await import('fs');
 
@@ -3082,20 +3083,54 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             try { if (fs.existsSync(p)) { forkScript = p; break; } } catch {}
           }
 
-          logger.info(`[agent] spawn_subagent: forking ${forkScript}`);
+          logger.info(`[agent] spawn_subagent: spawning bun run ${forkScript}`);
+
+          // Pass task as a temp file (IPC via stdin/stdout is complex with spawn)
+          const taskData = JSON.stringify({
+            type: 'run',
+            jobId,
+            projectId,
+            task,
+            context,
+            provider: subModelConfig.provider,
+            model: subModelConfig.model,
+            apiKey: subModelConfig.apiKey,
+            reasoningEffort: subModelConfig.reasoningEffort || 'off',
+            supabaseUrl: process.env.SUPABASE_URL || '',
+            supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+          });
+
+          // Write task to temp file, sub-agent reads it
+          const tmpFile = `/tmp/subagent-task-${Date.now()}.json`;
+          fs.writeFileSync(tmpFile, taskData);
 
           const result = await new Promise<any>((resolve) => {
-            // Fork creates a completely separate Bun process
-            // It has its own node_modules resolution, env, and API connection
-            const child = fork(forkScript, [], {
+            // Use bun run to execute the TS file directly
+            const bunPath = process.env.BUN_INSTALL ?? `${process.env.HOME}/.bun`;
+            const bunBin = `${bunPath}/bin/bun`;
+
+            const child = spawn(bunBin, ['run', forkScript, tmpFile], {
               env: process.env,
-              stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
               cwd: path.dirname(forkScript),
+              stdio: ['pipe', 'pipe', 'pipe'],
+            });
+
+            let stdout = '';
+            let stderr = '';
+
+            child.stdout?.on('data', (data: Buffer) => {
+              stdout += data.toString();
+            });
+
+            child.stderr?.on('data', (data: Buffer) => {
+              stderr += data.toString();
+              logger.info(`[sub-agent-spawn] stderr: ${data.toString().slice(0, 200)}`);
             });
 
             const timeout = setTimeout(() => {
               try { child.kill('SIGTERM'); } catch {}
               setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 1000);
+              try { fs.unlinkSync(tmpFile); } catch {}
               resolve({
                 ok: false,
                 error: 'SUB_AGENT_TIMEOUT',
@@ -3106,31 +3141,30 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
               });
             }, 300_000); // 5 min
 
-            child.on('message', (msg: any) => {
+            child.on('close', (code: number) => {
               clearTimeout(timeout);
-              try { child.kill('SIGTERM'); } catch {}
-              resolve(msg);
-            });
+              try { fs.unlinkSync(tmpFile); } catch {}
 
-            child.on('error', (err: any) => {
-              clearTimeout(timeout);
-              try { child.kill('SIGKILL'); } catch {}
-              resolve({
-                ok: false,
-                error: err.message,
-                filesWritten: [],
-                filesVerified: [],
-                filesFailed: [],
-                timedOut: false,
-              });
-            });
-
-            child.on('exit', (code: number) => {
-              clearTimeout(timeout);
-              if (code !== 0 && code !== null) {
+              if (code === 0 && stdout.trim()) {
+                // Try to parse stdout as JSON result
+                try {
+                  const result = JSON.parse(stdout.trim().split('\n').pop() || '{}');
+                  resolve(result);
+                } catch {
+                  // stdout is not JSON — treat as text result
+                  resolve({
+                    ok: true,
+                    filesWritten: [],
+                    filesVerified: [],
+                    filesFailed: [],
+                    result: stdout.slice(0, 2000),
+                    timedOut: false,
+                  });
+                }
+              } else {
                 resolve({
                   ok: false,
-                  error: `Process exited with code ${code}`,
+                  error: `Process exited code ${code}. stderr: ${stderr.slice(0, 300)}`,
                   filesWritten: [],
                   filesVerified: [],
                   filesFailed: [],
@@ -3139,19 +3173,17 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
               }
             });
 
-            // Send the task
-            child.send({
-              type: 'run',
-              jobId,
-              projectId,
-              task,
-              context,
-              provider: subModelConfig.provider,
-              model: subModelConfig.model,
-              apiKey: subModelConfig.apiKey,
-              reasoningEffort: subModelConfig.reasoningEffort || 'off',
-              supabaseUrl: process.env.SUPABASE_URL || '',
-              supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+            child.on('error', (err: any) => {
+              clearTimeout(timeout);
+              try { fs.unlinkSync(tmpFile); } catch {}
+              resolve({
+                ok: false,
+                error: err.message,
+                filesWritten: [],
+                filesVerified: [],
+                filesFailed: [],
+                timedOut: false,
+              });
             });
           });
 
