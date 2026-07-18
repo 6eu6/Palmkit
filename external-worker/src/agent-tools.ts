@@ -2994,28 +2994,29 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
 
     /*
      * ═══════════════════════════════════════════════════════════════════
-     * spawn_subagent — Launch a sub-agent with a specific task (RADICAL REBUILD)
+     * spawn_subagent — TRUE process isolation via Bun Worker (worker_threads)
      * ═══════════════════════════════════════════════════════════════════
-     * The brain can delegate focused tasks to sub-agents. Each sub-agent
-     * runs independently with its own context, then returns a text result
-     * to the brain. The brain decides WHEN and WHETHER to use sub-agents.
+     * Mirrors Z.ai Code's Task tool: a separate Worker thread with its own
+     * event loop, its own streamText instance, and direct write access to R2.
      *
-     * Use cases:
-     *   - "Analyze this error and suggest a fix" (complex error diagnosis)
-     *   - "Read all files and summarize the architecture" (codebase understanding)
-     *   - "Design the data model for this e-commerce app" (planning)
-     *   - "Test these specific features and report issues" (focused testing)
+     * Implementation notes:
+     *   - Bun natively handles TS files in Workers
+     *   - Worker inherits parent's module resolution (node_modules accessible)
+     *   - workerData passes the task config (no temp files, no IPC complexity)
+     *   - postMessage returns the result
+     *   - Promise.race + worker.terminate() guarantees 5-min timeout
      *
-     * Sub-agents have READ-ONLY tools (read_file, list_files, search_code,
-     * run_shell) — they CANNOT write or edit files. They return analysis/
-     * suggestions as text. The brain acts on their findings.
+     * The sub-agent has FULL write access to R2 — it writes files in parallel
+     * with the main agent. Files appear immediately in list_files() because
+     * R2 is the single source of truth.
      */
     spawn_subagent: tool({
       description:
-        'Launch a sub-agent in a SEPARATE Worker Thread to handle a focused task. ' +
-        'The sub-agent has its OWN context window, independent rate limit, and writes directly to R2. ' +
-        'Use for: writing batches of 5-8 files, focused analysis, error diagnosis. ' +
-        'The sub-agent is NON-BLOCKING — you can continue working while it runs. ' +
+        'Launch a sub-agent in a SEPARATE Worker thread with TRUE process isolation. ' +
+        'The sub-agent has its OWN context window, its OWN API connection (separate rate limit), ' +
+        'and writes files DIRECTLY to R2 (shared workspace). ' +
+        'Use for: writing batches of 3-8 files in parallel, focused analysis, error diagnosis. ' +
+        'The sub-agent runs concurrently — you can spawn multiple at once. ' +
         'Example: spawn_subagent({ task: "Write these 6 frontend components with complete content: Header.jsx, Sidebar.jsx, Footer.jsx, Nav.jsx, SearchBar.jsx, ProductCard.jsx" })',
       parameters: z.object({
         task: z
@@ -3030,9 +3031,9 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
       }),
       execute: async ({ task, context }) => {
         const subAgentId = `subagent-${Date.now()}`;
-        logger.info(`[agent] spawn_subagent (Worker Thread): ${task.slice(0, 100)}`);
+        logger.info(`[agent] spawn_subagent (Bun Worker): ${task.slice(0, 100)}`);
 
-        await emitEvent(supabase, jobId, 'file_chunk', `🔄 Sub-agent (Worker Thread): ${task.slice(0, 120)}`, {
+        await emitEvent(supabase, jobId, 'file_chunk', `🔄 Sub-agent started: ${task.slice(0, 120)}`, {
           agent: 'Brain',
           kind: 'subagent_start',
           task,
@@ -3041,19 +3042,21 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
 
         try {
           /*
-           * WORKER THREAD IMPLEMENTATION (mirrors Z.ai Code's Task tool).
+           * BUN WORKER IMPLEMENTATION (mirrors Z.ai Code's Task tool).
            *
-           * Instead of running streamText in the same process (which blocks
-           * the main stream, shares rate limits, and can't be aborted in Bun),
-           * we use Bun's Worker to run the sub-agent in a separate thread.
+           * Uses `new Worker(new URL('./sub-agent-thread.ts', import.meta.url), { workerData })`
+           * — Bun's recommended pattern. The Worker:
+           *   1. Runs in a separate thread with its own event loop
+           *   2. Has its own streamText instance (separate rate limit)
+           *   3. Inherits parent's module resolution (node_modules work)
+           *   4. Writes directly to R2 (shared workspace)
+           *   5. Returns result via parentPort.postMessage
            *
-           * TRUE WORKER THREAD (Bun worker_threads):
-           * 1. Creates a separate THREAD with its own event loop
-           * 2. Has its own API connection (separate rate limit!)
-           * 3. Has its own context window (clean, no overflow)
-           * 4. Writes directly to R2 (shared workspace)
-           * 5. Returns result via postMessage (non-blocking for main)
+           * Timeout: Promise.race with worker.terminate() — guaranteed to return.
            */
+
+          const { Worker } = await import('worker_threads');
+          const path = await import('path');
 
           // Get model config FIRST
           const subModelConfig = modelConfig || {
@@ -3063,31 +3066,25 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             reasoningEffort: 'off' as const,
           };
 
-          // Use child_process.spawn with `bun run` for TRUE process isolation
-          // fork() didn't work because it can't load .ts files on Oracle VM
-          // spawn('bun', ['run', script]) uses Bun's TS loader directly
-          const { spawn } = await import('child_process');
-          const path = await import('path');
-          const fs = await import('fs');
-
-          // Find the fork script
+          // Find the Worker script — try multiple paths for robustness
           const possiblePaths = [
-            path.join(__dirname, 'sub-agent-fork.ts'),
-            path.join(process.cwd(), 'src', 'sub-agent-fork.ts'),
-            path.join(process.cwd(), 'external-worker', 'src', 'sub-agent-fork.ts'),
-            '/opt/palmkit-worker/external-worker/src/sub-agent-fork.ts',
+            path.join(__dirname, 'sub-agent-thread.ts'),
+            path.join(process.cwd(), 'src', 'sub-agent-thread.ts'),
+            path.join(process.cwd(), 'external-worker', 'src', 'sub-agent-thread.ts'),
+            '/opt/palmkit-worker/external-worker/src/sub-agent-thread.ts',
           ].filter(Boolean);
 
-          let forkScript = possiblePaths[0];
+          let workerScript = possiblePaths[0];
+          const fs = await import('fs');
           for (const p of possiblePaths) {
-            try { if (fs.existsSync(p)) { forkScript = p; break; } } catch {}
+            try { if (fs.existsSync(p)) { workerScript = p; break; } } catch {}
           }
 
-          logger.info(`[agent] spawn_subagent: spawning bun run ${forkScript}`);
+          logger.info(`[agent] spawn_subagent: Worker script = ${workerScript}`);
 
-          // Pass task as a temp file (IPC via stdin/stdout is complex with spawn)
-          const taskData = JSON.stringify({
-            type: 'run',
+          // Task data passed via workerData (no temp files, no IPC complexity)
+          const taskData = {
+            type: 'run' as const,
             jobId,
             projectId,
             task,
@@ -3098,97 +3095,52 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             reasoningEffort: subModelConfig.reasoningEffort || 'off',
             supabaseUrl: process.env.SUPABASE_URL || '',
             supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+            r2AccountId: process.env.R2_ACCOUNT_ID || '',
+            r2AccessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+            r2SecretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+            r2Bucket: process.env.R2_BUCKET || 'palmkit-files',
+          };
+
+          // Create the Worker — Bun natively handles TS files
+          const worker = new Worker(workerScript, {
+            workerData: taskData,
+            // Pass env explicitly so the Worker has everything it needs
+            env: { ...process.env, ...taskData } as any,
           });
 
-          // Write task to temp file, sub-agent reads it
-          const tmpFile = `/tmp/subagent-task-${Date.now()}.json`;
-          fs.writeFileSync(tmpFile, taskData);
+          let workerResolved = false;
 
-          const result = await new Promise<any>((resolve) => {
-            // Find bun binary — try multiple paths
-            const bunBin = process.env.BUN_INSTALL
-              ? `${process.env.BUN_INSTALL}/bin/bun`
-              : '/home/opc/.bun/bin/bun'; // Oracle VM default path
-
-            const child = spawn(bunBin, ['run', forkScript, tmpFile], {
-              env: { ...process.env, BUN_INSTALL: process.env.BUN_INSTALL || '/home/opc/.bun' },
-              cwd: '/opt/palmkit-worker/external-worker',
-              stdio: ['pipe', 'pipe', 'pipe'],
+          // Promise that resolves when the Worker posts a message
+          const workPromise = new Promise<any>((resolve) => {
+            worker.on('message', (msg: any) => {
+              workerResolved = true;
+              logger.info(`[sub-agent-worker] message: ok=${msg?.ok}, files=${msg?.filesWritten?.length || 0}`);
+              resolve(msg);
             });
 
-            let stdout = '';
-            let stderr = '';
-
-            child.stdout?.on('data', (data: Buffer) => {
-              stdout += data.toString();
-              logger.info(`[sub-agent-spawn] stdout: ${data.toString().slice(0, 200)}`);
-            });
-
-            child.stderr?.on('data', (data: Buffer) => {
-              stderr += data.toString();
-              const msg = data.toString().slice(0, 300);
-              logger.warn(`[sub-agent-spawn] stderr: ${msg}`);
-              // Emit to Supabase so we can see it
-              emitEvent(supabase, jobId, 'file_chunk', `📝 [sub-agent-spawn] stderr: ${msg.slice(0, 150)}`, {
-                agent: 'Brain', kind: 'subagent_debug', stderr: msg
-              }).catch(() => {});
-            });
-
-            // Log spawn start
-            logger.info(`[sub-agent-spawn] started PID ${child.pid}, bun=${bunBin}, script=${forkScript}, tmpFile=${tmpFile}`);
-
-            const timeout = setTimeout(() => {
-              try { child.kill('SIGTERM'); } catch {}
-              setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 1000);
-              try { fs.unlinkSync(tmpFile); } catch {}
+            worker.on('error', (err: Error) => {
+              if (workerResolved) return;
+              workerResolved = true;
+              logger.error(`[sub-agent-worker] error: ${err.message}`);
               resolve({
+                type: 'error',
                 ok: false,
-                error: 'SUB_AGENT_TIMEOUT',
+                error: `Worker error: ${err.message}`,
                 filesWritten: [],
                 filesVerified: [],
                 filesFailed: [],
-                timedOut: true,
+                timedOut: false,
               });
-            }, 300_000); // 5 min
-
-            child.on('close', (code: number) => {
-              clearTimeout(timeout);
-              try { fs.unlinkSync(tmpFile); } catch {}
-
-              if (code === 0 && stdout.trim()) {
-                // Try to parse stdout as JSON result
-                try {
-                  const result = JSON.parse(stdout.trim().split('\n').pop() || '{}');
-                  resolve(result);
-                } catch {
-                  // stdout is not JSON — treat as text result
-                  resolve({
-                    ok: true,
-                    filesWritten: [],
-                    filesVerified: [],
-                    filesFailed: [],
-                    result: stdout.slice(0, 2000),
-                    timedOut: false,
-                  });
-                }
-              } else {
-                resolve({
-                  ok: false,
-                  error: `Process exited code ${code}. stderr: ${stderr.slice(0, 300)}`,
-                  filesWritten: [],
-                  filesVerified: [],
-                  filesFailed: [],
-                  timedOut: false,
-                });
-              }
             });
 
-            child.on('error', (err: any) => {
-              clearTimeout(timeout);
-              try { fs.unlinkSync(tmpFile); } catch {}
+            worker.on('exit', (code: number) => {
+              if (workerResolved) return;
+              workerResolved = true;
+              logger.warn(`[sub-agent-worker] exited code=${code} without sending message`);
               resolve({
+                type: 'error',
                 ok: false,
-                error: err.message,
+                error: `Worker exited (code ${code}) without posting a result. Check sub-agent-thread.ts for runtime errors.`,
                 filesWritten: [],
                 filesVerified: [],
                 filesFailed: [],
@@ -3197,15 +3149,40 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             });
           });
 
-          if (result.ok) {
-            logger.info(`[agent] spawn_subagent completed: ${result.filesWritten.length} written, ${result.filesVerified.length} verified, ${result.filesFailed.length} failed`);
+          // Timeout promise — 5 min, then terminate the Worker
+          const timeoutPromise = new Promise<any>((resolve) => {
+            setTimeout(() => {
+              if (workerResolved) return;
+              workerResolved = true;
+              logger.warn(`[sub-agent-worker] timeout — terminating`);
+              try { worker.terminate(); } catch {}
+              resolve({
+                type: 'done',
+                ok: false,
+                error: 'SUB_AGENT_TIMEOUT',
+                filesWritten: [],
+                filesVerified: [],
+                filesFailed: [],
+                timedOut: true,
+              });
+            }, 300_000); // 5 min
+          });
 
-            // Report verification results
-            const verifiedCount = result.filesVerified.length;
-            const failedCount = result.filesFailed.length;
+          // Race: first to resolve wins
+          const result = await Promise.race([workPromise, timeoutPromise]);
+
+          // Cleanup: terminate worker if still running
+          try { if (!workerResolved) worker.terminate(); } catch {}
+
+          if (result.ok) {
+            logger.info(`[agent] spawn_subagent completed: ${result.filesWritten?.length || 0} written, ${result.filesVerified?.length || 0} verified, ${result.filesFailed?.length || 0} failed`);
+
+            const verifiedCount = result.filesVerified?.length || 0;
+            const failedCount = result.filesFailed?.length || 0;
+            const writtenCount = result.filesWritten?.length || 0;
 
             await emitEvent(supabase, jobId, 'file_chunk',
-              `✅ Sub-agent done: ${result.filesWritten.length} files (${verifiedCount} verified${failedCount > 0 ? `, ${failedCount} failed` : ''})`,
+              `✅ Sub-agent done: ${writtenCount} files (${verifiedCount} verified${failedCount > 0 ? `, ${failedCount} failed` : ''})`,
               {
                 agent: 'Brain',
                 kind: 'subagent_complete',
@@ -3217,44 +3194,45 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
               },
             );
 
-            // If some files failed, tell the model to rewrite them
             if (failedCount > 0) {
               return {
                 ok: true,
                 task,
-                result: result.result || `Sub-agent wrote ${result.filesWritten.length} files`,
+                result: result.result || `Sub-agent wrote ${writtenCount} files`,
                 filesWritten: result.filesWritten,
                 filesFailed: result.filesFailed,
-                message: `Sub-agent wrote ${result.filesWritten.length} files (${verifiedCount} verified). FAILED files: ${result.filesFailed.join(', ')}. REWRITE these files YOURSELF with write_file.`,
+                message: `Sub-agent wrote ${writtenCount} files (${verifiedCount} verified). FAILED files: ${result.filesFailed.join(', ')}. REWRITE these files YOURSELF with write_file.`,
               };
             }
 
             return {
               ok: true,
               task,
-              result: result.result || `Sub-agent wrote ${result.filesWritten.length} files (all verified): ${result.filesWritten.join(', ')}`,
+              result: result.result || `Sub-agent wrote ${writtenCount} files (all verified): ${(result.filesWritten || []).join(', ')}`,
               filesWritten: result.filesWritten,
-              message: `Sub-agent completed: ${result.filesWritten.length} files written and verified. READ them with read_file to confirm quality, then continue.`,
+              message: `Sub-agent completed: ${writtenCount} files written and verified. READ them with read_file to confirm quality, then continue.`,
             };
           } else {
             logger.warn(`[agent] spawn_subagent failed: ${result.error}`);
 
+            const writtenCount = result.filesWritten?.length || 0;
+
             await emitEvent(supabase, jobId, 'file_chunk',
               result.timedOut
-                ? `⏱️ Sub-agent timed out (3 min) — ${result.filesWritten.length} files written before timeout`
-                : `⚠️ Sub-agent failed: ${result.error?.slice(0, 120)}`,
+                ? `⏱️ Sub-agent timed out (5 min) — ${writtenCount} files written before timeout`
+                : `⚠️ Sub-agent failed: ${(result.error || '').slice(0, 120)}`,
               { agent: 'Brain', kind: 'subagent_error', task, subAgentId, error: result.error },
             );
 
             // Partial success — files were written before timeout
-            if (result.filesWritten.length > 0) {
+            if (writtenCount > 0) {
               return {
                 ok: true,
                 task,
-                result: `Sub-agent wrote ${result.filesWritten.length} files before ${result.timedOut ? 'timeout' : 'failure'}: ${result.filesWritten.join(', ')}`,
+                result: `Sub-agent wrote ${writtenCount} files before ${result.timedOut ? 'timeout' : 'failure'}: ${(result.filesWritten || []).join(', ')}`,
                 filesWritten: result.filesWritten,
                 filesFailed: result.filesFailed,
-                message: `Sub-agent wrote ${result.filesWritten.length} files (partial). Missing files — write them YOURSELF. Files written: ${result.filesWritten.join(', ')}`,
+                message: `Sub-agent wrote ${writtenCount} files (partial). Missing files — write them YOURSELF. Files written: ${(result.filesWritten || []).join(', ')}`,
               };
             }
 
@@ -3265,7 +3243,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
               error: result.error,
               timedOut: result.timedOut,
               message: result.timedOut
-                ? `Sub-agent timed out after 3 minutes (0 files written). WRITE THE FILES YOURSELF NOW using write_files. Do NOT spawn another sub-agent for this task.`
+                ? `Sub-agent timed out after 5 minutes (0 files written). WRITE THE FILES YOURSELF NOW using write_files. Do NOT spawn another sub-agent for this task.`
                 : `Sub-agent failed: ${result.error}. WRITE THE FILES YOURSELF using write_files.`,
             };
           }
