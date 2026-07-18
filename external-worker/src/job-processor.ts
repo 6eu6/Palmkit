@@ -500,21 +500,20 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
         const targetError = targetJob?.error_summary;
 
         /*
-         * A cancelled job uses status='failed_clean' + error_summary='Cancelled
-         * by user'. When the user cancels and immediately sends a new command,
-         * we must NOT wait 5 min for a manifest that will never arrive.
-         * Instead, proceed immediately with a fresh build (the user clearly
-         * wants something new). The partial manifest (if any) will be used;
-         * if none exists, the edit job becomes a new build.
+         * ANY failed_clean status (cancelled by user, worker restart, or other
+         * failure) means the previous build will NOT produce a manifest. Waiting
+         * 5 min is pointless. Proceed immediately with a fresh build context.
+         *
+         * This handles ALL failure scenarios:
+         * - 'Cancelled by user' (Stop button)
+         * - 'Worker restarted while this job was running' (deploy during build)
+         * - Any other failure
+         *
+         * The user's intent when sending a new command after a failure is clear:
+         * they want to start fresh, not wait for a dead build.
          */
-        if (targetStatus === 'failed_clean' && targetError === 'Cancelled by user') {
-          // Cancelled by user — don't wait, proceed with fresh context
-          logger.info(`[job-processor] Previous build was cancelled by user — proceeding without manifest`);
-          break;
-        }
-
         if (targetStatus === 'failed_clean') {
-          targetFailed = true;
+          logger.info(`[job-processor] Previous build failed (${targetError?.slice(0, 60)}) — proceeding with fresh context`);
           break;
         }
 
