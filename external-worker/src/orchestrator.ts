@@ -546,7 +546,7 @@ export async function runOrchestratedBuild(
    * blunt "stop planning, write the files now" directive.
    */
   let builderEmptyRetries = 0;
-  const MAX_BUILDER_EMPTY_RETRIES = 6;
+  const MAX_BUILDER_EMPTY_RETRIES = 10; // Was 6 — need more phases for 40+ file projects
   let forceBuild = false;
   let incompleteBuild = false; // Vite build finished but is missing scaffolding (e.g. package.json)
 
@@ -791,16 +791,21 @@ export async function runOrchestratedBuild(
         const existingFiles = Object.keys(getProjectFiles(jobId) as Record<string, string>);
         agentPrompt = incompleteBuild
           ? `${prompt}\n\n` +
-            `CRITICAL: You STALLED on your last turn. ${existingFiles.length} files are already written:\n` +
+            `CRITICAL: CONTINUATION — ${existingFiles.length} files already written:\n` +
             existingFiles.map(f => `  ✓ ${f}`).join('\n') + '\n\n' +
-            `DO NOT rewrite these files. DO NOT re-plan. Call list_files to confirm, then IMMEDIATELY write the REMAINING files.\n` +
-            `If 15+ files remain, use spawn_subagent to delegate batches of 5-8 files to sub-agents — this prevents stalling.\n` +
-            `Write source files FIRST (App.jsx, components, routes), then verify with npm install && npm run build.\n` +
-            `After all files exist and build passes, call done().`
+            `DO NOT rewrite these files. DO NOT re-plan. Call list_files to confirm what exists.\n\n` +
+            `WRITE THE REMAINING FILES NOW. Each file must be COMPLETE and LARGE:\n` +
+            `- Components: 150-300+ lines with full JSX, state, effects, event handlers\n` +
+            `- Backend routes: 100-200+ lines with full CRUD, validation, error handling\n` +
+            `- Models: 80-150+ lines with all fields, methods, queries\n` +
+            `- Do NOT write minimal/skeleton files. Write PRODUCTION-GRADE code.\n\n` +
+            `If 10+ files remain, use spawn_subagent to delegate batches of 5-6 files.\n` +
+            `After all files are written, run npm install && npm run build to verify, then call done().`
           : `${prompt}\n\n` +
             `CRITICAL: You produced NO files on your last turn — you only planned. ` +
             `STOP planning and explaining. RIGHT NOW, use the write_file tool to create EVERY file the project needs, ` +
             `one call per file, starting with the entry file (index.html, or src/main.* + index.html for a bundler app). ` +
+            `Each file must be COMPLETE and LARGE (150-300+ lines for components, 100-200+ for routes). ` +
             `After all files are written, call done(). Do NOT describe the plan — build it with tool calls immediately.`;
         forceBuild = false; // consumed
         incompleteBuild = false; // consumed
@@ -2068,15 +2073,72 @@ export async function runOrchestratedBuild(
       );
 
       /*
+       * ═══════════════════════════════════════════════════════════════════
+       * PHASE BOUNDARY CHECK (root fix for small files + context overflow)
+       *
+       * PROBLEM: GLM-4.7 tries to write 40+ files in one streamText call.
+       * After ~12 files, context window fills up → model writes SHORT files
+       * (76 lines avg) to fit → calls done() prematurely → 3.8K lines total
+       * instead of 60-70K.
+       *
+       * ROOT FIX: After the brain agent finishes WITHOUT calling done(), if
+       * 12+ files exist, FORCE a new phase. The new phase gets a FRESH context
+       * window with the file list injected, so the model can write LARGER,
+       * more complete files for the remaining work.
+       *
+       * This mirrors how Z.ai Code works: each phase = separate streamText
+       * with clean context. The model never tries to fit everything in one
+       * context window.
+       * ═══════════════════════════════════════════════════════════════════
+       */
+      if (role === 'brain' && !getDoneSummary(jobId) && builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES) {
+        const phaseFiles = getProjectFiles(jobId) as Record<string, string>;
+        const phaseFileCount = Object.keys(phaseFiles).length;
+
+        if (phaseFileCount >= 12 && phaseFileCount < 80) {
+          // Check if the project seems complete (has entry + package.json)
+          const phasePaths = Object.keys(phaseFiles);
+          const hasPkg = phasePaths.some(p => /(^|\/)package\.json$/i.test(p));
+          const hasEntry = phasePaths.some(p => /^src\/(main|App)\.(jsx|tsx|js|ts)$/i.test(p));
+          const hasIndex = phasePaths.some(p => /^index\.html$/i.test(p));
+          const hasBackend = phasePaths.some(p => p.startsWith('server/'));
+
+          // If project has frontend entry but NO backend, and user asked for
+          // full-stack, force continuation to write backend files
+          const askedFullStack = /backend|server|api|full-stack|fullstack/i.test(prompt || '');
+          const needsBackend = askedFullStack && !hasBackend;
+
+          // Force a new phase if: many files written but model didn't call done()
+          builderEmptyRetries++;
+          forceBuild = true;
+          incompleteBuild = true; // inject file list into continuation prompt
+
+          logger.info(
+            `[orchestrator] PHASE BOUNDARY: ${phaseFileCount} files written, model didn't call done() — starting new phase ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}`,
+          );
+
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk',
+            `📐 Phase ${builderEmptyRetries}: ${phaseFileCount} files written — starting fresh context for remaining files`,
+            { reason: 'phase_boundary', fileCount: phaseFileCount, phase: builderEmptyRetries },
+          ).catch(() => undefined);
+
+          agentResults.push({ role, success: false, text: '', duration: Date.now() - agentStart });
+          agentQueue.unshift('brain');
+          continue;
+        }
+      }
+
+      /*
        * Empty-Builder gate. If the Builder finished but the project still has
        * ZERO files, the model planned without acting. Re-queue the Builder once
        * with a force-build directive (runs BEFORE the Tester) instead of failing.
        */
       if (builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES) {
         const curFiles = getProjectFiles(jobId) as Record<string, string>;
-        const curPaths = Object.keys(curFiles);
-
-        /*
+        const curPaths = Object.keys(curFiles);        /*
          * A deliberate done() with zero files = the model ANSWERED (question
          * intent). Never force-build over a conscious reply.
          */

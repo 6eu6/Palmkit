@@ -211,7 +211,7 @@ Match complexity to the request. A counter doesn't need 8 files. An e-commerce p
     'done',
   ],
   maxSteps: 200, // Was 80 — too low for 40+ file projects. Each file = 1+ steps.
-  maxTokens: 32000,
+  maxTokens: 64000, // Was 32000 — too small for large complete files (150-300 lines each)
 };
 
 /**
