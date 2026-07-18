@@ -1,0 +1,64 @@
+name: Deploy Oracle Worker (branch)
+
+# Manual deploy of ANY ref to worker 1 — for live-testing worker changes on a
+# branch before they merge to main. Prints diagnostics (bun version, deployed
+# commit, recent service logs) so a session without direct SSH can see the
+# box's state from the run log. Deploying main via the normal push-to-main
+# workflow restores the box afterwards.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref (branch/sha) to deploy to worker 1'
+        required: true
+        default: 'claude/worker-thread-subagents-ebdmzl'
+      diagnose_only:
+        description: 'true = only print diagnostics, do not deploy'
+        required: false
+        default: 'false'
+
+jobs:
+  deploy-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy ${{ inputs.ref }} to worker 1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ORACLE_HOST }}
+          username: ${{ secrets.ORACLE_USER }}
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          command_timeout: 15m
+          script: |
+            set -e
+            export BUN_INSTALL="$HOME/.bun"
+            export PATH="$BUN_INSTALL/bin:$PATH"
+
+            echo "══════════ DIAGNOSTICS (before) ══════════"
+            echo "bun: $(bun --version 2>/dev/null || echo MISSING)"
+            echo "node: $(node --version 2>/dev/null || echo MISSING)"
+            echo "deployed commit: $(git -C /opt/palmkit-worker rev-parse --short HEAD 2>/dev/null || echo unknown)"
+            echo "service: $(systemctl is-active palmkit-worker 2>/dev/null || echo unknown)"
+            echo "mem: $(free -m | awk '/Mem:/{print $3"/"$2" MB"}')"
+            echo "disk: $(df -h /opt | awk 'NR==2{print $3"/"$2" used"}')"
+            echo "── last 40 service log lines ──"
+            sudo journalctl -u palmkit-worker -n 40 --no-pager -o cat || true
+
+            if [ "${{ inputs.diagnose_only }}" = "true" ]; then
+              echo "diagnose_only=true — skipping deploy."
+              exit 0
+            fi
+
+            echo "══════════ DEPLOY ${{ inputs.ref }} ══════════"
+            cd /opt/palmkit-worker
+            git fetch origin '+refs/heads/*:refs/remotes/origin/*'
+            git checkout -f "${{ inputs.ref }}" 2>/dev/null || git checkout -f "origin/${{ inputs.ref }}"
+            git reset --hard "origin/${{ inputs.ref }}" 2>/dev/null || true
+            echo "now at: $(git rev-parse --short HEAD) — $(git log -1 --format=%s)"
+
+            cd /opt/palmkit-worker/external-worker
+            bun install --frozen-lockfile
+            sudo systemctl restart palmkit-worker
+            sleep 5
+            echo "service after restart: $(systemctl is-active palmkit-worker)"
+            sudo journalctl -u palmkit-worker -n 15 --no-pager -o cat || true
+            echo "Deploy of ${{ inputs.ref }} complete ✅"

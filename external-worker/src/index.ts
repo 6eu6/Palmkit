@@ -44,6 +44,7 @@ import { createServer } from 'http';
 import { execSync } from 'child_process';
 import { createClient } from '@supabase/supabase-js';
 import { processNextJob } from './job-processor';
+import { getActiveJobIds } from './abort-registry';
 import { logger } from './logger';
 
 const PORT = Number(process.env.WORKER_PORT ?? 8787);
@@ -178,19 +179,31 @@ async function pollLoop() {
 const pollTimer = setInterval(pollLoop, POLL_INTERVAL_MS);
 
 /*
- * STARTUP CLEANUP — fail orphaned jobs from previous worker instance.
+ * STARTUP RECOVERY — REQUEUE orphaned jobs from the previous worker instance.
  *
- * When the worker restarts (auto-pull deploy, crash, or manual restart),
- * any jobs that were "generating" are now orphaned — the old process is
- * dead, the streamText call is gone, but the DB still shows "generating".
+ * When the worker restarts (deploy, crash, manual restart), any jobs that
+ * were "generating" are orphaned — the old process is dead but the DB still
+ * shows "generating".
  *
- * Without this cleanup, the user sees "Building..." for 25 minutes until
- * the stuck-job reaper catches it. With this cleanup, the user sees an
- * immediate failure and can retry.
+ * The old behavior hard-FAILED every orphan ("Worker restarted while this
+ * job was running. Please try again"). That punted the cost of every deploy
+ * onto whoever happened to be mid-build (observed live 2026-07-18: five
+ * user builds killed by deploys in one afternoon). Files already written
+ * live in R2 + the live manifest, and the orchestrator has a continuation
+ * path — so the right move is to put the job BACK IN THE QUEUE and let the
+ * fresh worker pick it up and continue, exactly like the stuck-job reaper
+ * below already does. Only after MAX_STUCK_REQUEUE recoveries do we fail.
  *
- * This runs ONCE at startup, BEFORE the poll loop starts claiming new jobs.
+ * NOTE for multi-box deploys: 'generating' jobs may belong to a DIFFERENT,
+ * healthy box. Requeue is safe either way — claim_next_build_job() is
+ * atomic, and a healthy box's in-flight run writes through R2/manifest
+ * keyed by job — but the proper fix when box count grows is an owner_id
+ * column. With today's single box, every 'generating' row at boot is ours.
  */
-async function cleanupOrphanedJobsOnStartup() {
+const STUCK_THRESHOLD_MS = 35 * 60 * 1000; // 35 min — 40-file projects need 25-30 min build time
+const MAX_STUCK_REQUEUE = 2;
+
+async function recoverOrphanedJobsOnStartup() {
   try {
     const { data: orphaned, error } = await supabase
       .from('build_jobs')
@@ -203,28 +216,44 @@ async function cleanupOrphanedJobsOnStartup() {
       return;
     }
 
-    logger.warn(`[startup] Found ${orphaned.length} orphaned job(s) in "generating" state — failing them now.`);
+    logger.warn(`[startup] Found ${orphaned.length} orphaned job(s) in "generating" state — requeueing.`);
 
     for (const job of orphaned) {
-      await supabase
-        .from('build_jobs')
-        .update({
-          status: 'failed_clean',
-          error_summary: 'Worker restarted while this job was running. Please try again — the build will start fresh.',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', job.id);
+      const retries = (job.retry_count as number) ?? 0;
 
-      logger.info(`[startup] Failed orphaned job ${job.id}`);
+      if (retries < MAX_STUCK_REQUEUE) {
+        await supabase
+          .from('build_jobs')
+          .update({
+            status: 'pending',
+            current_step: 'queued',
+            progress: 0,
+            retry_count: retries + 1,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', job.id);
+        logger.info(`[startup] Requeued orphaned job ${job.id} (recovery ${retries + 1}/${MAX_STUCK_REQUEUE})`);
+      } else {
+        await supabase
+          .from('build_jobs')
+          .update({
+            status: 'failed_clean',
+            error_summary:
+              'The build was interrupted repeatedly by worker restarts and could not be recovered. Partial files are saved — send a follow-up message to continue from them.',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', job.id);
+        logger.error(`[startup] Failed unrecoverable orphaned job ${job.id} after ${retries} recoveries`);
+      }
     }
   } catch (err: any) {
-    logger.error('[startup] Failed to cleanup orphaned jobs:', err.message);
+    logger.error('[startup] Failed to recover orphaned jobs:', err.message);
   }
 }
 
-// Run cleanup before starting the poll loop.
-cleanupOrphanedJobsOnStartup().then(() => {
-  logger.info('[startup] Cleanup complete. Starting poll loop.');
+// Run recovery before starting the poll loop.
+recoverOrphanedJobsOnStartup().then(() => {
+  logger.info('[startup] Recovery complete. Starting poll loop.');
 });
 
 /*
@@ -240,9 +269,6 @@ cleanupOrphanedJobsOnStartup().then(() => {
  * healthy, actively-running job) and recovers them: re-queue (back to pending)
  * up to a cap, then fail cleanly so the user isn't left hanging.
  */
-const STUCK_THRESHOLD_MS = 35 * 60 * 1000; // 35 min — 40-file projects need 25-30 min build time
-const MAX_STUCK_REQUEUE = 2;
-
 async function reapStuckJobs() {
   try {
     const cutoff = new Date(Date.now() - STUCK_THRESHOLD_MS).toISOString();
@@ -287,19 +313,60 @@ async function reapStuckJobs() {
 setTimeout(reapStuckJobs, 15_000);
 const reaperTimer = setInterval(reapStuckJobs, 60_000);
 
-// Graceful shutdown
-const shutdown = (signal: string) => {
+/*
+ * Graceful shutdown.
+ *
+ * systemd gives us ~90s (TimeoutStopSec default) between SIGTERM and
+ * SIGKILL — nowhere near enough to finish a 30-min build, so "drain and
+ * finish" is not an option. Instead: stop claiming new jobs, put every
+ * in-flight job BACK IN THE QUEUE (retry_count guards against loops), and
+ * exit. Files already written are safe (R2 + live manifest on every
+ * write), and startup recovery + the continuation path resume from them.
+ * Without this, a deploy mid-build meant the job died with the process.
+ */
+let shuttingDown = false;
+
+const shutdown = async (signal: string) => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
   logger.info(`Received ${signal}, shutting down gracefully...`);
   clearInterval(pollTimer);
   clearInterval(reaperTimer);
+
+  const active = getActiveJobIds();
+  if (active.length > 0) {
+    logger.warn(`[shutdown] Requeueing ${active.length} in-flight job(s): ${active.join(', ')}`);
+    // Bounded: don't let a slow Supabase call outlive systemd's patience.
+    await Promise.race([
+      Promise.allSettled(
+        active.map(async (jobId) => {
+          const { data } = await supabase.from('build_jobs').select('retry_count').eq('id', jobId).single();
+          const retries = (data?.retry_count as number) ?? 0;
+          await supabase
+            .from('build_jobs')
+            .update(
+              retries < MAX_STUCK_REQUEUE
+                ? { status: 'pending', current_step: 'queued', progress: 0, retry_count: retries + 1, updated_at: new Date().toISOString() }
+                : { status: 'failed_clean', error_summary: 'The build was interrupted repeatedly by worker restarts and could not be recovered. Partial files are saved — send a follow-up message to continue from them.', updated_at: new Date().toISOString() },
+            )
+            .eq('id', jobId);
+        }),
+      ),
+      new Promise((res) => setTimeout(res, 10_000)),
+    ]);
+  }
+
   server.close(() => {
     logger.info('Worker stopped.');
     process.exit(0);
   });
+  // Belt and suspenders: if server.close hangs on a live connection, exit anyway.
+  setTimeout(() => process.exit(0), 5_000);
 };
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
 
 const server = createServer(async (req, res) => {
   try {

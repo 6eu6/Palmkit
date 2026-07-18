@@ -124,6 +124,7 @@ import { loadSession, appendToSession, estimateSessionTokens, type SessionMessag
 import { commitProjectTurn } from './git-manager';
 import { sendDelta, sendTool, sendStep, closeJobStream } from './stream-bus';
 import { registerJobAbort, unregisterJobAbort } from './abort-registry';
+import { peekSubAgentPool, disposeSubAgentPool } from './sub-agent-pool';
 
 export interface OrchestratorResult {
   success: boolean;
@@ -1455,12 +1456,15 @@ export async function runOrchestratedBuild(
               // File writes/reads/edits complete in <1s — no need to pause.
               // This was the bug: toolExecuting stayed true for update_todos,
               // blocking the watchdog while the model reasoned endlessly.
-              const isLongRunning = ['spawn_subagent', 'run_shell', 'run_tests', 'analyze_screenshot', 'generate_image', 'generate_video'].includes(part.toolName);
+              // spawn_subagent is now instant (non-blocking pool) — the joins
+              // are wait_subagents and done() (which drains the pool), so
+              // THOSE are the long-running ones the watchdog must not kill.
+              const isLongRunning = ['wait_subagents', 'done', 'run_shell', 'run_tests', 'analyze_screenshot', 'generate_image', 'generate_video'].includes(part.toolName);
               if (isLongRunning) {
                 toolExecuting = true;
               }
               // Reset tool-call watchdog for PRODUCTIVE tools only
-              if (['write_file', 'write_files', 'edit_file', 'edit_files', 'spawn_subagent'].includes(part.toolName)) {
+              if (['write_file', 'write_files', 'edit_file', 'edit_files', 'spawn_subagent', 'wait_subagents'].includes(part.toolName)) {
                 lastToolCallAt = Date.now();
               }
               await flushText(true);
@@ -2276,6 +2280,21 @@ export async function runOrchestratedBuild(
       }
     }
 
+    /*
+     * SAFETY DRAIN: if the agent loop ended (maxSteps, abort, stall-recovery)
+     * with background sub-agents still running, join them here so their files
+     * make it into the final result/manifest instead of landing after the
+     * snapshot below. done() drains too — this covers every other exit.
+     */
+    const lingeringPool = peekSubAgentPool(jobId);
+    if (lingeringPool && lingeringPool.pendingCount() > 0) {
+      logger.warn(`[orchestrator] Agent loop ended with ${lingeringPool.pendingCount()} sub-agent(s) pending — draining before finalize`);
+      await emitEvent(supabase, jobId, 'file_chunk', `⏳ Collecting ${lingeringPool.pendingCount()} background sub-agent(s)...`, {
+        kind: 'subagent_drain',
+      }).catch(() => undefined);
+      await lingeringPool.waitAll().catch(() => undefined);
+    }
+
     // Check final result
     const files = getProjectFiles(jobId) as Record<string, string>;
     const fileCount = Object.keys(files).length;
@@ -2668,6 +2687,7 @@ export async function runOrchestratedBuild(
     disposeProjectFiles(jobId);
     disposeBuildResult(jobId);
     disposeDoneSummary(jobId);
+    disposeSubAgentPool(jobId);
 
     /*
      * Kill the job's persistent E2B sandbox (created lazily on the first

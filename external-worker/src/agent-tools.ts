@@ -40,6 +40,7 @@ import { runInE2B } from './e2b-runner';
 import { generateImage, DEFAULT_IMAGE_MODEL } from './image-gen';
 import { analyzeScreenshot } from './vision';
 import { generateVideo } from './video-gen';
+import { getSubAgentPool, peekSubAgentPool, type SubAgentIO } from './sub-agent-pool';
 
 /**
  * Max file-content size inlined into a file_written event. Files at/under this
@@ -2191,8 +2192,30 @@ export function createAgentTools(
               : 'Turn completed.';
         (args as any).summary = summaryText;
 
+        /*
+         * DRAIN SUB-AGENTS before finishing. Sub-agents are non-blocking, so
+         * a model that forgets wait_subagents() could otherwise call done()
+         * while background writes are still landing — the manifest/build
+         * check would miss those files. Bounded: each run has its own
+         * 240s timeout, so this join can never hang the turn indefinitely.
+         */
+        const pendingPool = peekSubAgentPool(jobId);
+        if (pendingPool && pendingPool.pendingCount() > 0) {
+          const n = pendingPool.pendingCount();
+          logger.info(`[agent] done(): draining ${n} pending sub-agent(s) first`);
+          await emitEvent(supabase, jobId, 'file_chunk', `⏳ Collecting ${n} background sub-agent(s) before finishing...`, {
+            agent: 'Brain',
+            kind: 'subagent_drain',
+          });
+          const drained = await pendingPool.waitAll();
+          const drainedFiles = drained.flatMap((r) => r.filesWritten);
+          if (drainedFiles.length > 0) {
+            (args as any).summary = `${summaryText} (+${drainedFiles.length} files completed by background sub-agents)`;
+          }
+        }
+
         // Answer-mode signal: the model deliberately finished this turn.
-        jobDoneSummaries.set(jobId, summaryText.slice(0, 2000));
+        jobDoneSummaries.set(jobId, String((args as any).summary).slice(0, 2000));
 
         /*
          * COERCE: GLM-4.x sends arrays as JSON strings. Parse them safely.
@@ -2994,278 +3017,185 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
 
     /*
      * ═══════════════════════════════════════════════════════════════════
-     * spawn_subagent — Launch a sub-agent with a specific task (RADICAL REBUILD)
+     * spawn_subagent — start a CONCURRENT background sub-agent (non-blocking)
      * ═══════════════════════════════════════════════════════════════════
-     * The brain can delegate focused tasks to sub-agents. Each sub-agent
-     * runs independently with its own context, then returns a text result
-     * to the brain. The brain decides WHEN and WHETHER to use sub-agents.
+     * The old implementation ran the sub-agent in a worker_thread and
+     * AWAITED it before returning — so every spawn froze the main stream
+     * for the sub-agent's whole lifetime (300s per spawn on the Oracle box,
+     * where the worker's second module graph silently failed and produced
+     * 0 files every time; observed live 2026-07-18: 6 spawns × 300s
+     * timeout = a half hour of dead air, then failed_clean).
      *
-     * Use cases:
-     *   - "Analyze this error and suggest a fix" (complex error diagnosis)
-     *   - "Read all files and summarize the architecture" (codebase understanding)
-     *   - "Design the data model for this e-commerce app" (planning)
-     *   - "Test these specific features and report issues" (focused testing)
-     *
-     * Sub-agents have READ-ONLY tools (read_file, list_files, search_code,
-     * run_shell) — they CANNOT write or edit files. They return analysis/
-     * suggestions as text. The brain acts on their findings.
+     * Now: sub-agents run in THIS process (an LLM stream is network I/O —
+     * the event loop handles many at once), spawn() returns immediately,
+     * and results are joined via wait_subagents() or automatically inside
+     * done(). Their writes go through the SAME performWrite pipeline as
+     * the main agent, so the file map, R2, live manifest, and
+     * file_written events all stay consistent.
      */
     spawn_subagent: tool({
       description:
-        'Launch a sub-agent in a SEPARATE Worker Thread to handle a focused task. ' +
-        'The sub-agent has its OWN context window, independent rate limit, and writes directly to R2. ' +
-        'Use for: writing batches of 5-8 files, focused analysis, error diagnosis. ' +
-        'The sub-agent is NON-BLOCKING — you can continue working while it runs. ' +
-        'Example: spawn_subagent({ task: "Write these 6 frontend components with complete content: Header.jsx, Sidebar.jsx, Footer.jsx, Nav.jsx, SearchBar.jsx, ProductCard.jsx" })',
+        'Start a background sub-agent that writes a focused batch of files CONCURRENTLY while you keep working. ' +
+        'Returns IMMEDIATELY with a subAgentId — it never blocks you. Its files land in the shared workspace automatically. ' +
+        'Give it 3-6 files with exact paths and full requirements per spawn; spawn at most 4 per turn. ' +
+        'Sub-agents share your API key and rate limit — they save wall-clock time, not quota. ' +
+        'IMPORTANT: after finishing your own files, call wait_subagents() BEFORE build verification or done(). ' +
+        'Example: spawn_subagent({ task: "Write these 4 components: src/components/Header.jsx (nav+logo+mobile menu), src/components/Footer.jsx (links+social), src/components/Card.jsx (product card), src/components/Modal.jsx (a11y modal)" })',
       parameters: z.object({
         task: z
           .string()
           .describe(
-            'A clear, specific task for the sub-agent. Example: "Write these 6 files: src/components/Header.jsx, src/components/Sidebar.jsx, src/components/Footer.jsx, src/components/Nav.jsx, src/components/SearchBar.jsx, src/components/ProductCard.jsx"',
+            'A specific batch task with EXACT file paths and per-file requirements, e.g. "Write these 5 files: server/routes/tasks.js (full CRUD + validation), ..."',
           ),
         context: z
           .string()
           .optional()
-          .describe('Additional context — design scheme, existing file list, API contracts.'),
+          .describe('Design scheme, API contracts, naming conventions the files must follow.'),
       }),
       execute: async ({ task, context }) => {
-        const subAgentId = `subagent-${Date.now()}`;
-        logger.info(`[agent] spawn_subagent (Worker Thread): ${task.slice(0, 100)}`);
+        const subModelConfig = modelConfig || {
+          provider: 'OpenRouter',
+          model: 'z-ai/glm-4.7',
+          apiKey: process.env.OPENROUTER_API_KEY || '',
+          reasoningEffort: 'off' as const,
+        };
 
-        await emitEvent(supabase, jobId, 'file_chunk', `🔄 Sub-agent (Worker Thread): ${task.slice(0, 120)}`, {
+        if (!subModelConfig.apiKey) {
+          return {
+            ok: false,
+            error: 'no API key available for sub-agents',
+            message: 'Sub-agents unavailable (no API key). Write the files yourself with write_files.',
+          };
+        }
+
+        /*
+         * I/O bridge — the pool writes through performWrite so every guard
+         * (JSON-envelope unwrap, validation, loop locks) and every side
+         * effect (memory map, R2, live manifest, file_written event)
+         * behaves exactly as if the main agent wrote the file.
+         */
+        const io: SubAgentIO = {
+          writeFile: async (path, content) => {
+            const res: any = await performWrite(path, content);
+            return { success: !!res?.success, message: res?.message };
+          },
+          readFile: async (path) => {
+            const cached = projectFiles.get(path);
+            if (cached !== undefined) return cached;
+            try {
+              const fromR2 = await getFileText(buildWorkspaceKey(projectId, path));
+              if (fromR2) return fromR2;
+            } catch { /* not in R2 */ }
+            return null;
+          },
+          listFiles: async () => {
+            const r2Paths = await listWorkspaceFiles(projectId).catch(() => [] as string[]);
+            return Array.from(new Set([...r2Paths, ...projectFiles.keys()])).sort();
+          },
+          emit: async (message, payload) => {
+            await emitEvent(supabase, jobId, 'file_chunk', message, { agent: 'SubAgent', ...(payload ?? {}) });
+          },
+        };
+
+        const pool = getSubAgentPool(jobId, subModelConfig, io);
+        const { id, queued } = pool.spawn(task, context);
+
+        logger.info(`[agent] spawn_subagent ${id} (${queued ? 'queued' : 'started'}): ${task.slice(0, 100)}`);
+
+        await emitEvent(supabase, jobId, 'file_chunk', `🔄 Sub-agent ${id} ${queued ? 'queued' : 'started'}: ${task.slice(0, 120)}`, {
           agent: 'Brain',
           kind: 'subagent_start',
           task,
-          subAgentId,
+          subAgentId: id,
         });
 
-        try {
-          /*
-           * WORKER THREAD IMPLEMENTATION (mirrors Z.ai Code's Task tool).
-           *
-           * Instead of running streamText in the same process (which blocks
-           * the main stream, shares rate limits, and can't be aborted in Bun),
-           * we use Bun's Worker to run the sub-agent in a separate thread.
-           *
-           * TRUE WORKER THREAD (Bun worker_threads):
-           * 1. Creates a separate THREAD with its own event loop
-           * 2. Has its own API connection (separate rate limit!)
-           * 3. Has its own context window (clean, no overflow)
-           * 4. Writes directly to R2 (shared workspace)
-           * 5. Returns result via postMessage (non-blocking for main)
-           */
+        return {
+          ok: true,
+          subAgentId: id,
+          status: queued ? 'queued' : 'running',
+          pool: pool.status(),
+          message:
+            `Sub-agent ${id} ${queued ? 'is queued and will start automatically' : 'is running in the background'}. ` +
+            `CONTINUE YOUR OWN WORK NOW (write other files). ` +
+            `Call wait_subagents() after your own batch is finished, before build verification or done().`,
+        };
+      },
+    }),
 
-          // Get model config FIRST (before creating worker)
-          const subModelConfig = modelConfig || {
-            provider: 'OpenRouter',
-            model: 'z-ai/glm-4.7',
-            apiKey: process.env.OPENROUTER_API_KEY || '',
-            reasoningEffort: 'off' as const,
-          };
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * wait_subagents — join point for background sub-agents
+     * ═══════════════════════════════════════════════════════════════════
+     */
+    wait_subagents: tool({
+      description:
+        'Wait for ALL background sub-agents to finish and collect their results (files written, failures, summaries). ' +
+        'Call this ONCE after you have finished writing your own files, BEFORE running the build check or calling done(). ' +
+        'Returns immediately if nothing is pending.',
+      parameters: z.object({}),
+      execute: async () => {
+        const pool = peekSubAgentPool(jobId);
 
-          const { Worker } = await import('worker_threads');
-          const path = await import('path');
-
-          // Try multiple paths — __dirname may differ on Oracle VM
-          const possiblePaths = [
-            path.join(__dirname, 'sub-agent-thread.ts'),
-            path.join(process.cwd(), 'src', 'sub-agent-thread.ts'),
-            path.join(process.cwd(), 'external-worker', 'src', 'sub-agent-thread.ts'),
-            '/opt/palmkit-worker/external-worker/src/sub-agent-thread.ts',
-          ].filter(Boolean);
-
-          let workerScript = possiblePaths[0];
-          const fs = await import('fs');
-          for (const p of possiblePaths) {
-            try {
-              if (fs.existsSync(p)) { workerScript = p; break; }
-            } catch {}
-          }
-
-          logger.info(`[agent] spawn_subagent: Worker script at ${workerScript}`);
-
-          const result = await new Promise<any>((resolve) => {
-            // Bun Worker: needs execArgv to resolve node_modules
-            const worker = new Worker(workerScript, {
-              env: process.env,
-              execArgv: ['--smol'], // Bun: reduce memory, faster startup
-              workerData: {
-                type: 'run',
-                jobId,
-                projectId,
-                task,
-                context,
-                provider: subModelConfig.provider,
-                model: subModelConfig.model,
-                apiKey: subModelConfig.apiKey,
-                reasoningEffort: subModelConfig.reasoningEffort || 'off',
-                supabaseUrl: process.env.SUPABASE_URL || '',
-                supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-              },
-            });
-
-            // Also send via postMessage as fallback
-            worker.postMessage({
-              type: 'run',
-              jobId,
-              projectId,
-              task,
-              context,
-              provider: subModelConfig.provider,
-              model: subModelConfig.model,
-              apiKey: subModelConfig.apiKey,
-              reasoningEffort: subModelConfig.reasoningEffort || 'off',
-              supabaseUrl: process.env.SUPABASE_URL || '',
-              supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-            });
-
-            const timeout = setTimeout(() => {
-              try { worker.terminate(); } catch {}
-              resolve({
-                ok: false,
-                error: 'SUB_AGENT_TIMEOUT',
-                filesWritten: [],
-                filesVerified: [],
-                filesFailed: [],
-                timedOut: true,
-              });
-            }, 300_000); // 5 min hard timeout via terminate()
-
-            worker.on('message', (msg: any) => {
-              clearTimeout(timeout);
-              try { worker.terminate(); } catch {}
-              resolve(msg);
-            });
-
-            worker.on('error', (err: any) => {
-              clearTimeout(timeout);
-              try { worker.terminate(); } catch {}
-              resolve({
-                ok: false,
-                error: err.message,
-                filesWritten: [],
-                filesVerified: [],
-                filesFailed: [],
-                timedOut: false,
-              });
-            });
-
-            worker.on('exit', (code: number) => {
-              if (code !== 0) {
-                clearTimeout(timeout);
-                resolve({
-                  ok: false,
-                  error: `Worker exited with code ${code}`,
-                  filesWritten: [],
-                  filesVerified: [],
-                  filesFailed: [],
-                  timedOut: false,
-                });
-              }
-            });
-
-            // Send the task to the worker
-            worker.postMessage({
-              type: 'run',
-              jobId,
-              projectId,
-              task,
-              context,
-              provider: subModelConfig.provider,
-              model: subModelConfig.model,
-              apiKey: subModelConfig.apiKey,
-              reasoningEffort: subModelConfig.reasoningEffort || 'off',
-              supabaseUrl: process.env.SUPABASE_URL || '',
-              supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-            });
-          });
-
-          if (result.ok) {
-            logger.info(`[agent] spawn_subagent completed: ${result.filesWritten.length} written, ${result.filesVerified.length} verified, ${result.filesFailed.length} failed`);
-
-            // Report verification results
-            const verifiedCount = result.filesVerified.length;
-            const failedCount = result.filesFailed.length;
-
-            await emitEvent(supabase, jobId, 'file_chunk',
-              `✅ Sub-agent done: ${result.filesWritten.length} files (${verifiedCount} verified${failedCount > 0 ? `, ${failedCount} failed` : ''})`,
-              {
-                agent: 'Brain',
-                kind: 'subagent_complete',
-                task,
-                subAgentId,
-                files: result.filesWritten,
-                verified: result.filesVerified,
-                failed: result.filesFailed,
-              },
-            );
-
-            // If some files failed, tell the model to rewrite them
-            if (failedCount > 0) {
-              return {
-                ok: true,
-                task,
-                result: result.result || `Sub-agent wrote ${result.filesWritten.length} files`,
-                filesWritten: result.filesWritten,
-                filesFailed: result.filesFailed,
-                message: `Sub-agent wrote ${result.filesWritten.length} files (${verifiedCount} verified). FAILED files: ${result.filesFailed.join(', ')}. REWRITE these files YOURSELF with write_file.`,
-              };
-            }
-
-            return {
-              ok: true,
-              task,
-              result: result.result || `Sub-agent wrote ${result.filesWritten.length} files (all verified): ${result.filesWritten.join(', ')}`,
-              filesWritten: result.filesWritten,
-              message: `Sub-agent completed: ${result.filesWritten.length} files written and verified. READ them with read_file to confirm quality, then continue.`,
-            };
-          } else {
-            logger.warn(`[agent] spawn_subagent failed: ${result.error}`);
-
-            await emitEvent(supabase, jobId, 'file_chunk',
-              result.timedOut
-                ? `⏱️ Sub-agent timed out (3 min) — ${result.filesWritten.length} files written before timeout`
-                : `⚠️ Sub-agent failed: ${result.error?.slice(0, 120)}`,
-              { agent: 'Brain', kind: 'subagent_error', task, subAgentId, error: result.error },
-            );
-
-            // Partial success — files were written before timeout
-            if (result.filesWritten.length > 0) {
-              return {
-                ok: true,
-                task,
-                result: `Sub-agent wrote ${result.filesWritten.length} files before ${result.timedOut ? 'timeout' : 'failure'}: ${result.filesWritten.join(', ')}`,
-                filesWritten: result.filesWritten,
-                filesFailed: result.filesFailed,
-                message: `Sub-agent wrote ${result.filesWritten.length} files (partial). Missing files — write them YOURSELF. Files written: ${result.filesWritten.join(', ')}`,
-              };
-            }
-
-            // Complete failure — model must write files itself
-            return {
-              ok: false,
-              task,
-              error: result.error,
-              timedOut: result.timedOut,
-              message: result.timedOut
-                ? `Sub-agent timed out after 3 minutes (0 files written). WRITE THE FILES YOURSELF NOW using write_files. Do NOT spawn another sub-agent for this task.`
-                : `Sub-agent failed: ${result.error}. WRITE THE FILES YOURSELF using write_files.`,
-            };
-          }
-        } catch (err: any) {
-          const msg = err?.message ?? String(err);
-          logger.error(`[agent] spawn_subagent outer catch: ${msg}`);
-
-          await emitEvent(supabase, jobId, 'file_chunk', `⚠️ Sub-agent error: ${msg.slice(0, 120)}`, {
-            agent: 'Brain',
-            kind: 'subagent_error',
-            task,
-            subAgentId,
-            error: msg,
-          });
-
-          return { ok: false, task, error: msg, message: `Sub-agent failed: ${msg}` };
+        if (!pool) {
+          return { ok: true, pending: 0, results: [], message: 'No sub-agents were spawned this turn.' };
         }
+
+        const pending = pool.pendingCount();
+
+        if (pending > 0) {
+          logger.info(`[agent] wait_subagents: joining ${pending} pending sub-agent(s)`);
+          await emitEvent(supabase, jobId, 'file_chunk', `⏳ Waiting for ${pending} sub-agent(s) to finish...`, {
+            agent: 'Brain',
+            kind: 'subagent_wait',
+          });
+        }
+
+        const results = await pool.waitAll();
+        const allWritten = results.flatMap((r) => r.filesWritten);
+        const allFailed = results.flatMap((r) => r.filesFailed);
+        const failures = results.filter((r) => !r.ok);
+
+        for (const r of results) {
+          await emitEvent(
+            supabase,
+            jobId,
+            'file_chunk',
+            r.ok
+              ? `✅ Sub-agent ${r.id} done in ${Math.round(r.durationMs / 1000)}s: ${r.filesWritten.length} files`
+              : `⚠️ Sub-agent ${r.id} ${r.timedOut ? `timed out (${Math.round(r.durationMs / 1000)}s)` : 'failed'}: ${(r.error || '').slice(0, 120)}`,
+            {
+              agent: 'Brain',
+              kind: r.ok ? 'subagent_complete' : 'subagent_error',
+              subAgentId: r.id,
+              files: r.filesWritten,
+              failed: r.filesFailed,
+              error: r.error,
+            },
+          );
+        }
+
+        return {
+          ok: failures.length === 0,
+          pending: 0,
+          totalFilesWritten: allWritten.length,
+          filesWritten: allWritten,
+          filesFailed: allFailed,
+          results: results.map((r) => ({
+            id: r.id,
+            ok: r.ok,
+            files: r.filesWritten,
+            failed: r.filesFailed,
+            summary: r.summary,
+            timedOut: r.timedOut,
+            seconds: Math.round(r.durationMs / 1000),
+          })),
+          message:
+            failures.length === 0
+              ? `All sub-agents finished: ${allWritten.length} files written. Read key files with read_file to spot-check quality, then verify the build.`
+              : `${results.length - failures.length}/${results.length} sub-agents succeeded (${allWritten.length} files). ` +
+                `Failed/missing work: ${failures.map((f) => `${f.id} (${(f.error || 'no files').slice(0, 60)})`).join('; ')}. ` +
+                `WRITE THE MISSING FILES YOURSELF with write_files, then verify the build.`,
+        };
       },
     }),
   };

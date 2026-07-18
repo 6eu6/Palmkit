@@ -71,6 +71,7 @@ export const ALL_TOOL_NAMES = [
   'update_todos',
   'ask_user',
   'spawn_subagent',
+  'wait_subagents',
   'done',
 ] as const;
 
@@ -126,7 +127,8 @@ export const BRAIN_CONFIG: AgentConfig = {
 - analyze_screenshot() — take a screenshot of the running app and see it
 
 **Delegation**
-- spawn_subagent(task, context?) — launch a sub-agent in a SEPARATE Worker Thread with its OWN API connection and rate limit. The sub-agent can READ and WRITE files directly to R2. Use it to delegate batches of 3-5 files for PARALLEL writing. Each sub-agent gets a clean context (larger files possible). After each completes, read its files to verify quality.
+- spawn_subagent(task, context?) — start a BACKGROUND sub-agent that writes a focused batch of files concurrently while you keep working. It returns instantly (never blocks you); its files land in the shared workspace automatically. Give each spawn 3-6 files with exact paths + requirements.
+- wait_subagents() — join point: waits for all background sub-agents and returns their results. Call it once, after your own batch is written, BEFORE build verification / done().
 
 **Communication**
 - ask_user(question, options?) — ask the user when genuinely ambiguous
@@ -142,7 +144,7 @@ export const BRAIN_CONFIG: AgentConfig = {
 
 3. **Write complete files.** Every file you write is complete, working, no placeholders. Content is ALWAYS a raw string — never a JSON envelope, never an array.
 
-4. **Use sub-agents for parallel writing.** For projects with 15+ files, delegate 3-5 files per sub-agent. Each sub-agent runs in a SEPARATE Worker Thread with its own API connection — no rate limit conflicts. Write config files yourself, then delegate source files to sub-agents. After each completes, READ its files with read_file to verify quality. If a sub-agent fails, write the files yourself.
+4. **Use sub-agents for parallel writing.** For projects with 15+ files: write the config + entry files yourself, spawn 2-4 sub-agents for well-separated batches (they run in the background — spawning never blocks you), KEEP WRITING your own files while they run, then call wait_subagents() once before build verification. If a sub-agent failed or missed files, write those files yourself. Sub-agents share your API key and rate limit — they save wall-clock time, not quota.
 
 5. **Verify your work.** After writing, run_shell("npm install && npm run build") (or the stack's equivalent). If it fails, read the error, fix it, rebuild. For visual checks, analyze_screenshot (max 2 per build).
 
@@ -208,6 +210,7 @@ Match complexity to the request. A counter doesn't need 8 files. An e-commerce p
     'update_todos',
     'ask_user',
     'spawn_subagent',
+    'wait_subagents',
     'done',
   ],
   maxSteps: 300, // Was 200 — model needs steps for writing files + npm install + npm run build
