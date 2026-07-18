@@ -3112,7 +3112,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
 
             const child = spawn(bunBin, ['run', forkScript, tmpFile], {
               env: { ...process.env, BUN_INSTALL: process.env.BUN_INSTALL || '/home/opc/.bun' },
-              cwd: path.dirname(forkScript),
+              cwd: '/opt/palmkit-worker/external-worker', // node_modules are here
               stdio: ['pipe', 'pipe', 'pipe'],
             });
 
