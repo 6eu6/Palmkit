@@ -72,11 +72,24 @@ interface PoolEntry {
   result?: SubAgentResult;
 }
 
-/** Per-sub-agent wall clock. Partial files persist — they are written live. */
-const SUB_AGENT_TIMEOUT_MS = 240_000;
+/**
+ * Per-sub-agent wall clock. Partial files persist — they are written live.
+ * 240s cut productive agents mid-batch (observed: an agent at 7 written
+ * files hit the limit); 360s covers a 5-file batch at ~20s/step twice over.
+ */
+const SUB_AGENT_TIMEOUT_MS = 360_000;
 
-/** Concurrent LLM streams per job on top of the main agent's own stream. */
+/** Concurrent LLM requests per job on top of the main agent's own stream. */
 const MAX_CONCURRENT = 3;
+
+/**
+ * Hard cap on UNSETTLED sub-agents per job. The prompt says "at most 4 per
+ * turn" but a model in flow spawned 12 in one turn (observed live) — with 3
+ * lanes that queues into many waves and turns the join into a half-hour
+ * wait. Beyond the cap, spawn() refuses and the model writes the files
+ * itself, which at that point is faster anyway.
+ */
+const MAX_PENDING = 8;
 
 const SUB_AGENT_SYSTEM = (task: string, context: string | undefined, fileList: string[]) => `You are a focused sub-agent inside a build job. You do ONE thing: complete the task below by WRITING FILES, then stop.
 
@@ -88,7 +101,7 @@ ${fileList.length ? fileList.map((f) => `- ${f}`).join('\n') : '(none yet)'}
 RULES:
 1. File content is ALWAYS a raw string — never a JSON envelope, never an array.
 2. Write COMPLETE, production-grade files. No placeholders.
-3. write_files (batch) is PREFERRED for 2+ files.
+3. Write AT MOST 2 files per tool call (large batches overflow the output limit and the call is lost). Use several calls for more files.
 4. Do not narrate at length. Write the files, then reply with ONE short summary line.
 5. You cannot run shell commands or spawn agents — writing files is your whole job.`;
 
@@ -123,8 +136,13 @@ export class SubAgentPool {
   /**
    * Start a sub-agent (or queue it if MAX_CONCURRENT are already running).
    * Returns the id IMMEDIATELY — the caller does not wait for the run.
+   * Returns rejected:true (no id) when the pending cap is reached.
    */
-  spawn(task: string, context?: string): { id: string; queued: boolean } {
+  spawn(task: string, context?: string): { id: string; queued: boolean; rejected?: boolean } {
+    if (this.pendingCount() >= MAX_PENDING) {
+      return { id: '', queued: false, rejected: true };
+    }
+
     const id = `sa-${++this.seq}`;
     const queued = this.running >= MAX_CONCURRENT;
 
@@ -262,35 +280,62 @@ export class SubAgentPool {
        * agent's own stream on the same key kept flowing). generateText gives
        * plain request/response semantics per step — nothing to stall.
        */
-      const gen = generateText({
-        model,
-        system: SUB_AGENT_SYSTEM(task, context, fileList),
-        prompt: 'Complete the task now. Write the files, then reply with one summary line.',
-        tools: tools as any,
-        maxSteps: 16,
-        maxTokens: 16_000,
-        temperature: 0.3,
-        abortSignal: abort.signal,
-        onStepFinish: (step: any) => {
-          logger.info(
-            `[subagent ${id}] step: ${step.toolCalls?.length ?? 0} tool call(s), finish=${step.finishReason}, ${filesWritten.length} files so far`,
-          );
-        },
-      });
+      const attempt = (promptText: string, forceTools: boolean) => {
+        const gen = generateText({
+          model,
+          system: SUB_AGENT_SYSTEM(task, context, fileList),
+          prompt: promptText,
+          tools: tools as any,
+          ...(forceTools ? { toolChoice: 'required' as const } : {}),
+          maxSteps: forceTools ? 8 : 16,
+          // 16K truncated multi-file write_files args mid-JSON (observed:
+          // "Invalid arguments … JSON parsing failed"); 24K + the 2-files-
+          // per-call rule keeps every call inside the cap.
+          maxTokens: 24_000,
+          temperature: 0.3,
+          abortSignal: abort.signal,
+          onStepFinish: (step: any) => {
+            logger.info(
+              `[subagent ${id}] step: ${step.toolCalls?.length ?? 0} tool call(s), finish=${step.finishReason}, ${filesWritten.length} files so far`,
+            );
+          },
+        });
 
-      // If the race abandons gen, its later settlement must not become an
-      // unhandled rejection.
-      (gen as Promise<unknown>).catch(() => undefined);
+        // If the race abandons gen, its later settlement must not become an
+        // unhandled rejection.
+        (gen as Promise<unknown>).catch(() => undefined);
+
+        /*
+         * Belt AND suspenders: abortSignal covers the in-flight request, and
+         * the race covers any hang the signal fails to cut (seen in Bun).
+         * Files written before the cut persist (live write pipeline).
+         */
+        return Promise.race([
+          gen,
+          new Promise<null>((res) => setTimeout(() => res(null), SUB_AGENT_TIMEOUT_MS + 5_000)),
+        ]);
+      };
+
+      let result = await attempt('Complete the task now. Write the files, then reply with one summary line.', false);
 
       /*
-       * Belt AND suspenders: abortSignal covers the in-flight request, and
-       * the race covers any hang the signal fails to cut (seen in Bun).
-       * Files written before the cut persist (live write pipeline).
+       * PROSE-ONLY RETRY. GLM-4.x sometimes answers the task in prose and
+       * never calls a tool (observed live: 9 of 12 sub-agents finished
+       * cleanly with 0 tool calls). One forced retry — toolChoice:'required'
+       * plus the model's own prose quoted back — converts most of these.
        */
-      const result = await Promise.race([
-        gen,
-        new Promise<null>((res) => setTimeout(() => res(null), SUB_AGENT_TIMEOUT_MS + 5_000)),
-      ]);
+      if (result && filesWritten.length === 0 && !timedOut) {
+        logger.warn(
+          `[subagent ${id}] finished with 0 tool calls (reason=${result.finishReason}) — retrying with toolChoice=required. Prose was: ${(result.text || '').slice(0, 200)}`,
+        );
+        result = await attempt(
+          'Your previous reply was prose with NO tool calls — nothing was written. ' +
+            'CALL write_files NOW with every file from the task. Do not explain anything.\n\n' +
+            `Your previous reply (for reference):\n${(result.text || '').slice(0, 1500)}`,
+          true,
+        );
+      }
+
       const text = result?.text ?? '';
 
       if (result) {
@@ -314,7 +359,11 @@ export class SubAgentPool {
         summary: (text || '').trim().slice(0, 500) || `${filesWritten.length} files written`,
         timedOut,
         durationMs,
-        error: timedOut && !ok ? `timed out after ${Math.round(SUB_AGENT_TIMEOUT_MS / 1000)}s with 0 files` : undefined,
+        error: !ok
+          ? timedOut
+            ? `timed out after ${Math.round(SUB_AGENT_TIMEOUT_MS / 1000)}s with 0 files`
+            : `finished without tool calls even after forced retry; last reply: "${(text || '').slice(0, 160)}"`
+          : undefined,
       };
     } catch (err: any) {
       clearTimeout(timer);

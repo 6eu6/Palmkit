@@ -3098,7 +3098,18 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
         };
 
         const pool = getSubAgentPool(jobId, subModelConfig, io);
-        const { id, queued } = pool.spawn(task, context);
+        const { id, queued, rejected } = pool.spawn(task, context);
+
+        if (rejected) {
+          logger.warn(`[agent] spawn_subagent REFUSED (pool full): ${task.slice(0, 80)}`);
+          return {
+            ok: false,
+            error: 'sub-agent pool is full',
+            message:
+              `REFUSED — too many sub-agents are already pending (${pool.status()}). ` +
+              `WRITE THIS BATCH YOURSELF with write_files right now, then call wait_subagents() to collect the others.`,
+          };
+        }
 
         logger.info(`[agent] spawn_subagent ${id} (${queued ? 'queued' : 'started'}): ${task.slice(0, 100)}`);
 

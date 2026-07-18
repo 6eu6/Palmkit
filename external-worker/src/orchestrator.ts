@@ -1590,6 +1590,16 @@ export async function runOrchestratedBuild(
              */
             case 'step-finish': {
               toolExecuting = false; // resume stall watchdog — all tools in this step done
+              /*
+               * A finished step IS progress — its tools ran. Without this
+               * reset, a long tool (wait_subagents joining for 4 min) left
+               * lastToolCallAt stale by its whole duration, so the tool-call
+               * watchdog fired on the FIRST tick after the join returned and
+               * threw away the model's turn — observed live 16:47 UTC: the
+               * agent received its sub-agent results and was immediately
+               * restarted with fresh context, losing them.
+               */
+              lastToolCallAt = Date.now();
               await flushText(true);
               sendStep(jobId); // M2: close the live text segment
               stepId++;
@@ -2297,7 +2307,28 @@ export async function runOrchestratedBuild(
 
     // Check final result
     const files = getProjectFiles(jobId) as Record<string, string>;
-    const fileCount = Object.keys(files).length;
+
+    /*
+     * RESUME BLINDNESS FIX: after a requeue-resume (deploy restart mid-
+     * build), this process's memory map holds only the files written since
+     * the resume — the project's real state lives in R2 + the live
+     * manifest. Observed live: a resumed build ended with 37 files in
+     * memory vs 71 in R2, and the entry-point check false-failed on
+     * "missing index.html" written 40 minutes earlier by the pre-restart
+     * process. Every completeness check below must look at the UNION of
+     * memory and workspace.
+     */
+    let workspacePaths: string[] = [];
+    try {
+      workspacePaths = await listWorkspaceFiles(projectId);
+    } catch {
+      /* best-effort — memory alone is still a valid lower bound */
+    }
+    const checkPaths = Array.from(new Set([...Object.keys(files), ...workspacePaths]));
+    const checkFiles: Record<string, string> = Object.fromEntries(
+      checkPaths.map((p) => [p, files[p] ?? '']),
+    );
+    const fileCount = checkPaths.length;
 
     /*
      * Use the app type implied by the ACTUAL generated files for the
@@ -2305,7 +2336,7 @@ export async function runOrchestratedBuild(
      * wrong keyword guess (e.g. "static" for a project the model built with
      * React) from failing an otherwise-valid build on the entry-point rule.
      */
-    const effectiveAppType = detectAppTypeFromFiles(files) ?? appType;
+    const effectiveAppType = detectAppTypeFromFiles(checkFiles) ?? appType;
 
     /*
      * ENTRY POINT CHECK — prevent "successful" builds with no entry point.
@@ -2344,7 +2375,18 @@ export async function runOrchestratedBuild(
     };
 
     const patterns = (effectiveAppType && ENTRY_POINT_PATTERNS[effectiveAppType]) || [];
-    const filePaths = Object.keys(files);
+    const filePaths = checkPaths;
+
+    /*
+     * Layout-prefix tolerance: models legitimately produce split layouts
+     * (frontend/ + backend/, client/ + server/). The patterns are written
+     * for a root-level app — also test each path with its first directory
+     * segment stripped so `frontend/index.html` satisfies `^index\.html$`
+     * (observed live: a 71-file build false-failed the gate purely because
+     * everything lived under frontend/).
+     */
+    const stripFirstSegment = (p: string) => p.replace(/^[\w.-]+\//, '');
+    const matchesEntry = (re: RegExp) => (p: string) => re.test(p) || re.test(stripFirstSegment(p));
 
     /*
      * CRITICAL FIX: if the model wrote config files (package.json, vite.config.js,
@@ -2361,15 +2403,15 @@ export async function runOrchestratedBuild(
         ? false // ← was true; null app type with files = no entry point = FAIL
         : (() => {
             if (effectiveAppType === 'react' || effectiveAppType === 'vue') {
-              // Need BOTH index.html AND a source file in src/
-              const hasIndexHtml = filePaths.some((p) => /^index\.html$/i.test(p));
-              const hasSourceFile = filePaths.some((p) => /^src\/.*(jsx|tsx|vue|js|ts)$/i.test(p));
+              // Need BOTH index.html AND a source file in src/ (root or one level deep)
+              const hasIndexHtml = filePaths.some(matchesEntry(/^index\.html$/i));
+              const hasSourceFile = filePaths.some(matchesEntry(/^src\/.*(jsx|tsx|vue|js|ts)$/i));
 
               return hasIndexHtml && hasSourceFile;
             }
 
             // For other app types, any single pattern match is enough
-            return filePaths.some((p) => patterns.some((re) => re.test(p)));
+            return filePaths.some((p) => patterns.some((re) => matchesEntry(re)(p)));
           })();
 
     /*
