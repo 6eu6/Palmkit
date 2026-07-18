@@ -119,6 +119,7 @@ import {
   writePalmkitMemory,
   writePalmkitProjectMemory,
   writePalmkitFile,
+  listWorkspaceFiles,
 } from './workspace-manager';
 import { loadSession, appendToSession, estimateSessionTokens, type SessionMessage } from './session-manager';
 import { commitProjectTurn } from './git-manager';
