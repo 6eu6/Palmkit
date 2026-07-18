@@ -1355,12 +1355,42 @@ export async function runOrchestratedBuild(
       let stalled = false;
       let toolExecuting = false; // true while a tool (esp. spawn_subagent) runs — pauses stall watchdog
 
+      /*
+       * TOOL-CALL WATCHDOG — the REAL fix for "model thinks forever without acting".
+       *
+       * PROBLEM: GLM-4.7 enters deep reasoning loops, producing reasoning tokens
+       * continuously. The stall watchdog never fires because chunks ARE arriving
+       * (lastChunkAt refreshes on every part). But no tool calls happen — the
+       * model just thinks and thinks without writing files.
+       *
+       * FIX: Track lastToolCallAt. If no tool call happens within 3 min (even
+       * with reasoning flowing), abort and force a phase boundary. The model
+       * gets a fresh context with "STOP planning, WRITE files NOW".
+       *
+       * This is the key difference from the stall watchdog:
+       * - Stall watchdog: catches SILENT streams (no chunks at all)
+       * - Tool-call watchdog: catches ACTIVE-but-unproductive streams (reasoning
+       *   without action)
+       */
+      const TOOL_CALL_TIMEOUT_MS = 180_000; // 3 min without a tool call = stuck in reasoning
+      let lastToolCallAt = Date.now();
+
       const stallTimer = setInterval(() => {
         if (toolExecuting) return; // don't fire while tool is executing (sub-agents take 5-15 min)
         if (Date.now() - lastChunkAt > STALL_TIMEOUT_MS) {
           stalled = true;
           logger.warn(
             `[orchestrator] ${config.name} stream stalled (${STALL_TIMEOUT_MS / 1000}s without a chunk) — aborting this attempt for retry`,
+          );
+          attemptController.abort();
+          clearInterval(stallTimer);
+          return;
+        }
+        // Tool-call watchdog: reasoning flowing but no tool calls for 3 min
+        if (Date.now() - lastToolCallAt > TOOL_CALL_TIMEOUT_MS) {
+          stalled = true;
+          logger.warn(
+            `[orchestrator] ${config.name} reasoning without action (${TOOL_CALL_TIMEOUT_MS / 1000}s without a tool call) — aborting for phase boundary`,
           );
           attemptController.abort();
           clearInterval(stallTimer);
@@ -1414,6 +1444,7 @@ export async function runOrchestratedBuild(
              */
             case 'tool-call': {
               toolExecuting = true; // pause stall watchdog while tool runs
+              lastToolCallAt = Date.now(); // reset tool-call watchdog
               await flushText(true);
 
               /*
