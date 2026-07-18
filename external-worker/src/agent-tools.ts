@@ -649,7 +649,7 @@ export function createAgentTools(
        *   - If it's a JSON array of objects, try to find source-like strings.
        * This breaks the loop and lets the build proceed.
        */
-      if (priorFailures >= 2) {
+      if (priorFailures >= 1) {
         const repaired = attemptContentRepair(fileContent, path);
         if (repaired && !validateFileContent(path, repaired)) {
           logger.warn(
