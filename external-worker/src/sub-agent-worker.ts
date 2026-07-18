@@ -55,7 +55,7 @@ export interface SubAgentResult {
   timedOut: boolean;
 }
 
-const SUB_AGENT_TIMEOUT_MS = 300_000; // 5 min
+const SUB_AGENT_TIMEOUT_MS = 600_000; // 10 min — sub-agents write 5-8 files, need more time
 
 /**
  * Run a sub-agent in a Worker Thread.
