@@ -75,13 +75,18 @@ export async function runInWorkerThread(msg: SubAgentMessage): Promise<SubAgentR
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  // Local seq counter — must stay within integer range (< 2^31)
+  // Date.now() overflows PostgreSQL integer (max 2^31-1), causing silent INSERT failures
+  let localSeq = 0;
+  const nextSeq = () => ++localSeq;
+
   // Debug helper — emit events to Supabase so we can monitor the Worker remotely
   const debug = async (message: string, payload?: any) => {
     try {
       await supabase.from('job_events').insert({
         job_id: jobId,
         type: 'file_chunk',
-        seq: Date.now() + Math.random(),
+        seq: nextSeq(),
         message: `[sub-agent] ${message.slice(0, 200)}`,
         payload: { source: 'sub-agent', ...payload },
       });
@@ -111,10 +116,10 @@ export async function runInWorkerThread(msg: SubAgentMessage): Promise<SubAgentR
         mime_type: 'text/plain', storage_provider: 'r2', storage_key: r2Key, integrity: 'complete',
       });
 
-      // Event
+      // Event — use small seq (counter) instead of Date.now() which overflows integer
       const lines = content.split('\n').length;
       await supabase.from('job_events').insert({
-        job_id: jobId, type: 'file_written', seq: Date.now() + Math.random(),
+        job_id: jobId, type: 'file_written', seq: nextSeq(),
         message: `[sub-agent] ${path} (${lines} lines)`,
         payload: { filePath: path, lines, size: content.length, source: 'sub-agent' },
       });
