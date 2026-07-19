@@ -2214,6 +2214,7 @@ export async function runOrchestratedBuild(
         );
         const onlyReading = lastStepTools.length > 0 && lastStepTools.every((name: string) => name === 'read_file' || name === 'list_files' || name === 'update_todos');
         const justRanShell = lastStepTools.includes('run_shell');
+        const onlyPlanning = lastStepTools.length > 0 && lastStepTools.every((name: string) => name === 'update_todos');
 
         if (onlyReading && !justRanShell) {
           // Model is stuck planning/reading — inject direct action prompt
@@ -2238,6 +2239,33 @@ export async function runOrchestratedBuild(
             verifyAndFinish = true;
             logger.info(
               `[orchestrator] maxSteps=1 loop: project complete (${loopFileCount} files, ${componentCount} components, entry points), telling model to verify and call done()`,
+            );
+          } else if (onlyPlanning && loopFileCount > 0) {
+            // Model is ONLY calling update_todos (planning without writing)
+            // Inject a VERY aggressive prompt that forbids update_todos
+            forceBuild = false;
+            incompleteBuild = false;
+            const missingFiles = [];
+            if (!Object.keys(loopFiles).some(p => /^src\/main\.(jsx|tsx)$/i.test(p))) missingFiles.push('src/main.jsx');
+            if (!Object.keys(loopFiles).some(p => /^src\/App\.(jsx|tsx)$/i.test(p))) missingFiles.push('src/App.jsx');
+            if (!Object.keys(loopFiles).some(p => /^src\/index\.css$/i.test(p))) missingFiles.push('src/index.css');
+
+            agentPrompt = `${prompt}\n\n` +
+              `STOP. You have called update_todos ${builderEmptyRetries} times without writing ANY new files.\n` +
+              `You have ${loopFileCount} files: ${Object.keys(loopFiles).sort().join(', ')}\n\n` +
+              `DO NOT call update_todos. DO NOT call list_files. DO NOT call read_file.\n` +
+              `DO NOT plan. DO NOT explain.\n\n` +
+              `RIGHT NOW: call write_files with these files:\n` +
+              missingFiles.map(f => `  - ${f}`).join('\n') + '\n' +
+              `  - src/components/ProductGrid.jsx (200+ lines)\n` +
+              `  - src/components/ShoppingCart.jsx (200+ lines)\n` +
+              `  - src/components/NavBar.jsx (100+ lines)\n` +
+              `  - src/components/ProductModal.jsx (150+ lines)\n` +
+              `  - src/components/CheckoutForm.jsx (200+ lines)\n\n` +
+              `Each file must be COMPLETE, WORKING code. No placeholders.\n` +
+              `Call write_files NOW. This is not optional.`;
+            logger.info(
+              `[orchestrator] maxSteps=1 loop: model ONLY planning (${builderEmptyRetries}x), injecting AGGRESSIVE write prompt (missing: ${missingFiles.join(', ')})`,
             );
           } else if (loopFileCount > 0) {
             incompleteBuild = true;
