@@ -3121,6 +3121,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
 
           // Create the Worker — Bun natively handles TS files
           logger.info(`[agent] spawn_subagent: creating Worker with script ${workerScript}`);
+          const subAgentStartTime = Date.now();
           await emitEvent(supabase, jobId, 'file_chunk', `🔧 Creating Worker thread...`, {
             agent: 'Brain', kind: 'subagent_debug', workerScript,
           }).catch(() => {});
@@ -3215,6 +3216,18 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             });
           });
 
+          // Heartbeat — emit every 15s while Worker runs, so we know it's alive
+          const heartbeat = setInterval(() => {
+            if (workerResolved) {
+              clearInterval(heartbeat);
+              return;
+            }
+            const elapsed = Math.round((Date.now() - subAgentStartTime) / 1000);
+            emitEvent(supabase, jobId, 'file_chunk', `⏳ Sub-agent running (${elapsed}s)...`, {
+              agent: 'Brain', kind: 'subagent_heartbeat', elapsed,
+            }).catch(() => {});
+          }, 15_000);
+
           // Timeout promise — 5 min, then terminate the Worker
           const timeoutPromise = new Promise<any>((resolve) => {
             setTimeout(() => {
@@ -3237,7 +3250,8 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
           // Race: first to resolve wins
           const result = await Promise.race([workPromise, timeoutPromise]);
 
-          // Cleanup: terminate worker if still running
+          // Cleanup: terminate worker if still running, clear heartbeat
+          clearInterval(heartbeat);
           try { if (!workerResolved) worker.terminate(); } catch {}
 
           if (result.ok) {
