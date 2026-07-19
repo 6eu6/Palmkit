@@ -22,41 +22,16 @@ export interface RemoteSandbox {
   cached?: boolean;
 }
 
-/** Whether the device is a phone where WebContainer dev servers struggle. */
+/**
+ * WebContainer has been COMPLETELY REMOVED. All devices now use E2B sandbox
+ * for preview. This function always returns true to force the E2B code path
+ * everywhere.
+ *
+ * Previously: only phones/tablets used E2B, desktop used WebContainer (in-browser).
+ * Now: ALL devices use E2B — WebContainer is gone.
+ */
 export function isMemoryConstrainedDevice(): boolean {
-  if (typeof navigator === 'undefined') {
-    return false;
-  }
-
-  const ua = navigator.userAgent;
-
-  /*
-   * Detect phones only (not tablets, not desktop).
-   * iPad and iPadOS masquerade as macOS in newer Safari — detect via touch + screen.
-   */
-  const isIPhone = /iPhone/i.test(ua);
-  const isAndroidPhone = /Android(?!.*Tablet|.*Mobile.*Tablet)/i.test(ua);
-
-  /*
-   * iPad detection: iPadOS 13+ reports as Mac, so also check touch capability
-   * combined with screen size to distinguish from iPhone.
-   */
-  const isIPad =
-    (/iPad/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) && window.screen.width >= 768;
-
-  /*
-   * Small-screen Android tablets are rare but exist — treat tablets as non-constrained
-   * since they have enough RAM for WebContainer.
-   */
-  const isAndroidTablet = /Android.*Tablet/i.test(ua) || (/Android/i.test(ua) && window.screen.width >= 768);
-
-  const isPhone = isIPhone || (isAndroidPhone && !isAndroidTablet);
-
-  /*
-   * Explicitly exclude desktop Safari — it has plenty of memory for WebContainer.
-   * Only phones are memory-constrained.
-   */
-  return isPhone && !isIPad && !isAndroidTablet;
+  return true;
 }
 
 /** Server-side availability check (E2B key configured). Cached after first call. */
