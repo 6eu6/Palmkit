@@ -2181,9 +2181,10 @@ export async function runOrchestratedBuild(
         const lastStepTools = recentSteps.flatMap((s: any) =>
           (s?.toolCalls ?? []).map((tc: any) => tc?.toolName).filter(Boolean)
         );
-        const onlyReading = lastStepTools.every((name: string) => name === 'read_file' || name === 'list_files' || name === 'update_todos');
+        const onlyReading = lastStepTools.length > 0 && lastStepTools.every((name: string) => name === 'read_file' || name === 'list_files' || name === 'update_todos');
+        const justRanShell = lastStepTools.includes('run_shell');
 
-        if (onlyReading) {
+        if (onlyReading && !justRanShell) {
           // Model is stuck planning/reading — inject direct action prompt
           forceBuild = true;
 
