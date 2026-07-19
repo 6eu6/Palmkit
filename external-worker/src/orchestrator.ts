@@ -1380,7 +1380,7 @@ export async function runOrchestratedBuild(
        * - Tool-call watchdog: catches ACTIVE-but-unproductive streams (reasoning
        *   without action)
        */
-      const TOOL_CALL_TIMEOUT_MS = 120_000; // 2 min — with maxSteps=1, each LLM call should produce a tool call quickly
+      const TOOL_CALL_TIMEOUT_MS = 600_000; // 10 min — with maxSteps=1, model generates LARGE file content in one step. Needs time. Stall watchdog catches truly stuck streams.
       let lastToolCallAt = Date.now();
 
       const stallTimer = setInterval(() => {
