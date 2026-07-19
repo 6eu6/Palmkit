@@ -411,7 +411,30 @@ export default { base: '/preview/', server: serverOpts, plugins };
         } // end if (isViteProject)
 
         await sandbox.setTimeout(SANDBOX_TIMEOUT_MS);
-        await sandbox.commands.run(`cd ${PROJECT_DIR} && (${install} && ${dev}) > /tmp/dev.log 2>&1`, {
+
+        /*
+         * SWAP + OVERCOMMIT — prepare the preview sandbox for npm install.
+         * The E2B sandbox has only 478MB RAM and no swap by default.
+         * Adding 1GB swap + vm.overcommit_memory=1 prevents OOM during
+         * npm install for large React/Vue projects.
+         */
+        try {
+          await sandbox.commands.run(
+            `sudo sysctl -w vm.overcommit_memory=1 2>/dev/null; ` +
+            `sudo fallocate -l 1G /swapfile 2>/dev/null; ` +
+            `sudo chmod 600 /swapfile 2>/dev/null; ` +
+            `sudo mkswap /swapfile 2>/dev/null; ` +
+            `sudo swapon /swapfile 2>/dev/null; ` +
+            `echo "Swap ready"`,
+            { timeoutMs: 15_000 },
+          );
+          console.log(`[api/sb] swap + overcommit configured for sandbox ${body.id}`);
+        } catch (swapErr) {
+          console.warn(`[api/sb] swap setup failed (non-fatal): ${swapErr instanceof Error ? swapErr.message : String(swapErr)}`);
+        }
+
+        const installCmd = install.includes('NODE_OPTIONS') ? install : `NODE_OPTIONS="--max-old-space-size=384" ${install}`;
+        await sandbox.commands.run(`cd ${PROJECT_DIR} && (${installCmd} && ${dev}) > /tmp/dev.log 2>&1`, {
           background: true,
         });
 

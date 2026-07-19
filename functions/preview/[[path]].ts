@@ -44,6 +44,59 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     return new Response('No active preview session', { status: 404 });
   }
 
+  /*
+   * PREBUILT PREVIEW SUPPORT — Oracle static hosting.
+   *
+   * When the Oracle worker builds a project locally (5.5GB RAM + 4GB swap),
+   * it uploads dist/ to nginx at /preview-dist/{projectId}/. The cookie format
+   * `oracle:{projectId}:{chatId}` signals the proxy to forward to Oracle
+   * instead of E2B. This bypasses the 478MB E2B RAM limit that causes OOM
+   * during npm install for large projects.
+   */
+  const isOracle = session.startsWith('oracle:');
+
+  if (isOracle) {
+    const [, projectId] = session.split(':');
+    /*
+     * Forward /preview/* → Oracle nginx /preview-dist/{projectId}/*
+     * Strip the /preview/ prefix since Oracle serves from /preview-dist/{id}/
+     * For the root /preview/ path, serve index.html.
+     */
+    const subPath = url.pathname.replace(/^\/preview\/?/, '') || 'index.html';
+    const oracleTarget = `http://130.61.131.77/preview-dist/${projectId}/${subPath}${url.search}`;
+
+    try {
+      const oracleResp = await fetch(oracleTarget, {
+        method: request.method,
+        headers: { 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' },
+        redirect: 'manual',
+      });
+
+      const headers = new Headers();
+      oracleResp.headers.forEach((value, key) => {
+        if (!HOP_BY_HOP.has(key.toLowerCase())) {
+          headers.set(key, value);
+        }
+      });
+
+      const contentType = oracleResp.headers.get('content-type') || '';
+      if (contentType.includes('text/html')) {
+        let html = await oracleResp.text();
+        const tag = '<script src="/inspector-script.js"></script>';
+        if (html.includes('</head>')) {
+          html = html.replace('</head>', `${tag}</head>`);
+        } else {
+          html = `${tag}${html}`;
+        }
+        return new Response(html, { status: oracleResp.status, headers });
+      }
+
+      return new Response(oracleResp.body, { status: oracleResp.status, headers });
+    } catch {
+      return new Response('Oracle preview server unreachable', { status: 502 });
+    }
+  }
+
   const [sandboxId, port = '3000'] = session.split(':');
 
   /*
