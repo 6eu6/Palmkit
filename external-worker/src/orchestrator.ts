@@ -2161,6 +2161,27 @@ export async function runOrchestratedBuild(
        * ═══════════════════════════════════════════════════════════════════
        */
       if (role === 'brain' && !getDoneSummary(jobId) && finishReason === 'tool-calls' && builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES) {
+        /*
+         * AUTO-FINALIZE: If npm run build already passed (exit 0) and the project
+         * has entry points, DON'T re-queue the model. Finalize the build directly.
+         *
+         * This prevents the read-loop where the model keeps reading files after
+         * a successful build instead of calling done().
+         */
+        const autoBuildResult = getBuildResult(jobId);
+        const autoFiles = getProjectFiles(jobId) as Record<string, string>;
+        const autoFileCount = Object.keys(autoFiles).length;
+        const autoHasEntry = autoFileCount > 0 && Object.keys(autoFiles).some(p =>
+          /^src\/(main|App)\.(jsx|tsx|js|ts)$/i.test(p) || /^index\.html$/i.test(p)
+        );
+
+        if (autoBuildResult?.passed && autoHasEntry && autoFileCount >= 3) {
+          logger.info(
+            `[orchestrator] AUTO-FINALIZE: npm run build passed (exit 0) + ${autoFileCount} files with entry points. Finalizing without waiting for done().`,
+          );
+          // Don't re-queue — let the build finalize normally
+          // The overallSuccess check below will see buildVerified=true
+        } else {
         builderEmptyRetries++;
 
         /*
@@ -2219,6 +2240,7 @@ export async function runOrchestratedBuild(
 
         agentQueue.unshift('brain');
         continue;
+        } // end of else (auto-finalize check)
       }
 
       /*
