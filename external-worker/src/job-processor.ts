@@ -196,8 +196,22 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
      * (the OpenRouter provider needs it at model-construction time; the old
      * providerOptions path silently never sent it). Default: medium.
      */
-    const jobReasoningEffort =
-      (job.validation_result?.reasoningEffort as 'off' | 'medium' | 'max' | undefined) ?? 'off';
+    /*
+     * RADICAL FIX: Force reasoningEffort='off' for ALL builds.
+     *
+     * GLM-4.7 with reasoning='medium' thinks internally for 2-3 minutes
+     * before streaming ANY output. This causes:
+     * - Stall watchdog fires (no chunks for 120s)
+     * - Stream aborted mid-thinking
+     * - Build fails
+     *
+     * Z.ai Code does NOT use reasoning for code generation — it writes
+     * directly. Palmkit should do the same.
+     *
+     * The user's "Thinking power" UI setting is IGNORED for builds.
+     * Reasoning is for analysis/questions, not for code generation.
+     */
+    const jobReasoningEffort = 'off' as const;
 
     const model = getModelInstance(providerName, modelName, apiKey, { reasoningEffort: jobReasoningEffort });
 
