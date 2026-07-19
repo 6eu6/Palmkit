@@ -344,9 +344,9 @@ ACT FAST. WRITE FILES. RETURN.`;
       },
     });
 
-    // Wait for streamText to produce files, but with shorter timeout
-    // If model doesn't write files in 2 min, return and let main agent write directly
-    const maxWaitMs = 120_000; // 2 min max (reduced from 4 min)
+    // Wait for streamText to produce files
+    // 3 min gives model enough time to reason about complex backend architecture
+    const maxWaitMs = 180_000; // 3 min (balanced: enough for reasoning, not too long)
     const pollIntervalMs = 2_000;
     const startTime = Date.now();
     let lastFileCount = 0;
