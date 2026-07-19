@@ -801,18 +801,18 @@ export async function runOrchestratedBuild(
           ? `${prompt}\n\n` +
             `CRITICAL: CONTINUATION — ${existingFiles.length} files already written:\n` +
             existingFiles.map(f => `  ✓ ${f}`).join('\n') + '\n\n' +
-            `DO NOT rewrite these files. DO NOT re-plan. Call list_files to confirm what exists.\n\n` +
-            `WRITE THE REMAINING FILES NOW. Each file must be COMPLETE and LARGE:\n` +
+            `DO NOT rewrite these files. DO NOT call list_files or read_file. YOU ALREADY HAVE THE FILE LIST ABOVE.\n\n` +
+            `WRITE THE REMAINING FILES NOW using write_files. Each file must be COMPLETE and LARGE:\n` +
             `- Components: 150-300+ lines with full JSX, state, effects, event handlers\n` +
             `- Backend routes: 100-200+ lines with full CRUD, validation, error handling\n` +
             `- Models: 80-150+ lines with all fields, methods, queries\n` +
             `- Do NOT write minimal/skeleton files. Write PRODUCTION-GRADE code.\n\n` +
-            `If 10+ files remain, use spawn_subagent to delegate batches of 5-6 files.\n` +
-            `After all files are written, run npm install && npm run build to verify, then call done().`
+            `After all files are written, run_shell("npm install && npm run build") to verify, then call done().`
           : `${prompt}\n\n` +
             `CRITICAL: You produced NO files on your last turn — you only planned. ` +
-            `STOP planning and explaining. RIGHT NOW, use the write_file tool to create EVERY file the project needs, ` +
-            `one call per file, starting with the entry file (index.html, or src/main.* + index.html for a bundler app). ` +
+            `STOP planning and explaining. DO NOT call list_files or read_file. ` +
+            `RIGHT NOW, use the write_files tool to create EVERY file the project needs. ` +
+            `Start with: package.json, vite.config.js, tailwind.config.js, postcss.config.js, index.html, src/main.jsx, src/App.jsx, src/index.css.\n` +
             `Each file must be COMPLETE and LARGE (150-300+ lines for components, 100-200+ for routes). ` +
             `After all files are written, call done(). Do NOT describe the plan — build it with tool calls immediately.`;
         forceBuild = false; // consumed
