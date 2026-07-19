@@ -554,7 +554,7 @@ export async function runOrchestratedBuild(
    * blunt "stop planning, write the files now" directive.
    */
   let builderEmptyRetries = 0;
-  const MAX_BUILDER_EMPTY_RETRIES = 100; // Was 10 — with maxSteps=1, each retry is ONE tool call (like Z.ai Code's request-response loop)
+  const MAX_BUILDER_EMPTY_RETRIES = 10; // Natural retry limit for stalls/errors
   let forceBuild = false;
   let incompleteBuild = false; // Vite build finished but is missing scaffolding (e.g. package.json)
   let verifyAndFinish = false; // Project looks complete — tell model to run npm install and call done()
@@ -1367,7 +1367,7 @@ export async function runOrchestratedBuild(
        * Kept above the typical install by resetting on tool parts too
        * (every fullStream part refreshes lastChunkAt).
        */
-      const STALL_TIMEOUT_MS = 120_000; // 2 min — with maxSteps=1, each call should be fast. 2 min = model stuck.
+      const STALL_TIMEOUT_MS = 240_000; // 4 min — reasoning is off, model streams continuously. 4 min = truly stuck.
       let lastChunkAt = Date.now();
       let stalled = false;
       let toolExecuting = false; // true while a tool (esp. spawn_subagent) runs — pauses stall watchdog
@@ -1389,7 +1389,7 @@ export async function runOrchestratedBuild(
        * - Tool-call watchdog: catches ACTIVE-but-unproductive streams (reasoning
        *   without action)
        */
-      const TOOL_CALL_TIMEOUT_MS = 600_000; // 10 min — with maxSteps=1, model generates LARGE file content in one step. Needs time. Stall watchdog catches truly stuck streams.
+      const TOOL_CALL_TIMEOUT_MS = 600_000; // 10 min — reasoning is off, so model streams continuously
       let lastToolCallAt = Date.now();
 
       const stallTimer = setInterval(() => {
@@ -1413,7 +1413,7 @@ export async function runOrchestratedBuild(
         // EXCEPTION: spawn_subagent has its OWN 8-min timeout internally,
         // so we give it 9 min here (8 min sub-agent + 1 min buffer).
         // Also fires when model reasons without calling ANY tools.
-        const effectiveToolTimeout = toolExecuting ? 540_000 : TOOL_CALL_TIMEOUT_MS; // 9 min if tool executing, 3 min otherwise
+        const effectiveToolTimeout = toolExecuting ? 600_000 : TOOL_CALL_TIMEOUT_MS; // 10 min if tool executing (npm install), 10 min otherwise
         if (Date.now() - lastToolCallAt > effectiveToolTimeout) {
           stalled = true;
           logger.warn(
@@ -1931,9 +1931,7 @@ export async function runOrchestratedBuild(
        * check still requires fileCount > 0.
        */
       const madeToolCalls = (steps?.length ?? 0) > 0;
-      // With maxSteps=1, finishReason='tool-calls' is EXPECTED (model made one tool call).
-      // Only 'error' and 'length' are real failures for individual steps.
-      const agentSuccess = finishReason !== 'error' && finishReason !== 'length';
+      const agentSuccess = finishReason !== 'error' && finishReason !== 'length' && (finishReason !== 'tool-calls' || madeToolCalls);
 
       if (finishReason === 'length') {
         logger.warn(
@@ -2141,153 +2139,9 @@ export async function runOrchestratedBuild(
         { agent: config.name, role, durationMs: agentDuration, success: agentSuccess },
       );
 
-      /*
-       * ═══════════════════════════════════════════════════════════════════
-       * RADICAL FIX: maxSteps=1 → re-queue on every tool call
-       *
-       * With maxSteps=1, each LLM call produces ONE tool call, then the
-       * stream ends with finishReason='tool-calls'. This is EXPECTED —
-       * it's how Z.ai Code works (one tool per LLM invocation, orchestrator
-       * manages the loop).
-       *
-       * The session already has the tool call + result saved (line 2037-2053).
-       * Re-queuing the brain agent will load that session and the model will
-       * see the result and decide the next action.
-       *
-       * This eliminates:
-       * - Reasoning loops (each call is ONE action, not 300)
-       * - Context bloat (session managed between calls)
-       * - Stalls (each call is quick — seconds, not minutes)
-       * ═══════════════════════════════════════════════════════════════════
-       */
-      if (role === 'brain' && !getDoneSummary(jobId) && finishReason === 'tool-calls' && builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES) {
-        /*
-         * AUTO-FINALIZE: If npm run build already passed (exit 0) and the project
-         * has entry points, DON'T re-queue the model. Finalize the build directly.
-         *
-         * This prevents the read-loop where the model keeps reading files after
-         * a successful build instead of calling done().
-         */
-        const autoBuildResult = getBuildResult(jobId);
-        const autoFiles = getProjectFiles(jobId) as Record<string, string>;
-        const autoFileCount = Object.keys(autoFiles).length;
-        const autoHasEntry = autoFileCount > 0 && Object.keys(autoFiles).some(p =>
-          /^src\/(main|App)\.(jsx|tsx|js|ts)$/i.test(p) || /^index\.html$/i.test(p)
-        );
-
-        if (autoBuildResult?.passed && autoHasEntry && autoFileCount >= 8) {
-          // Also check for components (not just config files)
-          const autoComponentCount = Object.keys(autoFiles).filter(p =>
-            /^src\/components\/.*(jsx|tsx|js|ts)$/i.test(p)
-          ).length;
-          if (autoComponentCount >= 3) {
-            logger.info(
-              `[orchestrator] AUTO-FINALIZE: npm run build passed (exit 0) + ${autoFileCount} files (${autoComponentCount} components) with entry points. Finalizing without waiting for done().`,
-            );
-            // Don't re-queue — let the build finalize normally
-          } else {
-            // Build passed but not enough components — keep going
-            builderEmptyRetries++;
-            agentQueue.unshift('brain');
-            continue;
-          }
-        } else {
-        builderEmptyRetries++;
-
-        /*
-         * CONTINUATION PROMPT — inject context so the model knows what to do next.
-         * Without this, the model re-reads the same files in a loop.
-         * With this, the model sees: "You have N files: [list]. What's next?"
-         *
-         * This is how Z.ai Code works: each tool call returns a result, and
-         * the next LLM call sees that result in context. The model ALWAYS
-         * knows what just happened and what to do next.
-         */
-        const loopFiles = getProjectFiles(jobId) as Record<string, string>;
-        const loopFileCount = Object.keys(loopFiles).length;
-        const loopFileList = Object.keys(loopFiles).sort().join(', ');
-
-        // Check if model has been ONLY reading (no new files in last 3 iterations)
-        const recentSteps = (await streamResult.steps) ?? [];
-        const lastStepTools = recentSteps.flatMap((s: any) =>
-          (s?.toolCalls ?? []).map((tc: any) => tc?.toolName).filter(Boolean)
-        );
-        const onlyReading = lastStepTools.length > 0 && lastStepTools.every((name: string) => name === 'read_file' || name === 'list_files' || name === 'update_todos');
-        const justRanShell = lastStepTools.includes('run_shell');
-        const onlyPlanning = lastStepTools.length > 0 && lastStepTools.every((name: string) => name === 'update_todos');
-
-        if (onlyReading && !justRanShell) {
-          // Model is stuck planning/reading — inject direct action prompt
-          forceBuild = true;
-
-          // Check if project is COMPLETE (has entry points + enough components)
-          const hasEntry = loopFileCount > 0 && Object.keys(loopFiles).some(p =>
-            /^src\/(main|App)\.(jsx|tsx|js|ts)$/i.test(p) || /^index\.html$/i.test(p)
-          );
-          // Count actual component files (not config)
-          const componentCount = Object.keys(loopFiles).filter(p =>
-            /^src\/components\/.*(jsx|tsx|js|ts)$/i.test(p)
-          ).length;
-
-          // Only verifyAndFinish if: has entry points + at least 3 components
-          // This prevents premature "complete" on projects with only config files
-          const hasEnoughComponents = componentCount >= 3;
-
-          if (hasEntry && hasEnoughComponents && loopFileCount >= 8) {
-            // Project looks complete — tell model to verify and finish
-            forceBuild = false;
-            verifyAndFinish = true;
-            logger.info(
-              `[orchestrator] maxSteps=1 loop: project complete (${loopFileCount} files, ${componentCount} components, entry points), telling model to verify and call done()`,
-            );
-          } else if (onlyPlanning && loopFileCount > 0) {
-            // Model is ONLY calling update_todos (planning without writing)
-            // Inject a VERY aggressive prompt that forbids update_todos
-            forceBuild = false;
-            incompleteBuild = false;
-            const missingFiles = [];
-            if (!Object.keys(loopFiles).some(p => /^src\/main\.(jsx|tsx)$/i.test(p))) missingFiles.push('src/main.jsx');
-            if (!Object.keys(loopFiles).some(p => /^src\/App\.(jsx|tsx)$/i.test(p))) missingFiles.push('src/App.jsx');
-            if (!Object.keys(loopFiles).some(p => /^src\/index\.css$/i.test(p))) missingFiles.push('src/index.css');
-
-            agentPrompt = `${prompt}\n\n` +
-              `STOP. You have called update_todos ${builderEmptyRetries} times without writing ANY new files.\n` +
-              `You have ${loopFileCount} files: ${Object.keys(loopFiles).sort().join(', ')}\n\n` +
-              `DO NOT call update_todos. DO NOT call list_files. DO NOT call read_file.\n` +
-              `DO NOT plan. DO NOT explain.\n\n` +
-              `RIGHT NOW: call write_files with these files:\n` +
-              missingFiles.map(f => `  - ${f}`).join('\n') + '\n' +
-              `  - src/components/ProductGrid.jsx (200+ lines)\n` +
-              `  - src/components/ShoppingCart.jsx (200+ lines)\n` +
-              `  - src/components/NavBar.jsx (100+ lines)\n` +
-              `  - src/components/ProductModal.jsx (150+ lines)\n` +
-              `  - src/components/CheckoutForm.jsx (200+ lines)\n\n` +
-              `Each file must be COMPLETE, WORKING code. No placeholders.\n` +
-              `Call write_files NOW. This is not optional.`;
-            logger.info(
-              `[orchestrator] maxSteps=1 loop: model ONLY planning (${builderEmptyRetries}x), injecting AGGRESSIVE write prompt (missing: ${missingFiles.join(', ')})`,
-            );
-          } else if (loopFileCount > 0) {
-            incompleteBuild = true;
-            logger.info(
-              `[orchestrator] maxSteps=1 loop: model stuck, injecting continuation prompt (iteration ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}, ${loopFileCount} files, ${componentCount} components)`,
-            );
-          } else {
-            incompleteBuild = false;
-            logger.info(
-              `[orchestrator] maxSteps=1 loop: model stuck planning, injecting start-build prompt (iteration ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}, 0 files)`,
-            );
-          }
-        } else {
-          logger.info(
-            `[orchestrator] maxSteps=1 loop: model made tool call, re-queuing brain (iteration ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}, ${loopFileCount} files)`,
-          );
-        }
-
-        agentQueue.unshift('brain');
-        continue;
-        } // end of else (auto-finalize check)
-      }
+      // With maxSteps=50, the model handles multi-step tool calling naturally.
+      // No re-queue needed — the AI SDK manages the conversation loop internally.
+      // Each step sees the full conversation including previous tool results.
 
       /*
        * ═══════════════════════════════════════════════════════════════════
