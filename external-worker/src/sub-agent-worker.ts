@@ -51,7 +51,7 @@ export interface SubAgentResponse {
   timedOut: boolean;
 }
 
-const SUB_AGENT_TIMEOUT_MS = 300_000; // 5 min
+const SUB_AGENT_TIMEOUT_MS = 480_000; // 8 min — enough for complex reasoning + 7 file writes
 
 function validateFileContent(path: string, content: string): string | null {
   if (!content || content.trim().length === 0) return `${path}: empty`;
@@ -330,55 +330,65 @@ ACT FAST. WRITE FILES. RETURN.`;
       maxTokens: 16000,       // 7 files × 200 lines = ~14K tokens, 16K gives headroom
       temperature: 0.3,
       abortSignal: abortController.signal,
-      onStepFinish: async ({ toolCalls, toolResults }: any) => {
-        // Emit progress event for each tool call — gives remote visibility
-        for (const tc of toolCalls || []) {
-          const toolName = tc?.toolName || 'unknown';
-          const args = tc?.args || {};
-          if (toolName === 'write_file' || toolName === 'write_files') {
-            await debug(`tool_call: ${toolName} for ${args.path || (Array.isArray(args.files) ? args.files.length + ' files' : 'files')}`);
-          } else {
-            await debug(`tool_call: ${toolName}`);
-          }
-        }
-      },
     });
 
-    // Wait for streamText to produce files
-    // 4 min gives model enough time for complex backend reasoning + writing
-    const maxWaitMs = 240_000; // 4 min
-    const pollIntervalMs = 2_000;
-    const startTime = Date.now();
-    let lastFileCount = 0;
-    let stableCount = 0;
+    await debug(`streamText started, consuming fullStream...`);
 
-    while (Date.now() - startTime < maxWaitMs) {
-      if (filesWritten.length > 0) {
-        if (filesWritten.length === lastFileCount) {
-          stableCount++;
-          if (stableCount >= 10) { // 20s of stability (10 × 2s)
-            await debug(`File count stable at ${filesWritten.length} for 20s, assuming done`);
+    // RADICAL FIX: consume fullStream directly instead of polling
+    // This gives us real-time visibility into every tool call and result
+    // No more "files written AFTER polling ended" bug
+    let stepCount = 0;
+    let textBuffer = '';
+
+    try {
+      for await (const part of result.fullStream) {
+        stepCount++;
+
+        switch (part.type) {
+          case 'text-delta': {
+            textBuffer += part.textDelta;
             break;
           }
-        } else {
-          stableCount = 0;
-          lastFileCount = filesWritten.length;
+          case 'tool-call': {
+            const toolName = (part as any).toolName || 'unknown';
+            const args = (part as any).args || {};
+            if (toolName === 'write_file') {
+              await debug(`tool_call: write_file for ${args.path || 'unknown'}`);
+            } else if (toolName === 'write_files') {
+              const count = Array.isArray(args.files) ? args.files.length : 1;
+              await debug(`tool_call: write_files for ${count} files`);
+            } else {
+              await debug(`tool_call: ${toolName}`);
+            }
+            break;
+          }
+          case 'tool-result': {
+            // Tool execution completed — filesWritten updated by now
+            const result = (part as any).result;
+            if (result && typeof result === 'object') {
+              await debug(`tool_result: ${JSON.stringify(result).slice(0, 150)}`);
+            }
+            break;
+          }
+          case 'step-finish': {
+            await debug(`step ${stepCount} finished. Files so far: ${filesWritten.length}`);
+            break;
+          }
+          case 'finish': {
+            await debug(`stream finished. Total files: ${filesWritten.length}`);
+            break;
+          }
+          case 'error': {
+            const err = (part as any).error;
+            await debug(`stream error: ${err?.message || String(err)}`);
+            break;
+          }
         }
       }
-      await new Promise((r) => setTimeout(r, pollIntervalMs));
+    } catch (streamErr: any) {
+      await debug(`fullStream consumption error: ${streamErr?.message}`);
     }
-    await debug(`Polling ended. Files written: ${filesWritten.length}, elapsed: ${Math.round((Date.now() - startTime) / 1000)}s`);
 
-    // Now safe to get text (streamText should be done or nearly done)
-    let text = '';
-    try {
-      text = await Promise.race([
-        result.text,
-        new Promise<string>((resolve) => setTimeout(() => resolve(''), 10_000)) // 10s max for text
-      ]);
-    } catch {
-      text = '';
-    }
     clearTimeout(timeoutId);
     await debug(`streamText completed. Files: ${filesWritten.length} written, ${filesVerified.length} verified, ${filesFailed.length} failed`);
 
@@ -386,7 +396,7 @@ ACT FAST. WRITE FILES. RETURN.`;
       type: 'done',
       ok: filesWritten.length > 0,
       filesWritten, filesVerified, filesFailed,
-      result: text || `Wrote ${filesWritten.length} files`,
+      result: textBuffer || `Wrote ${filesWritten.length} files`,
       timedOut: false,
     };
   } catch (err: any) {

@@ -1399,12 +1399,12 @@ export async function runOrchestratedBuild(
         // Tool-call watchdog: catches ACTIVE-but-unproductive streams
         // (reasoning flowing but no productive tool calls for 5 min)
         // This fires EVEN IF toolExecuting is true — because a tool
-        // that's been "executing" for 5+ min without producing files
+        // that's been "executing" for 8+ min without producing files
         // is stuck (e.g., spawn_subagent that's hanging).
-        // EXCEPTION: spawn_subagent has its OWN 5-min timeout internally,
-        // so we give it 6 min here (5 min sub-agent + 1 min buffer).
+        // EXCEPTION: spawn_subagent has its OWN 8-min timeout internally,
+        // so we give it 9 min here (8 min sub-agent + 1 min buffer).
         // Also fires when model reasons without calling ANY tools.
-        const effectiveToolTimeout = toolExecuting ? 360_000 : TOOL_CALL_TIMEOUT_MS; // 6 min if tool executing, 3 min otherwise
+        const effectiveToolTimeout = toolExecuting ? 540_000 : TOOL_CALL_TIMEOUT_MS; // 9 min if tool executing, 3 min otherwise
         if (Date.now() - lastToolCallAt > effectiveToolTimeout) {
           stalled = true;
           logger.warn(
