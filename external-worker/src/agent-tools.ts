@@ -3141,9 +3141,11 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
 
           let worker: any;
           try {
-            // Try URL pattern first (Bun's recommended way), fall back to path
-            const workerSpec = workerUrl || workerScript;
-            worker = new Worker(workerSpec, {
+            // Use the path string (Bun's Worker accepts file paths directly)
+            // URL pattern was causing issues — stick with the verified path
+            const workerPath = workerScript;
+            logger.info(`[agent] spawn_subagent: creating Worker with path ${workerPath}`);
+            worker = new Worker(workerPath, {
               workerData: taskData,
               // Pass env explicitly so the Worker has everything it needs
               env: { ...process.env, ...taskData } as any,
@@ -3151,7 +3153,12 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
               stdout: true,
               stderr: true,
             });
-            logger.info(`[agent] spawn_subagent: Worker created, PID=${worker.threadId}, spec=${typeof workerSpec === 'string' ? workerSpec : workerSpec.href}`);
+            logger.info(`[agent] spawn_subagent: Worker created, threadId=${worker.threadId}`);
+
+            // Emit success IMMEDIATELY (before attaching listeners)
+            await emitEvent(supabase, jobId, 'file_chunk', `✅ Worker created (threadId=${worker.threadId})`, {
+              agent: 'Brain', kind: 'subagent_debug', threadId: worker.threadId, workerPath,
+            }).catch(() => {});
 
             // Capture Worker stderr — this is where console.error goes
             worker.stderr?.on('data', (data: Buffer) => {
@@ -3174,10 +3181,6 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
               }
             });
 
-            // Emit that Worker was created successfully
-            await emitEvent(supabase, jobId, 'file_chunk', `✅ Worker created (threadId=${worker.threadId})`, {
-              agent: 'Brain', kind: 'subagent_debug', threadId: worker.threadId,
-            });
           } catch (createErr: any) {
             const msg = `Worker creation failed: ${createErr?.message}`;
             logger.error(`[agent] spawn_subagent: ${msg}`);
