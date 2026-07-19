@@ -344,21 +344,20 @@ ACT FAST. WRITE FILES. RETURN.`;
       },
     });
 
-    // Wait for streamText to FULLY complete (including all tool calls)
-    // Poll until we see SOME files written, then give extra time for more
-    const maxWaitMs = 240_000; // 4 min max total
-    const pollIntervalMs = 3_000;
+    // Wait for streamText to produce files, but with shorter timeout
+    // If model doesn't write files in 2 min, return and let main agent write directly
+    const maxWaitMs = 120_000; // 2 min max (reduced from 4 min)
+    const pollIntervalMs = 2_000;
     const startTime = Date.now();
     let lastFileCount = 0;
     let stableCount = 0;
 
     while (Date.now() - startTime < maxWaitMs) {
-      // If we have files and count hasn't changed for 30s, assume done
       if (filesWritten.length > 0) {
         if (filesWritten.length === lastFileCount) {
           stableCount++;
-          if (stableCount >= 10) { // 30s of stability (10 × 3s)
-            await debug(`File count stable at ${filesWritten.length} for 30s, assuming done`);
+          if (stableCount >= 10) { // 20s of stability (10 × 2s)
+            await debug(`File count stable at ${filesWritten.length} for 20s, assuming done`);
             break;
           }
         } else {
@@ -368,6 +367,7 @@ ACT FAST. WRITE FILES. RETURN.`;
       }
       await new Promise((r) => setTimeout(r, pollIntervalMs));
     }
+    await debug(`Polling ended. Files written: ${filesWritten.length}, elapsed: ${Math.round((Date.now() - startTime) / 1000)}s`);
 
     // Now safe to get text (streamText should be done or nearly done)
     let text = '';
