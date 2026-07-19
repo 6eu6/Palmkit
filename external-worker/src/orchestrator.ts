@@ -2175,12 +2175,22 @@ export async function runOrchestratedBuild(
           /^src\/(main|App)\.(jsx|tsx|js|ts)$/i.test(p) || /^index\.html$/i.test(p)
         );
 
-        if (autoBuildResult?.passed && autoHasEntry && autoFileCount >= 3) {
-          logger.info(
-            `[orchestrator] AUTO-FINALIZE: npm run build passed (exit 0) + ${autoFileCount} files with entry points. Finalizing without waiting for done().`,
-          );
-          // Don't re-queue — let the build finalize normally
-          // The overallSuccess check below will see buildVerified=true
+        if (autoBuildResult?.passed && autoHasEntry && autoFileCount >= 8) {
+          // Also check for components (not just config files)
+          const autoComponentCount = Object.keys(autoFiles).filter(p =>
+            /^src\/components\/.*(jsx|tsx|js|ts)$/i.test(p)
+          ).length;
+          if (autoComponentCount >= 3) {
+            logger.info(
+              `[orchestrator] AUTO-FINALIZE: npm run build passed (exit 0) + ${autoFileCount} files (${autoComponentCount} components) with entry points. Finalizing without waiting for done().`,
+            );
+            // Don't re-queue — let the build finalize normally
+          } else {
+            // Build passed but not enough components — keep going
+            builderEmptyRetries++;
+            agentQueue.unshift('brain');
+            continue;
+          }
         } else {
         builderEmptyRetries++;
 
@@ -2209,22 +2219,30 @@ export async function runOrchestratedBuild(
           // Model is stuck planning/reading — inject direct action prompt
           forceBuild = true;
 
-          // Check if project is COMPLETE (has entry points)
+          // Check if project is COMPLETE (has entry points + enough components)
           const hasEntry = loopFileCount > 0 && Object.keys(loopFiles).some(p =>
             /^src\/(main|App)\.(jsx|tsx|js|ts)$/i.test(p) || /^index\.html$/i.test(p)
           );
+          // Count actual component files (not config)
+          const componentCount = Object.keys(loopFiles).filter(p =>
+            /^src\/components\/.*(jsx|tsx|js|ts)$/i.test(p)
+          ).length;
 
-          if (hasEntry && loopFileCount >= 5) {
+          // Only verifyAndFinish if: has entry points + at least 3 components
+          // This prevents premature "complete" on projects with only config files
+          const hasEnoughComponents = componentCount >= 3;
+
+          if (hasEntry && hasEnoughComponents && loopFileCount >= 8) {
             // Project looks complete — tell model to verify and finish
             forceBuild = false;
             verifyAndFinish = true;
             logger.info(
-              `[orchestrator] maxSteps=1 loop: project complete (${loopFileCount} files with entry points), telling model to verify and call done()`,
+              `[orchestrator] maxSteps=1 loop: project complete (${loopFileCount} files, ${componentCount} components, entry points), telling model to verify and call done()`,
             );
           } else if (loopFileCount > 0) {
             incompleteBuild = true;
             logger.info(
-              `[orchestrator] maxSteps=1 loop: model stuck, injecting continuation prompt (iteration ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}, ${loopFileCount} files)`,
+              `[orchestrator] maxSteps=1 loop: model stuck, injecting continuation prompt (iteration ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}, ${loopFileCount} files, ${componentCount} components)`,
             );
           } else {
             incompleteBuild = false;
