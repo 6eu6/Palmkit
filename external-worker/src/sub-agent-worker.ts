@@ -344,13 +344,28 @@ ACT FAST. WRITE FILES. RETURN.`;
       },
     });
 
-    // Don't wait for result.text if we already have files written
-    // The model may continue reasoning after write_files, causing timeout
+    // Wait for streamText to FULLY complete (including all tool calls)
+    // result.text waits for text, but tool calls may still be running
+    // Use a polling loop: wait until filesWritten > 0 OR timeout
+    const maxWaitMs = 240_000; // 4 min max
+    const pollIntervalMs = 3_000;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitMs) {
+      if (filesWritten.length > 0 && filesWritten.length >= (task.match(/\d+/)?.[0] ? parseInt(task.match(/\d+/)![0]) : 1)) {
+        // All files written (or at least some)
+        await debug(`All expected files written (${filesWritten.length}), breaking wait loop`);
+        break;
+      }
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+    }
+
+    // Now safe to get text (streamText should be done or nearly done)
     let text = '';
     try {
       text = await Promise.race([
         result.text,
-        new Promise<string>((resolve) => setTimeout(() => resolve(''), 30_000)) // 30s max for text
+        new Promise<string>((resolve) => setTimeout(() => resolve(''), 10_000)) // 10s max for text
       ]);
     } catch {
       text = '';
