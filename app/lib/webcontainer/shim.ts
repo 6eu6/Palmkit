@@ -23,10 +23,14 @@
 
 import type { WebContainer } from '@webcontainer/api';
 import { WORK_DIR } from '~/utils/constants';
+import { workbenchStore } from '~/lib/stores/workbench';
 
 function createInMemoryFs() {
-  // Absolute path (WORK_DIR-prefixed) -> file content.
-  const files = new Map<string, string>();
+  // Sync with the workbench store — the single source of truth for files.
+  // The workbench store (FilesStore.files) holds all project files keyed by
+  // WORK_DIR-prefixed paths. The shim's fs reads/writes through it so that
+  // deploy components (GitHubDeploy, NetlifyDeploy, etc.) can collect files
+  // for deployment without a real WebContainer.
 
   const norm = (p: string): string => {
     const clean = p.replace(/\/+$/, '');
@@ -36,35 +40,46 @@ function createInMemoryFs() {
   const enoent = (p: string): Error => {
     const e = new Error(`ENOENT: no such file or directory, '${p}'`) as Error & { code?: string };
     e.code = 'ENOENT';
-
     return e;
+  };
+
+  // Get the current files from the workbench store
+  const getStoreFiles = (): Map<string, string> => {
+    const map = workbenchStore.files.get();
+    const files = new Map<string, string>();
+    for (const [path, dirent] of Object.entries(map)) {
+      if (dirent && dirent.type === 'file' && !dirent.isBinary) {
+        files.set(path, dirent.content || '');
+      }
+    }
+    return files;
   };
 
   return {
     async writeFile(p: string, data: string | Uint8Array): Promise<void> {
-      files.set(norm(p), typeof data === 'string' ? data : new TextDecoder().decode(data));
+      // Write to workbench store
+      const content = typeof data === 'string' ? data : new TextDecoder().decode(data);
+      workbenchStore.files.setKey(norm(p), { type: 'file', content, isBinary: false });
     },
 
     async readFile(p: string, encoding?: string): Promise<string | Uint8Array> {
       const key = norm(p);
-
-      if (!files.has(key)) {
+      const storeFiles = getStoreFiles();
+      if (!storeFiles.has(key)) {
         throw enoent(p);
       }
-
-      const content = files.get(key)!;
-
+      const content = storeFiles.get(key)!;
       return encoding ? content : new TextEncoder().encode(content);
     },
 
     async readdir(p: string, opts?: { withFileTypes?: boolean }): Promise<unknown[]> {
       const prefix = `${norm(p)}/`;
+      const storeFiles = getStoreFiles();
       const names = new Set<string>();
 
-      for (const key of files.keys()) {
+      for (const key of storeFiles.keys()) {
         if (key.startsWith(prefix)) {
           const child = key.slice(prefix.length).split('/')[0];
-
           if (child) {
             names.add(child);
           }
@@ -79,8 +94,7 @@ function createInMemoryFs() {
 
       if (opts?.withFileTypes) {
         return list.map((name) => {
-          const isDir = [...files.keys()].some((k) => k.startsWith(`${prefix}${name}/`));
-
+          const isDir = [...storeFiles.keys()].some((k) => k.startsWith(`${prefix}${name}/`));
           return { name, isDirectory: () => isDir, isFile: () => !isDir };
         });
       }
@@ -89,19 +103,19 @@ function createInMemoryFs() {
     },
 
     async mkdir(_p: string, _opts?: unknown): Promise<void> {
-      // Directories are implicit in the flat map — nothing to do.
+      // Directories are implicit — nothing to do.
     },
 
     async rm(p: string, opts?: { recursive?: boolean; force?: boolean }): Promise<void> {
       const key = norm(p);
-      files.delete(key);
+      workbenchStore.files.setKey(key, undefined as any);
 
       if (opts?.recursive) {
         const dirPrefix = `${key}/`;
-
-        for (const k of [...files.keys()]) {
+        const storeFiles = getStoreFiles();
+        for (const k of [...storeFiles.keys()]) {
           if (k.startsWith(dirPrefix)) {
-            files.delete(k);
+            workbenchStore.files.setKey(k, undefined as any);
           }
         }
       }
@@ -110,10 +124,10 @@ function createInMemoryFs() {
     async rename(oldPath: string, newPath: string): Promise<void> {
       const a = norm(oldPath);
       const b = norm(newPath);
-
-      if (files.has(a)) {
-        files.set(b, files.get(a)!);
-        files.delete(a);
+      const storeFiles = getStoreFiles();
+      if (storeFiles.has(a)) {
+        workbenchStore.files.setKey(b, { type: 'file', content: storeFiles.get(a)!, isBinary: false });
+        workbenchStore.files.setKey(a, undefined as any);
       }
     },
   };

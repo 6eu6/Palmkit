@@ -9,12 +9,12 @@ const RESTORE_ICONS: Record<RestoreStep, string> = {
   'loading-messages': 'i-ph:chat-circle-dots',
   'restoring-chat': 'i-ph:chat-centered-text',
   'restoring-files': 'i-ph:folder-open',
-  'restoring-webcontainer': 'i-ph:cube',
+  'restoring-sandbox': 'i-ph:cloud',
   done: 'i-ph:check-circle',
   error: 'i-ph:warning-circle',
 };
 
-const STEP_ORDER: RestoreStep[] = ['loading-messages', 'restoring-chat', 'restoring-files', 'restoring-webcontainer'];
+const STEP_ORDER: RestoreStep[] = ['loading-messages', 'restoring-chat', 'restoring-files', 'restoring-sandbox'];
 
 /**
  * Maps RestoreStep to RestoreSnapshotStatus for RestoreSnapshotCard.

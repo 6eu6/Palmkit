@@ -60,7 +60,7 @@ export const MobileActionDock = memo(() => {
         /*
          * Keep whatever view the user (or the auto-preview) was last on.
          * The old "no previews → force code" check read the legacy
-         * WebContainer previews store, which is always empty on the E2B
+         * E2B previews store, which is always empty on the E2B
          * path — so it kicked users OFF the running preview back to code.
          */
         break;

@@ -820,7 +820,7 @@ export const ChatImpl = memo(
 
         /*
          * Always advance the snapshot's chatIndex to the latest assistant message,
-         * even when the workbench has no files (e.g. WebContainer didn't boot).
+         * even when the workbench has no files.
          * The debounced saver will preserve any previously-stored files so we
          * don't lose earlier snapshot data.
          */

@@ -89,7 +89,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
   const effectiveActivePreview = canShowPreviewValue ? activePreview : undefined;
 
   /*
-   * Phase 3: Sandbox bridge — runs Oracle worker files in WebContainer (desktop)
+   * Phase 3: Sandbox bridge — runs worker files in E2B sandbox
    * or E2B (mobile/Python). Auto-launches on desktop; requires a button on mobile.
    */
   const { sandboxState, sandboxUrl, sandboxError, launchSandbox, usesMobileE2B, canUseSandbox } = useWorkerSandbox();
@@ -197,9 +197,9 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
 
   /*
    * Effective iframe URL precedence:
-   *   1. Phase 3 sandbox URL (WebContainer or E2B preview)
+   *   1. E2B sandbox URL
    *   2. Phase 2 blob URL (static R2 preview)
-   *   3. Phase 1 WebContainer URL (bolt editor flow)
+   *   3. Legacy iframe URL (unused)
    */
   const finalIframeUrl = sandboxUrl ?? extWorkerBlobUrl ?? iframeUrl;
   const hasExtWorkerPreview = Boolean(extWorkerBlobUrl);
@@ -793,24 +793,12 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                             return;
                           }
 
-                          const match = url.match(/^https?:\/\/([^.]+)\.local-credentialless\.webcontainer-api\.io/);
-
-                          if (match) {
-                            const previewId = match[1];
-                            const previewUrl = `/webcontainer/preview/${previewId}`;
-                            window.open(
-                              previewUrl,
-                              `preview-${previewId}`,
-                              'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no,resizable=yes',
-                            );
-                          } else {
-                            // blob URL or direct URL (static preview)
-                            window.open(
-                              url,
-                              '_blank',
-                              'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no,resizable=yes',
-                            );
-                          }
+                          // E2B sandbox preview — open in new tab
+                          window.open(
+                            url,
+                            `preview-${Date.now()}`,
+                            'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no,resizable=yes',
+                          );
 
                           setIsWindowSizeDropdownOpen(false);
                         }}
@@ -1128,7 +1116,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                     Launch preview button — shown when:
                     - Mobile + sandboxable app (E2B): "Launch Cloud Preview"
                     - Desktop + sandboxable app + sandbox not auto-launched (e.g. after
-                      page reload when WebContainer timed out): "Launch Preview"
+                      page reload when sandbox timed out): "Launch Cloud Preview"
                     This lets the user manually start the preview on demand, saving
                     resources (sandbox closes after 7 min idle, reopens only when clicked).
                   */}
