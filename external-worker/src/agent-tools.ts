@@ -3038,13 +3038,9 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
       }),
       execute: async ({ task, context }) => {
         const subAgentId = `subagent-${Date.now()}`;
-        logger.info(`[agent] spawn_subagent (Bun Worker): ${task.slice(0, 100)}`);
+        logger.info(`[agent] spawn_subagent (in-process): ${task.slice(0, 100)}`);
 
-        // SEMAPHORE: only ONE sub-agent at a time (prevents OOM-kill on Oracle VM
-        // with MemoryMax=5500M). Multiple parallel Workers can exceed memory and
-        // cause systemd to kill the entire palmkit-worker process.
-        // This is a HARD limit — even if the model tries to spawn multiple, they
-        // queue up and run sequentially.
+        // SEMAPHORE: only ONE sub-agent at a time (prevents rate limit exhaustion)
         while (spawnSubagentInProgress) {
           logger.info(`[agent] spawn_subagent: waiting for previous sub-agent to finish (semaphore)`);
           await new Promise((r) => setTimeout(r, 1000));
@@ -3060,23 +3056,26 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
 
         try {
           /*
-           * BUN WORKER IMPLEMENTATION (mirrors Z.ai Code's Task tool).
+           * IN-PROCESS EXECUTION with Promise.race timeout.
            *
-           * Uses `new Worker(new URL('./sub-agent-thread.ts', import.meta.url), { workerData })`
-           * — Bun's recommended pattern. The Worker:
-           *   1. Runs in a separate thread with its own event loop
-           *   2. Has its own streamText instance (separate rate limit)
-           *   3. Inherits parent's module resolution (node_modules work)
-           *   4. Writes directly to R2 (shared workspace)
-           *   5. Returns result via parentPort.postMessage
+           * Previous approaches that FAILED:
+           *   - child_process.fork: couldn't load .ts files on Oracle VM
+           *   - child_process.spawn('bun', ['run', script.ts]): temp-file IPC fragile
+           *   - Worker Threads (worker_threads.Worker): Bun doesn't reliably load
+           *     TS files in Workers, and 'Worker created' event never appeared
            *
-           * Timeout: Promise.race with worker.terminate() — guaranteed to return.
+           * NEW APPROACH: Run runInWorkerThread() directly in the main process.
+           * This shares the rate limit with the main agent, BUT:
+           *   1. It WORKS (no module resolution issues)
+           *   2. Promise.race guarantees 5-min timeout (AbortController doesn't work in Bun)
+           *   3. Files are written to R2 (shared workspace)
+           *   4. Semaphore ensures only ONE sub-agent at a time
+           *
+           * The sub-agent gets its own streamText instance with its own context
+           * window, so it can focus on the task without polluting the main
+           * agent's conversation.
            */
 
-          const { Worker } = await import('worker_threads');
-          const path = await import('path');
-
-          // Get model config FIRST
           const subModelConfig = modelConfig || {
             provider: 'OpenRouter',
             model: 'z-ai/glm-4.7',
@@ -3084,27 +3083,6 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             reasoningEffort: 'off' as const,
           };
 
-          // Find the Worker script — try multiple paths for robustness
-          const possiblePaths = [
-            path.join(__dirname, 'sub-agent-thread.ts'),
-            path.join(process.cwd(), 'src', 'sub-agent-thread.ts'),
-            path.join(process.cwd(), 'external-worker', 'src', 'sub-agent-thread.ts'),
-            '/opt/palmkit-worker/external-worker/src/sub-agent-thread.ts',
-          ].filter(Boolean);
-
-          let workerScript = possiblePaths[0];
-          const fs = await import('fs');
-          for (const p of possiblePaths) {
-            try { if (fs.existsSync(p)) { workerScript = p; break; } } catch {}
-          }
-
-          // Emit the chosen script path for remote debugging
-          await emitEvent(supabase, jobId, 'file_chunk',
-            `🔧 Worker script: ${workerScript}`,
-            { agent: 'Brain', kind: 'subagent_debug', workerScript }
-          ).catch(() => {});
-
-          // Task data passed via workerData (no temp files, no IPC complexity)
           const taskData = {
             type: 'run' as const,
             jobId,
@@ -3123,111 +3101,19 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             r2Bucket: process.env.R2_BUCKET || 'palmkit-files',
           };
 
-          // Create the Worker — Bun natively handles TS files
-          logger.info(`[agent] spawn_subagent: creating Worker with script ${workerScript}`);
-          const subAgentStartTime = Date.now();
-          await emitEvent(supabase, jobId, 'file_chunk', `🔧 Creating Worker thread...`, {
-            agent: 'Brain', kind: 'subagent_debug', workerScript,
-          }).catch(() => {});
+          await emitEvent(supabase, jobId, 'file_chunk',
+            `🔧 Running sub-agent in-process (Promise.race timeout)...`,
+            { agent: 'Brain', kind: 'subagent_debug', approach: 'in-process' }
+          ).catch(() => {});
 
-          let worker: any;
-          try {
-            // Use the path string (Bun's Worker accepts file paths directly)
-            const workerPath = workerScript;
-            logger.info(`[agent] spawn_subagent: BEFORE new Worker, path=${workerPath}`);
-            console.log(`[spawn_subagent] BEFORE new Worker, path=${workerPath}`);
+          // Dynamic import of the sub-agent function
+          const { runInWorkerThread } = await import('./sub-agent-worker');
 
-            // Bun's Worker from worker_threads — minimal options for compatibility
-            worker = new Worker(workerPath, {
-              workerData: taskData,
-              env: { ...process.env, ...taskData } as any,
-            });
-            logger.info(`[agent] spawn_subagent: AFTER new Worker, threadId=${worker.threadId}`);
-            console.log(`[spawn_subagent] AFTER new Worker, threadId=${worker.threadId}`);
+          // Promise.race: sub-agent vs 5-min timeout
+          const subAgentPromise = runInWorkerThread(taskData as any);
 
-            // Emit success — fire and forget (don't block on this)
-            emitEvent(supabase, jobId, 'file_chunk', `✅ Worker created (threadId=${worker.threadId})`, {
-              agent: 'Brain', kind: 'subagent_debug', threadId: worker.threadId, workerPath,
-            }).catch(() => {});
-            logger.info(`[agent] spawn_subagent: emitted Worker created event`);
-
-          } catch (createErr: any) {
-            const msg = `Worker creation failed: ${createErr?.message}`;
-            logger.error(`[agent] spawn_subagent: ${msg}`);
-            await emitEvent(supabase, jobId, 'file_chunk', `❌ ${msg}`, {
-              agent: 'Brain', kind: 'subagent_error', error: msg,
-            }).catch(() => {});
-            return { ok: false, task, error: msg, message: `Sub-agent Worker creation failed: ${msg}. Write the files YOURSELF using write_files.` };
-          }
-
-          let workerResolved = false;
-
-          // Promise that resolves when the Worker posts a message
-          const workPromise = new Promise<any>((resolve) => {
-            worker.on('message', (msg: any) => {
-              workerResolved = true;
-              logger.info(`[sub-agent-worker] message: ok=${msg?.ok}, files=${msg?.filesWritten?.length || 0}`);
-              resolve(msg);
-            });
-
-            worker.on('error', (err: Error) => {
-              if (workerResolved) return;
-              workerResolved = true;
-              const errMsg = err?.message || String(err);
-              logger.error(`[sub-agent-worker] error: ${errMsg}`);
-              emitEvent(supabase, jobId, 'file_chunk', `❌ Worker error: ${errMsg.slice(0, 200)}`, {
-                agent: 'Brain', kind: 'subagent_error', error: errMsg,
-              }).catch(() => {});
-              resolve({
-                type: 'error',
-                ok: false,
-                error: `Worker error: ${errMsg}`,
-                filesWritten: [],
-                filesVerified: [],
-                filesFailed: [],
-                timedOut: false,
-              });
-            });
-
-            worker.on('exit', (code: number) => {
-              if (workerResolved) return;
-              workerResolved = true;
-              const exitMsg = `Worker exited (code ${code}) without posting a result`;
-              logger.warn(`[sub-agent-worker] ${exitMsg}`);
-              emitEvent(supabase, jobId, 'file_chunk', `⚠️ ${exitMsg}. Check worker stderr in logs.`, {
-                agent: 'Brain', kind: 'subagent_error', error: exitMsg, code,
-              }).catch(() => {});
-              resolve({
-                type: 'error',
-                ok: false,
-                error: `${exitMsg}. Check sub-agent-thread.ts for runtime errors.`,
-                filesWritten: [],
-                filesVerified: [],
-                filesFailed: [],
-                timedOut: false,
-              });
-            });
-          });
-
-          // Heartbeat — emit every 15s while Worker runs, so we know it's alive
-          const heartbeat = setInterval(() => {
-            if (workerResolved) {
-              clearInterval(heartbeat);
-              return;
-            }
-            const elapsed = Math.round((Date.now() - subAgentStartTime) / 1000);
-            emitEvent(supabase, jobId, 'file_chunk', `⏳ Sub-agent running (${elapsed}s)...`, {
-              agent: 'Brain', kind: 'subagent_heartbeat', elapsed,
-            }).catch(() => {});
-          }, 15_000);
-
-          // Timeout promise — 5 min, then terminate the Worker
           const timeoutPromise = new Promise<any>((resolve) => {
             setTimeout(() => {
-              if (workerResolved) return;
-              workerResolved = true;
-              logger.warn(`[sub-agent-worker] timeout — terminating`);
-              try { worker.terminate(); } catch {}
               resolve({
                 type: 'done',
                 ok: false,
@@ -3240,12 +3126,15 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             }, 300_000); // 5 min
           });
 
-          // Race: first to resolve wins
-          const result = await Promise.race([workPromise, timeoutPromise]);
+          // Heartbeat — emit every 15s while sub-agent runs
+          const heartbeat = setInterval(() => {
+            emitEvent(supabase, jobId, 'file_chunk', `⏳ Sub-agent running...`, {
+              agent: 'Brain', kind: 'subagent_heartbeat',
+            }).catch(() => {});
+          }, 15_000);
 
-          // Cleanup: terminate worker if still running, clear heartbeat
+          const result = await Promise.race([subAgentPromise, timeoutPromise]);
           clearInterval(heartbeat);
-          try { if (!workerResolved) worker.terminate(); } catch {}
 
           if (result.ok) {
             logger.info(`[agent] spawn_subagent completed: ${result.filesWritten?.length || 0} written, ${result.filesVerified?.length || 0} verified, ${result.filesFailed?.length || 0} failed`);
@@ -3300,7 +3189,6 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
               { agent: 'Brain', kind: 'subagent_error', task, subAgentId, error: errorMsg },
             );
 
-            // Partial success — files were written before timeout
             if (writtenCount > 0) {
               return {
                 ok: true,
@@ -3312,7 +3200,6 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
               };
             }
 
-            // Complete failure — model must write files itself
             return {
               ok: false,
               task,
