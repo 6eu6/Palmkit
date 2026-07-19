@@ -142,11 +142,10 @@ package.json MUST have react, react-dom, vite, @vitejs/plugin-react.
 - append_worklog(section) — record progress
 - done(summary) — finish
 
-# SUB-AGENTS (optional, for large projects)
+# SUB-AGENTS — DO NOT USE
 
-- spawn_subagent(task) — delegate file writing to a sub-agent
-- Use ONLY for 30+ file projects
-- For most projects: write directly, it's faster and more reliable
+NEVER call spawn_subagent. Always write files directly with write_files.
+Sub-agents are slow and unreliable. Direct writing is faster and works.
 
 # DESIGN SCHEME
 
@@ -172,7 +171,8 @@ Ship working code. Nothing else matters.`,
     'read_worklog', 'append_worklog', 'list_uploads',
     'generate_image', 'generate_video', 'analyze_screenshot',
     'run_shell', 'run_tests', 'update_todos', 'ask_user',
-    'spawn_subagent', 'done',
+    'done',
+    // spawn_subagent REMOVED — direct writing is faster and more reliable
   ],
   maxSteps: 300,
   maxTokens: 64000,
