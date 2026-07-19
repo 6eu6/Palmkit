@@ -2514,20 +2514,38 @@ export async function runOrchestratedBuild(
     }
 
     /*
-     * Honest completion gate. If files exist but the build STILL fails after
-     * all repair attempts, keep the files (so the user can view/edit them) but
-     * surface the failure clearly instead of presenting a broken preview as OK.
+     * Build verification check — if npm run build was run and FAILED,
+     * the build is NOT successful. Files are saved but preview is blocked.
+     * This is the ROOT FIX for the "white page" issue: builds that fail
+     * npm run build were still marked as ready_for_preview, showing the
+     * user a broken preview.
      */
     const finalBuild = getBuildResult(jobId);
     const buildVerified = finalBuild ? finalBuild.passed : null;
 
     if (overallSuccess && finalBuild && !finalBuild.passed) {
+      logger.warn(
+        `[orchestrator] Build produced ${fileCount} files but npm run build FAILED (exit non-zero). ` +
+        `Marking as NOT successful — preview will be blocked until the user fixes the errors.`,
+      );
+      overallSuccess = false;
+
       await emitEvent(
         supabase,
         jobId,
         'file_chunk',
-        `Build finished with errors. Files are saved so you can review or fix them, but the live preview may not run.`,
-        { buildVerified: false },
+        `⚠️ Build verification failed: npm run build exited with errors. ` +
+        `${fileCount} files are saved — you can view them and fix the errors, ` +
+        `then send a follow-up message to retry the build.`,
+        { buildVerified: false, fileCount },
+      );
+    } else if (overallSuccess && buildVerified === true) {
+      await emitEvent(
+        supabase,
+        jobId,
+        'file_chunk',
+        `✅ Build verified — npm run build passed successfully.`,
+        { buildVerified: true, fileCount },
       );
     }
 
@@ -2706,6 +2724,7 @@ export async function runOrchestratedBuild(
       contextWindow: effectiveContextWindow,
       contextRatio: effectiveContextWindow > 0 ? peakPromptTokens / effectiveContextWindow : 0,
       truncated,
+      buildVerified, // NEW: pass to job-processor so it can block ready_for_preview on failure
     };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);

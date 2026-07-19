@@ -1391,6 +1391,44 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
     logger.info(`Job ${job.id}: upload complete → ${manifestEntries.length} files in R2`);
 
     // ─── Phase 5: FINALIZE ─────────────────────────────────────────────
+    // RADICAL FIX: Only mark as ready_for_preview if the build actually passed.
+    // If npm run build failed (buildVerified=false), mark as failed_clean
+    // but still save the files so the user can view/edit them.
+    const buildPassed = result?.success !== false && (result as any)?.buildVerified !== false;
+
+    if (!buildPassed && (result?.files ?? []).length > 0) {
+      // Build produced files but npm run build failed — save files but mark as failed
+      logger.warn(`Job ${job.id}: Build produced ${result?.files.length} files but build verification FAILED — marking as failed_clean with files saved`);
+
+      const { error: failError } = await supabase
+        .from('build_jobs')
+        .update({
+          status: 'failed_clean',
+          current_step: 'done',
+          progress: 100,
+          has_completion_marker: true,
+          error_summary: `Build produced ${(result?.files ?? []).length} files but npm run build failed. Files are saved — you can view them, fix the errors, and send a follow-up message to retry.`,
+          validation_result: {
+            ...job.validation_result,
+            fileCount: (result?.files ?? []).length,
+            completeness: 'partial',
+            appType: result?.appType ?? "static",
+            runtimeMode: runner.runtimeMode,
+            prompt: (job.validation_result?.prompt ?? prompt).slice(0, 200),
+            buildVerified: false,
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', job.id);
+
+      await emitEvent(supabase, job.id, 'job_failed', `Build produced ${(result?.files ?? []).length} files but npm run build failed. Files are saved — click "View Files" to inspect and fix.`);
+
+      if (failError) {
+        throw new Error(`Failed to finalize failed job: ${failError.message}`);
+      }
+      return;
+    }
+
     const { error: finalizeError } = await supabase
       .from('build_jobs')
       .update({
@@ -1407,6 +1445,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           prompt: (job.validation_result?.prompt ?? prompt).slice(0, 200),
           ...(editJobId ? { editJobId } : {}),
           ...(contextPressure ? { contextPressure } : {}),
+          buildVerified: true,
         },
         updated_at: new Date().toISOString(),
       })
