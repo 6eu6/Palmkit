@@ -2714,6 +2714,9 @@ export async function runOrchestratedBuild(
      * Kill the job's persistent E2B sandbox (created lazily on the first
      * run_shell). This is the ONLY place it's torn down, so it must run on
      * every exit path — success, failure, timeout, or abort.
+     *
+     * The frontend creates its OWN sandbox for preview (remotePreview.ts),
+     * so killing this one is safe — the preview doesn't depend on it.
      */
     await disposeSandbox(jobId);
 
