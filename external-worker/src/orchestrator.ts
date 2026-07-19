@@ -1380,7 +1380,7 @@ export async function runOrchestratedBuild(
        * - Tool-call watchdog: catches ACTIVE-but-unproductive streams (reasoning
        *   without action)
        */
-      const TOOL_CALL_TIMEOUT_MS = 180_000; // 3 min without a tool call = stuck in reasoning
+      const TOOL_CALL_TIMEOUT_MS = 300_000; // 5 min without a tool call = stuck in reasoning (was 3 min, too aggressive for large file generation)
       let lastToolCallAt = Date.now();
 
       const stallTimer = setInterval(() => {
