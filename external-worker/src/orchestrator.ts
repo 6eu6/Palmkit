@@ -557,6 +557,7 @@ export async function runOrchestratedBuild(
   const MAX_BUILDER_EMPTY_RETRIES = 100; // Was 10 — with maxSteps=1, each retry is ONE tool call (like Z.ai Code's request-response loop)
   let forceBuild = false;
   let incompleteBuild = false; // Vite build finished but is missing scaffolding (e.g. package.json)
+  let verifyAndFinish = false; // Project looks complete — tell model to run npm install and call done()
 
   /*
    * Loop detection — track how many times each file path is written per
@@ -795,7 +796,15 @@ export async function runOrchestratedBuild(
        * model reasoned but never called write_file). Override the prompt with a
        * blunt directive to act now. Takes precedence over the normal prompts.
        */
-      if (forceBuild) {
+      if (verifyAndFinish) {
+        const vfFiles = Object.keys(getProjectFiles(jobId) as Record<string, string>);
+        agentPrompt = `${prompt}\n\n` +
+          `CRITICAL: You have written ${vfFiles.length} files including entry points (src/main.jsx, src/App.jsx, index.html).\n` +
+          `The project is COMPLETE. DO NOT write more files. DO NOT call list_files or read_file.\n` +
+          `RIGHT NOW: call run_shell("npm install && npm run build") to verify the build.\n` +
+          `If build passes, call done(). If build fails, read the error, fix the file, and rebuild.`;
+        verifyAndFinish = false; // consumed
+      } else if (forceBuild) {
         const existingFiles = Object.keys(getProjectFiles(jobId) as Record<string, string>);
         agentPrompt = incompleteBuild
           ? `${prompt}\n\n` +
@@ -2177,12 +2186,30 @@ export async function runOrchestratedBuild(
         if (onlyReading) {
           // Model is stuck planning/reading — inject direct action prompt
           forceBuild = true;
-          // If 0 files: use "STOP planning" prompt (incompleteBuild=false)
-          // If N files: use "CONTINUATION" prompt (incompleteBuild=true)
-          incompleteBuild = loopFileCount > 0;
-          logger.info(
-            `[orchestrator] maxSteps=1 loop: model stuck in planning, injecting ${incompleteBuild ? 'continuation' : 'start-build'} prompt (iteration ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}, ${loopFileCount} files)`,
+
+          // Check if project is COMPLETE (has entry points)
+          const hasEntry = loopFileCount > 0 && Object.keys(loopFiles).some(p =>
+            /^src\/(main|App)\.(jsx|tsx|js|ts)$/i.test(p) || /^index\.html$/i.test(p)
           );
+
+          if (hasEntry && loopFileCount >= 5) {
+            // Project looks complete — tell model to verify and finish
+            forceBuild = false;
+            verifyAndFinish = true;
+            logger.info(
+              `[orchestrator] maxSteps=1 loop: project complete (${loopFileCount} files with entry points), telling model to verify and call done()`,
+            );
+          } else if (loopFileCount > 0) {
+            incompleteBuild = true;
+            logger.info(
+              `[orchestrator] maxSteps=1 loop: model stuck, injecting continuation prompt (iteration ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}, ${loopFileCount} files)`,
+            );
+          } else {
+            incompleteBuild = false;
+            logger.info(
+              `[orchestrator] maxSteps=1 loop: model stuck planning, injecting start-build prompt (iteration ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}, 0 files)`,
+            );
+          }
         } else {
           logger.info(
             `[orchestrator] maxSteps=1 loop: model made tool call, re-queuing brain (iteration ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}, ${loopFileCount} files)`,
