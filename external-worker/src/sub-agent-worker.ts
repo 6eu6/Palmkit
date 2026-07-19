@@ -148,25 +148,85 @@ export async function runInWorkerThread(msg: SubAgentMessage): Promise<SubAgentR
   // ─── Sub-agent tools ───
   const subTools = {
     write_file: tool({
-      description: 'Write a file. Content MUST be a raw string.',
-      parameters: z.object({ path: z.string(), content: z.any() }),
+      description: 'Write a single file. Parameters: path (string, the file path like "src/App.jsx"), content (string, the full file content). Content MUST be a raw string, NOT JSON.',
+      parameters: z.object({
+        path: z.string().describe('File path, e.g. "src/App.jsx" or "package.json"'),
+        content: z.string().describe('Full file content as a raw string')
+      }),
       execute: async (args: any) => {
-        const content = typeof args.content === 'string' ? args.content : JSON.stringify(args.content, null, 2);
-        const ok = await writeProjectFile(args.path, content);
-        return { success: ok, path: args.path, lines: content.split('\n').length };
+        // Robust arg extraction — model may send args in different shapes
+        const filePath = args?.path || args?.filePath || args?.file || args?.name;
+        let content = args?.content || args?.text || args?.code || args?.body || '';
+
+        if (!filePath) {
+          await debug(`write_file: missing path, args keys: ${Object.keys(args || {}).join(',')}`);
+          return { success: false, error: 'Missing path parameter' };
+        }
+
+        if (typeof content !== 'string') {
+          content = JSON.stringify(content, null, 2);
+        }
+
+        if (!content || content.trim().length === 0) {
+          await debug(`write_file: empty content for ${filePath}`);
+          return { success: false, error: 'Empty content', path: filePath };
+        }
+
+        const ok = await writeProjectFile(filePath, content);
+        return { success: ok, path: filePath, lines: content.split('\n').length };
       },
     }),
     write_files: tool({
-      description: 'Write MULTIPLE files in ONE call. PREFERRED.',
-      parameters: z.object({ files: z.any() }),
+      description: 'Write MULTIPLE files in ONE call. PREFERRED for 2+ files. Parameter: files (array of {path, content} objects).',
+      parameters: z.object({
+        files: z.array(z.object({
+          path: z.string().describe('File path, e.g. "src/App.jsx"'),
+          content: z.string().describe('Full file content as a raw string')
+        })).describe('Array of files to write')
+      }),
       execute: async (args: any) => {
-        const fileList = Array.isArray(args.files) ? args.files : [args.files];
-        let written = 0;
-        for (const f of fileList) {
-          const content = typeof f.content === 'string' ? f.content : JSON.stringify(f.content, null, 2);
-          if (await writeProjectFile(f.path, content)) written++;
+        // Robust extraction — handle different shapes the model might send
+        let fileList = args?.files;
+        if (!Array.isArray(fileList)) {
+          // Maybe model sent a single object or different structure
+          if (fileList && typeof fileList === 'object') {
+            fileList = [fileList];
+          } else {
+            await debug(`write_files: invalid files param, type: ${typeof fileList}`);
+            return { success: false, error: 'files must be an array', written: 0, total: 0 };
+          }
         }
-        return { success: true, written, total: fileList.length };
+
+        let written = 0;
+        let failed = 0;
+        for (const f of fileList) {
+          const filePath = f?.path || f?.filePath || f?.file || f?.name;
+          let content = f?.content || f?.text || f?.code || f?.body || '';
+
+          if (!filePath) {
+            await debug(`write_files: missing path in file object, keys: ${Object.keys(f || {}).join(',')}`);
+            failed++;
+            continue;
+          }
+
+          if (typeof content !== 'string') {
+            content = JSON.stringify(content, null, 2);
+          }
+
+          if (!content || content.trim().length === 0) {
+            await debug(`write_files: empty content for ${filePath}`);
+            failed++;
+            continue;
+          }
+
+          if (await writeProjectFile(filePath, content)) {
+            written++;
+          } else {
+            failed++;
+          }
+        }
+        await debug(`write_files: ${written} written, ${failed} failed out of ${fileList.length}`);
+        return { success: true, written, failed, total: fileList.length };
       },
     }),
     read_file: tool({
