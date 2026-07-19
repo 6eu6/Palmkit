@@ -326,8 +326,8 @@ ACT FAST. WRITE FILES. RETURN.`;
       system: systemPrompt,
       prompt: task,
       tools: subTools as any,
-      maxSteps: 12,           // Reduced from 20 — 6 files need ~7-8 steps (1 plan + 6 writes)
-      maxTokens: 8000,        // Reduced from 16000 — 6 files × 200 lines = ~6K tokens, 8K is enough
+      maxSteps: 15,           // Enough for 7 files: 1 plan + 7 writes + buffer
+      maxTokens: 16000,       // 7 files × 200 lines = ~14K tokens, 16K gives headroom
       temperature: 0.3,
       abortSignal: abortController.signal,
       onStepFinish: async ({ toolCalls, toolResults }: any) => {
@@ -345,17 +345,26 @@ ACT FAST. WRITE FILES. RETURN.`;
     });
 
     // Wait for streamText to FULLY complete (including all tool calls)
-    // result.text waits for text, but tool calls may still be running
-    // Use a polling loop: wait until filesWritten > 0 OR timeout
-    const maxWaitMs = 240_000; // 4 min max
+    // Poll until we see SOME files written, then give extra time for more
+    const maxWaitMs = 240_000; // 4 min max total
     const pollIntervalMs = 3_000;
     const startTime = Date.now();
+    let lastFileCount = 0;
+    let stableCount = 0;
 
     while (Date.now() - startTime < maxWaitMs) {
-      if (filesWritten.length > 0 && filesWritten.length >= (task.match(/\d+/)?.[0] ? parseInt(task.match(/\d+/)![0]) : 1)) {
-        // All files written (or at least some)
-        await debug(`All expected files written (${filesWritten.length}), breaking wait loop`);
-        break;
+      // If we have files and count hasn't changed for 30s, assume done
+      if (filesWritten.length > 0) {
+        if (filesWritten.length === lastFileCount) {
+          stableCount++;
+          if (stableCount >= 10) { // 30s of stability (10 × 3s)
+            await debug(`File count stable at ${filesWritten.length} for 30s, assuming done`);
+            break;
+          }
+        } else {
+          stableCount = 0;
+          lastFileCount = filesWritten.length;
+        }
       }
       await new Promise((r) => setTimeout(r, pollIntervalMs));
     }
