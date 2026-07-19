@@ -3098,7 +3098,20 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             try { if (fs.existsSync(p)) { workerScript = p; break; } } catch {}
           }
 
-          logger.info(`[agent] spawn_subagent: Worker script = ${workerScript}`);
+          // ALSO try new URL pattern — Bun's recommended way for Workers
+          // This handles the case where __dirname doesn't resolve correctly
+          let workerUrl: URL | undefined;
+          try {
+            workerUrl = new URL('./sub-agent-thread.ts', import.meta.url);
+          } catch {}
+
+          logger.info(`[agent] spawn_subagent: Worker script = ${workerScript}, URL = ${workerUrl?.href || 'n/a'}`);
+
+          // Emit the chosen script path for remote debugging
+          await emitEvent(supabase, jobId, 'file_chunk',
+            `🔧 Worker script: ${workerScript}${workerUrl ? ` (URL: ${workerUrl.href})` : ''}`,
+            { agent: 'Brain', kind: 'subagent_debug', workerScript, workerUrl: workerUrl?.href }
+          ).catch(() => {});
 
           // Task data passed via workerData (no temp files, no IPC complexity)
           const taskData = {
@@ -3128,7 +3141,9 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
 
           let worker: any;
           try {
-            worker = new Worker(workerScript, {
+            // Try URL pattern first (Bun's recommended way), fall back to path
+            const workerSpec = workerUrl || workerScript;
+            worker = new Worker(workerSpec, {
               workerData: taskData,
               // Pass env explicitly so the Worker has everything it needs
               env: { ...process.env, ...taskData } as any,
@@ -3136,7 +3151,7 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
               stdout: true,
               stderr: true,
             });
-            logger.info(`[agent] spawn_subagent: Worker created, PID=${worker.threadId}`);
+            logger.info(`[agent] spawn_subagent: Worker created, PID=${worker.threadId}, spec=${typeof workerSpec === 'string' ? workerSpec : workerSpec.href}`);
 
             // Capture Worker stderr — this is where console.error goes
             worker.stderr?.on('data', (data: Buffer) => {
