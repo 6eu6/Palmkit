@@ -1397,15 +1397,18 @@ export async function runOrchestratedBuild(
         }
 
         // Tool-call watchdog: catches ACTIVE-but-unproductive streams
-        // (reasoning flowing but no productive tool calls for 3 min)
+        // (reasoning flowing but no productive tool calls for 5 min)
         // This fires EVEN IF toolExecuting is true — because a tool
-        // that's been "executing" for 3+ min without producing files
+        // that's been "executing" for 5+ min without producing files
         // is stuck (e.g., spawn_subagent that's hanging).
+        // EXCEPTION: spawn_subagent has its OWN 5-min timeout internally,
+        // so we give it 6 min here (5 min sub-agent + 1 min buffer).
         // Also fires when model reasons without calling ANY tools.
-        if (Date.now() - lastToolCallAt > TOOL_CALL_TIMEOUT_MS) {
+        const effectiveToolTimeout = toolExecuting ? 360_000 : TOOL_CALL_TIMEOUT_MS; // 6 min if tool executing, 3 min otherwise
+        if (Date.now() - lastToolCallAt > effectiveToolTimeout) {
           stalled = true;
           logger.warn(
-            `[orchestrator] ${config.name} reasoning without action (${TOOL_CALL_TIMEOUT_MS / 1000}s without a productive tool call) — aborting for phase boundary`,
+            `[orchestrator] ${config.name} ${toolExecuting ? 'tool executing too long' : 'reasoning without action'} (${effectiveToolTimeout / 1000}s) — aborting for phase boundary`,
           );
           attemptController.abort();
           clearInterval(stallTimer);
