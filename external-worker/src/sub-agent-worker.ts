@@ -344,7 +344,17 @@ ACT FAST. WRITE FILES. RETURN.`;
       },
     });
 
-    const text = await result.text;
+    // Don't wait for result.text if we already have files written
+    // The model may continue reasoning after write_files, causing timeout
+    let text = '';
+    try {
+      text = await Promise.race([
+        result.text,
+        new Promise<string>((resolve) => setTimeout(() => resolve(''), 30_000)) // 30s max for text
+      ]);
+    } catch {
+      text = '';
+    }
     clearTimeout(timeoutId);
     await debug(`streamText completed. Files: ${filesWritten.length} written, ${filesVerified.length} verified, ${filesFailed.length} failed`);
 
