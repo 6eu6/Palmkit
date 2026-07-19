@@ -2174,12 +2174,14 @@ export async function runOrchestratedBuild(
         );
         const onlyReading = lastStepTools.every((name: string) => name === 'read_file' || name === 'list_files' || name === 'update_todos');
 
-        if (onlyReading && loopFileCount > 0) {
-          // Model is stuck in read loop — inject direct action prompt
+        if (onlyReading) {
+          // Model is stuck planning/reading — inject direct action prompt
           forceBuild = true;
-          incompleteBuild = true;
+          // If 0 files: use "STOP planning" prompt (incompleteBuild=false)
+          // If N files: use "CONTINUATION" prompt (incompleteBuild=true)
+          incompleteBuild = loopFileCount > 0;
           logger.info(
-            `[orchestrator] maxSteps=1 loop: model stuck reading, injecting action prompt (iteration ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}, ${loopFileCount} files)`,
+            `[orchestrator] maxSteps=1 loop: model stuck in planning, injecting ${incompleteBuild ? 'continuation' : 'start-build'} prompt (iteration ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}, ${loopFileCount} files)`,
           );
         } else {
           logger.info(
