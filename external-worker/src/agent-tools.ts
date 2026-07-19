@@ -3134,19 +3134,22 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
           try {
             // Use the path string (Bun's Worker accepts file paths directly)
             const workerPath = workerScript;
-            logger.info(`[agent] spawn_subagent: creating Worker with path ${workerPath}`);
+            logger.info(`[agent] spawn_subagent: BEFORE new Worker, path=${workerPath}`);
+            console.log(`[spawn_subagent] BEFORE new Worker, path=${workerPath}`);
 
             // Bun's Worker from worker_threads — minimal options for compatibility
             worker = new Worker(workerPath, {
               workerData: taskData,
               env: { ...process.env, ...taskData } as any,
             });
-            logger.info(`[agent] spawn_subagent: Worker created, threadId=${worker.threadId}`);
+            logger.info(`[agent] spawn_subagent: AFTER new Worker, threadId=${worker.threadId}`);
+            console.log(`[spawn_subagent] AFTER new Worker, threadId=${worker.threadId}`);
 
             // Emit success — fire and forget (don't block on this)
             emitEvent(supabase, jobId, 'file_chunk', `✅ Worker created (threadId=${worker.threadId})`, {
               agent: 'Brain', kind: 'subagent_debug', threadId: worker.threadId, workerPath,
             }).catch(() => {});
+            logger.info(`[agent] spawn_subagent: emitted Worker created event`);
 
           } catch (createErr: any) {
             const msg = `Worker creation failed: ${createErr?.message}`;
