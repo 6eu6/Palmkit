@@ -2001,8 +2001,8 @@ export async function runOrchestratedBuild(
       if (role === 'brain' && agentSuccess) {
         const files = getProjectFiles(jobId);
         const filePaths = Object.keys(files);
-        const hasIndexHtml = filePaths.some((p) => /^index\.html$/i.test(p));
-        const hasSourceFile = filePaths.some((p) => /^src\/.*(jsx|tsx|vue|js|ts)$/i.test(p));
+        const hasIndexHtml = filePaths.some((p) => /^(frontend\/)?index\.html$/i.test(p));
+        const hasSourceFile = filePaths.some((p) => /^(frontend\/)?src\/.*(jsx|tsx|vue|js|ts)$/i.test(p));
         const hasPyEntry = filePaths.some((p) => /^(app|main|server|run)\.py$/i.test(p));
 
         // Check: if main.jsx exists and imports './App', does App.jsx exist?
@@ -2170,8 +2170,8 @@ export async function runOrchestratedBuild(
           // Check if the project seems complete (has entry + package.json)
           const phasePaths = Object.keys(phaseFiles);
           const hasPkg = phasePaths.some(p => /(^|\/)package\.json$/i.test(p));
-          const hasEntry = phasePaths.some(p => /^src\/(main|App)\.(jsx|tsx|js|ts)$/i.test(p));
-          const hasIndex = phasePaths.some(p => /^index\.html$/i.test(p));
+          const hasEntry = phasePaths.some(p => /^(frontend\/)?src\/(main|App)\.(jsx|tsx|js|ts)$/i.test(p));
+          const hasIndex = phasePaths.some(p => /^(frontend\/)?index\.html$/i.test(p));
           const hasBackend = phasePaths.some(p => p.startsWith('server/'));
 
           // If project has frontend entry but NO backend, and user asked for
@@ -2233,8 +2233,8 @@ export async function runOrchestratedBuild(
          * catches that case and re-prompts the Builder to write the missing
          * entry files BEFORE moving on to the Tester.
          */
-        const hasIndexHtml = curPaths.some((p) => /^index\.html$/i.test(p));
-        const hasSourceFile = curPaths.some((p) => /^src\/.*(jsx|tsx|vue|js|ts)$/i.test(p));
+        const hasIndexHtml = curPaths.some((p) => /^(frontend\/)?index\.html$/i.test(p));
+        const hasSourceFile = curPaths.some((p) => /^(frontend\/)?src\/.*(jsx|tsx|vue|js|ts)$/i.test(p));
         const hasPyEntry = curPaths.some((p) => /^(app|main|server|run)\.py$/i);
         const hasFlutterEntry = curPaths.some((p) => /^lib\/(main|app)\.dart$/i);
 
@@ -2333,14 +2333,14 @@ export async function runOrchestratedBuild(
      * If the entry point exists → accept regardless of file count.
      */
     const ENTRY_POINT_PATTERNS: Record<string, RegExp[]> = {
-      static: [/^index\.html$/i, /^src\/.*\.(js|ts)$/i],
+      static: [/^(frontend\/)?index\.html$/i, /^src\/.*\.(js|ts)$/i],
       react: [
-        /^index\.html$/i,
+        /^(frontend\/)?index\.html$/i,
         /^src\/(App|Main|main|app)\.(jsx|tsx|js|ts)$/i,
         /^src\/(main|index)\.(jsx|tsx|js|ts)$/i,
       ],
       nextjs: [/^(app|pages)\/(page|index)\.(jsx|tsx|js|ts)$/i, /^src\/(app|pages)\//i],
-      vue: [/^index\.html$/i, /^src\/(App|main)\.(vue|js|ts)$/i],
+      vue: [/^(frontend\/)?index\.html$/i, /^src\/(App|main)\.(vue|js|ts)$/i],
       python: [/^(app|main|server|run)\.py$/i],
       flutter: [/^lib\/(main|app)\.dart$/i],
       'react-native': [/^(App|app)\.(tsx|jsx|ts|js)$/i, /^app\/(app|_layout)\.(tsx|ts)$/i],
@@ -2365,8 +2365,8 @@ export async function runOrchestratedBuild(
         : (() => {
             if (effectiveAppType === 'react' || effectiveAppType === 'vue') {
               // Need BOTH index.html AND a source file in src/
-              const hasIndexHtml = filePaths.some((p) => /^index\.html$/i.test(p));
-              const hasSourceFile = filePaths.some((p) => /^src\/.*(jsx|tsx|vue|js|ts)$/i.test(p));
+              const hasIndexHtml = filePaths.some((p) => /^(frontend\/)?index\.html$/i.test(p));
+              const hasSourceFile = filePaths.some((p) => /^(frontend\/)?src\/.*(jsx|tsx|vue|js|ts)$/i.test(p));
 
               return hasIndexHtml && hasSourceFile;
             }
