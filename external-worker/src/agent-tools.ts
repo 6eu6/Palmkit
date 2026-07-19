@@ -3131,8 +3131,32 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
               workerData: taskData,
               // Pass env explicitly so the Worker has everything it needs
               env: { ...process.env, ...taskData } as any,
+              // Capture stdout/stderr from the Worker
+              stdout: true,
+              stderr: true,
             });
             logger.info(`[agent] spawn_subagent: Worker created, PID=${worker.threadId}`);
+
+            // Capture Worker stderr — this is where console.error goes
+            worker.stderr?.on('data', (data: Buffer) => {
+              const text = data.toString().trim();
+              if (text) {
+                logger.info(`[sub-agent-stderr] ${text.slice(0, 300)}`);
+                emitEvent(supabase, jobId, 'file_chunk', `📋 [worker] ${text.slice(0, 200)}`, {
+                  agent: 'Brain', kind: 'subagent_debug', stderr: text.slice(0, 500),
+                }).catch(() => {});
+              }
+            });
+
+            worker.stdout?.on('data', (data: Buffer) => {
+              const text = data.toString().trim();
+              if (text) {
+                logger.info(`[sub-agent-stdout] ${text.slice(0, 300)}`);
+                emitEvent(supabase, jobId, 'file_chunk', `📋 [worker-out] ${text.slice(0, 200)}`, {
+                  agent: 'Brain', kind: 'subagent_debug', stdout: text.slice(0, 500),
+                }).catch(() => {});
+              }
+            });
           } catch (createErr: any) {
             const msg = `Worker creation failed: ${createErr?.message}`;
             logger.error(`[agent] spawn_subagent: ${msg}`);
