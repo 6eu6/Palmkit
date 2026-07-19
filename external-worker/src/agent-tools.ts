@@ -3173,6 +3173,11 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
                 }).catch(() => {});
               }
             });
+
+            // Emit that Worker was created successfully
+            await emitEvent(supabase, jobId, 'file_chunk', `✅ Worker created (threadId=${worker.threadId})`, {
+              agent: 'Brain', kind: 'subagent_debug', threadId: worker.threadId,
+            });
           } catch (createErr: any) {
             const msg = `Worker creation failed: ${createErr?.message}`;
             logger.error(`[agent] spawn_subagent: ${msg}`);
