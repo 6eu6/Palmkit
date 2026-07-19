@@ -1367,7 +1367,7 @@ export async function runOrchestratedBuild(
        * Kept above the typical install by resetting on tool parts too
        * (every fullStream part refreshes lastChunkAt).
        */
-      const STALL_TIMEOUT_MS = 240_000; // 4 min — reasoning is off, model streams continuously. 4 min = truly stuck.
+      const STALL_TIMEOUT_MS = 600_000; // 10 min — model generates large write_files calls (12+ files, 50KB+) without streaming intermediate chunks. AI SDK buffers tool-call args.
       let lastChunkAt = Date.now();
       let stalled = false;
       let toolExecuting = false; // true while a tool (esp. spawn_subagent) runs — pauses stall watchdog
