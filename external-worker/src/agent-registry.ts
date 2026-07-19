@@ -174,8 +174,8 @@ Ship working code. Nothing else matters.`,
     'done',
     // spawn_subagent REMOVED — direct writing is faster and more reliable
   ],
-  maxSteps: 300,
-  maxTokens: 64000,
+  maxSteps: 1, // RADICAL: one tool call per LLM invocation — mirrors Z.ai Code's request-response loop. Orchestrator manages the multi-step flow.
+  maxTokens: 16000, // reduced from 64K — one step doesn't need huge context
 };
 
 /**

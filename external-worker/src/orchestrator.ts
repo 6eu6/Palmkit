@@ -554,7 +554,7 @@ export async function runOrchestratedBuild(
    * blunt "stop planning, write the files now" directive.
    */
   let builderEmptyRetries = 0;
-  const MAX_BUILDER_EMPTY_RETRIES = 10; // Was 6 — need more phases for 40+ file projects
+  const MAX_BUILDER_EMPTY_RETRIES = 100; // Was 10 — with maxSteps=1, each retry is ONE tool call (like Z.ai Code's request-response loop)
   let forceBuild = false;
   let incompleteBuild = false; // Vite build finished but is missing scaffolding (e.g. package.json)
 
@@ -1358,7 +1358,7 @@ export async function runOrchestratedBuild(
        * Kept above the typical install by resetting on tool parts too
        * (every fullStream part refreshes lastChunkAt).
        */
-      const STALL_TIMEOUT_MS = 240_000; // 4 min — catches model stalls fast.
+      const STALL_TIMEOUT_MS = 120_000; // 2 min — with maxSteps=1, each call should be fast. 2 min = model stuck.
       let lastChunkAt = Date.now();
       let stalled = false;
       let toolExecuting = false; // true while a tool (esp. spawn_subagent) runs — pauses stall watchdog
@@ -1380,7 +1380,7 @@ export async function runOrchestratedBuild(
        * - Tool-call watchdog: catches ACTIVE-but-unproductive streams (reasoning
        *   without action)
        */
-      const TOOL_CALL_TIMEOUT_MS = 300_000; // 5 min without a tool call = stuck in reasoning (was 3 min, too aggressive for large file generation)
+      const TOOL_CALL_TIMEOUT_MS = 120_000; // 2 min — with maxSteps=1, each LLM call should produce a tool call quickly
       let lastToolCallAt = Date.now();
 
       const stallTimer = setInterval(() => {
@@ -1922,8 +1922,9 @@ export async function runOrchestratedBuild(
        * check still requires fileCount > 0.
        */
       const madeToolCalls = (steps?.length ?? 0) > 0;
-      const agentSuccess =
-        finishReason !== 'error' && finishReason !== 'length' && (finishReason !== 'tool-calls' || madeToolCalls);
+      // With maxSteps=1, finishReason='tool-calls' is EXPECTED (model made one tool call).
+      // Only 'error' and 'length' are real failures for individual steps.
+      const agentSuccess = finishReason !== 'error' && finishReason !== 'length';
 
       if (finishReason === 'length') {
         logger.warn(
@@ -2130,6 +2131,34 @@ export async function runOrchestratedBuild(
         `✅ ${config.name} agent completed (${(agentDuration / 1000).toFixed(1)}s)`,
         { agent: config.name, role, durationMs: agentDuration, success: agentSuccess },
       );
+
+      /*
+       * ═══════════════════════════════════════════════════════════════════
+       * RADICAL FIX: maxSteps=1 → re-queue on every tool call
+       *
+       * With maxSteps=1, each LLM call produces ONE tool call, then the
+       * stream ends with finishReason='tool-calls'. This is EXPECTED —
+       * it's how Z.ai Code works (one tool per LLM invocation, orchestrator
+       * manages the loop).
+       *
+       * The session already has the tool call + result saved (line 2037-2053).
+       * Re-queuing the brain agent will load that session and the model will
+       * see the result and decide the next action.
+       *
+       * This eliminates:
+       * - Reasoning loops (each call is ONE action, not 300)
+       * - Context bloat (session managed between calls)
+       * - Stalls (each call is quick — seconds, not minutes)
+       * ═══════════════════════════════════════════════════════════════════
+       */
+      if (role === 'brain' && !getDoneSummary(jobId) && finishReason === 'tool-calls' && builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES) {
+        builderEmptyRetries++;
+        logger.info(
+          `[orchestrator] maxSteps=1 loop: model made tool call, re-queuing brain (iteration ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES})`,
+        );
+        agentQueue.unshift('brain');
+        continue;
+      }
 
       /*
        * ═══════════════════════════════════════════════════════════════════
