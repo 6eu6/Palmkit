@@ -3133,16 +3133,13 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
           let worker: any;
           try {
             // Use the path string (Bun's Worker accepts file paths directly)
-            // URL pattern was causing issues — stick with the verified path
             const workerPath = workerScript;
             logger.info(`[agent] spawn_subagent: creating Worker with path ${workerPath}`);
+
+            // Bun's Worker from worker_threads — minimal options for compatibility
             worker = new Worker(workerPath, {
               workerData: taskData,
-              // Pass env explicitly so the Worker has everything it needs
               env: { ...process.env, ...taskData } as any,
-              // Capture stdout/stderr from the Worker
-              stdout: true,
-              stderr: true,
             });
             logger.info(`[agent] spawn_subagent: Worker created, threadId=${worker.threadId}`);
 
@@ -3150,27 +3147,6 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             emitEvent(supabase, jobId, 'file_chunk', `✅ Worker created (threadId=${worker.threadId})`, {
               agent: 'Brain', kind: 'subagent_debug', threadId: worker.threadId, workerPath,
             }).catch(() => {});
-
-            // Capture Worker stderr — this is where console.error goes
-            worker.stderr?.on('data', (data: Buffer) => {
-              const text = data.toString().trim();
-              if (text) {
-                logger.info(`[sub-agent-stderr] ${text.slice(0, 300)}`);
-                emitEvent(supabase, jobId, 'file_chunk', `📋 [worker] ${text.slice(0, 200)}`, {
-                  agent: 'Brain', kind: 'subagent_debug', stderr: text.slice(0, 500),
-                }).catch(() => {});
-              }
-            });
-
-            worker.stdout?.on('data', (data: Buffer) => {
-              const text = data.toString().trim();
-              if (text) {
-                logger.info(`[sub-agent-stdout] ${text.slice(0, 300)}`);
-                emitEvent(supabase, jobId, 'file_chunk', `📋 [worker-out] ${text.slice(0, 200)}`, {
-                  agent: 'Brain', kind: 'subagent_debug', stdout: text.slice(0, 500),
-                }).catch(() => {});
-              }
-            });
 
           } catch (createErr: any) {
             const msg = `Worker creation failed: ${createErr?.message}`;
