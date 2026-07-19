@@ -308,6 +308,7 @@ export async function runInE2B(
      */
     const isInstallCommand = /^(npm|pnpm|yarn|bunx|npx)\s+(install|i|add|ci|playwright install)/.test(command.trim());
     const isDevCommand = /npm\s+run\s+dev|npm\s+run\s+start|vite\s*$|vite\s+--host/.test(command.trim());
+    const isBuildCommand = /npm\s+run\s+build|vite\s+build|tsc|next\s+build/.test(command.trim());
 
     /*
      * Timeout strategy:
@@ -317,7 +318,7 @@ export async function runInE2B(
      *   Tester's screenshot step
      * - other commands: 3 minutes
      */
-    const timeoutMs = isDevCommand ? 900_000 : isInstallCommand ? 600_000 : 180_000;
+    const timeoutMs = isDevCommand ? 900_000 : isInstallCommand ? 600_000 : isBuildCommand ? 600_000 : 180_000;
 
     let result;
 
