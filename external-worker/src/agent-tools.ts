@@ -3107,9 +3107,27 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
           ).catch(() => {});
 
           // Dynamic import of the sub-agent function
-          const { runInWorkerThread } = await import('./sub-agent-worker');
+          let runInWorkerThread: any;
+          try {
+            const mod = await import('./sub-agent-worker');
+            runInWorkerThread = mod.runInWorkerThread;
+            logger.info(`[agent] spawn_subagent: imported sub-agent-worker successfully`);
+            await emitEvent(supabase, jobId, 'file_chunk',
+              `✅ Sub-agent module imported successfully`,
+              { agent: 'Brain', kind: 'subagent_debug', import: 'success' }
+            ).catch(() => {});
+          } catch (importErr: any) {
+            const msg = `Failed to import sub-agent-worker: ${importErr?.message}`;
+            logger.error(`[agent] spawn_subagent: ${msg}`);
+            await emitEvent(supabase, jobId, 'file_chunk',
+              `❌ ${msg}`,
+              { agent: 'Brain', kind: 'subagent_error', error: msg, stack: importErr?.stack }
+            ).catch(() => {});
+            return { ok: false, task, error: msg, message: `Sub-agent import failed: ${msg}. Write the files YOURSELF using write_files.` };
+          }
 
           // Promise.race: sub-agent vs 5-min timeout
+          logger.info(`[agent] spawn_subagent: starting runInWorkerThread with Promise.race`);
           const subAgentPromise = runInWorkerThread(taskData as any);
 
           const timeoutPromise = new Promise<any>((resolve) => {
