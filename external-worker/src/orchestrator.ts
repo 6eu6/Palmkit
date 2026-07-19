@@ -2153,9 +2153,40 @@ export async function runOrchestratedBuild(
        */
       if (role === 'brain' && !getDoneSummary(jobId) && finishReason === 'tool-calls' && builderEmptyRetries < MAX_BUILDER_EMPTY_RETRIES) {
         builderEmptyRetries++;
-        logger.info(
-          `[orchestrator] maxSteps=1 loop: model made tool call, re-queuing brain (iteration ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES})`,
+
+        /*
+         * CONTINUATION PROMPT — inject context so the model knows what to do next.
+         * Without this, the model re-reads the same files in a loop.
+         * With this, the model sees: "You have N files: [list]. What's next?"
+         *
+         * This is how Z.ai Code works: each tool call returns a result, and
+         * the next LLM call sees that result in context. The model ALWAYS
+         * knows what just happened and what to do next.
+         */
+        const loopFiles = getProjectFiles(jobId) as Record<string, string>;
+        const loopFileCount = Object.keys(loopFiles).length;
+        const loopFileList = Object.keys(loopFiles).sort().join(', ');
+
+        // Check if model has been ONLY reading (no new files in last 3 iterations)
+        const recentSteps = (await streamResult.steps) ?? [];
+        const lastStepTools = recentSteps.flatMap((s: any) =>
+          (s?.toolCalls ?? []).map((tc: any) => tc?.toolName).filter(Boolean)
         );
+        const onlyReading = lastStepTools.every((name: string) => name === 'read_file' || name === 'list_files' || name === 'update_todos');
+
+        if (onlyReading && loopFileCount > 0) {
+          // Model is stuck in read loop — inject direct action prompt
+          forceBuild = true;
+          incompleteBuild = true;
+          logger.info(
+            `[orchestrator] maxSteps=1 loop: model stuck reading, injecting action prompt (iteration ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}, ${loopFileCount} files)`,
+          );
+        } else {
+          logger.info(
+            `[orchestrator] maxSteps=1 loop: model made tool call, re-queuing brain (iteration ${builderEmptyRetries}/${MAX_BUILDER_EMPTY_RETRIES}, ${loopFileCount} files)`,
+          );
+        }
+
         agentQueue.unshift('brain');
         continue;
       }
