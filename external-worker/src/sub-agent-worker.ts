@@ -77,20 +77,26 @@ export async function runInWorkerThread(msg: SubAgentMessage): Promise<SubAgentR
 
   // Local seq counter — must stay within integer range (< 2^31)
   // Date.now() overflows PostgreSQL integer (max 2^31-1), causing silent INSERT failures
-  let localSeq = 0;
+  // Use a counter starting at 100000 to avoid collision with parent's seq (0, 1, 2, ...)
+  let localSeq = 100000;
   const nextSeq = () => ++localSeq;
 
   // Debug helper — emit events to Supabase so we can monitor the Worker remotely
   const debug = async (message: string, payload?: any) => {
     try {
-      await supabase.from('job_events').insert({
+      const { error } = await supabase.from('job_events').insert({
         job_id: jobId,
         type: 'file_chunk',
         seq: nextSeq(),
         message: `[sub-agent] ${message.slice(0, 200)}`,
-        payload: { source: 'sub-agent', ...payload },
+        payload: { source: 'sub-agent', agent: 'Brain', ...payload },
       });
-    } catch {}
+      if (error) {
+        console.error(`[sub-agent] debug insert failed: ${error.message} (seq=${localSeq})`);
+      }
+    } catch (e: any) {
+      console.error(`[sub-agent] debug exception: ${e?.message}`);
+    }
   };
 
   await debug(`Worker started: ${task.slice(0, 80)}`, { provider, modelName });
@@ -116,13 +122,16 @@ export async function runInWorkerThread(msg: SubAgentMessage): Promise<SubAgentR
         mime_type: 'text/plain', storage_provider: 'r2', storage_key: r2Key, integrity: 'complete',
       });
 
-      // Event — use small seq (counter) instead of Date.now() which overflows integer
+      // Event — use nextSeq() counter, add agent: 'Brain' so frontend displays it
       const lines = content.split('\n').length;
-      await supabase.from('job_events').insert({
+      const { error: evErr } = await supabase.from('job_events').insert({
         job_id: jobId, type: 'file_written', seq: nextSeq(),
         message: `[sub-agent] ${path} (${lines} lines)`,
-        payload: { filePath: path, lines, size: content.length, source: 'sub-agent' },
+        payload: { filePath: path, lines, size: content.length, source: 'sub-agent', agent: 'Brain' },
       });
+      if (evErr) {
+        console.error(`[sub-agent] file_written insert failed for ${path}: ${evErr.message}`);
+      }
 
       // Self-verify
       const readBack = await getFileText(r2Key);
