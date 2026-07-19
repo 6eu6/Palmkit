@@ -345,8 +345,8 @@ ACT FAST. WRITE FILES. RETURN.`;
     });
 
     // Wait for streamText to produce files
-    // 3 min gives model enough time to reason about complex backend architecture
-    const maxWaitMs = 180_000; // 3 min (balanced: enough for reasoning, not too long)
+    // 4 min gives model enough time for complex backend reasoning + writing
+    const maxWaitMs = 240_000; // 4 min
     const pollIntervalMs = 2_000;
     const startTime = Date.now();
     let lastFileCount = 0;
