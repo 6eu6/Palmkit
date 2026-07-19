@@ -326,7 +326,7 @@ ACT FAST. WRITE FILES. RETURN.`;
       system: systemPrompt,
       prompt: task,
       tools: subTools as any,
-      maxSteps: 15,           // Enough for 7 files: 1 plan + 7 writes + buffer
+      maxSteps: 3,            // FORCE immediate action: 1 reasoning + 1 write_files + 1 summary
       maxTokens: 16000,       // 7 files × 200 lines = ~14K tokens, 16K gives headroom
       temperature: 0.3,
       abortSignal: abortController.signal,
