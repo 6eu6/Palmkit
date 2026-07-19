@@ -106,7 +106,10 @@ export const BRAIN_CONFIG: AgentConfig = {
 # HOW YOU WORK
 
 1. Plan briefly with update_todos (1 call, then move on)
-2. Write ALL files in ONE write_files call — config, entry points, components, everything
+2. Write files in batches of 3-5 per write_files call (NOT all at once)
+   - Batch 1: config files (package.json, vite.config.js, tailwind.config.js, index.html)
+   - Batch 2: entry files (src/main.jsx, src/App.jsx, src/index.css)
+   - Batch 3: components (src/components/*.jsx, 3-5 per call)
 3. Run npm install && npm run build to verify
 4. If build fails, read the error, fix the file, rebuild
 5. Call done() when the build passes
