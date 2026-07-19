@@ -3098,19 +3098,10 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             try { if (fs.existsSync(p)) { workerScript = p; break; } } catch {}
           }
 
-          // ALSO try new URL pattern — Bun's recommended way for Workers
-          // This handles the case where __dirname doesn't resolve correctly
-          let workerUrl: URL | undefined;
-          try {
-            workerUrl = new URL('./sub-agent-thread.ts', import.meta.url);
-          } catch {}
-
-          logger.info(`[agent] spawn_subagent: Worker script = ${workerScript}, URL = ${workerUrl?.href || 'n/a'}`);
-
           // Emit the chosen script path for remote debugging
           await emitEvent(supabase, jobId, 'file_chunk',
-            `🔧 Worker script: ${workerScript}${workerUrl ? ` (URL: ${workerUrl.href})` : ''}`,
-            { agent: 'Brain', kind: 'subagent_debug', workerScript, workerUrl: workerUrl?.href }
+            `🔧 Worker script: ${workerScript}`,
+            { agent: 'Brain', kind: 'subagent_debug', workerScript }
           ).catch(() => {});
 
           // Task data passed via workerData (no temp files, no IPC complexity)
@@ -3155,8 +3146,8 @@ tail -3 /tmp/vision-setup.log 2>/dev/null | sed 's/^/SETUP_LOG:/'
             });
             logger.info(`[agent] spawn_subagent: Worker created, threadId=${worker.threadId}`);
 
-            // Emit success IMMEDIATELY (before attaching listeners)
-            await emitEvent(supabase, jobId, 'file_chunk', `✅ Worker created (threadId=${worker.threadId})`, {
+            // Emit success — fire and forget (don't block on this)
+            emitEvent(supabase, jobId, 'file_chunk', `✅ Worker created (threadId=${worker.threadId})`, {
               agent: 'Brain', kind: 'subagent_debug', threadId: worker.threadId, workerPath,
             }).catch(() => {});
 
