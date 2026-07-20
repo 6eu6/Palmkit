@@ -152,6 +152,8 @@
   color: var(--lk-fg);
   font-family: 'Boska', 'Inter', system-ui, -apple-system, sans-serif;
   min-height: 100dvh;
+  position: relative;
+  isolation: isolate;
 }
 .lk-root * {
   box-sizing: border-box;
