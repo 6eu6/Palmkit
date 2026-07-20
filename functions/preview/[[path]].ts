@@ -58,14 +58,59 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   if (isOracle) {
     const [, projectId] = session.split(':');
     /*
-     * Forward /preview/* → Oracle nginx /preview-dist/{projectId}/*
-     * Strip the /preview/ prefix since Oracle serves from /preview-dist/{id}/
-     * For the root /preview/ path, serve index.html.
+     * PREBUILT PREVIEW — serve dist files from R2 (Cloudflare object storage).
+     * 
+     * The Oracle worker builds the project locally and uploads dist/ to R2
+     * under the prefix projects/{projectId}/dist/. We serve these directly
+     * from R2 via the S3 API, bypassing the need to connect to Oracle's IP.
+     * 
+     * This avoids Cloudflare Workers' restriction on direct IP access.
      */
     const subPath = url.pathname.replace(/^\/preview\/?/, '') || 'index.html';
-    const oracleTarget = `http://130.61.131.77/preview-dist/${projectId}/${subPath}${url.search}`;
+    
+    // R2 config from env
+    const R2_ACCOUNT_ID = (context.env as Record<string, string>)?.R2_ACCOUNT_ID || 
+      (context.env as Record<string, string>)?.VITE_R2_ACCOUNT_ID || '';
+    const R2_ACCESS_KEY = (context.env as Record<string, string>)?.R2_ACCESS_KEY_ID || '';
+    const R2_SECRET_KEY = (context.env as Record<string, string>)?.R2_SECRET_ACCESS_KEY || '';
+    const R2_BUCKET = (context.env as Record<string, string>)?.R2_BUCKET || 'palmkit-files';
 
+    if (R2_ACCOUNT_ID && R2_ACCESS_KEY && R2_SECRET_KEY) {
+      try {
+        // Direct R2 URL for public access
+        const r2Url = `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${R2_BUCKET}/projects/${projectId}/dist/${subPath}`;
+        const r2Resp = await fetch(r2Url, { redirect: 'manual' });
+        
+        if (r2Resp.status === 200) {
+          const headers = new Headers();
+          r2Resp.headers.forEach((value, key) => {
+            if (!HOP_BY_HOP.has(key.toLowerCase())) {
+              headers.set(key, value);
+            }
+          });
+          
+          const contentType = r2Resp.headers.get('content-type') || '';
+          if (contentType.includes('text/html')) {
+            let html = await r2Resp.text();
+            const tag = '<script src="/inspector-script.js"></script>';
+            if (html.includes('</head>')) {
+              html = html.replace('</head>', `${tag}</head>`);
+            } else {
+              html = `${tag}${html}`;
+            }
+            return new Response(html, { status: 200, headers });
+          }
+          
+          return new Response(r2Resp.body, { status: 200, headers });
+        }
+      } catch {
+        // R2 fetch failed, fall through
+      }
+    }
+
+    // Fallback: try Oracle via hostname if DNS is set up
     try {
+      const oracleTarget = `http://130.61.131.77/preview-dist/${projectId}/${subPath}${url.search}`;
       const oracleResp = await fetch(oracleTarget, {
         method: request.method,
         headers: { 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' },
@@ -93,7 +138,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
       return new Response(oracleResp.body, { status: oracleResp.status, headers });
     } catch {
-      return new Response('Oracle preview server unreachable', { status: 502 });
+      return new Response('Preview server unreachable', { status: 502 });
     }
   }
 
