@@ -1390,7 +1390,84 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
     logger.info(`Job ${job.id}: upload complete → ${manifestEntries.length} files in R2`);
 
-    // ─── Phase 5: FINALIZE ─────────────────────────────────────────────
+    // ─── Phase 4.5: LOCAL BUILD (on Oracle, not E2B) ──────────────────────
+    //
+    // ROOT FIX: E2B sandbox has ~478MB RAM → OOM on complex React projects
+    // during npm install. Oracle has 5.5GB RAM + 4GB swap → builds succeed.
+    // We build here on Oracle, upload dist/ to R2, and mark the job as having
+    // a prebuilt static preview. The frontend then serves the prebuilt files
+    // instead of launching an E2B sandbox (which would OOM again).
+    //
+    let localBuildResult: import('./local-build').LocalBuildResult | undefined;
+
+    if (result?.appType && result.appType !== 'static') {
+      await updateJobProgress(supabase, job.id, 80, 'local_build');
+
+      try {
+        const { buildLocally } = await import('./local-build');
+        localBuildResult = await buildLocally(projectId, result.appType);
+
+        if (localBuildResult.success && localBuildResult.distFiles.length > 0) {
+          logger.info(
+            `Job ${job.id}: local build SUCCESS → ${localBuildResult.distFiles.length} dist files uploaded to R2`,
+          );
+
+          await emitEvent(
+            supabase,
+            job.id,
+            'file_chunk',
+            `✅ Pre-built preview ready (${localBuildResult.distFiles.length} files)`,
+            { kind: 'local_build_success', distFileCount: localBuildResult.distFiles.length },
+          );
+        } else {
+          logger.warn(
+            `Job ${job.id}: local build produced no dist files — E2B preview will be used as fallback`,
+          );
+
+          if (localBuildResult.errors) {
+            logger.warn(`Job ${job.id}: local build errors: ${localBuildResult.errors.slice(0, 200)}`);
+          }
+        }
+      } catch (localBuildErr) {
+        // Non-fatal — the source files are still in R2 and the E2B preview
+        // can be attempted (though it may OOM for complex projects)
+        logger.warn(`Job ${job.id}: local build failed (non-fatal): ${localBuildErr}`);
+      }
+    }
+
+    // ─── 
+    // --- Phase 4.6: UPLOAD DIST TO SUPABASE STORAGE ---
+    let supabasePreviewUrl: string | undefined;
+    if (localBuildResult?.success && localBuildResult.distFiles.length > 0) {
+      try {
+        const supabase = createClient(
+          process.env.SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        );
+        await supabase.storage.updateBucket('palmkit-files', { public: true }).catch(() => {});
+        for (const distFile of localBuildResult.distFiles) {
+          const sbKey = `projects/${projectId}/dist/${distFile.path}`;
+          const ext = distFile.path.substring(distFile.path.lastIndexOf('.'));
+          const contentTypes: Record<string, string> = {
+            '.html': 'text/html; charset=utf-8',
+            '.js': 'text/javascript; charset=utf-8',
+            '.css': 'text/css; charset=utf-8',
+          };
+          await supabase.storage.from('palmkit-files').upload(sbKey, distFile.content, {
+            upsert: true,
+            contentType: contentTypes[ext] || 'application/octet-stream',
+            cacheControl: 'no-cache',
+          });
+        }
+        const supabaseUrl = process.env.SUPABASE_URL!;
+        supabasePreviewUrl = `${supabaseUrl}/storage/v1/object/public/palmkit-files/projects/${projectId}/dist/index.html`;
+        logger.info(`Job ${job.id}: Uploaded dist to Supabase Storage`);
+      } catch (sbErr) {
+        logger.warn(`Job ${job.id}: Supabase upload failed (non-fatal): ${sbErr}`);
+      }
+    }
+
+Phase 5: FINALIZE ─────────────────────────────────────────────
     // RADICAL FIX: Only mark as ready_for_preview if the build actually passed.
     // If npm run build failed (buildVerified=false), mark as failed_clean
     // but still save the files so the user can view/edit them.
@@ -1446,6 +1523,18 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           ...(editJobId ? { editJobId } : {}),
           ...(contextPressure ? { contextPressure } : {}),
           buildVerified: true,
+          // Pre-built static preview info — the frontend uses this to decide
+          // whether to launch E2B (which may OOM) or serve from R2 directly.
+          ...(localBuildResult?.success && localBuildResult.distFiles.length > 0
+            ? {
+                hasPrebuiltPreview: true,
+                distFileCount: localBuildResult.distFiles.length,
+                distPrefix: `projects/${projectId}/dist/`,
+                previewUrl: supabasePreviewUrl || `https://blacks-drawing-dallas-interface.trycloudflare.com/preview-dist/${projectId}/`,
+                previewType: 'static',
+                supabasePreviewUrl,
+              }
+            : {}),
         },
         updated_at: new Date().toISOString(),
       })
@@ -1471,3 +1560,4 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
     await failJob(supabase, job.id, err.message ?? 'Unknown error');
   }
 }
+

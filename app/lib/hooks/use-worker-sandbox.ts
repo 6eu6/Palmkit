@@ -240,12 +240,39 @@ export function useWorkerSandbox(): WorkerSandboxResult {
     launchRef.current = true;
     setSandboxError(undefined);
 
-    // Reuse the sandbox we prewarmed for THIS job, if any.
-    const jobKey = activeBuildJobIdStore.get() ?? undefined;
-    const prewarmedId = jobKey && prewarm.current?.jobKey === jobKey ? prewarm.current.id : undefined;
-
     try {
+      /*
+       * PREBUILT PREVIEW — if the Oracle worker built the project locally
+       * (hasPrebuiltPreview: true, previewUrl set), serve the preview directly
+       * from Oracle's nginx via the same-origin proxy. No E2B sandbox needed,
+       * so npm install OOM (478MB RAM limit) is completely bypassed.
+       */
+      const jobData = (buildStatusStore.get() as any)._jobValidationResult;
+      const hasPrebuiltPreview = jobData?.hasPrebuiltPreview === true;
+      const previewUrl = jobData?.previewUrl as string | undefined;
+
+      if (hasPrebuiltPreview && previewUrl) {
+        // Extract projectId from the previewUrl (http://130.61.131.77/preview-dist/{projectId}/)
+        const projectIdMatch = previewUrl.match(/preview-dist\/(\d+)/);
+        const projectId = projectIdMatch?.[1];
+
+        if (projectId) {
+          // Set the cookie so the proxy forwards to Oracle instead of E2B
+          if (typeof document !== 'undefined') {
+            document.cookie = `pf_preview=oracle:${projectId}:${currentChatId()}; path=/; samesite=lax`;
+          }
+          setSandboxUrl(`${window.location.origin}/preview/`);
+          setSandboxState('ready');
+          setUsesMobileE2B(false);
+          console.log('[worker-sandbox] using prebuilt preview from Oracle for project', projectId);
+          return;
+        }
+      }
+
+      // Fallback to E2B sandbox
       setUsesMobileE2B(true);
+      const jobKey = activeBuildJobIdStore.get() ?? undefined;
+      const prewarmedId = jobKey && prewarm.current?.jobKey === jobKey ? prewarm.current.id : undefined;
       await _runInE2B(files, type, setSandboxState, setSandboxUrl, setSandboxError, prewarmedId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

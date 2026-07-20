@@ -146,6 +146,27 @@ strict-ssl=false
     }
 
     /*
+     * SWAP + OVERCOMMIT — create swap space and set overcommit before any npm install.
+     * The E2B sandbox has 478MB RAM and NO swap by default. npm install for complex
+     * React projects needs ~600MB+ which causes OOM. Adding 1GB swap + overcommit=1
+     * allows npm install to succeed without running out of virtual memory.
+     */
+    try {
+      const memSetup = `
+sudo sysctl -w vm.overcommit_memory=1 2>/dev/null;
+sudo fallocate -l 1G /swapfile 2>/dev/null;
+sudo chmod 600 /swapfile 2>/dev/null;
+sudo mkswap /swapfile 2>/dev/null;
+sudo swapon /swapfile 2>/dev/null;
+echo "Swap setup done: $(free -h | head -2)" > /tmp/swap-setup.log 2>&1
+`;
+      await sandbox.commands.run(memSetup, { timeoutMs: 15_000 });
+      logger.info(`[e2b] job ${jobId}: swap + overcommit configured`);
+    } catch (e) {
+      logger.warn(`[e2b] job ${jobId}: swap setup failed (non-fatal): ${e}`);
+    }
+
+    /*
      * VISION WARM-UP — prepare the screenshot stack in the BACKGROUND right
      * at sandbox creation, so it is ready by the time the agent asks for a
      * screenshot (typically 2-4 min later, after write + install + build).
@@ -307,6 +328,12 @@ export async function runInE2B(
      * budget for the first run.
      */
     const isInstallCommand = /^(npm|pnpm|yarn|bunx|npx)\s+(install|i|add|ci|playwright install)/.test(command.trim());
+
+    // Prepend NODE_OPTIONS for install commands to limit V8 heap in 478MB sandbox
+    let actualCommand = command;
+    if (isInstallCommand && !command.includes('NODE_OPTIONS')) {
+      actualCommand = 'NODE_OPTIONS="--max-old-space-size=384" ' + command;
+    }
     const isDevCommand = /npm\s+run\s+dev|npm\s+run\s+start|vite\s*$|vite\s+--host/.test(command.trim());
     const isBuildCommand = /npm\s+run\s+build|vite\s+build|tsc|next\s+build/.test(command.trim());
 
@@ -341,7 +368,7 @@ export async function runInE2B(
        * We also strip the trailing `&` (we add our own) and wrap with
        * `sh -c` to handle compound commands safely.
        */
-      const bgCommand = command
+      const bgCommand = actualCommand
         .replace(/^cd\s+\S+\s*&&\s*/, '')  // strip leading "cd /path && "
         .replace(/&\s*$/, '')               // strip trailing &
         .trim();
@@ -351,7 +378,7 @@ export async function runInE2B(
       result = await entry.sandbox.commands.run(wrappedCmd, { cwd: PROJECT_DIR, timeoutMs: 30_000 });
       logger.info(`[e2b] job ${jobId}: dev server (background): "${command.slice(0, 60)}" → exit ${result.exitCode}`);
     } else {
-      result = await entry.sandbox.commands.run(command, { cwd: PROJECT_DIR, timeoutMs });
+      result = await entry.sandbox.commands.run(actualCommand, { cwd: PROJECT_DIR, timeoutMs });
       logger.info(`[e2b] job ${jobId}: "${command.slice(0, 80)}" → exit ${result.exitCode}`);
     }
 
