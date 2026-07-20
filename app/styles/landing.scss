@@ -25,6 +25,7 @@
   --lk-bg: #16120c;
   --lk-bg-raw: 22 18 12;
   --lk-fg: #ECE4D4;
+  --lk-fg-raw: 236 228 212;
   --lk-accent: #D8825C;
   --lk-accent-soft: #B06A4E;
   --lk-accent-fg: #16120c;
@@ -38,6 +39,7 @@
   --lk-bg: #E7E0D2;
   --lk-bg-raw: 231 224 210;
   --lk-fg: #221E16;
+  --lk-fg-raw: 34 30 22;
   --lk-accent: #9C4A2E;
   --lk-accent-soft: #C27A5E;
   --lk-accent-fg: #FBF7EE;
@@ -228,5 +230,38 @@
   .lk-ham span,
   .lk-menu {
     transition-duration: 0.01s !important;
+  }
+}
+
+/* ════════ Theme toggle — Circle Spread (View Transitions API) ════════
+   When the user clicks the dark/light toggle, the new theme reveals
+   as an expanding circle originating from the button's position.
+   Requires `document.startViewTransition()` in the click handler,
+   which sets --lk-tx / --lk-ty CSS vars to the click coordinates.
+   Fallback: browsers without View Transitions just swap instantly. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-old(root) {
+  z-index: 0;
+}
+::view-transition-new(root) {
+  z-index: 1;
+  animation: lk-theme-circle 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes lk-theme-circle {
+  from {
+    clip-path: circle(0% at var(--lk-tx, 50%) var(--lk-ty, 50%));
+  }
+  to {
+    clip-path: circle(150% at var(--lk-tx, 50%) var(--lk-ty, 50%));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
   }
 }

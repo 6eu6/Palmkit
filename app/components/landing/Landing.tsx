@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Link } from '@remix-run/react';
 import { LandingPromptBox } from './LandingPromptBox';
 
@@ -44,19 +45,50 @@ function useLandingTheme(): [Theme, () => void] {
     }
   }, []);
 
-  const toggle = () => {
-    setTheme((prev) => {
-      const next: Theme = prev === 'dark' ? 'light' : 'dark';
+  /*
+   * Circle-spread theme toggle — uses the View Transitions API to
+   * animate the new theme as an expanding circle originating from
+   * the click point. Falls back to an instant swap in browsers
+   * without View Transitions support.
+   */
+  const toggle = useCallback((event?: { clientX: number; clientY: number }) => {
+    const x = event?.clientX ?? window.innerWidth / 2;
+    const y = event?.clientY ?? 0;
 
-      try {
-        localStorage.setItem('palmkit-landing-theme', next);
-      } catch {
-        /* noop */
-      }
+    try {
+      document.documentElement.style.setProperty('--lk-tx', `${x}px`);
+      document.documentElement.style.setProperty('--lk-ty', `${y}px`);
+    } catch {
+      /* noop */
+    }
 
-      return next;
+    const apply = () => {
+      setTheme((prev) => {
+        const next: Theme = prev === 'dark' ? 'light' : 'dark';
+
+        try {
+          localStorage.setItem('palmkit-landing-theme', next);
+        } catch {
+          /* noop */
+        }
+
+        return next;
+      });
+    };
+
+    const doc = document as Document & {
+      startViewTransition?: (cb: () => void) => { finished: Promise<void> };
+    };
+
+    if (typeof doc.startViewTransition !== 'function') {
+      apply();
+      return;
+    }
+
+    doc.startViewTransition(() => {
+      flushSync(apply);
     });
-  };
+  }, []);
 
   return [theme, toggle];
 }
@@ -68,10 +100,10 @@ export function Landing() {
   return (
     <div
       data-landing-theme={theme}
-      className="lk-root lk-grain flex min-h-[100dvh] flex-col overflow-x-hidden"
+      className="lk-root flex min-h-[100dvh] flex-col overflow-x-hidden"
       style={{ background: 'var(--lk-bg)', color: 'var(--lk-fg)' }}
     >
-      <LandingNav isDark={isDark} onToggleTheme={toggleTheme} />
+      <LandingNav isDark={isDark} onToggleTheme={toggleTheme as (e?: { clientX: number; clientY: number }) => void} />
       <main className="flex-1">
         <Hero isDark={isDark} />
         <BuildFlow />
@@ -83,7 +115,13 @@ export function Landing() {
 
 /* ════════ Nav — hamburger menu (≡ → ✕) ════════ */
 
-function LandingNav({ isDark, onToggleTheme }: { isDark: boolean; onToggleTheme: () => void }) {
+function LandingNav({
+  isDark,
+  onToggleTheme,
+}: {
+  isDark: boolean;
+  onToggleTheme: (event?: { clientX: number; clientY: number }) => void;
+}) {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -162,7 +200,7 @@ function LandingNav({ isDark, onToggleTheme }: { isDark: boolean; onToggleTheme:
           <div className="flex items-center gap-1.5 sm:gap-2">
             <button
               type="button"
-              onClick={onToggleTheme}
+              onClick={(e) => onToggleTheme(e)}
               aria-label={isDark ? 'Switch to light' : 'Switch to dark'}
               className="grid h-8 w-8 place-items-center rounded-full transition-colors"
               style={{ color: 'var(--lk-fg)' }}
@@ -213,11 +251,17 @@ function LandingNav({ isDark, onToggleTheme }: { isDark: boolean; onToggleTheme:
           </div>
         </nav>
 
-        {/* dropdown menu — slides down from the nav pill */}
+        {/* dropdown menu — slides down from the nav pill, flush with
+            the header (no gap) so it reads as part of the nav itself */}
         <div
-          className={`lk-menu lk-glass absolute left-0 right-0 top-[calc(100%+10px)] rounded-3xl p-3${
+          className={`lk-menu lk-glass absolute left-0 right-0 top-[100%] rounded-b-3xl rounded-t-[1.4rem] p-3${
             menuOpen ? ' is-open' : ''
           }`}
+          style={{
+            borderTop: 'none',
+            boxShadow:
+              '0 20px 50px -20px rgb(var(--lk-glass-shadow) / 0.4), 0 2px 8px -4px rgb(var(--lk-glass-shadow) / 0.2)',
+          }}
           role="menu"
         >
           <ul className="flex flex-col">
@@ -360,10 +404,11 @@ function Hero({ isDark }: { isDark: boolean }) {
 /*
  * ════════ Build flow — the middle beat ════════
  *
- * PURE PAGE-BG: no bridge overlays. The belly is flat var(--lk-bg),
- * matching the hero's faded-out bottom and the footer's faded-in
- * top. Any color wash here would create a visible step at the
- * boundaries.
+ * PURE PAGE-BG: no bridge overlays, NO grain. The belly is flat
+ * var(--lk-bg), matching the hero's faded-out bottom and the footer's
+ * faded-in top. Grain would add a subtle brightness shift at the
+ * boundaries (screen in dark / multiply in light) that reads as a
+ * visible line against the pure page-bg above and below.
  */
 
 function BuildFlow() {
@@ -376,7 +421,7 @@ function BuildFlow() {
   return (
     <section
       id="build"
-      className="lk-grain relative w-full overflow-hidden px-4 pb-48 pt-16 sm:px-6 sm:pb-56 sm:pt-24"
+      className="relative w-full overflow-hidden px-4 pb-48 pt-16 sm:px-6 sm:pb-56 sm:pt-24"
       style={{ background: 'var(--lk-bg)' }}
     >
       <div className="relative mx-auto w-full max-w-6xl">
@@ -393,7 +438,7 @@ function BuildFlow() {
           </h2>
           <p
             className="mt-4 max-w-[52ch] text-[0.98rem] leading-relaxed sm:text-[1.05rem]"
-            style={{ color: 'rgb(var(--lk-bg-raw) / 0.8)' }}
+            style={{ color: 'rgb(var(--lk-fg-raw) / 0.7)' }}
           >
             Palmkit drafts the app, stands up a live preview you can poke at, and exports the code the moment
             you&rsquo;re happy. No setup, no boilerplate, no laptop required.
@@ -440,15 +485,15 @@ function BuildFlow() {
                 &ldquo;A habit tracker with streaks, a week view, and dark mode.&rdquo;
               </p>
               <div className="mt-6 space-y-1.5">
-                <p className="text-xs font-medium" style={{ color: 'rgb(var(--lk-bg-raw) / 0.8)' }}>
+                <p className="text-xs font-medium" style={{ color: 'rgb(var(--lk-fg-raw) / 0.7)' }}>
                   drafted in 4.2s
                 </p>
                 <div
                   className="rounded-lg border p-3 font-mono text-[0.78rem] leading-relaxed"
                   style={{
-                    borderColor: 'rgb(var(--lk-bg-raw) / 0.12)',
-                    background: 'rgb(var(--lk-bg-raw) / 0.06)',
-                    color: 'rgb(var(--lk-bg-raw) / 0.9)',
+                    borderColor: 'rgb(var(--lk-fg-raw) / 0.12)',
+                    background: 'rgb(var(--lk-fg-raw) / 0.04)',
+                    color: 'rgb(var(--lk-fg-raw) / 0.8)',
                   }}
                 >
                   <div className="font-semibold" style={{ color: 'var(--lk-fg)' }}>
@@ -471,7 +516,7 @@ function BuildFlow() {
                   <p className="lk-display text-base font-semibold" style={{ color: 'var(--lk-fg)' }}>
                     Today
                   </p>
-                  <p className="text-xs font-medium" style={{ color: 'rgb(var(--lk-bg-raw) / 0.8)' }}>
+                  <p className="text-xs font-medium" style={{ color: 'rgb(var(--lk-fg-raw) / 0.7)' }}>
                     3 of 3 in reach
                   </p>
                 </div>
@@ -554,7 +599,7 @@ function BuildFlow() {
             className="flex flex-wrap items-center justify-between gap-3 border-t px-5 py-3.5 sm:px-7"
             style={{ borderColor: 'rgb(var(--lk-bg-raw) / 0.1)' }}
           >
-            <span className="text-xs font-medium" style={{ color: 'rgb(var(--lk-bg-raw) / 0.8)' }}>
+            <span className="text-xs font-medium" style={{ color: 'rgb(var(--lk-fg-raw) / 0.7)' }}>
               Export as Next.js · React · or a single HTML file
             </span>
             <button
@@ -586,7 +631,7 @@ function BuildFlow() {
             <p className="lk-display text-[1.4rem] font-semibold tracking-tight" style={{ color: 'var(--lk-fg)' }}>
               Start from a sketch, not a blank page.
             </p>
-            <p className="mt-1.5 text-sm font-medium" style={{ color: 'rgb(var(--lk-bg-raw) / 0.8)' }}>
+            <p className="mt-1.5 text-sm font-medium" style={{ color: 'rgb(var(--lk-fg-raw) / 0.7)' }}>
               Twelve hand-built templates — dashboards, storefronts, journals, portfolios — ready to remix.
             </p>
           </div>
@@ -683,7 +728,7 @@ function FooterScene({ isDark }: { isDark: boolean }) {
     : '0 0 1px rgba(8,5,2,0.95), 0 1px 3px rgba(8,5,2,0.88), 0 2px 10px rgba(8,5,2,0.78), 0 3px 24px rgba(8,5,2,0.62), 0 0 44px rgba(8,5,2,0.42)';
 
   return (
-    <footer id="pricing" className="lk-grain relative w-full overflow-hidden" style={{ background: 'var(--lk-bg)' }}>
+    <footer id="pricing" className="relative w-full overflow-hidden" style={{ background: 'var(--lk-bg)' }}>
       {/* full-bleed landscape background — masked in (alpha fade) over the page bg */}
       <img
         src={gif}

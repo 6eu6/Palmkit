@@ -16,11 +16,7 @@ import { useCallback, useRef, useState, type KeyboardEvent } from 'react';
 /** sessionStorage key shared with Chat.client.tsx */
 export const PENDING_PROMPT_KEY = 'palmkit_pending_prompt';
 
-const SUGGESTIONS = [
-  'A habit tracker with streaks',
-  'A split-bill calculator',
-  'A recipe finder',
-];
+const SUGGESTIONS = ['A habit tracker with streaks', 'A split-bill calculator', 'A recipe finder'];
 
 export function LandingPromptBox({ variant = 'hero' }: { variant?: 'hero' | 'plain' }) {
   const navigate = useNavigate();
@@ -30,18 +26,22 @@ export function LandingPromptBox({ variant = 'hero' }: { variant?: 'hero' | 'pla
 
   const autosize = useCallback(() => {
     const el = textareaRef.current;
+
     if (!el) {
       return;
     }
+
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
   }, []);
 
   const submit = useCallback(() => {
     const trimmed = value.trim();
+
     if (!trimmed) {
       return;
     }
+
     try {
       sessionStorage.setItem(PENDING_PROMPT_KEY, trimmed);
     } catch {
@@ -125,7 +125,8 @@ type BoxProps = {
 };
 
 function HeroGlassBox(props: BoxProps) {
-  const { value, focused, canSend, textareaRef, onChange, onKeyDown, onFocus, onBlur, onSubmit, suggestions, onPick } = props;
+  const { value, focused, canSend, textareaRef, onChange, onKeyDown, onFocus, onBlur, onSubmit, suggestions, onPick } =
+    props;
 
   return (
     <div
@@ -134,20 +135,35 @@ function HeroGlassBox(props: BoxProps) {
     >
       {/* conversation area */}
       <div className="px-4 pt-3 pb-1.5 sm:px-5 sm:pt-4 sm:pb-2">
-        <div className="flex items-center gap-2 text-[0.7rem] sm:text-xs" style={{ color: 'rgb(var(--lk-bg-raw) / 0.6)' }}>
+        <div
+          className="flex items-center gap-2 text-[0.7rem] sm:text-xs"
+          style={{ color: 'rgb(var(--lk-fg-raw) / 0.55)' }}
+        >
           <span className="relative flex h-1.5 w-1.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" style={{ background: 'var(--lk-accent)' }} />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full" style={{ background: 'var(--lk-accent)' }} />
+            <span
+              className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60"
+              style={{ background: 'var(--lk-accent)' }}
+            />
+            <span
+              className="relative inline-flex h-1.5 w-1.5 rounded-full"
+              style={{ background: 'var(--lk-accent)' }}
+            />
           </span>
           Palmkit is ready
         </div>
-        <p className="lk-display mt-2.5 max-w-[34ch] text-[0.98rem] leading-snug sm:mt-3 sm:text-[1.05rem]" style={{ color: 'rgb(var(--lk-bg-raw) / 0.9)' }}>
+        <p
+          className="lk-display mt-2.5 max-w-[34ch] text-[0.98rem] leading-snug sm:mt-3 sm:text-[1.05rem]"
+          style={{ color: 'rgb(var(--lk-fg-raw) / 0.85)' }}
+        >
           Tell me what to build. I&rsquo;ll draft the app, preview it live, and hand you the code.
         </p>
       </div>
 
       {/* input row */}
-      <div className="relative m-1.5 mt-1 rounded-[1.1rem] border p-2 sm:rounded-[1.25rem] sm:p-2.5" style={{ borderColor: 'rgb(var(--lk-bg-raw) / 0.12)', background: 'rgb(var(--lk-bg-raw) / 0.04)' }}>
+      <div
+        className="relative m-1.5 mt-1 rounded-[1.1rem] border p-2 sm:rounded-[1.25rem] sm:p-2.5"
+        style={{ borderColor: 'rgb(var(--lk-fg-raw) / 0.12)', background: 'rgb(var(--lk-fg-raw) / 0.03)' }}
+      >
         <textarea
           ref={textareaRef}
           value={value}
@@ -169,7 +185,11 @@ function HeroGlassBox(props: BoxProps) {
                 type="button"
                 onClick={() => onPick(s)}
                 className="rounded-full border px-2.5 py-1 text-[0.68rem] leading-none transition-colors duration-200 sm:text-[0.72rem]"
-                style={{ borderColor: 'rgb(var(--lk-bg-raw) / 0.15)', color: 'rgb(var(--lk-bg-raw) / 0.6)', background: 'rgb(var(--lk-bg-raw) / 0.04)' }}
+                style={{
+                  borderColor: 'rgb(var(--lk-fg-raw) / 0.15)',
+                  color: 'rgb(var(--lk-fg-raw) / 0.55)',
+                  background: 'rgb(var(--lk-fg-raw) / 0.04)',
+                }}
               >
                 {s}
               </button>
@@ -189,7 +209,13 @@ function HeroGlassBox(props: BoxProps) {
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
               <path d="M4 12 L12 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-              <path d="M5 3.5 H12 V10.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+              <path
+                d="M5 3.5 H12 V10.5"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           </button>
         </div>
@@ -241,7 +267,13 @@ function PlainBox(props: BoxProps) {
         >
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden>
             <path d="M4 12 L12 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-            <path d="M5 3.5 H12 V10.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d="M5 3.5 H12 V10.5"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </button>
       </div>
@@ -252,7 +284,11 @@ function PlainBox(props: BoxProps) {
             type="button"
             onClick={() => onPick(s)}
             className="rounded-full border px-3 py-1.5 text-[11px] transition-colors sm:text-xs"
-            style={{ borderColor: 'rgb(var(--lk-bg-raw) / 0.14)', color: 'var(--lk-fg)', background: 'rgb(var(--lk-bg-raw) / 0.04)' }}
+            style={{
+              borderColor: 'rgb(var(--lk-bg-raw) / 0.14)',
+              color: 'var(--lk-fg)',
+              background: 'rgb(var(--lk-bg-raw) / 0.04)',
+            }}
           >
             {s}
           </button>
