@@ -1,0 +1,343 @@
+/**
+ * Local Build Runner — builds projects on the Oracle ARM64 server instead of E2B.
+ *
+ * WHY: E2B sandbox has only ~478MB RAM (no swap). Complex React projects with
+ * many dependencies (recharts, dnd, UI libs) need 600-800MB for npm install,
+ * which causes OOM kills → no node_modules → no build → white screen.
+ *
+ * Oracle has 5.5GB RAM + 4GB swap — 10x the capacity. Running bun install +
+ * bun run build here succeeds where E2B fails.
+ *
+ * NOTE: Oracle only has Bun (no npm/node). We use bun install + bun run build.
+ * Bun is 3-5x faster than npm and uses less memory.
+ *
+ * FLOW:
+ *   1. Project files already exist on disk at ~/palmkit-projects/{projectId}/
+ *   2. Run stack-specific install + build commands using Bun
+ *   3. Read the dist/ directory output
+ *   4. Upload each dist file to R2 at projects/{projectId}/dist/{path}
+ *   5. Return the dist file list + success status
+ *
+ * This is the KEY fix that makes complex projects actually render.
+ */
+
+import { readdir, readFile, stat } from 'node:fs/promises';
+import { join, extname } from 'node:path';
+import { putFile } from './r2-client';
+import { getStack } from './stack-registry';
+import { logger } from './logger';
+
+const PROJECTS_ROOT = process.env.PALMKIT_PROJECTS_ROOT || `${process.env.HOME || '/home/opc'}/palmkit-projects`;
+
+const INSTALL_TIMEOUT_MS = 180_000;  // 3 min
+const BUILD_TIMEOUT_MS = 120_000;    // 2 min
+const MAX_ERROR_CHARS = 4000;
+
+export interface LocalBuildResult {
+  success: boolean;
+  distFiles: Array<{ path: string; content: string; sizeBytes: number }>;
+  errors: string;
+  buildLog: string;
+}
+
+/**
+ * Content types for common file extensions in dist/
+ */
+function getContentType(path: string): string {
+  const ext = extname(path).toLowerCase();
+  const types: Record<string, string> = {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.mjs': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.json': 'application/json',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml',
+    '.ico': 'image/x-icon',
+    '.woff': 'font/woff',
+    '.woff2': 'font/woff2',
+    '.ttf': 'font/ttf',
+    '.webp': 'image/webp',
+    '.wasm': 'application/wasm',
+    '.map': 'application/json',
+  };
+  return types[ext] || 'application/octet-stream';
+}
+
+/**
+ * Recursively read all files in a directory.
+ */
+async function readDirRecursive(dir: string, basePath: string = ''): Promise<string[]> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const files: string[] = [];
+
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+    const relPath = basePath ? `${basePath}/${entry.name}` : entry.name;
+
+    if (entry.isDirectory()) {
+      const subFiles = await readDirRecursive(fullPath, relPath);
+      files.push(...subFiles);
+    } else if (entry.isFile()) {
+      files.push(relPath);
+    }
+  }
+
+  return files;
+}
+
+/**
+ * Run a shell command with timeout using Bun.spawn.
+ * On Oracle, only Bun is available (no npm/node).
+ */
+async function runShellCommand(
+  command: string,
+  cwd: string,
+  timeoutMs: number,
+  env?: Record<string, string>,
+): Promise<{ success: boolean; stdout: string; stderr: string }> {
+  const proc = Bun.spawn({
+    cmd: ['bash', '-c', command],
+    cwd,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    env: { ...process.env, ...env },
+  });
+
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    proc.kill();
+  }, timeoutMs);
+
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+
+  clearTimeout(timer);
+
+  if (timedOut) {
+    return { success: false, stdout: '', stderr: `Process timed out after ${timeoutMs / 1000}s` };
+  }
+
+  return { success: code === 0, stdout, stderr };
+}
+
+/**
+ * Build a project locally on Oracle and upload the dist/ output to R2.
+ *
+ * Uses Bun (not npm) since Oracle only has Bun installed.
+ * Bun is 3-5x faster than npm and uses less memory.
+ *
+ * @param projectId - The project identifier (used as directory name)
+ * @param appType - The detected app type (react, vue, nextjs, etc.)
+ * @returns LocalBuildResult with dist files and upload status
+ */
+export async function buildLocally(
+  projectId: string,
+  appType: string,
+): Promise<LocalBuildResult> {
+  const projectDir = join(PROJECTS_ROOT, projectId);
+  const stack = getStack(appType);
+
+  logger.info(`[local-build] Starting build for project ${projectId} (appType=${appType}, stack=${stack.id})`);
+  logger.info(`[local-build] Project dir: ${projectDir}`);
+
+  // Verify project directory exists
+  try {
+    const dirStat = await stat(projectDir);
+    if (!dirStat.isDirectory()) {
+      return { success: false, distFiles: [], errors: `Not a directory: ${projectDir}`, buildLog: '' };
+    }
+  } catch {
+    return { success: false, distFiles: [], errors: `Project directory not found: ${projectDir}`, buildLog: '' };
+  }
+
+  const buildLog: string[] = [];
+
+  // Step 1: Install dependencies using Bun
+  if (stack.install && stack.install.length > 0) {
+    // Convert npm install commands to bun install
+    const bunInstallCmd = 'bun install --no-audit --no-fund';
+    logger.info(`[local-build] Running install: ${bunInstallCmd}`);
+    buildLog.push(`$ ${bunInstallCmd}`);
+
+    const installResult = await runShellCommand(
+      bunInstallCmd,
+      projectDir,
+      INSTALL_TIMEOUT_MS,
+      {
+        NODE_OPTIONS: '--max-old-space-size=2048',
+      },
+    );
+
+    buildLog.push(installResult.stdout.slice(-2000));
+    if (installResult.stderr) buildLog.push(installResult.stderr.slice(-2000));
+
+    if (!installResult.success) {
+      const errMsg = `bun install failed: ${(installResult.stderr || installResult.stdout).slice(0, MAX_ERROR_CHARS)}`;
+      logger.error(`[local-build] Install failed for ${projectId}: ${errMsg}`);
+
+      return {
+        success: false,
+        distFiles: [],
+        errors: errMsg,
+        buildLog: buildLog.join('\n'),
+      };
+    }
+
+    logger.info(`[local-build] Install succeeded for ${projectId}`);
+  }
+
+  // Step 2: Build using Bun
+  if (stack.build && stack.build.length > 0) {
+    // Convert npm run build to bun run build
+    const bunBuildCmd = stack.build.replace(/^npm\s+run\s+/, 'bun run ');
+    logger.info(`[local-build] Running build: ${bunBuildCmd}`);
+    buildLog.push(`$ ${bunBuildCmd}`);
+
+    const buildResult = await runShellCommand(
+      bunBuildCmd,
+      projectDir,
+      BUILD_TIMEOUT_MS,
+      {
+        NODE_OPTIONS: '--max-old-space-size=2048',
+        // Set base path for Vite projects so assets work in preview
+        VITE_BASE: '/preview/',
+      },
+    );
+
+    buildLog.push(buildResult.stdout.slice(-2000));
+    if (buildResult.stderr) buildLog.push(buildResult.stderr.slice(-2000));
+
+    if (!buildResult.success) {
+      const errMsg = `Build failed: ${(buildResult.stderr || buildResult.stdout).slice(0, MAX_ERROR_CHARS)}`;
+      logger.error(`[local-build] Build failed for ${projectId}: ${errMsg}`);
+
+      return {
+        success: false,
+        distFiles: [],
+        errors: errMsg,
+        buildLog: buildLog.join('\n'),
+      };
+    }
+
+    logger.info(`[local-build] Build succeeded for ${projectId}`);
+  } else {
+    logger.info(`[local-build] No build step for stack ${stack.id} — skipping`);
+  }
+
+  // Step 3: Read dist/ directory
+  const distDir = join(projectDir, 'dist');
+  let distFilePaths: string[] = [];
+  let actualDistDir = distDir;
+
+  try {
+    distFilePaths = await readDirRecursive(distDir);
+    logger.info(`[local-build] Found ${distFilePaths.length} files in dist/`);
+  } catch {
+    // For Next.js, the output might be in out/
+    for (const altDir of ['out']) {
+      try {
+        const altPath = join(projectDir, altDir);
+        const altFiles = await readDirRecursive(altPath);
+        if (altFiles.length > 0) {
+          distFilePaths = altFiles;
+          actualDistDir = altPath;
+          logger.info(`[local-build] Found ${altFiles.length} files in ${altDir}/`);
+          break;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    if (distFilePaths.length === 0) {
+      return {
+        success: false,
+        distFiles: [],
+        errors: 'No dist/ directory found after build. The build may not have produced output files.',
+        buildLog: buildLog.join('\n'),
+      };
+    }
+  }
+
+  // Step 4: Read each dist file and upload to R2
+  const distFiles: Array<{ path: string; content: string; sizeBytes: number }> = [];
+  let uploadErrors = 0;
+
+  for (const filePath of distFilePaths) {
+    try {
+      const fullPath = join(actualDistDir, filePath);
+      const content = await readFile(fullPath, 'utf-8');
+      const sizeBytes = Buffer.byteLength(content, 'utf-8');
+
+      // Upload to R2 at projects/{projectId}/dist/{filePath}
+      const r2Key = `projects/${projectId}/dist/${filePath}`;
+      await putFile(r2Key, content);
+
+      distFiles.push({ path: filePath, content, sizeBytes });
+      logger.debug(`[local-build] Uploaded ${r2Key} (${sizeBytes} bytes)`);
+    } catch (err) {
+      uploadErrors++;
+      logger.warn(`[local-build] Failed to read/upload dist file ${filePath}: ${err}`);
+    }
+  }
+
+  if (distFiles.length === 0) {
+    return {
+      success: false,
+      distFiles: [],
+      errors: `No dist files could be read. ${uploadErrors} read/upload errors.`,
+      buildLog: buildLog.join('\n'),
+    };
+  }
+
+  logger.info(
+    `[local-build] Build complete for ${projectId}: ${distFiles.length} dist files uploaded to R2` +
+    (uploadErrors > 0 ? ` (${uploadErrors} errors)` : ''),
+  );
+
+  return {
+    success: true,
+
+      // Copy dist to /var/www/ for nginx serving (bypasses SELinux on Oracle)
+      try {
+        const wwwDir = '/var/www/preview-dist/' + projectId;
+        await runShellCommand(`sudo mkdir -p ${wwwDir} && sudo cp -r ${distPath}/* ${wwwDir}/ && sudo chmod -R 755 ${wwwDir}`, 30000);
+        logger.info(`[local-build] Copied dist to ${wwwDir} for nginx serving`);
+      } catch (copyErr) {
+        logger.warn(`[local-build] Failed to copy to /var/www/ (non-fatal): ${copyErr}`);
+      }
+    distFiles,
+    errors: uploadErrors > 0 ? `${uploadErrors} files failed to upload` : '',
+    buildLog: buildLog.join('\n'),
+  };
+}
+
+/**
+ * Check if a project has a pre-built dist in R2.
+ * Returns the list of dist file paths if found.
+ */
+export async function checkPrebuiltDist(
+  projectId: string,
+): Promise<{ hasPrebuilt: boolean; files: string[] }> {
+  const { listObjects } = await import('./r2-client');
+  const prefix = `projects/${projectId}/dist/`;
+
+  try {
+    const keys = await listObjects(prefix);
+    const files = keys.map(k => k.slice(prefix.length)).filter(Boolean);
+
+    return { hasPrebuilt: files.length > 0, files };
+  } catch (err) {
+    logger.warn(`[local-build] Failed to check prebuilt dist for ${projectId}: ${err}`);
+    return { hasPrebuilt: false, files: [] };
+  }
+}
+

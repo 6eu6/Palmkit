@@ -1,174 +1,85 @@
 /**
  * Same-origin reverse proxy for the E2B cloud preview.
- *
- * Why: our app page is cross-origin-isolated (COEP: require-corp, needed for
- * WebContainer), which blocks embedding the cross-origin E2B preview in an
- * iframe. Serving the preview through THIS route makes it same-origin, so:
- *   1) the iframe is allowed under COEP, and
- *   2) the element inspector can access the preview DOM (same-origin).
- *
- * How: the running project's Vite dev server is started with `--base=/preview/`
- * so every asset URL is under `/preview/*`. The iframe loads `/preview/` on our
- * origin; this function forwards `/preview/*` to the sandbox host taken from the
- * `pf_preview=<sandboxId>:<port>` cookie. The inspector script is injected into
- * HTML responses so element selection works like the WebContainer preview.
  */
-
-interface Env {
-  [key: string]: unknown;
-}
-
-const HOP_BY_HOP = new Set([
-  'content-encoding',
-  'content-length',
-  'transfer-encoding',
-  'connection',
-  'keep-alive',
-  'content-security-policy',
-  'x-frame-options',
-]);
-
+interface Env { [key: string]: unknown; }
+const HOP_BY_HOP = new Set(['content-encoding','content-length','transfer-encoding','connection','keep-alive','content-security-policy','x-frame-options']);
 function readCookie(cookieHeader: string, name: string): string | undefined {
-  const m = cookieHeader.match(new RegExp(`(?:^|; )${name}=([^;]+)`));
+  const m = cookieHeader.match(new RegExp(\`(?:^|; )\${name}=([^;]+)\`));
   return m ? decodeURIComponent(m[1]) : undefined;
 }
-
 export const onRequest: PagesFunction<Env> = async (context) => {
   const { request } = context;
   const url = new URL(request.url);
-
   const session = readCookie(request.headers.get('Cookie') || '', 'pf_preview');
-
-  if (!session) {
-    return new Response('No active preview session', { status: 404 });
-  }
-
+  if (!session) return new Response('No active preview session', { status: 404 });
   const isOracle = session.startsWith('oracle:');
-
   if (isOracle) {
     const [, projectId] = session.split(':');
     const subPath = url.pathname.replace(/^\/preview\/?/, '') || 'index.html';
-
-    // PRIMARY: Fetch from Supabase Storage (publicly accessible, no auth needed)
-    const SUPABASE_URL = (context.env as Record<string, string>)?.SUPABASE_URL || 
-      'https://ijbosijtfxehmnfhnnuq.supabase.co';
+    const SUPABASE_URL = (context.env as Record<string, string>)?.SUPABASE_URL || 'https://ijbosijtfxehmnfhnnuq.supabase.co';
     try {
-      const sbUrl = `${SUPABASE_URL}/storage/v1/object/public/palmkit-files/projects/${projectId}/dist/${subPath}`;
+      const sbUrl = \`\${SUPABASE_URL}/storage/v1/object/public/palmkit-files/projects/\${projectId}/dist/\${subPath}\`;
       const sbResp = await fetch(sbUrl, { redirect: 'manual' });
       if (sbResp.status === 200) {
         const headers = new Headers();
-        headers.set('Content-Type', subPath.endsWith('.html') ? 'text/html; charset=utf-8' : 
-                        subPath.endsWith('.js') ? 'text/javascript; charset=utf-8' :
-                        subPath.endsWith('.css') ? 'text/css; charset=utf-8' : 
-                        'application/octet-stream');
+        headers.set('Content-Type', subPath.endsWith('.html') ? 'text/html; charset=utf-8' : subPath.endsWith('.js') ? 'text/javascript; charset=utf-8' : subPath.endsWith('.css') ? 'text/css; charset=utf-8' : 'application/octet-stream');
         headers.set('Access-Control-Allow-Origin', '*');
         headers.set('Cache-Control', 'no-cache');
-        
         if (subPath.endsWith('.html')) {
           let html = await sbResp.text();
           const tag = '<script src="/inspector-script.js"></script>';
-          if (html.includes('</head>')) html = html.replace('</head>', `${tag}</head>`);
-          else html = `${tag}${html}`;
+          if (html.includes('</head>')) html = html.replace('</head>', \`\${tag}</head>\`);
+          else html = \`\${tag}\${html}\`;
           return new Response(html, { status: 200, headers });
         }
         return new Response(sbResp.body, { status: 200, headers });
       }
-    } catch {
-      // Supabase fetch failed, fall through
-    }
-
-    // SECONDARY: Try Cloudflare tunnel to Oracle
+    } catch {}
     try {
-      const oracleTarget = `https://blacks-drawing-dallas-interface.trycloudflare.com/preview-dist/${projectId}/${subPath}${url.search}`;
-      const oracleResp = await fetch(oracleTarget, {
-        method: request.method,
-        headers: { 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' },
-        redirect: 'manual',
-      });
-
+      const oracleTarget = \`https://blacks-drawing-dallas-interface.trycloudflare.com/preview-dist/\${projectId}/\${subPath}\${url.search}\`;
+      const oracleResp = await fetch(oracleTarget, { method: request.method, headers: { 'Accept': 'text/html' }, redirect: 'manual' });
       const headers = new Headers();
-      oracleResp.headers.forEach((value, key) => {
-        if (!HOP_BY_HOP.has(key.toLowerCase())) headers.set(key, value);
-      });
-
+      oracleResp.headers.forEach((value, key) => { if (!HOP_BY_HOP.has(key.toLowerCase())) headers.set(key, value); });
       const contentType = oracleResp.headers.get('content-type') || '';
       if (contentType.includes('text/html')) {
         let html = await oracleResp.text();
         const tag = '<script src="/inspector-script.js"></script>';
-        if (html.includes('</head>')) html = html.replace('</head>', `${tag}</head>`);
-        else html = `${tag}${html}`;
+        if (html.includes('</head>')) html = html.replace('</head>', \`\${tag}</head>\`);
+        else html = \`\${tag}\${html}\`;
         return new Response(html, { status: oracleResp.status, headers });
       }
       return new Response(oracleResp.body, { status: oracleResp.status, headers });
-    } catch {
-      return new Response('Preview server unreachable', { status: 502 });
-    }
+    } catch { return new Response('Preview server unreachable', { status: 502 }); }
   }
-
   const [sandboxId, port = '3000'] = session.split(':');
-  const target = `https://${port}-${sandboxId}.e2b.app${url.pathname}${url.search}`;
-
+  const target = \`https://\${port}-\${sandboxId}.e2b.app\${url.pathname}\${url.search}\`;
   const upgradeHeader = request.headers.get('Upgrade') || '';
   if (upgradeHeader.toLowerCase().includes('websocket')) {
-    const wsReq = new Request(target, request);
-    wsReq.headers.delete('cookie');
-    wsReq.headers.delete('host');
-    let wsResp: Response;
-    try {
-      wsResp = await fetch(wsReq);
-    } catch {
-      return new Response('Preview WebSocket unreachable (still starting?)', { status: 502 });
-    }
+    const wsReq = new Request(target, request); wsReq.headers.delete('cookie'); wsReq.headers.delete('host');
+    let wsResp: Response; try { wsResp = await fetch(wsReq); } catch { return new Response('Preview WebSocket unreachable', { status: 502 }); }
     const upstreamWs = (wsResp as Response & { webSocket?: WebSocket }).webSocket;
-    if (!upstreamWs) {
-      return new Response(wsResp.body, { status: wsResp.status, headers: wsResp.headers });
-    }
-    const pair = new WebSocketPair();
-    const clientWs = pair[0];
-    const serverWs = pair[1];
-    serverWs.accept();
-    upstreamWs.accept();
+    if (!upstreamWs) return new Response(wsResp.body, { status: wsResp.status, headers: wsResp.headers });
+    const pair = new WebSocketPair(); const clientWs = pair[0]; const serverWs = pair[1];
+    serverWs.accept(); upstreamWs.accept();
     const sanitizeCode = (code?: number) => (code === 1000 || (code && code >= 3000 && code < 5000) ? code : 1000);
-    const closeBoth = (code?: number, reason?: string) => {
-      try { serverWs.close(sanitizeCode(code), (reason || '').slice(0, 120)); } catch {}
-      try { upstreamWs.close(sanitizeCode(code), (reason || '').slice(0, 120)); } catch {}
-    };
+    const closeBoth = (code?: number, reason?: string) => { try { serverWs.close(sanitizeCode(code), (reason||'').slice(0,120)); } catch {} try { upstreamWs.close(sanitizeCode(code), (reason||'').slice(0,120)); } catch {} };
     upstreamWs.addEventListener('message', (e: MessageEvent) => { try { serverWs.send(e.data as string | ArrayBuffer); } catch { closeBoth(); } });
     serverWs.addEventListener('message', (e: MessageEvent) => { try { upstreamWs.send(e.data as string | ArrayBuffer); } catch { closeBoth(); } });
-    upstreamWs.addEventListener('close', (e: CloseEvent) => closeBoth(e.code, e.reason));
-    serverWs.addEventListener('close', (e: CloseEvent) => closeBoth(e.code, e.reason));
-    upstreamWs.addEventListener('error', () => closeBoth(1000, 'upstream error'));
-    serverWs.addEventListener('error', () => closeBoth(1000, 'client error'));
-    const respHeaders = new Headers();
-    const negotiated = wsResp.headers.get('Sec-WebSocket-Protocol') || request.headers.get('Sec-WebSocket-Protocol');
+    upstreamWs.addEventListener('close', (e: CloseEvent) => closeBoth(e.code, e.reason)); serverWs.addEventListener('close', (e: CloseEvent) => closeBoth(e.code, e.reason));
+    upstreamWs.addEventListener('error', () => closeBoth(1000, 'upstream error')); serverWs.addEventListener('error', () => closeBoth(1000, 'client error'));
+    const respHeaders = new Headers(); const negotiated = wsResp.headers.get('Sec-WebSocket-Protocol') || request.headers.get('Sec-WebSocket-Protocol');
     if (negotiated) respHeaders.set('Sec-WebSocket-Protocol', negotiated.split(',')[0].trim());
     return new Response(null, { status: 101, webSocket: clientWs, headers: respHeaders } as ResponseInit) as Response;
   }
-
-  const fwdHeaders = new Headers(request.headers);
-  fwdHeaders.delete('cookie');
-  fwdHeaders.delete('host');
-  let upstream: Response;
-  try {
-    upstream = await fetch(target, { method: request.method, headers: fwdHeaders, body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body, redirect: 'manual' });
-  } catch {
-    return new Response('Preview server unreachable (still starting?)', { status: 502 });
-  }
-
-  const headers = new Headers();
-  upstream.headers.forEach((value, key) => {
-    if (!HOP_BY_HOP.has(key.toLowerCase())) headers.set(key, value);
-  });
-
+  const fwdHeaders = new Headers(request.headers); fwdHeaders.delete('cookie'); fwdHeaders.delete('host');
+  let upstream: Response; try { upstream = await fetch(target, { method: request.method, headers: fwdHeaders, body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body, redirect: 'manual' }); } catch { return new Response('Preview server unreachable', { status: 502 }); }
+  const headers = new Headers(); upstream.headers.forEach((value, key) => { if (!HOP_BY_HOP.has(key.toLowerCase())) headers.set(key, value); });
   const nullBody = upstream.status === 101 || upstream.status === 204 || upstream.status === 205 || upstream.status === 304;
   if (nullBody) return new Response(null, { status: upstream.status, headers });
-
   const contentType = upstream.headers.get('content-type') || '';
   if (contentType.includes('text/html')) {
-    let html = await upstream.text();
-    const tag = '<script src="/inspector-script.js"></script>';
-    if (html.includes('</head>')) html = html.replace('</head>', `${tag}</head>`);
-    else html = `${tag}${html}`;
+    let html = await upstream.text(); const tag = '<script src="/inspector-script.js"></script>';
+    if (html.includes('</head>')) html = html.replace('</head>', \`\${tag}</head>\`); else html = \`\${tag}\${html}\`;
     return new Response(html, { status: upstream.status, headers });
   }
   return new Response(upstream.body, { status: upstream.status, headers });
