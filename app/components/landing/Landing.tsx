@@ -5,26 +5,31 @@ import { LandingPromptBox } from './LandingPromptBox';
 /**
  * Marketing landing page — redesigned with a Liquid Glass aesthetic.
  *
- * SEAMLESS BLEND (the technique that actually works):
- * The bridge gradient OVER/UNDER each image must, in the zone where
- * the image is still VISIBLE, share the image's own edge color. The
- * bridge is TRANSPARENT while the image is showing, then ramps its
- * color FROM the image's edge color → opaque → warm mid-tones → page
- * bg. So the image is never "seen through a light overlay" (which
- * causes a muddy abrupt jump); it's smoothly REPLACED by a same-color
- * bridge that then warms up to the page surface.
+ * SEAMLESS BLEND — MASK-ONLY (single fade):
+ * Each image uses a CSS mask-image that fades its own alpha over a tall
+ * zone, revealing the page bg behind it. There is NO separate color
+ * bridge overlay. This is the key fix: the previous design stacked a
+ * mask AND a bridge in the same zone, producing a double-fade (two
+ * alphas competing) that read as a muddy band / hard seam. With the
+ * mask alone, the transition is a mathematically clean cross-fade:
+ * alpha·image + (1-alpha)·pagebg — one continuous surface, no color
+ * matching needed, no third color leaking in.
  *
- * For the footer (image fades IN), the bridge is OPAQUE while its
- * color is still light, and only thins once the color has reached
- * the image's top-edge color. No color discontinuity anywhere.
+ * Hero: image alpha 1→0 (fades OUT toward the bottom, dissolving into
+ *   the page bg that the belly section continues).
+ * Footer: image alpha 0→1 (fades IN from the top, rising out of the
+ *   page bg that the belly section ends on). The footer carries its
+ *   own explicit page-bg surface so the masked image always dissolves
+ *   into the exact same color that sits above it.
  *
  * TEXT CONTRAST:
- * - Hero: stronger radial scrim + triple-layer text halo.
+ * - Hero: radial legibility scrim centered on the headline + triple-
+ *   layer text halo (tight blur + crisp 1px outline + wide soft halo).
  * - Belly: accent word is bold (not faint italic), all meta uses
  *   ≥0.8 opacity.
- * - Footer: legibility panel confined to MID band (transparent at
- *   top so it doesn't darken the seam), stronger in light mode,
- *   plus a focused scrim behind the link columns.
+ * - Footer: legibility panel confined to MID band (transparent at top
+ *   so it doesn't darken the seam), stronger in light mode, plus a
+ *   focused scrim behind the link columns.
  */
 
 type Theme = 'dark' | 'light';
@@ -222,34 +227,16 @@ function LandingNav({ isDark, onToggleTheme }: { isDark: boolean; onToggleTheme:
  */
 
 function Hero({ isDark }: { isDark: boolean }) {
+  /*
+   * MASK-ONLY (single fade). The image's own alpha fades out over a
+   * tall zone, revealing the page bg behind it. NO bridge overlay → no
+   * second alpha competing → no muddy band. The cross-fade is
+   * mathematically clean: alpha·image + (1-alpha)·pagebg. Transition
+   * spans ~60% of the viewport so mid-tones stay gradual.
+   */
   const mask = isDark
-    ? 'linear-gradient(to bottom, #000 0%, #000 42%, rgba(0,0,0,0.96) 50%, rgba(0,0,0,0.84) 58%, rgba(0,0,0,0.66) 66%, rgba(0,0,0,0.46) 74%, rgba(0,0,0,0.28) 82%, rgba(0,0,0,0.14) 88%, rgba(0,0,0,0.05) 93%, rgba(0,0,0,0) 98%)'
-    : 'linear-gradient(to bottom, #000 0%, #000 38%, rgba(0,0,0,0.98) 46%, rgba(0,0,0,0.92) 54%, rgba(0,0,0,0.82) 62%, rgba(0,0,0,0.68) 70%, rgba(0,0,0,0.52) 78%, rgba(0,0,0,0.34) 85%, rgba(0,0,0,0.18) 91%, rgba(0,0,0,0.06) 96%, rgba(0,0,0,0) 100%)';
-
-  const bridge = isDark
-    ? 'linear-gradient(to bottom, ' +
-      'rgba(22,18,12,0) 0%, ' +
-      'rgba(22,18,12,0) 34%, ' +
-      'rgba(20,22,18,0.18) 44%, ' +
-      'rgba(22,20,16,0.40) 52%, ' +
-      'rgba(24,20,14,0.66) 60%, ' +
-      'rgba(24,20,14,0.86) 68%, ' +
-      'rgba(24,20,14,0.96) 76%, ' +
-      'rgba(23,19,13,0.99) 84%, ' +
-      'rgba(22,18,12,1) 92%, ' +
-      'var(--lk-bg) 100%)'
-    : 'linear-gradient(to bottom, ' +
-      'rgba(60,42,24,0) 0%, ' +
-      'rgba(60,42,24,0) 30%, ' +
-      'rgba(42,51,38,0.16) 40%, ' +
-      'rgba(58,52,40,0.38) 48%, ' +
-      'rgba(80,62,42,0.62) 56%, ' +
-      'rgba(110,86,58,0.80) 64%, ' +
-      'rgba(148,118,82,0.92) 72%, ' +
-      'rgba(186,158,120,0.97) 80%, ' +
-      'rgba(214,196,162,0.99) 88%, ' +
-      'var(--lk-bg) 96%, ' +
-      'var(--lk-bg) 100%)';
+    ? 'linear-gradient(to bottom, #000 0%, #000 40%, rgba(0,0,0,0.96) 50%, rgba(0,0,0,0.84) 60%, rgba(0,0,0,0.66) 70%, rgba(0,0,0,0.44) 80%, rgba(0,0,0,0.22) 88%, rgba(0,0,0,0.08) 94%, rgba(0,0,0,0) 100%)'
+    : 'linear-gradient(to bottom, #000 0%, #000 34%, rgba(0,0,0,0.97) 44%, rgba(0,0,0,0.90) 54%, rgba(0,0,0,0.78) 64%, rgba(0,0,0,0.60) 74%, rgba(0,0,0,0.40) 84%, rgba(0,0,0,0.20) 92%, rgba(0,0,0,0.06) 97%, rgba(0,0,0,0) 100%)';
 
   return (
     <section id="top" className="relative flex h-[100svh] min-h-[100svh] flex-col overflow-hidden">
@@ -273,10 +260,6 @@ function Hero({ isDark }: { isDark: boolean }) {
               : 'radial-gradient(140% 82% at 50% 28%, rgba(20,14,8,0.88) 0%, rgba(20,14,8,0.70) 26%, rgba(20,14,8,0.42) 50%, rgba(20,14,8,0.16) 72%, rgba(20,14,8,0.02) 90%, rgba(20,14,8,0) 100%)',
           }}
         />
-        {/* COLOR BRIDGE — transparent in image zone, ramps FROM the
-            image's dark forest bottom color → opaque → warm mid-tones
-            → page bg. Removes the hard seam. */}
-        <div className="absolute inset-x-0 bottom-0 h-[80%]" style={{ background: bridge }} />
       </div>
 
       {/* headline */}
@@ -660,43 +643,17 @@ function FooterScene({ isDark }: { isDark: boolean }) {
     : 'A mountain lake in bright daylight — pines, peaks and a clear blue sky.';
   const markSrc = isDark ? '/palmkit-mark-ondark.png' : '/palmkit-mark.png';
 
+  /*
+   * MASK-ONLY (single fade). Image alpha fades IN from 0 at the top to
+   * fully opaque lower down, revealing the page bg behind it at the top.
+   * The belly (page bg) → footer (page bg behind masked image) boundary
+   * is invisible. NO bridge → no color mismatch with the image's bright
+   * sky. Footer gets an explicit page-bg surface so the masked image
+   * always dissolves into the same color that sits above it.
+   */
   const mask = isDark
-    ? 'linear-gradient(to bottom, ' +
-      'rgba(0,0,0,0) 0%, rgba(0,0,0,0) 6%, ' +
-      'rgba(0,0,0,0.05) 14%, rgba(0,0,0,0.12) 22%, rgba(0,0,0,0.22) 30%, ' +
-      'rgba(0,0,0,0.34) 38%, rgba(0,0,0,0.48) 46%, rgba(0,0,0,0.62) 54%, ' +
-      'rgba(0,0,0,0.76) 62%, rgba(0,0,0,0.87) 70%, rgba(0,0,0,0.94) 78%, ' +
-      'rgba(0,0,0,0.98) 86%, #000 94%, #000 100%)'
-    : 'linear-gradient(to bottom, ' +
-      'rgba(0,0,0,0) 0%, rgba(0,0,0,0) 4%, ' +
-      'rgba(0,0,0,0.03) 10%, rgba(0,0,0,0.06) 18%, rgba(0,0,0,0.12) 26%, ' +
-      'rgba(0,0,0,0.20) 34%, rgba(0,0,0,0.30) 42%, rgba(0,0,0,0.42) 50%, ' +
-      'rgba(0,0,0,0.54) 58%, rgba(0,0,0,0.66) 66%, rgba(0,0,0,0.78) 74%, ' +
-      'rgba(0,0,0,0.87) 82%, rgba(0,0,0,0.94) 90%, rgba(0,0,0,0.98) 96%, #000 100%)';
-
-  const bridge = isDark
-    ? 'linear-gradient(to bottom, ' +
-      'var(--lk-bg) 0%, ' +
-      'rgba(22,18,12,0.98) 12%, ' +
-      'rgba(24,20,14,0.95) 24%, ' +
-      'rgba(26,22,16,0.90) 36%, ' +
-      'rgba(26,22,16,0.80) 48%, ' +
-      'rgba(26,22,16,0.62) 60%, ' +
-      'rgba(24,20,14,0.40) 72%, ' +
-      'rgba(22,18,12,0.18) 84%, ' +
-      'rgba(22,18,12,0) 100%)'
-    : 'linear-gradient(to bottom, ' +
-      'var(--lk-bg) 0%, ' +
-      'rgba(231,224,210,0.98) 10%, ' +
-      'rgba(222,210,184,0.96) 20%, ' +
-      'rgba(206,188,156,0.92) 30%, ' +
-      'rgba(180,154,116,0.86) 40%, ' +
-      'rgba(148,116,80,0.78) 50%, ' +
-      'rgba(110,84,54,0.66) 60%, ' +
-      'rgba(76,60,40,0.48) 72%, ' +
-      'rgba(50,44,34,0.26) 84%, ' +
-      'rgba(42,46,38,0.08) 94%, ' +
-      'rgba(42,46,38,0) 100%)';
+    ? 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 4%, rgba(0,0,0,0.04) 12%, rgba(0,0,0,0.12) 22%, rgba(0,0,0,0.24) 32%, rgba(0,0,0,0.40) 42%, rgba(0,0,0,0.56) 52%, rgba(0,0,0,0.72) 62%, rgba(0,0,0,0.84) 72%, rgba(0,0,0,0.93) 82%, rgba(0,0,0,0.98) 90%, #000 100%)'
+    : 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 3%, rgba(0,0,0,0.03) 10%, rgba(0,0,0,0.08) 20%, rgba(0,0,0,0.16) 30%, rgba(0,0,0,0.28) 40%, rgba(0,0,0,0.42) 50%, rgba(0,0,0,0.56) 60%, rgba(0,0,0,0.70) 70%, rgba(0,0,0,0.82) 80%, rgba(0,0,0,0.92) 90%, rgba(0,0,0,0.98) 96%, #000 100%)';
 
   /*
    * Triple-layer text halo — reads on both bright day sky and dark
@@ -707,24 +664,14 @@ function FooterScene({ isDark }: { isDark: boolean }) {
     : '0 0 1px rgba(8,5,2,0.95), 0 1px 3px rgba(8,5,2,0.88), 0 2px 10px rgba(8,5,2,0.78), 0 3px 24px rgba(8,5,2,0.62), 0 0 44px rgba(8,5,2,0.42)';
 
   return (
-    <footer id="pricing" className="lk-grain relative w-full overflow-hidden">
-      {/* full-bleed landscape background — masked in over a long span */}
+    <footer id="pricing" className="lk-grain relative w-full overflow-hidden" style={{ background: 'var(--lk-bg)' }}>
+      {/* full-bleed landscape background — masked in (alpha fade) over the page bg */}
       <img
         src={gif}
         alt={alt}
         aria-hidden="true"
         className="absolute inset-0 h-full w-full object-cover"
         style={{ maskImage: mask, WebkitMaskImage: mask }}
-      />
-
-      {/* COLOR BRIDGE — opaque while light, thins when color matches
-          image top. Removes the hard seam at the belly→footer boundary. */}
-      <div
-        className="absolute inset-x-0 top-0"
-        style={{
-          height: isDark ? '62%' : '78%',
-          background: bridge,
-        }}
       />
 
       {/* LEGIBILITY PANEL — confined to MID band (transparent at top
