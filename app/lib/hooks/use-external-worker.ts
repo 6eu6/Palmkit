@@ -276,6 +276,12 @@ export interface ExternalWorkerState {
    */
   appType: string | null;
   runtimeMode: string | null;
+
+  /*
+   * Prebuilt preview info from Oracle worker's local build.
+   * Contains hasPrebuiltPreview, previewUrl, etc.
+   */
+  _validationResult?: Record<string, unknown> | null;
 }
 
 const initialState: ExternalWorkerState = {
@@ -289,6 +295,7 @@ const initialState: ExternalWorkerState = {
   events: [],
   appType: null,
   runtimeMode: null,
+  _validationResult: null,
 };
 
 export function getExternalWorkerFlag(): boolean {
@@ -895,6 +902,7 @@ export function useExternalWorker() {
           events: newEvents,
           appType,
           runtimeMode,
+          _validationResult: (data.validationResult as Record<string, unknown> | undefined) ?? s._validationResult,
         }));
 
         // Terminal states: stop polling.

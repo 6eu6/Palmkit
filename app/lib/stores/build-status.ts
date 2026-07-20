@@ -47,6 +47,15 @@ export interface BuildStatusState {
 
   /** Phase 2: app type from the external worker (static/react/nextjs/vue/python). */
   appType: string | null;
+
+  /** Prebuilt preview info from Oracle worker's local build (if available). */
+  _jobValidationResult?: {
+    hasPrebuiltPreview?: boolean;
+    previewUrl?: string;
+    previewType?: string;
+    distFileCount?: number;
+    distPrefix?: string;
+  } | null;
 }
 
 const initial: BuildStatusState = {
@@ -60,6 +69,7 @@ const initial: BuildStatusState = {
   retryCount: 0,
   updatedAt: 0,
   appType: null,
+  _jobValidationResult: null,
 };
 
 export const buildStatusStore = atom<BuildStatusState>(initial);
