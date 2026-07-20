@@ -154,3 +154,79 @@
 .lk-root * {
   box-sizing: border-box;
 }
+
+/* ════════ Hamburger button (≡ → ✕) ════════
+   Three bars that morph into an X on open. The morph uses
+   translateY + rotate with a cubic-bezier ease that feels springy
+   without overshooting. Reference: hackathon.telegraphprotocol.com */
+.lk-ham {
+  position: relative;
+  display: inline-block;
+  width: 18px;
+  height: 14px;
+}
+.lk-ham span {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 1.7px;
+  background: currentColor;
+  border-radius: 2px;
+  transition:
+    transform 0.45s cubic-bezier(0.65, 0, 0.35, 1),
+    opacity 0.25s ease,
+    top 0.45s cubic-bezier(0.65, 0, 0.35, 1),
+    bottom 0.45s cubic-bezier(0.65, 0, 0.35, 1);
+  transform-origin: center;
+}
+.lk-ham span:nth-child(1) {
+  top: 0;
+}
+.lk-ham span:nth-child(2) {
+  top: 50%;
+  transform: translateY(-50%);
+}
+.lk-ham span:nth-child(3) {
+  bottom: 0;
+}
+
+/* Open state — bars rotate into an X */
+.lk-ham.is-open span:nth-child(1) {
+  top: 50%;
+  transform: translateY(-50%) rotate(45deg);
+}
+.lk-ham.is-open span:nth-child(2) {
+  opacity: 0;
+  transform: translateY(-50%) scaleX(0.2);
+}
+.lk-ham.is-open span:nth-child(3) {
+  bottom: auto;
+  top: 50%;
+  transform: translateY(-50%) rotate(-45deg);
+}
+
+/* ════════ Dropdown menu ════════
+   Slides down from the nav pill. Always rendered, toggled via the
+   is-open class so both enter AND exit animate cleanly. */
+.lk-menu {
+  opacity: 0;
+  transform: translateY(-14px) scaleY(0.92);
+  transform-origin: top center;
+  pointer-events: none;
+  transition:
+    opacity 0.3s ease,
+    transform 0.42s cubic-bezier(0.16, 1, 0.3, 1);
+  max-height: calc(100svh - 80px);
+  overflow-y: auto;
+}
+.lk-menu.is-open {
+  opacity: 1;
+  transform: translateY(0) scaleY(1);
+  pointer-events: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lk-ham span,
+  .lk-menu {
+    transition-duration: 0.01s !important;
+  }
+}

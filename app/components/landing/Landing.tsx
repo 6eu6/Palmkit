@@ -5,31 +5,26 @@ import { LandingPromptBox } from './LandingPromptBox';
 /**
  * Marketing landing page — redesigned with a Liquid Glass aesthetic.
  *
- * SEAMLESS BLEND — MASK-ONLY (single fade):
- * Each image uses a CSS mask-image that fades its own alpha over a tall
- * zone, revealing the page bg behind it. There is NO separate color
- * bridge overlay. This is the key fix: the previous design stacked a
- * mask AND a bridge in the same zone, producing a double-fade (two
- * alphas competing) that read as a muddy band / hard seam. With the
- * mask alone, the transition is a mathematically clean cross-fade:
- * alpha·image + (1-alpha)·pagebg — one continuous surface, no color
- * matching needed, no third color leaking in.
+ * SEAMLESS BLEND — MASK-ONLY with LONG FADE + CLEAN HANDOFF:
+ * Each image uses a CSS mask-image that fades its own alpha over a
+ * very tall zone (~60-70% of the section height). The fade completes
+ * BEFORE the section boundary, leaving a band of pure page-bg at the
+ * top (footer) or bottom (hero) of each image section. This pure
+ * page-bg band is the SAME color as the belly section's background,
+ * so the hero→belly→footer handoff is page-bg → page-bg → page-bg =
+ * invisible. No bridge overlays, no double-fades, no color mismatches.
  *
- * Hero: image alpha 1→0 (fades OUT toward the bottom, dissolving into
- *   the page bg that the belly section continues).
- * Footer: image alpha 0→1 (fades IN from the top, rising out of the
- *   page bg that the belly section ends on). The footer carries its
- *   own explicit page-bg surface so the masked image always dissolves
- *   into the exact same color that sits above it.
+ * Hero: image alpha 1→0, fade completes at ~88-92% of viewport.
+ *   Bottom ~8-12% is pure page-bg. NO radial scrim (the previous
+ *   dark-center scrim hurt the animated image's beauty; headline
+ *   legibility now relies on the triple-layer text halo alone).
+ * Footer: image alpha 0→1, fade starts at ~10-16% of footer height.
+ *   Top ~10-16% is pure page-bg. Legibility panel confined to MID
+ *   band (transparent at top so it never darkens the seam zone).
  *
- * TEXT CONTRAST:
- * - Hero: radial legibility scrim centered on the headline + triple-
- *   layer text halo (tight blur + crisp 1px outline + wide soft halo).
- * - Belly: accent word is bold (not faint italic), all meta uses
- *   ≥0.8 opacity.
- * - Footer: legibility panel confined to MID band (transparent at top
- *   so it doesn't darken the seam), stronger in light mode, plus a
- *   focused scrim behind the link columns.
+ * NAV: hamburger button (≡ → ✕) replaces the "Open Palmkit" text
+ * button. Menu slides down from the nav pill itself. Same pattern on
+ * mobile and desktop. Reference: hackathon.telegraphprotocol.com.
  */
 
 type Theme = 'dark' | 'light';
@@ -86,130 +81,199 @@ export function Landing() {
   );
 }
 
-/* ════════ Nav ════════ */
+/* ════════ Nav — hamburger menu (≡ → ✕) ════════ */
 
 function LandingNav({ isDark, onToggleTheme }: { isDark: boolean; onToggleTheme: () => void }) {
   const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24);
+    const onScroll = () => {
+      setScrolled(window.scrollY > 24);
+
+      if (window.scrollY > 200) {
+        setMenuOpen(false);
+      }
+    };
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
 
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  useEffect(() => {
+    if (!menuOpen) {
+      return undefined;
+    }
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('keydown', onKey);
+
+    return () => document.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
+
   const markSrc = isDark ? '/palmkit-mark-ondark.png' : '/palmkit-mark.png';
+
+  const menuItems = [
+    { label: 'How it works', href: '#build' },
+    { label: 'Templates', href: '#templates' },
+    { label: 'Pricing', href: '#pricing' },
+  ];
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center px-4 pt-4 sm:pt-5">
-      <nav
-        className="lk-glass pointer-events-auto flex w-full items-center justify-between gap-3 rounded-full py-2 pl-3 pr-2.5 transition-all duration-500 sm:pl-5 sm:pr-3"
-        style={{
-          maxWidth: scrolled ? '48rem' : '80rem',
-          paddingBlock: scrolled ? '0.375rem' : '0.5rem',
-        }}
+      {/* click-outside catcher — full viewport, below the nav/menu */}
+      {menuOpen && (
+        <div
+          onClick={() => setMenuOpen(false)}
+          className="pointer-events-auto fixed inset-0"
+          style={{ zIndex: 0 }}
+          aria-hidden="true"
+        />
+      )}
+      <div
+        className="pointer-events-auto relative w-full"
+        style={{ maxWidth: scrolled ? '48rem' : '80rem', zIndex: 1 }}
       >
-        <Link to="/" className="flex shrink-0 items-center gap-2" aria-label="Palmkit home">
-          <img
-            src={markSrc}
-            alt=""
-            className="h-6 w-6 select-none"
-            style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.3))' }}
-          />
-          <span
-            className="lk-display text-[1.2rem] font-semibold leading-none tracking-tight"
-            style={{ color: 'var(--lk-fg)' }}
-          >
-            Palmkit
-          </span>
-        </Link>
-
-        {/* center links — desktop */}
-        <div className="hidden items-center gap-7 md:flex">
-          {[
-            { label: 'How it works', href: '#build' },
-            { label: 'Templates', href: '#templates' },
-            { label: 'Pricing', href: '#pricing' },
-          ].map((l) => (
-            <a
-              key={l.label}
-              href={l.href}
-              className="text-sm font-medium transition-colors duration-200 hover:opacity-100"
-              style={{ color: 'rgb(var(--lk-bg-raw) / 0.7)' }}
+        <nav
+          className="lk-glass flex w-full items-center justify-between gap-3 rounded-full py-2 pl-3 pr-2.5 transition-all duration-500 sm:pl-5 sm:pr-3"
+          style={{ paddingBlock: scrolled ? '0.375rem' : '0.5rem' }}
+        >
+          <Link to="/" className="flex shrink-0 items-center gap-2" aria-label="Palmkit home">
+            <img
+              src={markSrc}
+              alt=""
+              className="h-6 w-6 select-none"
+              style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.3))' }}
+            />
+            <span
+              className="lk-display text-[1.2rem] font-semibold leading-none tracking-tight"
+              style={{ color: 'var(--lk-fg)' }}
             >
-              {l.label}
-            </a>
-          ))}
-        </div>
+              Palmkit
+            </span>
+          </Link>
 
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          <button
-            type="button"
-            onClick={onToggleTheme}
-            aria-label={isDark ? 'Switch to light' : 'Switch to dark'}
-            className="grid h-8 w-8 place-items-center rounded-full transition-colors"
-            style={{ color: 'var(--lk-fg)' }}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              aria-label={isDark ? 'Switch to light' : 'Switch to dark'}
+              className="grid h-8 w-8 place-items-center rounded-full transition-colors"
+              style={{ color: 'var(--lk-fg)' }}
+            >
+              {isDark ? (
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+                </svg>
+              ) : (
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                </svg>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={menuOpen}
+              className="grid h-8 w-8 place-items-center rounded-full transition-colors"
+              style={{ color: 'var(--lk-fg)' }}
+            >
+              <span className={`lk-ham${menuOpen ? ' is-open' : ''}`} aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
+            </button>
+          </div>
+        </nav>
+
+        {/* dropdown menu — slides down from the nav pill */}
+        <div
+          className={`lk-menu lk-glass absolute left-0 right-0 top-[calc(100%+10px)] rounded-3xl p-3${
+            menuOpen ? ' is-open' : ''
+          }`}
+          role="menu"
+        >
+          <ul className="flex flex-col">
+            {menuItems.map((item) => (
+              <li key={item.label}>
+                <a
+                  href={item.href}
+                  onClick={() => setMenuOpen(false)}
+                  className="block rounded-2xl px-4 py-3 text-sm font-medium transition-colors hover:bg-[rgb(var(--lk-glass-fill)/0.5)]"
+                  style={{ color: 'var(--lk-fg)' }}
+                  role="menuitem"
+                >
+                  {item.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+          <div
+            className="mt-2 flex flex-col gap-2 border-t pt-2"
+            style={{ borderColor: 'rgb(var(--lk-bg-raw) / 0.1)' }}
           >
-            {isDark ? (
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="12" cy="12" r="4" />
-                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+            <Link
+              to="/login"
+              onClick={() => setMenuOpen(false)}
+              className="block rounded-2xl px-4 py-3 text-sm font-medium transition-colors hover:bg-[rgb(var(--lk-glass-fill)/0.5)]"
+              style={{ color: 'var(--lk-fg)' }}
+              role="menuitem"
+            >
+              Sign in
+            </Link>
+            <Link
+              to="/signup"
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center justify-center gap-1.5 rounded-2xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-[0.98]"
+              style={{
+                background: 'var(--lk-accent)',
+                color: 'var(--lk-accent-fg)',
+                boxShadow: '0 6px 20px -8px rgb(var(--lk-glass-shadow) / 0.55)',
+              }}
+              role="menuitem"
+            >
+              Open Palmkit
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
+                <path d="M4 12 L12 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                <path
+                  d="M5 3.5 H12 V10.5"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
               </svg>
-            ) : (
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-              </svg>
-            )}
-          </button>
-          <Link
-            to="/login"
-            className="hidden text-sm font-medium transition-colors hover:opacity-100 sm:inline-flex"
-            style={{ color: 'rgb(var(--lk-bg-raw) / 0.7)' }}
-          >
-            Sign in
-          </Link>
-          <Link
-            to="/signup"
-            className="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 hover:brightness-110 active:scale-[0.98]"
-            style={{
-              background: 'var(--lk-accent)',
-              color: 'var(--lk-accent-fg)',
-              boxShadow: '0 6px 20px -8px rgb(var(--lk-glass-shadow) / 0.55)',
-            }}
-          >
-            Open Palmkit
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
-              <path d="M4 12 L12 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-              <path
-                d="M5 3.5 H12 V10.5"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </Link>
+            </Link>
+          </div>
         </div>
-      </nav>
+      </div>
     </div>
   );
 }
@@ -217,48 +281,42 @@ function LandingNav({ isDark, onToggleTheme }: { isDark: boolean; onToggleTheme:
 /*
  * ════════ Hero — full viewport with landscape + prompt box ════════
  *
- * IMAGE MASK: keep image FULLY visible in top ~42% so the headline
- * reads as a real photograph, then ease out over the lower ~45%.
+ * IMAGE MASK: image is FULLY visible in the top ~22-30%, then fades
+ * out gradually over ~60% of the viewport. The fade completes at
+ * ~88-92%, leaving the bottom ~8-12% as pure page-bg — a clean
+ * handoff to the belly section below.
  *
- * COLOR BRIDGE: transparent in the image zone, then ramps FROM the
- * image's dark forest bottom color → opaque → warm mid-tones → page
- * bg. The opacity climbs to full OPAQUE before the color leaves the
- * dark zone, so the image is never "seen through a light overlay".
+ * NO RADIAL SCRIM: the animated image shows through clean. Headline
+ * legibility comes from the triple-layer text halo (tight blur +
+ * crisp 1px outline + wide soft halo) on the h1 and p elements.
  */
 
 function Hero({ isDark }: { isDark: boolean }) {
   /*
    * MASK-ONLY (single fade). The image's own alpha fades out over a
-   * tall zone, revealing the page bg behind it. NO bridge overlay → no
-   * second alpha competing → no muddy band. The cross-fade is
-   * mathematically clean: alpha·image + (1-alpha)·pagebg. Transition
-   * spans ~60% of the viewport so mid-tones stay gradual.
+   * very tall zone, revealing the page bg behind it. The fade
+   * completes BEFORE the section boundary (at ~88-92%), so the last
+   * 8-12% of the hero is pure page-bg — same color as the belly below.
+   * Light mode has a longer, more gradual fade because the image's
+   * dark forest bottom is far from the cream page bg.
    */
   const mask = isDark
-    ? 'linear-gradient(to bottom, #000 0%, #000 40%, rgba(0,0,0,0.96) 50%, rgba(0,0,0,0.84) 60%, rgba(0,0,0,0.66) 70%, rgba(0,0,0,0.44) 80%, rgba(0,0,0,0.22) 88%, rgba(0,0,0,0.08) 94%, rgba(0,0,0,0) 100%)'
-    : 'linear-gradient(to bottom, #000 0%, #000 34%, rgba(0,0,0,0.97) 44%, rgba(0,0,0,0.90) 54%, rgba(0,0,0,0.78) 64%, rgba(0,0,0,0.60) 74%, rgba(0,0,0,0.40) 84%, rgba(0,0,0,0.20) 92%, rgba(0,0,0,0.06) 97%, rgba(0,0,0,0) 100%)';
+    ? 'linear-gradient(to bottom, #000 0%, #000 30%, rgba(0,0,0,0.94) 42%, rgba(0,0,0,0.82) 52%, rgba(0,0,0,0.66) 60%, rgba(0,0,0,0.48) 67%, rgba(0,0,0,0.32) 73%, rgba(0,0,0,0.18) 79%, rgba(0,0,0,0.08) 84%, rgba(0,0,0,0.02) 88%, rgba(0,0,0,0) 92%, rgba(0,0,0,0) 100%)'
+    : 'linear-gradient(to bottom, #000 0%, #000 22%, rgba(0,0,0,0.96) 34%, rgba(0,0,0,0.88) 44%, rgba(0,0,0,0.76) 53%, rgba(0,0,0,0.62) 61%, rgba(0,0,0,0.46) 68%, rgba(0,0,0,0.32) 74%, rgba(0,0,0,0.20) 80%, rgba(0,0,0,0.10) 85%, rgba(0,0,0,0.04) 89%, rgba(0,0,0,0.01) 92%, rgba(0,0,0,0) 95%, rgba(0,0,0,0) 100%)';
 
   return (
     <section id="top" className="relative flex h-[100svh] min-h-[100svh] flex-col overflow-hidden">
-      {/* landscape atmosphere */}
+      {/* landscape atmosphere — NO radial scrim. The animated image
+          shows through clean; headline legibility comes from the
+          triple-layer text halo on the h1/p below. Mask fades the
+          image's own alpha to 0 over ~60% of the viewport, with the
+          last ~8-12% being pure page-bg (clean handoff to belly). */}
       <div className="absolute inset-0 -z-10">
         <img
           src="/hero-landscape.gif"
           alt="A painted valley at dawn — still lake, pine forest and snow-capped peaks under a soft pink sky."
           className="lk-drift h-full w-full object-cover"
           style={{ objectFit: 'cover', maskImage: mask, WebkitMaskImage: mask }}
-        />
-        {/* legibility scrim — centered on the headline area (upper-
-            third). Stronger now so cream text reads clearly on the
-            bright dawn sky. Fades out at the edges so the art is
-            still visible down the sides. */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background: isDark
-              ? 'radial-gradient(140% 78% at 50% 30%, rgba(12,8,4,0.78) 0%, rgba(12,8,4,0.56) 28%, rgba(12,8,4,0.26) 54%, rgba(12,8,4,0.06) 76%, rgba(12,8,4,0) 100%)'
-              : 'radial-gradient(140% 82% at 50% 28%, rgba(20,14,8,0.88) 0%, rgba(20,14,8,0.70) 26%, rgba(20,14,8,0.42) 50%, rgba(20,14,8,0.16) 72%, rgba(20,14,8,0.02) 90%, rgba(20,14,8,0) 100%)',
-          }}
         />
       </div>
 
@@ -302,10 +360,10 @@ function Hero({ isDark }: { isDark: boolean }) {
 /*
  * ════════ Build flow — the middle beat ════════
  *
- * TOP BRIDGE: continues the hero's warm wash heading DOWN (never a
- * hard line).
- * BOTTOM BRIDGE: LONG warm tonal wash (≈420px) preparing the footer
- * image's top color, plus a subtle forest-hint at the very bottom.
+ * PURE PAGE-BG: no bridge overlays. The belly is flat var(--lk-bg),
+ * matching the hero's faded-out bottom and the footer's faded-in
+ * top. Any color wash here would create a visible step at the
+ * boundaries.
  */
 
 function BuildFlow() {
@@ -321,44 +379,6 @@ function BuildFlow() {
       className="lk-grain relative w-full overflow-hidden px-4 pb-48 pt-16 sm:px-6 sm:pb-56 sm:pt-24"
       style={{ background: 'var(--lk-bg)' }}
     >
-      {/* top bridge — soft warm wash heading DOWN */}
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-56"
-        style={{
-          background:
-            'linear-gradient(to bottom, rgb(var(--lk-bg-raw) / 0.55) 0%, rgb(var(--lk-bg-raw) / 0.28) 28%, rgb(var(--lk-bg-raw) / 0.10) 56%, rgb(var(--lk-bg-raw) / 0) 100%)',
-        }}
-      />
-      {/* bottom bridge — long warm tonal wash preparing the footer */}
-      <div
-        className="pointer-events-none absolute inset-x-0 bottom-0"
-        style={{
-          height: '420px',
-          background:
-            'linear-gradient(to bottom, ' +
-            'rgb(var(--lk-bg-raw) / 0) 0%, ' +
-            'rgb(var(--lk-bg-raw) / 0) 18%, ' +
-            'rgb(var(--lk-bg-raw) / 0.20) 34%, ' +
-            'rgb(var(--lk-bg-raw) / 0.42) 48%, ' +
-            'rgb(var(--lk-bg-raw) / 0.62) 60%, ' +
-            'rgb(var(--lk-bg-raw) / 0.78) 70%, ' +
-            'rgb(var(--lk-bg-raw) / 0.88) 78%, ' +
-            'rgb(var(--lk-bg-raw) / 0.94) 84%, ' +
-            'var(--lk-bg) 92%, ' +
-            'var(--lk-bg) 100%)',
-        }}
-      />
-      {/* forest-hint at the very bottom — carries the hue so the
-          footer image's dark top doesn't feel like a new color */}
-      <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 opacity-60"
-        style={{
-          height: '180px',
-          background:
-            'linear-gradient(to bottom, rgba(40,46,38,0) 0%, rgba(40,46,38,0.05) 50%, rgba(30,36,28,0.10) 100%)',
-        }}
-      />
-
       <div className="relative mx-auto w-full max-w-6xl">
         <div className="max-w-2xl">
           <h2
@@ -596,12 +616,10 @@ function BuildFlow() {
 /*
  * ════════ Footer — full-bleed landscape with links overlaid ════════
  *
- * IMAGE MASK: fades image IN over a long span. Light mode longer
+ * IMAGE MASK: fades image IN over a very long span. The top ~10-16%
+ * of the footer is pure page-bg (image alpha = 0), giving a clean
+ * handoff from the belly section above. Light mode has a longer fade
  * because the image's dark top is far from the cream bg.
- *
- * COLOR BRIDGE: sits UNDER the image. OPAQUE while color is light,
- * only thins once color reaches the image's top-edge color. So the
- * image never shows through a light overlay (no muddy abrupt jump).
  *
  * LEGIBILITY PANEL: confined to MID band (transparent at top so it
  * doesn't darken the seam zone). Stronger in light mode + extra
@@ -645,15 +663,16 @@ function FooterScene({ isDark }: { isDark: boolean }) {
 
   /*
    * MASK-ONLY (single fade). Image alpha fades IN from 0 at the top to
-   * fully opaque lower down, revealing the page bg behind it at the top.
-   * The belly (page bg) → footer (page bg behind masked image) boundary
-   * is invisible. NO bridge → no color mismatch with the image's bright
-   * sky. Footer gets an explicit page-bg surface so the masked image
-   * always dissolves into the same color that sits above it.
+   * fully opaque lower down. The top ~10-16% is pure page-bg (alpha 0),
+   * giving a clean handoff from the belly section. NO bridge → no
+   * color mismatch with the image's bright sky. Footer gets an explicit
+   * page-bg surface so the masked image always dissolves into the same
+   * color that sits above it. Light mode has a much longer fade because
+   * the image's dark/bright top is far from the cream page bg.
    */
   const mask = isDark
-    ? 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 4%, rgba(0,0,0,0.04) 12%, rgba(0,0,0,0.12) 22%, rgba(0,0,0,0.24) 32%, rgba(0,0,0,0.40) 42%, rgba(0,0,0,0.56) 52%, rgba(0,0,0,0.72) 62%, rgba(0,0,0,0.84) 72%, rgba(0,0,0,0.93) 82%, rgba(0,0,0,0.98) 90%, #000 100%)'
-    : 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 3%, rgba(0,0,0,0.03) 10%, rgba(0,0,0,0.08) 20%, rgba(0,0,0,0.16) 30%, rgba(0,0,0,0.28) 40%, rgba(0,0,0,0.42) 50%, rgba(0,0,0,0.56) 60%, rgba(0,0,0,0.70) 70%, rgba(0,0,0,0.82) 80%, rgba(0,0,0,0.92) 90%, rgba(0,0,0,0.98) 96%, #000 100%)';
+    ? 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 10%, rgba(0,0,0,0.02) 16%, rgba(0,0,0,0.08) 24%, rgba(0,0,0,0.18) 32%, rgba(0,0,0,0.32) 40%, rgba(0,0,0,0.46) 48%, rgba(0,0,0,0.60) 56%, rgba(0,0,0,0.74) 64%, rgba(0,0,0,0.86) 72%, rgba(0,0,0,0.94) 80%, rgba(0,0,0,0.98) 88%, #000 96%, #000 100%)'
+    : 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 16%, rgba(0,0,0,0.02) 22%, rgba(0,0,0,0.06) 30%, rgba(0,0,0,0.14) 38%, rgba(0,0,0,0.24) 46%, rgba(0,0,0,0.36) 54%, rgba(0,0,0,0.50) 62%, rgba(0,0,0,0.64) 70%, rgba(0,0,0,0.78) 78%, rgba(0,0,0,0.88) 85%, rgba(0,0,0,0.95) 91%, rgba(0,0,0,0.98) 95%, #000 100%)';
 
   /*
    * Triple-layer text halo — reads on both bright day sky and dark
