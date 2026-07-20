@@ -4,7 +4,7 @@
 interface Env { [key: string]: unknown; }
 const HOP_BY_HOP = new Set(['content-encoding','content-length','transfer-encoding','connection','keep-alive','content-security-policy','x-frame-options']);
 function readCookie(cookieHeader: string, name: string): string | undefined {
-  const m = cookieHeader.match(new RegExp(\`(?:^|; )\${name}=([^;]+)\`));
+  const m = cookieHeader.match(new RegExp(`(?:^|; )${name}=([^;]+)`));
   return m ? decodeURIComponent(m[1]) : undefined;
 }
 export const onRequest: PagesFunction<Env> = async (context) => {
@@ -18,7 +18,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const subPath = url.pathname.replace(/^\/preview\/?/, '') || 'index.html';
     const SUPABASE_URL = (context.env as Record<string, string>)?.SUPABASE_URL || 'https://ijbosijtfxehmnfhnnuq.supabase.co';
     try {
-      const sbUrl = \`\${SUPABASE_URL}/storage/v1/object/public/palmkit-files/projects/\${projectId}/dist/\${subPath}\`;
+      const sbUrl = `${SUPABASE_URL}/storage/v1/object/public/palmkit-files/projects/${projectId}/dist/${subPath}`;
       const sbResp = await fetch(sbUrl, { redirect: 'manual' });
       if (sbResp.status === 200) {
         const headers = new Headers();
@@ -28,15 +28,15 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         if (subPath.endsWith('.html')) {
           let html = await sbResp.text();
           const tag = '<script src="/inspector-script.js"></script>';
-          if (html.includes('</head>')) html = html.replace('</head>', \`\${tag}</head>\`);
-          else html = \`\${tag}\${html}\`;
+          if (html.includes('</head>')) html = html.replace('</head>', `${tag}</head>`);
+          else html = `${tag}${html}`;
           return new Response(html, { status: 200, headers });
         }
         return new Response(sbResp.body, { status: 200, headers });
       }
     } catch {}
     try {
-      const oracleTarget = \`https://blacks-drawing-dallas-interface.trycloudflare.com/preview-dist/\${projectId}/\${subPath}\${url.search}\`;
+      const oracleTarget = `https://blacks-drawing-dallas-interface.trycloudflare.com/preview-dist/${projectId}/${subPath}${url.search}`;
       const oracleResp = await fetch(oracleTarget, { method: request.method, headers: { 'Accept': 'text/html' }, redirect: 'manual' });
       const headers = new Headers();
       oracleResp.headers.forEach((value, key) => { if (!HOP_BY_HOP.has(key.toLowerCase())) headers.set(key, value); });
@@ -44,15 +44,15 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       if (contentType.includes('text/html')) {
         let html = await oracleResp.text();
         const tag = '<script src="/inspector-script.js"></script>';
-        if (html.includes('</head>')) html = html.replace('</head>', \`\${tag}</head>\`);
-        else html = \`\${tag}\${html}\`;
+        if (html.includes('</head>')) html = html.replace('</head>', `${tag}</head>`);
+        else html = `${tag}${html}`;
         return new Response(html, { status: oracleResp.status, headers });
       }
       return new Response(oracleResp.body, { status: oracleResp.status, headers });
     } catch { return new Response('Preview server unreachable', { status: 502 }); }
   }
   const [sandboxId, port = '3000'] = session.split(':');
-  const target = \`https://\${port}-\${sandboxId}.e2b.app\${url.pathname}\${url.search}\`;
+  const target = `https://${port}-${sandboxId}.e2b.app${url.pathname}${url.search}`;
   const upgradeHeader = request.headers.get('Upgrade') || '';
   if (upgradeHeader.toLowerCase().includes('websocket')) {
     const wsReq = new Request(target, request); wsReq.headers.delete('cookie'); wsReq.headers.delete('host');
@@ -79,7 +79,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const contentType = upstream.headers.get('content-type') || '';
   if (contentType.includes('text/html')) {
     let html = await upstream.text(); const tag = '<script src="/inspector-script.js"></script>';
-    if (html.includes('</head>')) html = html.replace('</head>', \`\${tag}</head>\`); else html = \`\${tag}\${html}\`;
+    if (html.includes('</head>')) html = html.replace('</head>', `${tag}</head>`); else html = `${tag}${html}`;
     return new Response(html, { status: upstream.status, headers });
   }
   return new Response(upstream.body, { status: upstream.status, headers });

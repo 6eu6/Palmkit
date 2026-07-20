@@ -1,0 +1,156 @@
+/* ════════════════════════════════════════════════════════════════
+   Palmkit Landing — Liquid Glass redesign
+   Warm earthy palette tied to the landscape art. The marketing page
+   keeps its own theme scope (data-landing-theme) so it never bleeds
+   into the app shell's palmkit-elements-* dark theme.
+   ════════════════════════════════════════════════════════════════ */
+
+@font-face {
+  font-family: 'Boska';
+  src: url('/fonts/Boska-Variable.woff2') format('woff2-variations');
+  font-weight: 200 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Boska';
+  src: url('/fonts/Boska-VariableItalic.woff2') format('woff2-variations');
+  font-weight: 200 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* ── Theme tokens ── */
+[data-landing-theme='dark'] {
+  --lk-bg: #16120c;
+  --lk-bg-raw: 22 18 12;
+  --lk-fg: #ECE4D4;
+  --lk-accent: #D8825C;
+  --lk-accent-soft: #B06A4E;
+  --lk-accent-fg: #16120c;
+  --lk-glass-fill: 34 28 18;
+  --lk-glass-stroke: 236 228 212;
+  --lk-glass-highlight: 255 250 240;
+  --lk-glass-shadow: 216 130 92;
+  --lk-footer-gif: url('/footer-night.gif');
+}
+[data-landing-theme='light'] {
+  --lk-bg: #E7E0D2;
+  --lk-bg-raw: 231 224 210;
+  --lk-fg: #221E16;
+  --lk-accent: #9C4A2E;
+  --lk-accent-soft: #C27A5E;
+  --lk-accent-fg: #FBF7EE;
+  --lk-glass-fill: 251 247 238;
+  --lk-glass-stroke: 255 255 255;
+  --lk-glass-highlight: 255 255 255;
+  --lk-glass-shadow: 156 74 46;
+  --lk-footer-gif: url('/footer-day.gif');
+}
+
+/* ── Display type ── */
+.lk-display {
+  font-family: 'Boska', Georgia, serif;
+  font-feature-settings: 'ss01';
+  letter-spacing: -0.01em;
+}
+
+/* ── Liquid Glass ── */
+.lk-glass {
+  position: relative;
+  background: rgb(var(--lk-glass-fill) / 0.42);
+  backdrop-filter: blur(22px) saturate(160%) contrast(108%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%) contrast(108%);
+  box-shadow:
+    inset 0 1px 0 0 rgb(var(--lk-glass-highlight) / 0.55),
+    inset 0 0 0 1px rgb(var(--lk-glass-stroke) / 0.16),
+    0 1px 1px 0 rgb(var(--lk-glass-shadow) / 0.10),
+    0 8px 28px -14px rgb(var(--lk-glass-shadow) / 0.35);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+.lk-glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    140deg,
+    rgb(120 200 230 / 0.22) 0%,
+    rgb(var(--lk-glass-stroke) / 0.04) 32%,
+    rgb(var(--lk-glass-stroke) / 0.04) 68%,
+    rgb(210 120 170 / 0.20) 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ── Grain ── */
+.lk-grain {
+  position: relative;
+  isolation: isolate;
+}
+.lk-grain::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.04;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+[data-landing-theme='dark'] .lk-grain::after {
+  opacity: 0.07;
+  mix-blend-mode: screen;
+}
+
+/* ── Wordmark halo ── */
+.lk-wordmark-halo {
+  text-shadow:
+    0 0 22px rgba(255, 250, 240, 0.55),
+    0 0 1px rgba(255, 250, 240, 0.6),
+    0 3px 26px rgba(20, 16, 12, 0.30);
+}
+[data-landing-theme='dark'] .lk-wordmark-halo {
+  text-shadow:
+    0 2px 34px rgba(6, 4, 2, 0.75),
+    0 0 22px rgba(6, 4, 2, 0.55),
+    0 1px 0 rgba(0, 0, 0, 0.45);
+}
+
+/* ── Drift animation for hero ── */
+@keyframes lk-drift {
+  0%, 100% { transform: scale(1.06) translate3d(0, 0, 0); }
+  50% { transform: scale(1.10) translate3d(-1.2%, -1.6%, 0); }
+}
+.lk-drift {
+  animation: lk-drift 28s ease-in-out infinite;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lk-drift { animation: none !important; }
+}
+
+/* ── Soft scrollbar ── */
+.lk-soft-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.lk-soft-scroll::-webkit-scrollbar-track { background: transparent; }
+.lk-soft-scroll::-webkit-scrollbar-thumb {
+  background: rgb(var(--lk-glass-shadow) / 0.25);
+  border-radius: 8px;
+}
+
+/* ── Reset the landing scope: the marketing page sets its own bg/fg
+   so the warm palette reads true, independent of the app shell. ── */
+.lk-root {
+  background: var(--lk-bg);
+  color: var(--lk-fg);
+  font-family: 'Boska', 'Inter', system-ui, -apple-system, sans-serif;
+  min-height: 100dvh;
+}
+.lk-root * {
+  box-sizing: border-box;
+}
