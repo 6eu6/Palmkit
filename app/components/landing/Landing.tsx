@@ -357,7 +357,7 @@ function Hero({ isDark }: { isDark: boolean }) {
           last ~8-12% being pure page-bg (clean handoff to belly). */}
       <div className="absolute inset-0 -z-10">
         <img
-          src="/hero-landscape.gif"
+          src="/hero-landscape.webp"
           alt="A painted valley at dawn — still lake, pine forest and snow-capped peaks under a soft pink sky."
           className="lk-drift h-full w-full object-cover"
           style={{ objectFit: 'cover', maskImage: mask, WebkitMaskImage: mask }}
@@ -700,7 +700,7 @@ const FOOTER_COLS: { heading: string; links: { label: string; to: string }[] }[]
 ];
 
 function FooterScene({ isDark }: { isDark: boolean }) {
-  const gif = isDark ? '/footer-night.gif' : '/footer-day.gif';
+  const gif = isDark ? '/footer-night.webp' : '/footer-day.webp';
   const alt = isDark
     ? 'A mountain lake under a deep night sky — pines and peaks reflected in still water.'
     : 'A mountain lake in bright daylight — pines, peaks and a clear blue sky.';
