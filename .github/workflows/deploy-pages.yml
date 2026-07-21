@@ -37,8 +37,12 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
+
+      # electron's node-gyp is fetched via git@github.com which fails in CI (no SSH key).
+      - name: Configure git SSH→HTTPS rewrite
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
@@ -54,3 +58,4 @@ jobs:
           apiToken: ${{ secrets.CF_PAGES_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
           command: pages deploy build/client --project-name=mobile-ai-dev-workspace
+        continue-on-error: true # Don't fail the workflow if CF secrets aren't set yet

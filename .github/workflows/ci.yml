@@ -30,8 +30,13 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
+
+      # electron's node-gyp is fetched via git@github.com which fails in CI (no SSH key).
+      # Rewrite all git SSH URLs to HTTPS — safe for public repos.
+      - name: Configure git SSH→HTTPS rewrite
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
@@ -59,6 +64,9 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
+      - name: Configure git SSH→HTTPS rewrite
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
 
       - name: Install worker dependencies
         working-directory: external-worker

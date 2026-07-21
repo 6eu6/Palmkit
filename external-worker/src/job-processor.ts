@@ -1467,7 +1467,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       }
     }
 
-Phase 5: FINALIZE ─────────────────────────────────────────────
+// ─── Phase 5: FINALIZE ─────────────────────────────────────────────
     // RADICAL FIX: Only mark as ready_for_preview if the build actually passed.
     // If npm run build failed (buildVerified=false), mark as failed_clean
     // but still save the files so the user can view/edit them.
