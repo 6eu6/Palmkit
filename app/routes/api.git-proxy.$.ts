@@ -117,12 +117,13 @@ async function handleProxyRequest(request: Request, path: string | undefined) {
     // Add body for non-GET/HEAD requests
     if (!['GET', 'HEAD'].includes(request.method)) {
       fetchOptions.body = request.body;
-      fetchOptions.duplex = 'half';
 
       /*
-       * Note: duplex property is removed to ensure TypeScript compatibility
-       * across different environments and versions
+       * `duplex: 'half'` is required by the Workers runtime when streaming a
+       * ReadableStream body, but it isn't part of RequestInit in
+       * @cloudflare/workers-types — cast locally to satisfy tsc.
        */
+      (fetchOptions as RequestInit & { duplex?: 'half' }).duplex = 'half';
     }
 
     // Forward the request to the target URL
