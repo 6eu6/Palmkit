@@ -496,14 +496,14 @@ export const ChatImpl = memo(
           ? [{ code: 'WORKER_ERROR', message: extWorkerState.error, severity: 'error' }]
           : [],
         retryCount: 0,
+
         /*
          * Prebuilt preview info from Oracle worker's local build.
          * When hasPrebuiltPreview is true, the preview is served from Oracle's
          * nginx directly (bypasses E2B sandbox OOM for large projects).
          */
-        _jobValidationResult: extWorkerState.status === 'ready_for_preview'
-          ? (extWorkerState as any)._validationResult ?? null
-          : null,
+        _jobValidationResult:
+          extWorkerState.status === 'ready_for_preview' ? ((extWorkerState as any)._validationResult ?? null) : null,
       });
 
       /* Phase 5: sync job events to workerEventsStore for the progress UI */

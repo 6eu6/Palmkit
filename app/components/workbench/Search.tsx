@@ -10,22 +10,30 @@ interface DisplayMatch {
   matchCharEnd: number;
 }
 
-// Simple client-side text search — replaces WebContainer's textSearch.
-// Searches through the workbench store's file contents directly.
-async function performTextSearch(
-  query: string,
-  onProgress: (results: DisplayMatch[]) => void,
-): Promise<void> {
+/*
+ * Simple client-side text search — replaces WebContainer's textSearch.
+ * Searches through the workbench store's file contents directly.
+ */
+async function performTextSearch(query: string, onProgress: (results: DisplayMatch[]) => void): Promise<void> {
   const map = workbenchStore.files.get();
   const prefix = `${WORK_DIR}/`;
   const searchQuery = query.toLowerCase();
   const allMatches: DisplayMatch[] = [];
 
   for (const [path, dirent] of Object.entries(map)) {
-    if (!dirent || dirent.type !== 'file' || dirent.isBinary) continue;
-    if (!path.startsWith(prefix)) continue;
+    if (!dirent || dirent.type !== 'file' || dirent.isBinary) {
+      continue;
+    }
+
+    if (!path.startsWith(prefix)) {
+      continue;
+    }
+
     const rel = path.slice(prefix.length);
-    if (rel.startsWith('node_modules/') || rel.includes('/node_modules/')) continue;
+
+    if (rel.startsWith('node_modules/') || rel.includes('/node_modules/')) {
+      continue;
+    }
 
     const content = dirent.content || '';
     const lines = content.split('\n');
@@ -33,6 +41,7 @@ async function performTextSearch(
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].toLowerCase();
       const idx = line.indexOf(searchQuery);
+
       if (idx >= 0) {
         allMatches.push({
           path: rel,
@@ -53,7 +62,7 @@ async function performTextSearch(
 }
 
 export function Search() {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<DisplayMatch[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
@@ -66,6 +75,7 @@ export function Search() {
       if (!grouped[match.path]) {
         grouped[match.path] = [];
       }
+
       grouped[match.path].push(match);
     }
 
@@ -81,6 +91,7 @@ export function Search() {
       if (!query.trim()) {
         setSearchResults([]);
         setHasSearched(false);
+
         return;
       }
 
@@ -113,7 +124,8 @@ export function Search() {
   const getFileContent = (path: string): string => {
     const map = workbenchStore.files.get();
     const dirent = map[`${WORK_DIR}/${path}`];
-    return dirent?.content || '';
+
+    return (dirent && dirent.type === 'file' && dirent.content) || '';
   };
 
   if (!searchQuery.trim()) {
@@ -149,6 +161,7 @@ export function Search() {
                   {matches.map((match, i) => {
                     const content = getFileContent(path);
                     const line = content.split('\n')[match.lineNumber - 1] || '';
+
                     return (
                       <div key={i} className="py-1 text-xs font-mono">
                         <span className="text-[#666]">{match.lineNumber}: </span>

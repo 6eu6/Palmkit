@@ -261,16 +261,19 @@ export function useWorkerSandbox(): WorkerSandboxResult {
           if (typeof document !== 'undefined') {
             document.cookie = `pf_preview=oracle:${projectId}:${currentChatId()}; path=/; samesite=lax`;
           }
+
           setSandboxUrl(`${window.location.origin}/preview/`);
           setSandboxState('ready');
           setUsesMobileE2B(false);
           console.log('[worker-sandbox] using prebuilt preview from Oracle for project', projectId);
+
           return;
         }
       }
 
       // Fallback to E2B sandbox
       setUsesMobileE2B(true);
+
       const jobKey = activeBuildJobIdStore.get() ?? undefined;
       const prewarmedId = jobKey && prewarm.current?.jobKey === jobKey ? prewarm.current.id : undefined;
       await _runInE2B(files, type, setSandboxState, setSandboxUrl, setSandboxError, prewarmedId);

@@ -26,11 +26,13 @@ import { WORK_DIR } from '~/utils/constants';
 import { workbenchStore } from '~/lib/stores/workbench';
 
 function createInMemoryFs() {
-  // Sync with the workbench store — the single source of truth for files.
-  // The workbench store (FilesStore.files) holds all project files keyed by
-  // WORK_DIR-prefixed paths. The shim's fs reads/writes through it so that
-  // deploy components (GitHubDeploy, NetlifyDeploy, etc.) can collect files
-  // for deployment without a real WebContainer.
+  /*
+   * Sync with the workbench store — the single source of truth for files.
+   * The workbench store (FilesStore.files) holds all project files keyed by
+   * WORK_DIR-prefixed paths. The shim's fs reads/writes through it so that
+   * deploy components (GitHubDeploy, NetlifyDeploy, etc.) can collect files
+   * for deployment without a real WebContainer.
+   */
 
   const norm = (p: string): string => {
     const clean = p.replace(/\/+$/, '');
@@ -40,6 +42,7 @@ function createInMemoryFs() {
   const enoent = (p: string): Error => {
     const e = new Error(`ENOENT: no such file or directory, '${p}'`) as Error & { code?: string };
     e.code = 'ENOENT';
+
     return e;
   };
 
@@ -47,11 +50,13 @@ function createInMemoryFs() {
   const getStoreFiles = (): Map<string, string> => {
     const map = workbenchStore.files.get();
     const files = new Map<string, string>();
+
     for (const [path, dirent] of Object.entries(map)) {
       if (dirent && dirent.type === 'file' && !dirent.isBinary) {
         files.set(path, dirent.content || '');
       }
     }
+
     return files;
   };
 
@@ -65,10 +70,13 @@ function createInMemoryFs() {
     async readFile(p: string, encoding?: string): Promise<string | Uint8Array> {
       const key = norm(p);
       const storeFiles = getStoreFiles();
+
       if (!storeFiles.has(key)) {
         throw enoent(p);
       }
+
       const content = storeFiles.get(key)!;
+
       return encoding ? content : new TextEncoder().encode(content);
     },
 
@@ -80,6 +88,7 @@ function createInMemoryFs() {
       for (const key of storeFiles.keys()) {
         if (key.startsWith(prefix)) {
           const child = key.slice(prefix.length).split('/')[0];
+
           if (child) {
             names.add(child);
           }
@@ -113,6 +122,7 @@ function createInMemoryFs() {
       if (opts?.recursive) {
         const dirPrefix = `${key}/`;
         const storeFiles = getStoreFiles();
+
         for (const k of [...storeFiles.keys()]) {
           if (k.startsWith(dirPrefix)) {
             workbenchStore.files.setKey(k, undefined as any);
@@ -125,6 +135,7 @@ function createInMemoryFs() {
       const a = norm(oldPath);
       const b = norm(newPath);
       const storeFiles = getStoreFiles();
+
       if (storeFiles.has(a)) {
         workbenchStore.files.setKey(b, { type: 'file', content: storeFiles.get(a)!, isBinary: false });
         workbenchStore.files.setKey(a, undefined as any);
