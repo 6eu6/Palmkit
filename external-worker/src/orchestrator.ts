@@ -149,6 +149,13 @@ export interface OrchestratorResult {
   contextWindow: number;
   contextRatio: number;
   truncated: boolean;
+
+  /**
+   * Whether `npm run build` passed after generation. `null` when no build step
+   * ran (static apps have no build). `true`/`false` for dynamic apps.
+   * Drives ready_for_preview gating in job-processor.
+   */
+  buildVerified: boolean | null;
 }
 
 /** Fallback context window when the model's real limit isn't known. */
@@ -2677,6 +2684,7 @@ export async function runOrchestratedBuild(
       contextWindow: effectiveContextWindow,
       contextRatio: effectiveContextWindow > 0 ? peakPromptTokens / effectiveContextWindow : 0,
       truncated,
+      buildVerified: false, // errored before build could run — treat as not verified
     };
   } finally {
     clearInterval(keepAlive);

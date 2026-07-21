@@ -16,7 +16,7 @@
  *   7. finalize: status = ready_for_preview
  */
 
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { logger } from './logger';
 import { makeProjectSpec, detectAppTypeFromFiles, type GenerationResult } from './project-spec';
 import { runOrchestratedBuild } from './orchestrator';
@@ -1469,9 +1469,9 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
 
 // ─── Phase 5: FINALIZE ─────────────────────────────────────────────
     // RADICAL FIX: Only mark as ready_for_preview if the build actually passed.
-    // If npm run build failed (buildVerified=false), mark as failed_clean
-    // but still save the files so the user can view/edit them.
-    const buildPassed = result?.success !== false && (result as any)?.buildVerified !== false;
+    // For dynamic apps, localBuildResult.success tells us if `npm run build` succeeded.
+    // For static apps (no build step), localBuildResult is undefined → treat as passed.
+    const buildPassed = localBuildResult?.success !== false;
 
     if (!buildPassed && (result?.files ?? []).length > 0) {
       // Build produced files but npm run build failed — save files but mark as failed
