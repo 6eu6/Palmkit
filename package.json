@@ -11,21 +11,23 @@
     "email": "dev@palmkit.app"
   },
   "scripts": {
-    "deploy": "npm run build && wrangler pages deploy",
+    "deploy": "pnpm run build && wrangler pages deploy --project-name mobile-ai-dev-workspace",
     "build": "remix vite:build",
-    "dev": "node pre-start.cjs  && remix vite:dev",
+    "dev": "node pre-start.cjs && remix vite:dev",
     "test": "vitest --run",
     "test:watch": "vitest",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint app",
-    "lint:fix": "npm run lint -- --fix && prettier app --write",
+    "lint:fix": "pnpm run lint -- --fix && prettier app --write",
     "start:windows": "wrangler pages dev ./build/client",
     "start:unix": "bindings=$(./bindings.sh) && wrangler pages dev ./build/client $bindings",
-    "start": "node -e \"const { spawn } = require('child_process'); const isWindows = process.platform === 'win32'; const cmd = isWindows ? 'npm run start:windows' : 'npm run start:unix'; const child = spawn(cmd, { shell: true, stdio: 'inherit' }); child.on('exit', code => process.exit(code));\"",
+    "start": "node -e \"const { spawn } = require('child_process'); const isWindows = process.platform === 'win32'; const cmd = isWindows ? 'pnpm run start:windows' : 'pnpm run start:unix'; const child = spawn(cmd, { shell: true, stdio: 'inherit' }); child.on('exit', code => process.exit(code));\"",
     "dockerstart": "bindings=$(./bindings.sh) && wrangler pages dev ./build/client $bindings --ip 0.0.0.0 --port 5173 --no-show-interactive-dev-session",
     "dockerrun": "docker run -it -d --name palmkit-live -p 5173:5173 --env-file .env.local bolt-ai",
     "dockerbuild:prod": "docker build -t palmkit:production -t palmkit:latest --target palmkit-production .",
     "dockerbuild": "docker build -t palmkit:development -t palmkit:latest --target development .",
     "typecheck": "tsc",
+    "typecheck:all": "tsc && cd external-worker && bun run typecheck",
+    "ci": "pnpm run lint && pnpm run typecheck && pnpm run test",
     "typegen": "wrangler types",
     "preview": "pnpm run build && pnpm run start",
     "prepare": "husky",
@@ -43,7 +45,8 @@
     "electron:build:dist": "rm -rf dist && pnpm electron:build:renderer && pnpm electron:build:deps && electron-builder --mwl"
   },
   "engines": {
-    "node": ">=18.18.0"
+    "node": ">=20.0.0",
+    "pnpm": ">=9.14.4"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "1.0.6",

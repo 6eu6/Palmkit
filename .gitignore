@@ -47,13 +47,15 @@ modelfiles
 # docs ignore
 site
 
-# commit file ignore
-app/commit.json
-changelogUI.md
-docs/instructions/Roadmap.md
-.cursorrules
+# Markdown — ignore by default, but keep canonical docs tracked
 *.md
-.qodo
+!README.md
+!CONTRIBUTING.md
+!FAQ.md
+!CHANGELOG.md
+!ROADMAP.md
+!docs/**/*.md
+!.github/**/*.md
 
 # Local MCP server config (project-scoped, per-developer)
 .mcp.json
