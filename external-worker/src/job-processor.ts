@@ -1436,16 +1436,16 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
     }
 
     // ───
-    // --- Phase 4.6: UPLOAD DIST TO R2 (was Supabase Storage) ---
+    // --- Phase 4.6: UPLOAD DIST TO R2 + SUPABASE STORAGE ---
     //
-    // CHANGED (P4 fix): dist files now upload to Cloudflare R2 instead of
-    // Supabase Storage. R2 honors the Content-Type header set by the client
-    // (Supabase Storage forces text/plain and ignores it), so HTML previews
-    // render as real pages instead of being downloaded as raw text.
+    // P4 fix: dist files are uploaded to BOTH:
+    //   - Cloudflare R2 (for source/metadata, with proper Content-Type)
+    //   - Supabase Storage (for serving via the Cloudflare Pages Function)
     //
-    // The preview is served via the Cloudflare Pages Function at /preview-dist/
-    // (see functions/preview/[[path]].ts) which proxies R2 with the correct
-    // MIME types.
+    // R2 buckets aren't publicly readable without AWS SDK credentials, so the
+    // Pages Function at /preview/ reads from Supabase Storage and rewrites the
+    // Content-Type (Supabase forces text/plain natively, the Function fixes it
+    // so HTML renders as a real page).
     let supabasePreviewUrl: string | undefined;
     if (localBuildResult?.success && localBuildResult.distFiles.length > 0) {
       try {
@@ -1467,20 +1467,34 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
           '.ico': 'image/x-icon',
         };
 
+        // 1) Upload to R2 (with proper Content-Type — R2 honors it)
         for (const distFile of localBuildResult.distFiles) {
           const ext = distFile.path.substring(distFile.path.lastIndexOf('.'));
           const r2Key = `${distPrefix}/${distFile.path}`;
           await putFile(r2Key, distFile.content, contentTypes[ext] || 'application/octet-stream');
         }
 
+        // 2) Also upload to Supabase Storage (so the Pages Function can serve)
+        const supabase = createClient(
+          process.env.SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        );
+        await supabase.storage.updateBucket('palmkit-files', { public: true }).catch(() => {});
+        for (const distFile of localBuildResult.distFiles) {
+          const sbKey = `${distPrefix}/${distFile.path}`;
+          await supabase.storage.from('palmkit-files').upload(sbKey, distFile.content, {
+            upsert: true,
+            cacheControl: 'no-cache',
+          });
+        }
+
         // Preview URL — served via the Cloudflare Pages Function at /preview/
-        // which reads from R2 and sets the correct Content-Type (HTML renders
-        // as a real page, not text/plain as Supabase Storage does natively).
+        // which reads from Supabase and sets the correct Content-Type.
         const appOrigin = process.env.PUBLIC_APP_URL || 'https://palmkit.app';
         supabasePreviewUrl = `${appOrigin}/preview/`;
-        logger.info(`Job ${job.id}: Uploaded ${localBuildResult.distFiles.length} dist files to R2 (preview: ${supabasePreviewUrl})`);
+        logger.info(`Job ${job.id}: Uploaded ${localBuildResult.distFiles.length} dist files to R2 + Supabase (preview: ${supabasePreviewUrl})`);
       } catch (sbErr) {
-        logger.warn(`Job ${job.id}: Supabase upload failed (non-fatal): ${sbErr}`);
+        logger.warn(`Job ${job.id}: Dist upload failed (non-fatal): ${sbErr}`);
       }
     }
 

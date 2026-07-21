@@ -1,10 +1,11 @@
 /**
- * Same-origin reverse proxy for the E2B cloud preview + R2/Supabase static preview.
+ * Same-origin reverse proxy for the E2B cloud preview + Supabase static preview.
  *
- * P4 fix: dist files are now uploaded to Cloudflare R2 (not Supabase Storage)
- * because R2 honors the Content-Type header set by the client, so HTML previews
- * render as real pages. This function reads from R2 first; falls back to
- * Supabase Storage (legacy) if the R2 fetch fails.
+ * The worker uploads dist files to BOTH Cloudflare R2 (for source/metadata)
+ * AND Supabase Storage (for serving via this Function). R2 buckets aren't
+ * publicly readable without AWS SDK credentials, so we read from Supabase
+ * Storage here and rewrite the Content-Type so HTML previews render as real
+ * pages (Supabase Storage forces text/plain natively).
  */
 interface Env { [key: string]: unknown; }
 const HOP_BY_HOP = new Set(['content-encoding','content-length','transfer-encoding','connection','keep-alive','content-security-policy','x-frame-options']);
@@ -49,31 +50,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const subPath = url.pathname.replace(/^\/preview\/?/, '') || 'index.html';
     const contentType = contentTypeFor(subPath);
 
-    // 1) R2 (P4 primary path) — dist files are uploaded here by the worker.
-    const R2_ACCOUNT_ID = (context.env as Record<string, string>)?.R2_ACCOUNT_ID;
-    const R2_BUCKET = (context.env as Record<string, string>)?.R2_BUCKET || 'palmkit-files';
-    if (R2_ACCOUNT_ID) {
-      try {
-        const r2Url = `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${R2_BUCKET}/projects/${projectId}/dist/${subPath}`;
-        const r2Resp = await fetch(r2Url, { redirect: 'manual' });
-        if (r2Resp.status === 200) {
-          const headers = new Headers();
-          headers.set('Content-Type', contentType);
-          headers.set('Access-Control-Allow-Origin', '*');
-          headers.set('Cache-Control', 'no-cache');
-          if (subPath.endsWith('.html')) {
-            let html = await r2Resp.text();
-            const tag = '<script src="/inspector-script.js"></script>';
-            if (html.includes('</head>')) html = html.replace('</head>', `${tag}</head>`);
-            else html = `${tag}${html}`;
-            return new Response(html, { status: 200, headers });
-          }
-          return new Response(r2Resp.body, { status: 200, headers });
-        }
-      } catch {}
-    }
-
-    // 2) Supabase Storage (legacy fallback)
+    // Supabase Storage — dist files are uploaded here by the worker (P4 fix:
+    // upload to both R2 and Supabase so this Function can serve with correct
+    // Content-Type. Supabase forces text/plain natively, this Function fixes it).
     const SUPABASE_URL = (context.env as Record<string, string>)?.SUPABASE_URL || 'https://ijbosijtfxehmnfhnnuq.supabase.co';
     try {
       const sbUrl = `${SUPABASE_URL}/storage/v1/object/public/palmkit-files/projects/${projectId}/dist/${subPath}`;
