@@ -138,21 +138,23 @@ async function patchViteConfig(projectDir: string, projectId: string): Promise<b
         return true;
       }
       
-      // Add base: '/preview-dist/{projectId}/' to the defineConfig
-      // Handle both defineConfig({...}) and defineConfig(() => ({...})) patterns
+      // ROOT FIX: use relative base ('./') instead of absolute '/preview-dist/{projectId}/'.
+      // The old absolute path required a matching route on Cloudflare Pages that
+      // doesn't exist — the Pages Function at /preview/ serves the HTML, but the
+      // script tags pointed to /preview-dist/{projectId}/assets/... which 404'd.
+      // Using './' makes all asset references relative to the current URL, so
+      // /preview/ can serve the HTML and the browser resolves /preview/assets/... correctly.
       let patched = content;
-      
-      // Simple approach: add base to the first object literal inside defineConfig
+
       if (patched.includes('defineConfig')) {
-        // Find the first { after defineConfig and insert base
         const idx = patched.indexOf('{', patched.indexOf('defineConfig'));
         if (idx !== -1) {
-          patched = patched.slice(0, idx + 1) + 
-            `\n    base: '/preview-dist/${projectId}/',` +
+          patched = patched.slice(0, idx + 1) +
+            `\n    base: './',` +
             patched.slice(idx + 1);
-          
+
           await writeFile(cfgPath, patched, 'utf-8');
-          logger.info(`[local-build] Patched ${cfgFile} with base: '/preview-dist/${projectId}/'`);
+          logger.info(`[local-build] Patched ${cfgFile} with base: './' (relative)`);
           return true;
         }
       }
