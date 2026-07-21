@@ -72,6 +72,11 @@ const jobSeqCounters = new Map<string, number>();
 
 /**
  * Emit a job event. Sequence number is tracked in-process per job.
+ *
+ * P4 ROOT FIX: also bumps build_jobs.updated_at on every event so the DB
+ * timestamp always reflects real activity — even during long-running steps
+ * (generate_files, local_build) that don't call updateJobProgress. This
+ * prevents the "DB status frozen at 30% for 5 minutes" UX issue.
  */
 export async function emitEvent(
   supabase: SupabaseClient,
@@ -97,6 +102,22 @@ export async function emitEvent(
   } else {
     logger.debug(`Event [${seq}] ${type}: ${message}`);
   }
+
+  /*
+   * ROOT FIX: bump updated_at on build_jobs so the DB stays in sync with
+   * real activity. Non-blocking (we don't await) and never throws — if it
+   * fails, the event itself still went through. This is what makes the
+   * "generating" status feel alive instead of frozen.
+   */
+  supabase
+    .from('build_jobs')
+    .update({ updated_at: new Date().toISOString() })
+    .eq('id', jobId)
+    .then(({ error: tsErr }) => {
+      if (tsErr) {
+        logger.debug(`updated_at bump failed for job ${jobId}: ${tsErr.message}`);
+      }
+    });
 }
 
 /**

@@ -38,15 +38,7 @@ import {
   workerProgressStore,
 } from '~/lib/stores/build-status';
 import { workbenchStore } from '~/lib/stores/workbench';
-import {
-  isRemoteSandboxAvailable,
-  createRemoteSandbox,
-  pushFiles,
-  startRemoteSandbox,
-  checkRemoteStatus,
-  resumeRemoteSandbox,
-} from '~/lib/sandbox/remoteSandbox';
-import { getStackCommandsForAppType } from '~/lib/sandbox/stack-commands';
+import { isRemoteSandboxAvailable, createRemoteSandbox } from '~/lib/sandbox/remoteSandbox';
 
 export type SandboxRunState = 'idle' | 'writing' | 'installing' | 'starting' | 'ready' | 'error';
 
@@ -80,7 +72,6 @@ export function useWorkerSandbox(): WorkerSandboxResult {
   const [usesMobileE2B, setUsesMobileE2B] = useState(false);
 
   const launchRef = useRef(false);
-  const reconnectRef = useRef(false);
   const prevJobRef = useRef(buildStatus.jobStatus);
 
   /*
@@ -99,136 +90,55 @@ export function useWorkerSandbox(): WorkerSandboxResult {
    */
   useEffect(() => {
     if (typeof document === 'undefined') {
-      return undefined;
+      return;
     }
 
     /*
-     * Reset the reconnect guard on every chatId change so switching chats
-     * can restore their respective previews. The original code set
-     * reconnectRef once and never reset it, so opening a second chat never
-     * tried to restore its preview.
+     * ROOT FIX (P4 final): unified preview restore.
+     *
+     * Old design tried to resume an E2B sandbox (poll, restart dev server,
+     * handle idle-pause edge cases). Now there's no E2B sandbox for preview —
+     * Oracle builds + uploads dist, /preview/ Pages Function serves it.
+     *
+     * Restoring is trivial: if the pf_preview cookie is present AND belongs
+     * to THIS chat, set the sandbox URL to /preview/. The Pages Function
+     * handles the rest (reads from R2/Supabase with correct Content-Type).
+     *
+     * No polling, no resume, no E2B availability checks, no idle-pause handling.
      */
-    reconnectRef.current = false;
-
-    // Don't hijack an active build — only reconnect a finished preview.
     if (buildStatusStore.get().jobStatus === 'generating') {
-      return undefined;
+      return;
     }
 
     const match = document.cookie.match(/(?:^|;\s*)pf_preview=([^;]+)/);
 
     if (!match) {
-      return undefined;
+      return;
     }
 
-    const [sid, portStr = '3000', cookieChatId = ''] = decodeURIComponent(match[1]).split(':');
-    const port = Number(portStr) || 3000;
+    const [sid, portStr = '', cookieChatId = ''] = decodeURIComponent(match[1]).split(':');
 
     if (!sid) {
-      return undefined;
+      return;
     }
 
     /*
-     * PER-CHAT SCOPE: the cookie is written as `sid:port:chatId`. Only
-     * reconnect the sandbox that belongs to THIS conversation — previously the
-     * single global cookie made chat B silently restore chat A's preview.
+     * PER-CHAT SCOPE: only restore the preview that belongs to THIS conversation.
      */
     if (cookieChatId && cookieChatId !== currentChatId()) {
-      return undefined;
+      return;
     }
 
-    /*
-     * PREBUILT PREVIEW RESTORATION (P4 fix):
-     * If the cookie is `oracle:{projectId}:{chatId}`, the preview was served
-     * from the Pages Function at /preview/ (reading from R2/Supabase). No E2B
-     * sandbox to resume — just restore the URL directly. This is what makes
-     * reopening a completed chat show the app instantly instead of "No preview".
-     */
+    // Only oracle: cookies are prebuilt previews — the only kind we support now.
     if (sid === 'oracle') {
       setSandboxUrl(`${window.location.origin}/preview/`);
       setSandboxState('ready');
       setUsesMobileE2B(false);
       console.log('[worker-sandbox] restored prebuilt preview for project', portStr);
-
-      return undefined;
     }
 
-    let cancelled = false;
-
-    (async () => {
-      if (launchRef.current) {
-        return;
-      }
-
-      launchRef.current = true;
-      setSandboxState('starting');
-
-      try {
-        if (!(await isRemoteSandboxAvailable())) {
-          setSandboxState('idle');
-          return;
-        }
-
-        // Resume (auto-resumes if paused). If it's gone, bail to the launch button.
-        if (!(await resumeRemoteSandbox(sid))) {
-          setSandboxState('idle');
-          return;
-        }
-
-        const poll = async (tries: number): Promise<boolean> => {
-          for (let i = 0; i < tries && !cancelled; i++) {
-            if (await checkRemoteStatus(sid, port)) {
-              return true;
-            }
-
-            await new Promise((r) => setTimeout(r, 2500));
-          }
-
-          return false;
-        };
-
-        /*
-         * Common case — a quick refresh where the sandbox never idle-paused: the
-         * dev server is still running, so status is ready almost immediately.
-         */
-        let ok = await poll(3);
-
-        /*
-         * Returning after an idle pause: E2B restores the sandbox filesystem on
-         * resume but NOT the running dev-server process. Relaunch it — node_modules
-         * is already installed, so `npm install` is a no-op and Vite starts in ~200ms.
-         */
-        if (!ok && !cancelled) {
-          document.cookie = `pf_preview=${sid}:${port}:${currentChatId()}; path=/; samesite=lax`;
-          await startRemoteSandbox(sid, { port }).catch(() => undefined);
-          ok = await poll(12);
-        }
-
-        if (cancelled) {
-          return;
-        }
-
-        if (ok) {
-          setUsesMobileE2B(true);
-          setSandboxUrl(`${window.location.origin}/preview/`);
-          setSandboxState('ready');
-        } else {
-          setSandboxState('idle');
-        }
-      } catch {
-        setSandboxState('idle');
-      } finally {
-        launchRef.current = false;
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-
     /*
-     * Re-run when the URL pathname changes (switching chats) — currentChatId()
-     * reads window.location.pathname at call time, so we depend on pathname.
+     * Re-run when the URL pathname changes (switching chats).
      */
   }, [typeof window !== 'undefined' ? window.location.pathname : '']);
 
@@ -252,60 +162,51 @@ export function useWorkerSandbox(): WorkerSandboxResult {
       return;
     }
 
-    const files = previewFilesStore.get();
-
-    if (Object.keys(files).length === 0) {
-      return;
-    }
-
-    const type = buildStatusStore.get().appType;
-
-    if (!type) {
-      return;
-    }
-
     launchRef.current = true;
     setSandboxError(undefined);
 
     try {
       /*
-       * PREBUILT PREVIEW — if the Oracle worker built the project locally
-       * (hasPrebuiltPreview: true, previewUrl set), serve the preview directly
-       * from Oracle's nginx via the same-origin proxy. No E2B sandbox needed,
-       * so npm install OOM (478MB RAM limit) is completely bypassed.
+       * ROOT FIX (P4 final): unified preview path.
+       *
+       * Old design had THREE separate preview paths:
+       *   1. prebuilt preview (Oracle-built dist → /preview/)
+       *   2. E2B reconnect (resume existing sandbox)
+       *   3. E2B fresh launch (create sandbox, push files, start dev server)
+       *
+       * Each had its own cookie logic, regex extraction, error handling, and
+       * reconnect guards. The result: edge cases everywhere, "No preview
+       * available" on chat reopen, frozen status, E2B OOM, billing blocks.
+       *
+       * New design: ONE path. Oracle builds + uploads dist to R2 + Supabase,
+       * the Pages Function at /preview/ serves it with correct Content-Type.
+       * No E2B sandbox for preview — E2B is only used (optionally) for run_shell
+       * during build, never for the preview itself.
+       *
+       * The pf_preview cookie still carries the projectId + chatId so the
+       * Pages Function knows which project's dist to serve.
        */
       const jobData = (buildStatusStore.get() as any)._jobValidationResult;
       const hasPrebuiltPreview = jobData?.hasPrebuiltPreview === true;
       const previewUrl = jobData?.previewUrl as string | undefined;
+      const projectId = jobData?.projectId as string | undefined;
 
-      if (hasPrebuiltPreview && previewUrl) {
-        /*
-         * Extract projectId — prefer the explicit projectId field (P4 fix),
-         * fall back to regex for older builds where it wasn't stored.
-         */
-        const projectId = (jobData?.projectId as string | undefined) ?? previewUrl.match(/preview-dist\/(\d+)/)?.[1];
+      if (!hasPrebuiltPreview || !previewUrl || !projectId) {
+        setSandboxError('Build not ready for preview. The worker may still be generating files.');
+        setSandboxState('idle');
 
-        if (projectId) {
-          // Set the cookie so the proxy forwards to Oracle instead of E2B
-          if (typeof document !== 'undefined') {
-            document.cookie = `pf_preview=oracle:${projectId}:${currentChatId()}; path=/; samesite=lax`;
-          }
-
-          setSandboxUrl(`${window.location.origin}/preview/`);
-          setSandboxState('ready');
-          setUsesMobileE2B(false);
-          console.log('[worker-sandbox] using prebuilt preview from Oracle for project', projectId);
-
-          return;
-        }
+        return;
       }
 
-      // Fallback to E2B sandbox
-      setUsesMobileE2B(true);
+      // Set the cookie so /preview/ Pages Function knows which project to serve.
+      if (typeof document !== 'undefined') {
+        document.cookie = `pf_preview=oracle:${projectId}:${currentChatId()}; path=/; samesite=lax`;
+      }
 
-      const jobKey = activeBuildJobIdStore.get() ?? undefined;
-      const prewarmedId = jobKey && prewarm.current?.jobKey === jobKey ? prewarm.current.id : undefined;
-      await _runInE2B(files, type, setSandboxState, setSandboxUrl, setSandboxError, prewarmedId);
+      setSandboxUrl(`${window.location.origin}/preview/`);
+      setSandboxState('ready');
+      setUsesMobileE2B(false);
+      console.log('[worker-sandbox] preview ready for project', projectId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setSandboxError(msg);
@@ -453,111 +354,4 @@ export function useWorkerSandbox(): WorkerSandboxResult {
   }, [doLaunch]);
 
   return { sandboxState, sandboxUrl, sandboxError, launchSandbox, usesMobileE2B, canUseSandbox };
-}
-
-async function _runInE2B(
-  files: Record<string, string>,
-  appType: string,
-  setState: (s: SandboxRunState) => void,
-  setUrl: (u: string) => void,
-  setError: (e: string) => void,
-  prewarmedId?: string,
-): Promise<void> {
-  const available = await isRemoteSandboxAvailable();
-
-  if (!available) {
-    setError('Cloud preview is not configured. Download the project files to run locally.');
-    setState('error');
-
-    return;
-  }
-
-  setState('writing');
-
-  /*
-   * Reuse the sandbox prewarmed during the build if present — its allocation
-   * cold-start already happened, so we go straight to pushing files. Otherwise
-   * allocate one now.
-   */
-  const sandbox = prewarmedId ? { id: prewarmedId, cached: true } : await createRemoteSandbox(appType);
-  console.log('[worker-sandbox] sandbox', sandbox.id, prewarmedId ? '(prewarmed)' : `created cached=${sandbox.cached}`);
-  await pushFiles(sandbox.id, files);
-
-  setState('installing');
-
-  /*
-   * Start the dev server in the background. Now stack-aware: passes the
-   * correct install + dev commands for the detected appType instead of
-   * hardcoding npm for everything.
-   *
-   * StackRegistry (in external-worker) maps appType → {install, dev, port}.
-   * For JS stacks: npm install + npm run dev (same as before).
-   * For Python: pip install + python app.py.
-   * For Flutter: flutter pub get + flutter run -d web-server.
-   * For static: npx serve.
-   */
-  const stackCommands = getStackCommandsForAppType(appType);
-  console.log(
-    '[worker-sandbox] starting dev server (stack:',
-    appType,
-    'install:',
-    stackCommands.install,
-    'dev:',
-    stackCommands.dev,
-    ')',
-  );
-  startRemoteSandbox(sandbox.id, {
-    install: stackCommands.install,
-    dev: stackCommands.dev,
-    port: stackCommands.port,
-  })
-    .then((url) => {
-      console.log('[worker-sandbox] dev server started:', url);
-    })
-    .catch((err) => {
-      console.error('[worker-sandbox] start failed:', err);
-    });
-
-  setState('starting');
-
-  /*
-   * Set the cookie immediately so the proxy can forward to this sandbox.
-   * The trailing chatId scopes the preview to THIS conversation (see reconnect).
-   */
-  if (typeof document !== 'undefined') {
-    document.cookie = `pf_preview=${sandbox.id}:3000:${currentChatId()}; path=/; samesite=lax`;
-  }
-
-  /*
-   * Poll until the cloud dev server responds (up to ~120s).
-   * The dev server needs time for: npm install (~10s) + vite start (~2s).
-   */
-  let ready = false;
-
-  for (let i = 0; i < 40 && !ready; i++) {
-    ready = await checkRemoteStatus(sandbox.id, 3000);
-    console.log(`[worker-sandbox] poll ${i + 1}/40: ready=${ready}`);
-
-    if (!ready) {
-      await new Promise((r) => setTimeout(r, 3000));
-    }
-  }
-
-  /*
-   * If the dev server never came up, surface a real error instead of showing
-   * a "ready" state with a dead iframe — the user gets a Retry button rather
-   * than a silent white screen.
-   */
-  if (!ready) {
-    setError('The preview server did not start in time. Tap "Launch Preview" to retry.');
-    setState('error');
-
-    return;
-  }
-
-  const proxyUrl = typeof window !== 'undefined' ? `${window.location.origin}/preview/` : '/preview/';
-
-  setUrl(proxyUrl);
-  setState('ready');
-  console.log('[worker-sandbox] sandbox ready, preview URL:', proxyUrl);
 }
