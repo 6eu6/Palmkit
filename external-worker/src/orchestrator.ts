@@ -1101,6 +1101,16 @@ export async function runOrchestratedBuild(
          */
         experimental_repairToolCall: async ({ toolCall, error }) => {
           if ((error as any)?.name === 'NoSuchToolError') {
+            /*
+             * Model tried to call a tool that isn't in this agent's allowed
+             * set. Returning null propagates the error → the SDK surfaces it
+             * to the model in the next turn so it can self-correct. We log
+             * it as a soft warning (not an error) so the retry is graceful.
+             */
+            logger.warn(
+              `[orchestrator] Model tried unavailable tool "${toolCall.toolName}" — available: ${config.allowedTools.join(', ')}. The SDK will nudge the model to retry.`,
+            );
+
             return null;
           }
 
