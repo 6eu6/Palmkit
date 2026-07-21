@@ -5,8 +5,7 @@
       "@remix-run/cloudflare",
       "vite/client",
       "@cloudflare/workers-types/2023-07-01",
-      "@types/dom-speech-recognition",
-      "electron"
+      "@types/dom-speech-recognition"
     ],
     "isolatedModules": true,
     "esModuleInterop": true,
@@ -35,5 +34,5 @@
     "**/.client/**/*.ts",
     "**/.client/**/*.tsx"
   ],
-  "exclude": ["node_modules", "build", "dist", "sandbox-server", "skills", "external-worker"]
+  "exclude": ["node_modules", "build", "dist", "sandbox-server", "skills", "external-worker", "docs", "electron"]
 }
