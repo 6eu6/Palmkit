@@ -41,6 +41,43 @@ import { generateImage, DEFAULT_IMAGE_MODEL } from './image-gen';
 import { analyzeScreenshot } from './vision';
 import { generateVideo } from './video-gen';
 
+// P4 decomposition: extracted modules
+import type { MediaConfig, BuildResult } from './agent-tools/types';
+import {
+  getJobFiles,
+  getDoneSummary,
+  disposeDoneSummary,
+  setDoneSummary,
+  resetProjectFiles,
+  getProjectFiles,
+  getProjectFile,
+  disposeProjectFiles,
+  getBuildResult,
+  setBuildResult,
+  disposeBuildResult,
+  bumpWriteCount,
+  getWriteCount,
+  bumpScreenshotCount,
+  rewindWriteCount,
+  isBuildCommand,
+} from './agent-tools/state';
+import { attemptContentRepair } from './agent-tools/content-repair';
+import { validateFileContent } from './agent-tools/validate';
+
+// Re-export public API for backward compatibility (existing imports from './agent-tools' still work)
+export type { MediaConfig, BuildResult };
+export {
+  getJobFiles,
+  getDoneSummary,
+  disposeDoneSummary,
+  resetProjectFiles,
+  getProjectFiles,
+  getProjectFile,
+  disposeProjectFiles,
+  getBuildResult,
+  disposeBuildResult,
+};
+
 /**
  * Max file-content size inlined into a file_written event. Files at/under this
  * stream to the client via Realtime (the reliable delivery path everything
@@ -50,358 +87,10 @@ import { generateVideo } from './video-gen';
  */
 const MAX_INLINE_CONTENT = 300 * 1024;
 
-/**
- * Media config — provider-agnostic. The user picks models for each role
- * (vision, media) in Settings. This config carries those choices so the
- * tools can route to the right API.
- */
-export interface MediaConfig {
-  // Image generation
-  imageApiKey: string;
-  imageModel: string;
-  imageProvider: 'openrouter' | 'zai' | 'google';
-
-  // Video generation
-  videoApiKey: string;
-  videoModel: string;
-  videoProvider: 'zai' | 'openrouter' | 'google';
-
-  // Vision (VLM for analyze_screenshot)
-  visionApiKey: string;
-  visionModel: string;
-  visionProvider: 'zai' | 'openrouter' | 'google';
-
-  // Legacy compat (some code still reads these)
-  apiKey: string;
-  model: string;
-}
-
-/*
- * Per-JOB in-memory file stores. Files are also written to R2 (workspace) for
- * persistence.
- *
- * CRITICAL: this MUST be keyed by jobId. It used to be a single module-level
- * Map shared by every build the long-running worker processed. When two builds
- * ran concurrently they wrote into the SAME map, so one user's files leaked
- * into another user's project (observed: a "restaurant website" build's pages
- * appearing inside an unrelated Lithos hero-section build) and produced broken
- * output with duplicate entry points (App.jsx + App.tsx, main.jsx + main.tsx).
- * Scoping the map per job fully isolates concurrent builds.
- */
-const jobFileMaps = new Map<string, Map<string, string>>();
-
-export function getJobFiles(jobId: string): Map<string, string> {
-  let m = jobFileMaps.get(jobId);
-
-  if (!m) {
-    m = new Map<string, string>();
-    jobFileMaps.set(jobId, m);
-  }
-
-  return m;
-}
-
-/*
- * Per-job record of done() having been called, with the model's summary.
- * This is the ANSWER-MODE signal: a turn that finishes via done() with zero
- * files is a deliberate reply (a question answered, advice given), not a
- * failed build — the orchestrator treats it as success.
- */
-const jobDoneSummaries = new Map<string, string>();
-
-export function getDoneSummary(jobId: string): string | undefined {
-  return jobDoneSummaries.get(jobId);
-}
-
-export function disposeDoneSummary(jobId: string): void {
-  jobDoneSummaries.delete(jobId);
-}
-
-/** Per-job count of write_file calls per path — used to nudge a looping model. */
-const jobWriteCounts = new Map<string, Map<string, number>>();
-
-function bumpWriteCount(jobId: string, path: string): number {
-  let m = jobWriteCounts.get(jobId);
-
-  if (!m) {
-    m = new Map<string, number>();
-    jobWriteCounts.set(jobId, m);
-  }
-
-  const n = (m.get(path) ?? 0) + 1;
-  m.set(path, n);
-
-  return n;
-}
-
-function getWriteCount(jobId: string, path: string): number {
-  return jobWriteCounts.get(jobId)?.get(path) ?? 0;
-}
-
-/**
- * AUTO-REPAIR: extract usable source code from malformed file content.
- *
- * GLM-4.x sometimes wraps file content in JSON even after being told not to.
- * This function tries to salvage usable source code from whatever the model
- * sent, so the build can proceed instead of looping forever.
- *
- * Strategies (in order):
- *  1. If it's a JSON object with a "content"/"text"/"code"/"source" string key, extract it.
- *  2. If it's a JSON array of strings, join them with newlines.
- *  3. If it's a JSON array of objects, look for a "content"/"text" field in each.
- *  4. If it's a stringified code block (```js\n...```), extract the inner code.
- *  5. If nothing works, return null (caller will reject).
- */
-function attemptContentRepair(raw: string, path: string): string | null {
-  const ext = path.split('.').pop()?.toLowerCase() ?? '';
-  const isCodeFile = ['js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs', 'html', 'css', 'scss', 'py', 'rb', 'go', 'rs', 'java'].includes(ext);
-
-  // Strategy 4: code block fences (```js\n...```)
-  if (isCodeFile) {
-    const fenceMatch = raw.match(/```(?:[a-z]*)\n?([\s\S]*?)```/);
-    if (fenceMatch && fenceMatch[1] && fenceMatch[1].trim().length > 10) {
-      return fenceMatch[1].trim();
-    }
-  }
-
-  const trimmed = raw.trimStart();
-  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-    return null; // not JSON, can't repair
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    return null;
-  }
-
-  // Strategy 1: object with content/text/code/source key
-  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-    const obj = parsed as Record<string, unknown>;
-    for (const key of ['content', 'text', 'code', 'source', 'file_content', 'body']) {
-      const val = obj[key];
-      if (typeof val === 'string' && val.length > 0) {
-        // Recursively repair in case the inner value is also JSON-wrapped
-        const inner = attemptContentRepair(val, path);
-        return inner ?? val;
-      }
-    }
-    // If the object has no recognizable key, try to stringify it as a module
-    if (isCodeFile && (ext === 'js' || ext === 'mjs' || ext === 'jsx' || ext === 'ts' || ext === 'tsx')) {
-      return `export default ${JSON.stringify(obj, null, 2)};\n`;
-    }
-  }
-
-  // Strategy 2: array of strings
-  if (Array.isArray(parsed)) {
-    if (parsed.every((item) => typeof item === 'string') && parsed.length > 0) {
-      return parsed.join('\n');
-    }
-    // Strategy 3: array of objects with content/text fields
-    const extracted = parsed
-      .map((item) => {
-        if (item && typeof item === 'object') {
-          const obj = item as Record<string, unknown>;
-          for (const key of ['content', 'text', 'code', 'line', 'source']) {
-            if (typeof obj[key] === 'string') return obj[key] as string;
-          }
-        }
-        return null;
-      })
-      .filter((s): s is string => s !== null);
-
-    if (extracted.length > 0) {
-      return extracted.join('\n');
-    }
-  }
-
-  return null;
-}
-
-/*
- * Screenshot counter — limits analyze_screenshot calls per job to prevent
- * redundant vision model invocations (saves ~60s/build, 29% of build time).
- */
-const jobScreenshotCounts = new Map<string, number>();
-
-function bumpScreenshotCount(jobId: string): number {
-  const n = (jobScreenshotCounts.get(jobId) ?? 0) + 1;
-  jobScreenshotCounts.set(jobId, n);
-  return n;
-}
-
-export function resetProjectFiles(jobId: string): void {
-  getJobFiles(jobId).clear();
-  jobWriteCounts.delete(jobId);
-  jobScreenshotCounts.delete(jobId);
-}
-
-export function getProjectFiles(jobId: string): Record<string, string> {
-  return Object.fromEntries(getJobFiles(jobId));
-}
-
-export function getProjectFile(jobId: string, path: string): string | undefined {
-  return getJobFiles(jobId).get(path);
-}
-
-/** Release a job's file map once its build is finished (prevents unbounded growth). */
-export function disposeProjectFiles(jobId: string): void {
-  jobFileMaps.delete(jobId);
-  jobWriteCounts.delete(jobId);
-}
-
-/*
- * Per-job record of the LAST build/compile command run via run_shell. Lets the
- * orchestrator gate ready_for_preview on the real build result (and drive a
- * repair loop) instead of assuming success once files exist.
- */
-export interface BuildResult {
-  command: string;
-  passed: boolean;
-  output: string; // trimmed stdout+stderr, enough to diagnose the failure
-}
-
-const jobBuildResults = new Map<string, BuildResult>();
-
-/** True if a command actually compiles the project (so its exit code is meaningful). */
-function isBuildCommand(command: string): boolean {
-  return /(npm|pnpm|yarn|bun)\s+(run\s+)?build\b|vite\s+build\b|next\s+build\b|tsc\b|expo\s+export\b|flutter\s+build\b/i.test(
-    command,
-  );
-}
-
-export function getBuildResult(jobId: string): BuildResult | undefined {
-  return jobBuildResults.get(jobId);
-}
-
-export function disposeBuildResult(jobId: string): void {
-  jobBuildResults.delete(jobId);
-}
-
-/**
- * Create the agent tools for a specific job.
- *
- * Each tool:
- * 1. Performs the action (write/read/list/run)
- * 2. Emits a progress event so the user sees what's happening
- * 3. Returns the result to the LLM so it can decide what to do next
- *
- * The LLM controls the entire flow — we just provide the tools.
- *
- * @param jobId - The build job ID (used for event tracking)
- * @param supabase - Supabase client for event emission
- * @param projectId - The project ID (used for R2 workspace key)
- */
-
-/**
- * CONTENT VALIDATION — reject corrupt file content before saving.
- *
- * GLM-4.7 has a known bug where it sometimes serializes file content as
- * JSON instead of raw source code. The JSON-unwrap guards in performWrite
- * catch most cases (envelopes like {"content":"..."} or ["..."]), but some
- * corruption passes through as a string that is valid JSON but NOT valid
- * source code. This function catches those cases.
- *
- * Returns null if content is valid, or an error message string if corrupt.
- */
-function validateFileContent(path: string, content: string): string | null {
-  const trimmed = content.trimStart();
-
-  if (trimmed.length === 0) {
-    return null; // empty files are valid (e.g. .gitkeep)
-  }
-
-  const ext = path.split('.').pop()?.toLowerCase() ?? '';
-  const baseName = path.split('/').pop() ?? path;
-
-  /*
-   * HTML files must start with <!DOCTYPE, <html, or a comment.
-   * GLM corruption produces JSON arrays/objects as HTML content.
-   */
-  if (ext === 'html' || ext === 'htm') {
-    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-      return (
-        `REFUSED — ${path} content starts with '[' or '{' — this looks like JSON, not HTML. ` +
-        `HTML files must start with <!DOCTYPE html> or <html>. ` +
-        `Re-write ${path} with actual HTML source code as a raw string.`
-      );
-    }
-  }
-
-  /*
-   * CSS files must NOT start with [ or { — that indicates JSON corruption.
-   * GLM sometimes produces [{"margin":0,...}] as CSS.
-   */
-  if (ext === 'css' || ext === 'scss' || ext === 'sass') {
-    if (trimmed.startsWith('[')) {
-      return (
-        `REFUSED — ${path} content starts with '[' — this looks like a JSON array, not CSS. ` +
-        `CSS files must contain actual CSS rules (e.g. "body { margin: 0; }"). ` +
-        `Re-write ${path} with raw CSS source.`
-      );
-    }
-  }
-
-  /*
-   * JSX/TSX files must NOT be valid JSON objects or arrays.
-   * GLM corruption: shattered JSX fragments as JSON arrays like
-   * [{"react'...":"..."},{},"type=\"number"].
-   * Exception: config files like tailwind.config.js use `export default {...}`
-   * which starts with `export`, not `{` — so this check is safe.
-   */
-  if ((ext === 'jsx' || ext === 'tsx') && (trimmed.startsWith('[') || trimmed.startsWith('{'))) {
-    // Check if it's actually valid JSON (double corruption check)
-    try {
-      JSON.parse(trimmed);
-      return (
-        `REFUSED — ${path} content is valid JSON but JSX/TSX files must contain React source code, ` +
-        `not JSON. JSX starts with "import" or "function" or "const", never "[" or "{". ` +
-        `Re-write ${path} with actual JSX source as a raw string.`
-      );
-    } catch {
-      // Not valid JSON but starts with [ or { — still suspicious for JSX
-      if (trimmed.startsWith('[')) {
-        return (
-          `REFUSED — ${path} content starts with '[' — JSX/TSX files must not start with '['. ` +
-          `Re-write ${path} with actual JSX source as a raw string.`
-        );
-      }
-    }
-  }
-
-  /*
-   * JS/TS source files (not config files) should not start with raw JSON.
-   * Config files (tailwind.config.js, postcss.config.js, vite.config.js)
-   * use `export default` or `module.exports` — they don't start with { or [.
-   * If a .js file starts with { or [, it's likely corruption.
-   * Exception: .json files ARE expected to start with { or [.
-   */
-  if ((ext === 'js' || ext === 'ts' || ext === 'mjs' || ext === 'cjs') && !baseName.includes('.config.')) {
-    if (trimmed.startsWith('[')) {
-      return (
-        `REFUSED — ${path} content starts with '[' — JS/TS source files must not start with '['. ` +
-        `Re-write ${path} with actual JavaScript/TypeScript source as a raw string.`
-      );
-    }
-  }
-
-  /*
-   * JSON files must be valid JSON. If they're not, the build will fail later.
-   */
-  if (ext === 'json') {
-    try {
-      JSON.parse(content);
-    } catch (e: any) {
-      return (
-        `REFUSED — ${path} is a .json file but content is not valid JSON: ${e?.message ?? 'parse error'}. ` +
-        `Re-write ${path} with valid JSON.`
-      );
-    }
-  }
-
-  return null; // content is valid
-}
+// ─── Types, state management, and validation extracted to ./agent-tools/* ───
+// See: types.ts (MediaConfig, BuildResult), state.ts (per-job maps + helpers),
+// content-repair.ts (attemptContentRepair), validate.ts (validateFileContent).
+// Public API is re-exported above for backward compatibility.
 
 export function createAgentTools(
   jobId: string,
@@ -1594,11 +1283,7 @@ export function createAgentTools(
          * KanbanBoard.jsx vanished from a "complete" build). After a real
          * delete, grant exactly one more write by stepping the counter back.
          */
-        const m = jobWriteCounts.get(jobId);
-
-        if (m && (m.get(path) ?? 0) >= 4) {
-          m.set(path, 3);
-        }
+        rewindWriteCount(jobId, path);
 
         /*
          * Make the deletion visible in the build stream — silent destructive
@@ -2118,7 +1803,7 @@ export function createAgentTools(
          */
         if (isBuildCommand(command)) {
           const output = `${result.stdout}\n${result.stderr}`.trim();
-          jobBuildResults.set(jobId, {
+          setBuildResult(jobId, {
             command,
             passed: result.exitCode === 0,
             output: output.slice(-4000), // keep the tail — that's where errors are
@@ -2199,7 +1884,7 @@ export function createAgentTools(
         (args as any).summary = summaryText;
 
         // Answer-mode signal: the model deliberately finished this turn.
-        jobDoneSummaries.set(jobId, summaryText.slice(0, 2000));
+        setDoneSummary(jobId, summaryText.slice(0, 2000));
 
         /*
          * COERCE: GLM-4.x sends arrays as JSON strings. Parse them safely.
