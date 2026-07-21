@@ -1564,6 +1564,7 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
                 previewUrl: supabasePreviewUrl || `https://blacks-drawing-dallas-interface.trycloudflare.com/preview-dist/${projectId}/`,
                 previewType: 'static',
                 supabasePreviewUrl,
+                projectId: String(projectId),
               }
             : {}),
         },

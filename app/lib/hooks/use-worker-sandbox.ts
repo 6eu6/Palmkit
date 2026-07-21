@@ -131,6 +131,22 @@ export function useWorkerSandbox(): WorkerSandboxResult {
       return undefined;
     }
 
+    /*
+     * PREBUILT PREVIEW RESTORATION (P4 fix):
+     * If the cookie is `oracle:{projectId}:{chatId}`, the preview was served
+     * from the Pages Function at /preview/ (reading from R2/Supabase). No E2B
+     * sandbox to resume — just restore the URL directly. This is what makes
+     * reopening a completed chat show the app instantly instead of "No preview".
+     */
+    if (sid === 'oracle') {
+      setSandboxUrl(`${window.location.origin}/preview/`);
+      setSandboxState('ready');
+      setUsesMobileE2B(false);
+      console.log('[worker-sandbox] restored prebuilt preview for project', portStr);
+
+      return undefined;
+    }
+
     let cancelled = false;
 
     (async () => {
@@ -252,9 +268,11 @@ export function useWorkerSandbox(): WorkerSandboxResult {
       const previewUrl = jobData?.previewUrl as string | undefined;
 
       if (hasPrebuiltPreview && previewUrl) {
-        // Extract projectId from the previewUrl (http://130.61.131.77/preview-dist/{projectId}/)
-        const projectIdMatch = previewUrl.match(/preview-dist\/(\d+)/);
-        const projectId = projectIdMatch?.[1];
+        /*
+         * Extract projectId — prefer the explicit projectId field (P4 fix),
+         * fall back to regex for older builds where it wasn't stored.
+         */
+        const projectId = (jobData?.projectId as string | undefined) ?? previewUrl.match(/preview-dist\/(\d+)/)?.[1];
 
         if (projectId) {
           // Set the cookie so the proxy forwards to Oracle instead of E2B
