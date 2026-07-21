@@ -1145,7 +1145,18 @@ export const ChatImpl = memo(
          * atom, so a defined id here reliably means "continue this conversation".
          */
         const existingChatId = chatId.get();
-        const workerChatId = existingChatId ?? `${Date.now()}`;
+
+        /*
+         * ROOT FIX: use crypto.randomUUID() instead of Date.now() for the
+         * chatId/projectId. Date.now() can collide if two builds start in the
+         * same millisecond (observed: two concurrent builds shared the same
+         * projectId, causing file overwrites and broken isolation). UUIDs
+         * are guaranteed unique — no race condition possible.
+         *
+         * Note: existingChatId is preserved for continuation (edit round),
+         * so this only generates a new ID for the FIRST message in a chat.
+         */
+        const workerChatId = existingChatId ?? crypto.randomUUID();
         chatId.set(workerChatId);
 
         /*
