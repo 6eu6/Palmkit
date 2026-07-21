@@ -98,11 +98,17 @@ export function useWorkerSandbox(): WorkerSandboxResult {
    * silently to the idle "Launch preview" state.
    */
   useEffect(() => {
-    if (reconnectRef.current || typeof document === 'undefined') {
+    if (typeof document === 'undefined') {
       return undefined;
     }
 
-    reconnectRef.current = true;
+    /*
+     * Reset the reconnect guard on every chatId change so switching chats
+     * can restore their respective previews. The original code set
+     * reconnectRef once and never reset it, so opening a second chat never
+     * tried to restore its preview.
+     */
+    reconnectRef.current = false;
 
     // Don't hijack an active build — only reconnect a finished preview.
     if (buildStatusStore.get().jobStatus === 'generating') {
@@ -219,7 +225,12 @@ export function useWorkerSandbox(): WorkerSandboxResult {
     return () => {
       cancelled = true;
     };
-  }, []);
+
+    /*
+     * Re-run when the URL pathname changes (switching chats) — currentChatId()
+     * reads window.location.pathname at call time, so we depend on pathname.
+     */
+  }, [typeof window !== 'undefined' ? window.location.pathname : '']);
 
   const appType = buildStatus.appType ?? '';
   const canUseSandbox = Boolean(appType && E2B_TYPES.has(appType));
