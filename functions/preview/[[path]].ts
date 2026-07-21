@@ -1,12 +1,43 @@
 /**
- * Same-origin reverse proxy for the E2B cloud preview.
+ * Same-origin reverse proxy for the E2B cloud preview + R2/Supabase static preview.
+ *
+ * P4 fix: dist files are now uploaded to Cloudflare R2 (not Supabase Storage)
+ * because R2 honors the Content-Type header set by the client, so HTML previews
+ * render as real pages. This function reads from R2 first; falls back to
+ * Supabase Storage (legacy) if the R2 fetch fails.
  */
 interface Env { [key: string]: unknown; }
 const HOP_BY_HOP = new Set(['content-encoding','content-length','transfer-encoding','connection','keep-alive','content-security-policy','x-frame-options']);
+
+const MIME_BY_EXT: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.htm': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ico': 'image/x-icon',
+  '.map': 'application/json; charset=utf-8',
+};
+
+function contentTypeFor(path: string): string {
+  const ext = path.substring(path.lastIndexOf('.')).toLowerCase();
+  return MIME_BY_EXT[ext] || 'application/octet-stream';
+}
+
 function readCookie(cookieHeader: string, name: string): string | undefined {
   const m = cookieHeader.match(new RegExp(`(?:^|; )${name}=([^;]+)`));
   return m ? decodeURIComponent(m[1]) : undefined;
 }
+
 export const onRequest: PagesFunction<Env> = async (context) => {
   const { request } = context;
   const url = new URL(request.url);
@@ -16,13 +47,40 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   if (isOracle) {
     const [, projectId] = session.split(':');
     const subPath = url.pathname.replace(/^\/preview\/?/, '') || 'index.html';
+    const contentType = contentTypeFor(subPath);
+
+    // 1) R2 (P4 primary path) — dist files are uploaded here by the worker.
+    const R2_ACCOUNT_ID = (context.env as Record<string, string>)?.R2_ACCOUNT_ID;
+    const R2_BUCKET = (context.env as Record<string, string>)?.R2_BUCKET || 'palmkit-files';
+    if (R2_ACCOUNT_ID) {
+      try {
+        const r2Url = `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${R2_BUCKET}/projects/${projectId}/dist/${subPath}`;
+        const r2Resp = await fetch(r2Url, { redirect: 'manual' });
+        if (r2Resp.status === 200) {
+          const headers = new Headers();
+          headers.set('Content-Type', contentType);
+          headers.set('Access-Control-Allow-Origin', '*');
+          headers.set('Cache-Control', 'no-cache');
+          if (subPath.endsWith('.html')) {
+            let html = await r2Resp.text();
+            const tag = '<script src="/inspector-script.js"></script>';
+            if (html.includes('</head>')) html = html.replace('</head>', `${tag}</head>`);
+            else html = `${tag}${html}`;
+            return new Response(html, { status: 200, headers });
+          }
+          return new Response(r2Resp.body, { status: 200, headers });
+        }
+      } catch {}
+    }
+
+    // 2) Supabase Storage (legacy fallback)
     const SUPABASE_URL = (context.env as Record<string, string>)?.SUPABASE_URL || 'https://ijbosijtfxehmnfhnnuq.supabase.co';
     try {
       const sbUrl = `${SUPABASE_URL}/storage/v1/object/public/palmkit-files/projects/${projectId}/dist/${subPath}`;
       const sbResp = await fetch(sbUrl, { redirect: 'manual' });
       if (sbResp.status === 200) {
         const headers = new Headers();
-        headers.set('Content-Type', subPath.endsWith('.html') ? 'text/html; charset=utf-8' : subPath.endsWith('.js') ? 'text/javascript; charset=utf-8' : subPath.endsWith('.css') ? 'text/css; charset=utf-8' : 'application/octet-stream');
+        headers.set('Content-Type', contentType);
         headers.set('Access-Control-Allow-Origin', '*');
         headers.set('Cache-Control', 'no-cache');
         if (subPath.endsWith('.html')) {

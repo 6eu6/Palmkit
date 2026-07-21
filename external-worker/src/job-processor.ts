@@ -1435,33 +1435,50 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
       }
     }
 
-    // ─── 
-    // --- Phase 4.6: UPLOAD DIST TO SUPABASE STORAGE ---
+    // ───
+    // --- Phase 4.6: UPLOAD DIST TO R2 (was Supabase Storage) ---
+    //
+    // CHANGED (P4 fix): dist files now upload to Cloudflare R2 instead of
+    // Supabase Storage. R2 honors the Content-Type header set by the client
+    // (Supabase Storage forces text/plain and ignores it), so HTML previews
+    // render as real pages instead of being downloaded as raw text.
+    //
+    // The preview is served via the Cloudflare Pages Function at /preview-dist/
+    // (see functions/preview/[[path]].ts) which proxies R2 with the correct
+    // MIME types.
     let supabasePreviewUrl: string | undefined;
     if (localBuildResult?.success && localBuildResult.distFiles.length > 0) {
       try {
-        const supabase = createClient(
-          process.env.SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        );
-        await supabase.storage.updateBucket('palmkit-files', { public: true }).catch(() => {});
+        const distPrefix = `projects/${projectId}/dist`;
+        const contentTypes: Record<string, string> = {
+          '.html': 'text/html; charset=utf-8',
+          '.js': 'text/javascript; charset=utf-8',
+          '.mjs': 'text/javascript; charset=utf-8',
+          '.css': 'text/css; charset=utf-8',
+          '.json': 'application/json; charset=utf-8',
+          '.svg': 'image/svg+xml',
+          '.png': 'image/png',
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.gif': 'image/gif',
+          '.webp': 'image/webp',
+          '.woff': 'font/woff',
+          '.woff2': 'font/woff2',
+          '.ico': 'image/x-icon',
+        };
+
         for (const distFile of localBuildResult.distFiles) {
-          const sbKey = `projects/${projectId}/dist/${distFile.path}`;
           const ext = distFile.path.substring(distFile.path.lastIndexOf('.'));
-          const contentTypes: Record<string, string> = {
-            '.html': 'text/html; charset=utf-8',
-            '.js': 'text/javascript; charset=utf-8',
-            '.css': 'text/css; charset=utf-8',
-          };
-          await supabase.storage.from('palmkit-files').upload(sbKey, distFile.content, {
-            upsert: true,
-            contentType: contentTypes[ext] || 'application/octet-stream',
-            cacheControl: 'no-cache',
-          });
+          const r2Key = `${distPrefix}/${distFile.path}`;
+          await putFile(r2Key, distFile.content, contentTypes[ext] || 'application/octet-stream');
         }
-        const supabaseUrl = process.env.SUPABASE_URL!;
-        supabasePreviewUrl = `${supabaseUrl}/storage/v1/object/public/palmkit-files/projects/${projectId}/dist/index.html`;
-        logger.info(`Job ${job.id}: Uploaded dist to Supabase Storage`);
+
+        // Preview URL — served via the Cloudflare Pages Function at /preview/
+        // which reads from R2 and sets the correct Content-Type (HTML renders
+        // as a real page, not text/plain as Supabase Storage does natively).
+        const appOrigin = process.env.PUBLIC_APP_URL || 'https://palmkit.app';
+        supabasePreviewUrl = `${appOrigin}/preview/`;
+        logger.info(`Job ${job.id}: Uploaded ${localBuildResult.distFiles.length} dist files to R2 (preview: ${supabasePreviewUrl})`);
       } catch (sbErr) {
         logger.warn(`Job ${job.id}: Supabase upload failed (non-fatal): ${sbErr}`);
       }

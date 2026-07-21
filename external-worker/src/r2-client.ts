@@ -42,8 +42,16 @@ if (R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY) {
 
 /**
  * Write a file to R2. Overwrites if exists.
+ *
+ * @param contentType - Optional MIME type. R2 (unlike Supabase Storage) honors
+ *   the Content-Type header set by the client, so HTML files render as real
+ *   pages instead of text/plain.
  */
-export async function putFile(key: string, content: string | Uint8Array): Promise<void> {
+export async function putFile(
+  key: string,
+  content: string | Uint8Array,
+  contentType?: string,
+): Promise<void> {
   if (!r2) throw new Error('R2 client not initialized — missing env vars');
 
   const body = typeof content === 'string' ? new TextEncoder().encode(content) : content;
@@ -53,10 +61,11 @@ export async function putFile(key: string, content: string | Uint8Array): Promis
       Bucket: R2_BUCKET,
       Key: key,
       Body: body,
+      ...(contentType ? { ContentType: contentType } : {}),
     }),
   );
 
-  logger.debug(`R2 PUT ${key} (${body.byteLength} bytes)`);
+  logger.debug(`R2 PUT ${key} (${body.byteLength} bytes)${contentType ? ` type=${contentType}` : ''}`);
 }
 
 /**
