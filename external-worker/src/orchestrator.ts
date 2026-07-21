@@ -18,78 +18,15 @@
 
 import { streamText, type LanguageModelV1, type ToolSet } from 'ai';
 
-/*
- * GLOBAL TOOL-CALL REPAIR — the root fix for GLM's string-serialization
- * habit. GLM-4.x/5.x models frequently pass structured arguments as JSON
- * STRINGS ('[{...}]' for arrays, '{"width":390}' for objects). A strict
- * schema then fails validation at the SDK layer and the error aborts the
- * whole stream — this killed live builds three separate ways (done(),
- * write_files(), analyze_screenshot()) before per-tool guards were added.
- *
- * Instead of patching every tool schema forever, this repairer runs ONLY
- * when the SDK reports InvalidToolArgumentsError, deep-walks the args, and
- * parses any string value that is itself valid JSON of an object/array.
- * Deterministic (no extra LLM call); returns null when it cannot help so
- * the original error surfaces unchanged.
- */
-function repairStringifiedArgs(argsJson: string): string | null {
-  const looksJson = (s: string) => {
-    const t = s.trimStart();
-    return t.startsWith('{') || t.startsWith('[');
-  };
+// P4 decomposition: extracted modules
+import { repairStringifiedArgs } from './orchestrator/repair-args';
+import type { OrchestratorResult } from './orchestrator/types';
+import { DEFAULT_CONTEXT_WINDOW } from './orchestrator/types';
 
-  const deepRepair = (v: unknown): { value: unknown; changed: boolean } => {
-    if (typeof v === 'string' && looksJson(v)) {
-      try {
-        const parsed = JSON.parse(v);
+// Re-export public API for backward compatibility
+export type { OrchestratorResult };
+export { repairStringifiedArgs, DEFAULT_CONTEXT_WINDOW };
 
-        if (parsed && typeof parsed === 'object') {
-          return { value: deepRepair(parsed).value, changed: true };
-        }
-      } catch {
-        /* not JSON — keep the string */
-      }
-
-      return { value: v, changed: false };
-    }
-
-    if (Array.isArray(v)) {
-      let changed = false;
-      const out = v.map((item) => {
-        const r = deepRepair(item);
-        changed = changed || r.changed;
-
-        return r.value;
-      });
-
-      return { value: out, changed };
-    }
-
-    if (v && typeof v === 'object') {
-      let changed = false;
-      const out: Record<string, unknown> = {};
-
-      for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-        const r = deepRepair(val);
-        changed = changed || r.changed;
-        out[k] = r.value;
-      }
-
-      return { value: out, changed };
-    }
-
-    return { value: v, changed: false };
-  };
-
-  try {
-    const parsed = JSON.parse(argsJson);
-    const { value, changed } = deepRepair(parsed);
-
-    return changed ? JSON.stringify(value) : null;
-  } catch {
-    return null;
-  }
-}
 import {
   createAgentTools,
   resetProjectFiles,
@@ -124,42 +61,6 @@ import { loadSession, appendToSession, estimateSessionTokens, type SessionMessag
 import { commitProjectTurn } from './git-manager';
 import { sendDelta, sendTool, sendStep, closeJobStream } from './stream-bus';
 import { registerJobAbort, unregisterJobAbort } from './abort-registry';
-
-export interface OrchestratorResult {
-  success: boolean;
-  files: FileOperation[];
-  rawText: string;
-  totalDuration: number;
-  agentResults: Array<{ role: AgentRole; success: boolean; text: string; duration: number }>;
-
-  /**
-   * ANSWER MODE — the agent judged the request to be a question/discussion
-   * and finished via done() without touching files. A legitimate success.
-   */
-  answered: boolean;
-
-  /**
-   * Context-pressure telemetry — the peak input (prompt) tokens the model
-   * consumed on its single most demanding request during this build, and the
-   * model's context window. Drives the "continue in a fresh chat" nudge on the
-   * client, replacing the old file-count heuristic with a real measurement of
-   * how full the context actually got.
-   */
-  contextTokens: number;
-  contextWindow: number;
-  contextRatio: number;
-  truncated: boolean;
-
-  /**
-   * Whether `npm run build` passed after generation. `null` when no build step
-   * ran (static apps have no build). `true`/`false` for dynamic apps.
-   * Drives ready_for_preview gating in job-processor.
-   */
-  buildVerified: boolean | null;
-}
-
-/** Fallback context window when the model's real limit isn't known. */
-const DEFAULT_CONTEXT_WINDOW = 128_000;
 
 /**
  * Run the full agent pipeline: Researcher → Builder → Tester
