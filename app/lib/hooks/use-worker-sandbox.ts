@@ -75,62 +75,70 @@ export function useWorkerSandbox(): WorkerSandboxResult {
   const prevJobRef = useRef(buildStatus.jobStatus);
 
   /*
-   * SURVIVE PAGE REFRESH.
+   * SURVIVE PAGE REFRESH + RAPID CHAT SWITCHING.
    *
-   * The E2B preview sandbox lives server-side and stays alive (E2B pauses it
-   * after idle, and Sandbox.connect auto-resumes). But the client-side preview
-   * URL lived only in React state, so a page refresh dropped it and the user
-   * saw a blank preview / had to relaunch — the "preview disconnects on refresh"
-   * complaint.
+   * ROOT FIX (final): use localStorage per-chat instead of a single global
+   * cookie. The old design used one `pf_preview` cookie that every chat
+   * overwrote — switching from chat A to chat B erased A's preview cookie,
+   * so returning to A showed "No preview available".
    *
-   * On mount, if the `pf_preview` cookie from a previous session is present,
-   * reconnect: resume the sandbox, confirm the dev server responds, and restore
-   * the same-origin `/preview/` URL. If the sandbox is gone (reaped), fall back
-   * silently to the idle "Launch preview" state.
+   * Now each chat stores its preview info in localStorage under a per-chat key:
+   *   localStorage[`pf_preview:${chatId}`] = `oracle:${projectId}`
+   * This survives rapid switching, page refreshes, and multiple tabs.
+   *
+   * The cookie is still set (for the Pages Function to read) but only
+   * temporarily — it's restored from localStorage on every chat switch.
    */
   useEffect(() => {
     if (typeof document === 'undefined') {
       return;
     }
 
-    /*
-     * ROOT FIX (P4 final): unified preview restore.
-     *
-     * Old design tried to resume an E2B sandbox (poll, restart dev server,
-     * handle idle-pause edge cases). Now there's no E2B sandbox for preview —
-     * Oracle builds + uploads dist, /preview/ Pages Function serves it.
-     *
-     * Restoring is trivial: if the pf_preview cookie is present AND belongs
-     * to THIS chat, set the sandbox URL to /preview/. The Pages Function
-     * handles the rest (reads from R2/Supabase with correct Content-Type).
-     *
-     * No polling, no resume, no E2B availability checks, no idle-pause handling.
-     */
     if (buildStatusStore.get().jobStatus === 'generating') {
       return;
     }
 
-    const match = document.cookie.match(/(?:^|;\s*)pf_preview=([^;]+)/);
+    const chatId = currentChatId();
 
-    if (!match) {
-      return;
-    }
-
-    const [sid, portStr = '', cookieChatId = ''] = decodeURIComponent(match[1]).split(':');
-
-    if (!sid) {
+    if (!chatId) {
       return;
     }
 
     /*
-     * PER-CHAT SCOPE: only restore the preview that belongs to THIS conversation.
+     * Read this chat's preview info from localStorage (per-chat key).
+     * Falls back to the old cookie format for backward compatibility.
      */
-    if (cookieChatId && cookieChatId !== currentChatId()) {
+    const storageKey = `pf_preview:${chatId}`;
+    let previewInfo: string | null = null;
+
+    try {
+      previewInfo = localStorage.getItem(storageKey);
+    } catch {
+      // localStorage might be blocked — fall back to cookie
+    }
+
+    // Backward compat: check old cookie if localStorage is empty
+    if (!previewInfo) {
+      const match = document.cookie.match(/(?:^|;\s*)pf_preview=([^;]+)/);
+
+      if (match) {
+        const [sid, , cookieChatId = ''] = decodeURIComponent(match[1]).split(':');
+
+        if (cookieChatId === chatId && sid === 'oracle') {
+          previewInfo = decodeURIComponent(match[1]);
+        }
+      }
+    }
+
+    if (!previewInfo) {
       return;
     }
 
-    // Only oracle: cookies are prebuilt previews — the only kind we support now.
+    const [sid, portStr = ''] = previewInfo.split(':');
+
     if (sid === 'oracle') {
+      // Set the cookie so the Pages Function can read the projectId
+      document.cookie = `pf_preview=oracle:${portStr}:${chatId}; path=/; samesite=lax`;
       setSandboxUrl(`${window.location.origin}/preview/`);
       setSandboxState('ready');
       setUsesMobileE2B(false);
@@ -198,9 +206,19 @@ export function useWorkerSandbox(): WorkerSandboxResult {
         return;
       }
 
-      // Set the cookie so /preview/ Pages Function knows which project to serve.
+      /*
+       * Set the cookie so /preview/ Pages Function knows which project to serve.
+       * Also persist to localStorage per-chat so rapid chat switching can restore it.
+       */
       if (typeof document !== 'undefined') {
-        document.cookie = `pf_preview=oracle:${projectId}:${currentChatId()}; path=/; samesite=lax`;
+        const chatId = currentChatId();
+        document.cookie = `pf_preview=oracle:${projectId}:${chatId}; path=/; samesite=lax`;
+
+        try {
+          localStorage.setItem(`pf_preview:${chatId}`, `oracle:${projectId}`);
+        } catch {
+          // localStorage might be blocked — cookie is the fallback
+        }
       }
 
       setSandboxUrl(`${window.location.origin}/preview/`);
