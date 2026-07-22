@@ -4,15 +4,24 @@ import { Form, useActionData, useNavigation } from '@remix-run/react';
 import { authModalStore, closeAuthModal } from '~/lib/stores/auth';
 
 /**
- * Auth modal — compact glass popup card for login/signup.
+ * Auth modal — COMPACT horizontal card.
  *
- * Design:
- *   - FIXED size: 340px × auto height (never fills screen)
- *   - Soft rounded corners (20px)
- *   - Translucent glass with blur
- *   - ALWAYS dark (matches landing dark theme — no light/dark toggle)
- *   - Professional scale + slide animation
- *   - Logo is non-interactive (pointer-events: none)
+ * Design goals:
+ *   - SHORT and WIDE (not tall/narrow)
+ *   - OAuth buttons SIDE BY SIDE (not stacked)
+ *   - Minimal vertical space — no wasted empty areas
+ *   - Two themes: dark + light (matches landing page theme)
+ *   - Professional scale + fade animation
+ *
+ * Layout (top to bottom, minimal):
+ *   [logo + title]          ← one row
+ *   [GitHub] [X]           ← side by side, one row
+ *   ─── or ───             ← thin divider
+ *   [email input]          ← one row
+ *   [password input]       ← one row
+ *   [submit button]        ← one row
+ *   [toggle link]          ← one row
+ *   Total: 7 rows (was 8+ with more spacing)
  */
 export function AuthModal() {
   const open = useStore(authModalStore);
@@ -46,14 +55,46 @@ export function AuthModal() {
     return null;
   }
 
-  const markSrc = '/palmkit-mark-ondark.png';
+  /*
+   * Theme detection: check the landing page's data-landing-theme attribute.
+   * Two versions: dark + light — both fully styled.
+   */
+  const isDark =
+    typeof document !== 'undefined' &&
+    (document.documentElement.getAttribute('data-landing-theme') === 'dark' ||
+      !document.documentElement.getAttribute('data-landing-theme'));
+
+  // Theme tokens
+  const T = isDark
+    ? {
+        bg: 'rgba(20, 17, 12, 0.85)',
+        text: '#ECE4D4',
+        subtext: 'rgba(236, 228, 212, 0.5)',
+        border: 'rgba(236, 228, 212, 0.08)',
+        inputBg: 'rgba(236, 228, 212, 0.03)',
+        accent: '#D8825C',
+        accentFg: '#16120c',
+        divider: 'rgba(236, 228, 212, 0.06)',
+        mark: '/palmkit-mark-ondark.png',
+      }
+    : {
+        bg: 'rgba(231, 224, 210, 0.85)',
+        text: '#221E16',
+        subtext: 'rgba(34, 30, 22, 0.5)',
+        border: 'rgba(34, 30, 22, 0.1)',
+        inputBg: 'rgba(34, 30, 22, 0.03)',
+        accent: '#9C4A2E',
+        accentFg: '#FBF7EE',
+        divider: 'rgba(34, 30, 22, 0.08)',
+        mark: '/palmkit-mark.png',
+      };
 
   return (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
-      style={{ animation: 'auth-fade-in 0.25s ease forwards' }}
+      style={{ animation: 'auth-fade 0.2s ease forwards' }}
     >
       {/* Backdrop */}
       <button
@@ -61,97 +102,85 @@ export function AuthModal() {
         onClick={closeAuthModal}
         className="absolute inset-0"
         style={{
-          background: 'rgba(0, 0, 0, 0.55)',
+          background: isDark ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.35)',
           backdropFilter: 'blur(8px)',
           WebkitBackdropFilter: 'blur(8px)',
         }}
       />
 
-      {/* Card — FIXED 340px, always dark, compact */}
+      {/* Card — compact, wide, short */}
       <div
-        className="relative rounded-[20px]"
+        className="relative rounded-[18px]"
         style={{
           width: '340px',
           maxWidth: 'calc(100vw - 32px)',
-          padding: '28px 24px',
-          background: 'rgba(20, 17, 12, 0.82)',
+          padding: '20px',
+          background: T.bg,
           backdropFilter: 'blur(40px) saturate(150%)',
           WebkitBackdropFilter: 'blur(40px) saturate(150%)',
-          boxShadow:
-            '0 20px 50px -10px rgba(0,0,0,0.6), inset 0 1px 0 0 rgba(255,255,255,0.08), inset 0 0 0 1px rgba(255,255,255,0.05)',
-          border: '1px solid rgba(255,255,255,0.06)',
-          animation: 'auth-card-in 0.3s cubic-bezier(0.16,1,0.3,1) forwards',
-          fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
-          color: '#ECE4D4',
+          boxShadow: `0 16px 40px -8px rgba(0,0,0,${isDark ? '0.55' : '0.35'}), inset 0 1px 0 0 rgba(255,255,255,0.08), inset 0 0 0 1px rgba(255,255,255,0.04)`,
+          border: `1px solid ${T.border}`,
+          animation: 'auth-pop 0.28s cubic-bezier(0.16,1,0.3,1) forwards',
+          fontFamily: "'Inter', system-ui, sans-serif",
+          color: T.text,
         }}
       >
         {/* Close */}
         <button
           onClick={closeAuthModal}
           aria-label="Close"
-          className="absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center transition-colors"
-          style={{ color: 'rgba(236,228,212,0.4)' }}
+          className="absolute top-2.5 right-2.5 w-6 h-6 rounded-full flex items-center justify-center"
+          style={{ color: T.subtext }}
         >
-          <span className="i-ph:x text-sm" />
+          <span className="i-ph:x text-xs" />
         </button>
 
-        {/* Logo */}
-        <div className="flex flex-col items-center text-center mb-5">
-          <img
-            src={markSrc}
-            alt=""
-            className="w-10 h-10 mb-2.5 select-none"
-            style={{ pointerEvents: 'none', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.2))' }}
-          />
-          <h2
-            className="text-base font-bold tracking-tight"
-            style={{ color: '#ECE4D4', fontFamily: "'Boska', Georgia, serif" }}
-          >
-            {mode === 'login' ? 'Welcome back' : 'Create account'}
-          </h2>
-          <p className="text-[11px] mt-0.5" style={{ color: 'rgba(236,228,212,0.45)' }}>
-            {mode === 'login' ? 'Log in to keep your projects in sync.' : 'Sign up to start building apps.'}
-          </p>
+        {/* Header — logo + title INLINE (saves vertical space) */}
+        <div className="flex items-center gap-2.5 mb-3.5">
+          <img src={T.mark} alt="" className="w-8 h-8 select-none flex-shrink-0" style={{ pointerEvents: 'none' }} />
+          <div>
+            <h2
+              className="text-sm font-bold tracking-tight leading-tight"
+              style={{ color: T.text, fontFamily: "'Boska', Georgia, serif" }}
+            >
+              {mode === 'login' ? 'Welcome back' : 'Create account'}
+            </h2>
+            <p className="text-[10px] leading-tight" style={{ color: T.subtext }}>
+              {mode === 'login' ? 'Log in to your account' : 'Start building apps'}
+            </p>
+          </div>
         </div>
 
-        {/* OAuth */}
-        <div className="flex flex-col gap-2 mb-3">
+        {/* OAuth — SIDE BY SIDE (not stacked) */}
+        <div className="flex gap-2 mb-2.5">
           <a
             href={`/api/auth/github?redirectTo=${encodeURIComponent(redirectTo)}`}
-            className="w-full h-10 rounded-lg text-[13px] font-medium flex items-center justify-center gap-2 border transition-colors hover:bg-white/5"
-            style={{
-              borderColor: 'rgba(236,228,212,0.08)',
-              color: 'rgba(236,228,212,0.8)',
-              background: 'rgba(236,228,212,0.02)',
-            }}
+            className="flex-1 h-9 rounded-lg text-[12px] font-medium flex items-center justify-center gap-1.5 border transition-colors hover:bg-white/5"
+            style={{ borderColor: T.border, color: T.subtext, background: T.inputBg }}
           >
             <span className="i-ph:github-logo-fill text-sm" />
             GitHub
           </a>
           <a
             href={`/api/auth/twitter?redirectTo=${encodeURIComponent(redirectTo)}`}
-            className="w-full h-10 rounded-lg text-[13px] font-medium flex items-center justify-center gap-2 border transition-colors hover:bg-white/5"
-            style={{
-              borderColor: 'rgba(236,228,212,0.08)',
-              color: 'rgba(236,228,212,0.8)',
-              background: 'rgba(236,228,212,0.02)',
-            }}
+            className="flex-1 h-9 rounded-lg text-[12px] font-medium flex items-center justify-center gap-1.5 border transition-colors hover:bg-white/5"
+            style={{ borderColor: T.border, color: T.subtext, background: T.inputBg }}
           >
             <span className="i-ph:x-logo-fill text-sm" />X
           </a>
         </div>
 
-        {/* Divider */}
-        <div className="flex items-center gap-3 mb-3">
-          <div className="h-px flex-1" style={{ background: 'rgba(236,228,212,0.06)' }} />
-          <span className="text-[9px] uppercase tracking-wider" style={{ color: 'rgba(236,228,212,0.25)' }}>
+        {/* Divider — compact */}
+        <div className="flex items-center gap-2 mb-2.5">
+          <div className="h-px flex-1" style={{ background: T.divider }} />
+          <span className="text-[9px] uppercase tracking-wide" style={{ color: T.subtext }}>
             or
           </span>
-          <div className="h-px flex-1" style={{ background: 'rgba(236,228,212,0.06)' }} />
+          <div className="h-px flex-1" style={{ background: T.divider }} />
         </div>
 
-        {/* Form */}
-        <Form method="post" action={mode === 'login' ? '/login' : '/signup'} className="flex flex-col gap-2.5">
+        {/* Form — tight spacing */}
+        <Form method="post" action={mode === 'login' ? '/login' : '/signup'} className="flex flex-col gap-2">
           <input type="hidden" name="redirectTo" value={redirectTo} />
           <input
             name="email"
@@ -159,8 +188,8 @@ export function AuthModal() {
             autoComplete="email"
             required
             placeholder="Email"
-            className="w-full h-10 px-3.5 rounded-lg text-[13px] border focus:outline-none focus:ring-1 transition-all"
-            style={{ background: 'rgba(236,228,212,0.03)', borderColor: 'rgba(236,228,212,0.08)', color: '#ECE4D4' }}
+            className="w-full h-9 px-3 rounded-lg text-[12px] border focus:outline-none focus:ring-1 transition-all"
+            style={{ background: T.inputBg, borderColor: T.border, color: T.text }}
           />
           <input
             name="password"
@@ -168,36 +197,32 @@ export function AuthModal() {
             autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             required
             placeholder="Password"
-            className="w-full h-10 px-3.5 rounded-lg text-[13px] border focus:outline-none focus:ring-1 transition-all"
-            style={{ background: 'rgba(236,228,212,0.03)', borderColor: 'rgba(236,228,212,0.08)', color: '#ECE4D4' }}
+            className="w-full h-9 px-3 rounded-lg text-[12px] border focus:outline-none focus:ring-1 transition-all"
+            style={{ background: T.inputBg, borderColor: T.border, color: T.text }}
           />
           {actionData?.error && (
-            <div
-              className="flex items-start gap-2 p-2 rounded-lg text-[11px]"
-              style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.1)', color: '#fca5a5' }}
-            >
-              <span className="i-ph:warning-circle-fill text-xs mt-0.5 flex-shrink-0" />
-              <span>{actionData.error}</span>
-            </div>
+            <p className="text-[10px] px-1" style={{ color: '#fca5a5' }}>
+              {actionData.error}
+            </p>
           )}
           <button
             type="submit"
             disabled={busy}
-            className="w-full h-10 rounded-lg text-[13px] font-semibold transition-all disabled:opacity-50 mt-0.5"
-            style={{ background: '#D8825C', color: '#16120c', boxShadow: '0 3px 10px -3px rgba(216,130,92,0.35)' }}
+            className="w-full h-9 rounded-lg text-[12px] font-semibold transition-all disabled:opacity-50"
+            style={{ background: T.accent, color: T.accentFg }}
           >
-            {busy ? 'Please wait…' : mode === 'login' ? 'Log in' : 'Sign up'}
+            {busy ? '…' : mode === 'login' ? 'Log in' : 'Sign up'}
           </button>
         </Form>
 
-        {/* Toggle */}
-        <p className="mt-3 text-center text-[11px]" style={{ color: 'rgba(236,228,212,0.35)' }}>
-          {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
+        {/* Toggle — inline */}
+        <p className="mt-2.5 text-center text-[10px]" style={{ color: T.subtext }}>
+          {mode === 'login' ? 'No account? ' : 'Have one? '}
           <button
             type="button"
             onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}
-            className="font-semibold underline"
-            style={{ color: '#D8825C' }}
+            className="font-semibold"
+            style={{ color: T.accent }}
           >
             {mode === 'login' ? 'Sign up' : 'Log in'}
           </button>
@@ -205,8 +230,8 @@ export function AuthModal() {
       </div>
 
       <style>{`
-        @keyframes auth-fade-in { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes auth-card-in { from { opacity: 0; transform: scale(0.92) translateY(12px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        @keyframes auth-fade { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes auth-pop { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
       `}</style>
     </div>
   );
