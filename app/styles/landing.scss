@@ -222,9 +222,6 @@
     transform 0.42s cubic-bezier(0.16, 1, 0.3, 1);
   max-height: calc(100svh - 80px);
   overflow-y: auto;
-  margin-top: -1px;
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
 }
 .lk-menu.is-open {
   opacity: 1;
