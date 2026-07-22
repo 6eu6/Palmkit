@@ -59,7 +59,6 @@
 
 /* ── Liquid Glass ── */
 .lk-glass {
-  position: relative;
   background: rgb(var(--lk-glass-fill) / 0.55);
   backdrop-filter: blur(22px) saturate(160%) contrast(108%);
   -webkit-backdrop-filter: blur(22px) saturate(160%) contrast(108%);
