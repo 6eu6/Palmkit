@@ -4,23 +4,17 @@ import { Form, useActionData, useNavigation } from '@remix-run/react';
 import { authModalStore, closeAuthModal } from '~/lib/stores/auth';
 
 /**
- * Auth modal — Liquid Glass card.
+ * Auth modal — Liquid Glass login card.
  *
- * Visual design (from user spec):
- *   - Frosted + glossy finishes
- *   - Soft ambient lighting (glow behind card)
- *   - Layered depth with subtle shadows
- *   - Dark background with contrasting vibrant accents
- *   - Modern, sleek, high-resolution feel
- *   - 16:9 aspect ratio card (wide, not tall)
- *
- * Glass technique:
- *   1. Ambient glow layer (behind card): radial-gradient accent color
- *   2. Base glass: rgba dark + backdrop-filter blur(40px)
- *   3. Glossy top highlight: linear-gradient white/8% at top
- *   4. Inner border: inset box-shadow 1px white/6%
- *   5. Outer shadow: large soft drop shadow
- *   6. Border: 1px white/4% (barely visible, adds crispness)
+ * Design spec (from AI-generated reference):
+ *   - Portrait card (~380×500), large border-radius (28px)
+ *   - Semi-transparent dark glass: rgba(20,20,25,0.6) + blur(40px)
+ *   - Specular highlight: diagonal white gradient overlay (10% opacity)
+ *   - Orange accent glow on borders and buttons
+ *   - Generous padding (40px), consistent gaps (20px)
+ *   - Inputs: translucent dark bg + thin orange border + rounded 14px
+ *   - Buttons: pill shape, orange border + glow
+ *   - Two themes: dark + light
  */
 export function AuthModal() {
   const open = useStore(authModalStore);
@@ -59,52 +53,81 @@ export function AuthModal() {
     (document.documentElement.getAttribute('data-landing-theme') === 'dark' ||
       !document.documentElement.getAttribute('data-landing-theme'));
 
-  // Theme: dark + light — both with full liquid glass treatment
+  // ── Theme tokens ──
   const T = isDark
     ? {
-        // Dark theme: deep charcoal glass with warm accent glow
-        glassBg: 'rgba(16, 14, 10, 0.55)',
-        glassBlur: 'blur(44px) saturate(180%)',
-        glossHighlight:
-          'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.02) 30%, rgba(255,255,255,0) 60%)',
-        innerBorder: 'inset 0 1px 0 0 rgba(255,255,255,0.12), inset 0 0 0 1px rgba(255,255,255,0.04)',
-        outerShadow: '0 24px 60px -12px rgba(0,0,0,0.7), 0 8px 24px -8px rgba(0,0,0,0.4)',
-        outerBorder: '1px solid rgba(255,255,255,0.06)',
-        ambientGlow:
-          'radial-gradient(circle at 50% 50%, rgba(216,130,92,0.25) 0%, rgba(216,130,92,0.08) 40%, transparent 70%)',
-        text: '#F5EFE0',
-        subtext: 'rgba(245,239,224,0.45)',
+        // Dark: charcoal glass + warm coral accent
+        cardBg: 'rgba(18, 18, 22, 0.6)',
+        blur: 'blur(40px) saturate(180%)',
+        specular:
+          'linear-gradient(135deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.02) 40%, rgba(255,255,255,0) 70%)',
+        innerShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
+        outerShadow: '0 30px 80px -20px rgba(0,0,0,0.8)',
+        border: '1px solid rgba(255,255,255,0.06)',
+        accentGlow: '0 0 20px rgba(216,130,92,0.15)',
+        text: '#F0EDE8',
+        subtext: 'rgba(240,237,232,0.4)',
         inputBg: 'rgba(255,255,255,0.04)',
-        inputBorder: 'rgba(255,255,255,0.08)',
-        inputFocus: 'rgba(216,130,92,0.3)',
+        inputBorder: '1px solid rgba(216,130,92,0.15)',
+        inputFocus: '1px solid rgba(216,130,92,0.4)',
+        inputFocusGlow: '0 0 12px rgba(216,130,92,0.15)',
+        btnBorder: '1px solid rgba(216,130,92,0.25)',
+        btnBg: 'rgba(216,130,92,0.08)',
+        btnHover: 'rgba(216,130,92,0.15)',
+        btnGlow: '0 0 15px rgba(216,130,92,0.2)',
         accent: '#D8825C',
         accentFg: '#16120c',
-        accentGlow: '0 4px 20px -4px rgba(216,130,92,0.5)',
-        divider: 'rgba(255,255,255,0.06)',
+        accentSolid: '#D8825C',
+        accentSolidGlow: '0 4px 20px rgba(216,130,92,0.4)',
+        divider: 'rgba(255,255,255,0.05)',
         mark: '/palmkit-mark-ondark.png',
+        backdrop: 'rgba(0,0,0,0.5)',
+        ambient: 'radial-gradient(circle, rgba(216,130,92,0.12) 0%, transparent 70%)',
       }
     : {
-        // Light theme: frosted cream glass with warm accent glow
-        glassBg: 'rgba(245,240,230,0.55)',
-        glassBlur: 'blur(44px) saturate(150%)',
-        glossHighlight:
-          'linear-gradient(180deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.2) 30%, rgba(255,255,255,0) 60%)',
-        innerBorder: 'inset 0 1px 0 0 rgba(255,255,255,0.6), inset 0 0 0 1px rgba(255,255,255,0.2)',
-        outerShadow: '0 24px 60px -12px rgba(100,70,40,0.25), 0 8px 24px -8px rgba(100,70,40,0.15)',
-        outerBorder: '1px solid rgba(255,255,255,0.3)',
-        ambientGlow:
-          'radial-gradient(circle at 50% 50%, rgba(156,74,46,0.18) 0%, rgba(156,74,46,0.06) 40%, transparent 70%)',
+        // Light: frosted cream glass + warm rust accent
+        cardBg: 'rgba(240,235,225,0.6)',
+        blur: 'blur(40px) saturate(150%)',
+        specular:
+          'linear-gradient(135deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0.15) 40%, rgba(255,255,255,0) 70%)',
+        innerShadow: 'inset 0 1px 0 rgba(255,255,255,0.4)',
+        outerShadow: '0 30px 80px -20px rgba(80,50,30,0.3)',
+        border: '1px solid rgba(255,255,255,0.25)',
+        accentGlow: '0 0 20px rgba(156,74,46,0.10)',
         text: '#221E16',
-        subtext: 'rgba(34,30,22,0.45)',
-        inputBg: 'rgba(255,255,255,0.3)',
-        inputBorder: 'rgba(34,30,22,0.08)',
-        inputFocus: 'rgba(156,74,46,0.25)',
+        subtext: 'rgba(34,30,22,0.4)',
+        inputBg: 'rgba(255,255,255,0.25)',
+        inputBorder: '1px solid rgba(156,74,46,0.12)',
+        inputFocus: '1px solid rgba(156,74,46,0.35)',
+        inputFocusGlow: '0 0 12px rgba(156,74,46,0.10)',
+        btnBorder: '1px solid rgba(156,74,46,0.2)',
+        btnBg: 'rgba(156,74,46,0.05)',
+        btnHover: 'rgba(156,74,46,0.12)',
+        btnGlow: '0 0 15px rgba(156,74,46,0.15)',
         accent: '#9C4A2E',
         accentFg: '#FBF7EE',
-        accentGlow: '0 4px 20px -4px rgba(156,74,46,0.4)',
-        divider: 'rgba(34,30,22,0.06)',
+        accentSolid: '#9C4A2E',
+        accentSolidGlow: '0 4px 20px rgba(156,74,46,0.3)',
+        divider: 'rgba(34,30,22,0.05)',
         mark: '/palmkit-mark.png',
+        backdrop: 'rgba(30,25,18,0.3)',
+        ambient: 'radial-gradient(circle, rgba(156,74,46,0.08) 0%, transparent 70%)',
       };
+
+  const inputStyle = {
+    background: T.inputBg,
+    border: T.inputBorder,
+    color: T.text,
+    borderRadius: '14px',
+  };
+
+  const btnStyle = {
+    background: T.btnBg,
+    border: T.btnBorder,
+    color: T.text,
+    boxShadow: T.btnGlow,
+    borderRadius: '14px',
+  };
 
   return (
     <div
@@ -113,175 +136,174 @@ export function AuthModal() {
       aria-modal="true"
       style={{ animation: 'lg-fade 0.25s ease forwards' }}
     >
-      {/* Backdrop — dark blur */}
+      {/* Backdrop */}
       <button
         aria-label="Close"
         onClick={closeAuthModal}
         className="absolute inset-0"
         style={{
-          background: isDark ? 'rgba(0,0,0,0.5)' : 'rgba(30,25,18,0.3)',
+          background: T.backdrop,
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
         }}
       />
 
-      {/* Ambient glow — behind the card, creates depth */}
+      {/* Ambient glow behind card */}
       <div
         className="absolute"
         style={{
-          width: '400px',
-          height: '260px',
+          width: '420px',
+          height: '420px',
           maxWidth: 'calc(100vw - 32px)',
-          background: T.ambientGlow,
-          filter: 'blur(40px)',
+          background: T.ambient,
+          filter: 'blur(60px)',
           animation: 'lg-fade 0.4s ease 0.1s forwards',
           opacity: 0,
         }}
       />
 
-      {/* LIQUID GLASS CARD — 16:9 wide format */}
+      {/* ── LIQUID GLASS CARD ── */}
       <div
-        className="relative rounded-[24px] overflow-hidden flex flex-col justify-center"
+        className="relative rounded-[28px] overflow-hidden"
         style={{
           width: '380px',
-          height: '238px',
           maxWidth: 'calc(100vw - 32px)',
-          maxHeight: 'calc(100vh - 32px)',
-          padding: '20px 24px',
-
-          // Layer 1: base glass
-          background: T.glassBg,
-          backdropFilter: T.glassBlur,
-          WebkitBackdropFilter: T.glassBlur,
-
-          // Layer 2: all shadows (inner border + outer shadow)
-          boxShadow: `${T.innerBorder}, ${T.outerShadow}`,
-
-          // Layer 3: crisp outer border
-          border: T.outerBorder,
+          padding: '40px 36px',
+          background: T.cardBg,
+          backdropFilter: T.blur,
+          WebkitBackdropFilter: T.blur,
+          boxShadow: `${T.innerShadow}, ${T.outerShadow}`,
+          border: T.border,
           animation: 'lg-pop 0.35s cubic-bezier(0.16,1,0.3,1) forwards',
           fontFamily: "'Inter', system-ui, sans-serif",
           color: T.text,
         }}
       >
-        {/* Layer 4: glossy top highlight — frosted glass effect */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background: T.glossHighlight,
-            borderRadius: 'inherit',
-          }}
-        />
+        {/* Specular highlight overlay (glossy sheen) */}
+        <div className="absolute inset-0 pointer-events-none rounded-[28px]" style={{ background: T.specular }} />
 
-        {/* Close button */}
+        {/* Close */}
         <button
           onClick={closeAuthModal}
           aria-label="Close"
-          className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center z-10"
+          className="absolute top-4 right-4 w-7 h-7 rounded-full flex items-center justify-center z-10 transition-colors hover:bg-white/10"
           style={{ color: T.subtext }}
         >
-          <span className="i-ph:x text-xs" />
+          <span className="i-ph:x text-sm" />
         </button>
 
-        {/* Content — centered in the 16:9 card */}
-        <div className="relative z-10 flex flex-col items-center text-center">
-          {/* Logo + title inline */}
-          <div className="flex items-center gap-2 mb-2.5">
-            <img src={T.mark} alt="" className="w-7 h-7 select-none" style={{ pointerEvents: 'none' }} />
-            <h2
-              className="text-sm font-bold tracking-tight"
-              style={{ color: T.text, fontFamily: "'Boska', Georgia, serif" }}
-            >
-              {mode === 'login' ? 'Welcome back' : 'Create account'}
-            </h2>
-          </div>
+        {/* Content */}
+        <div className="relative z-10 flex flex-col items-center">
+          {/* Logo */}
+          <img
+            src={T.mark}
+            alt=""
+            className="w-12 h-12 mb-4 select-none"
+            style={{ pointerEvents: 'none', filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.15))' }}
+          />
+
+          {/* Title */}
+          <h2
+            className="text-xl font-bold tracking-tight mb-1"
+            style={{ color: T.text, fontFamily: "'Boska', Georgia, serif" }}
+          >
+            {mode === 'login' ? 'Welcome back' : 'Create account'}
+          </h2>
+          <p className="text-xs mb-7" style={{ color: T.subtext }}>
+            {mode === 'login' ? 'Log in to keep your projects in sync.' : 'Start building apps from prompts.'}
+          </p>
 
           {/* OAuth — side by side */}
-          <div className="flex gap-1.5 w-full mb-2">
+          <div className="flex gap-3 w-full mb-4">
             <a
               href={`/api/auth/github?redirectTo=${encodeURIComponent(redirectTo)}`}
-              className="flex-1 h-8 rounded-lg text-[11px] font-medium flex items-center justify-center gap-1 border transition-all hover:bg-white/8"
-              style={{ borderColor: T.inputBorder, color: T.subtext, background: T.inputBg }}
+              className="flex-1 h-11 flex items-center justify-center gap-2 text-[13px] font-medium transition-all hover:scale-[1.02]"
+              style={btnStyle}
             >
-              <span className="i-ph:github-logo-fill text-xs" />
+              <span className="i-ph:github-logo-fill text-base" />
               GitHub
             </a>
             <a
               href={`/api/auth/twitter?redirectTo=${encodeURIComponent(redirectTo)}`}
-              className="flex-1 h-8 rounded-lg text-[11px] font-medium flex items-center justify-center gap-1 border transition-all hover:bg-white/8"
-              style={{ borderColor: T.inputBorder, color: T.subtext, background: T.inputBg }}
+              className="flex-1 h-11 flex items-center justify-center gap-2 text-[13px] font-medium transition-all hover:scale-[1.02]"
+              style={btnStyle}
             >
-              <span className="i-ph:x-logo-fill text-xs" />X
+              <span className="i-ph:x-logo-fill text-base" />X
             </a>
           </div>
 
           {/* Divider */}
-          <div className="flex items-center gap-2 w-full mb-2">
+          <div className="flex items-center gap-3 w-full mb-4">
             <div className="h-px flex-1" style={{ background: T.divider }} />
-            <span className="text-[8px] uppercase tracking-wide" style={{ color: T.subtext }}>
+            <span className="text-[10px] uppercase tracking-wider" style={{ color: T.subtext }}>
               or
             </span>
             <div className="h-px flex-1" style={{ background: T.divider }} />
           </div>
 
-          {/* Form — inputs side by side, button below */}
-          <Form method="post" action={mode === 'login' ? '/login' : '/signup'} className="flex flex-col gap-1.5 w-full">
+          {/* Form */}
+          <Form method="post" action={mode === 'login' ? '/login' : '/signup'} className="flex flex-col gap-3 w-full">
             <input type="hidden" name="redirectTo" value={redirectTo} />
 
-            {/* Email + Password SIDE BY SIDE (saves vertical space for 16:9) */}
-            <div className="flex gap-1.5">
-              <input
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                placeholder="Email"
-                className="flex-1 h-8 px-2.5 rounded-lg text-[11px] border focus:outline-none focus:ring-1 transition-all"
-                style={{ background: T.inputBg, borderColor: T.inputBorder, color: T.text }}
-              />
-              <input
-                name="password"
-                type="password"
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                required
-                placeholder="Password"
-                className="flex-1 h-8 px-2.5 rounded-lg text-[11px] border focus:outline-none focus:ring-1 transition-all"
-                style={{ background: T.inputBg, borderColor: T.inputBorder, color: T.text }}
-              />
-            </div>
+            <input
+              name="email"
+              type="email"
+              autoComplete="email"
+              required
+              placeholder="Email"
+              className="w-full h-11 px-4 text-[13px] focus:outline-none transition-all"
+              style={inputStyle}
+            />
+            <input
+              name="password"
+              type="password"
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              required
+              placeholder="Password"
+              className="w-full h-11 px-4 text-[13px] focus:outline-none transition-all"
+              style={inputStyle}
+            />
 
             {actionData?.error && (
-              <p className="text-[9px] px-1" style={{ color: '#fca5a5' }}>
+              <p className="text-[11px] px-1" style={{ color: isDark ? '#fca5a5' : '#dc2626' }}>
                 {actionData.error}
               </p>
             )}
 
-            {/* Submit + toggle inline */}
-            <div className="flex items-center gap-1.5">
-              <button
-                type="submit"
-                disabled={busy}
-                className="flex-1 h-8 rounded-lg text-[11px] font-semibold transition-all disabled:opacity-50"
-                style={{ background: T.accent, color: T.accentFg, boxShadow: T.accentGlow }}
-              >
-                {busy ? '…' : mode === 'login' ? 'Log in' : 'Sign up'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}
-                className="text-[10px] font-medium underline whitespace-nowrap"
-                style={{ color: T.accent }}
-              >
-                {mode === 'login' ? 'Sign up' : 'Log in'}
-              </button>
-            </div>
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={busy}
+              className="w-full h-11 text-[13px] font-semibold transition-all disabled:opacity-50 mt-1 hover:scale-[1.02]"
+              style={{
+                background: T.accentSolid,
+                color: T.accentFg,
+                borderRadius: '14px',
+                boxShadow: T.accentSolidGlow,
+              }}
+            >
+              {busy ? 'Please wait…' : mode === 'login' ? 'Log in' : 'Sign up'}
+            </button>
           </Form>
+
+          {/* Toggle */}
+          <p className="mt-5 text-xs" style={{ color: T.subtext }}>
+            {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
+            <button
+              type="button"
+              onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}
+              className="font-semibold"
+              style={{ color: T.accent }}
+            >
+              {mode === 'login' ? 'Sign up' : 'Log in'}
+            </button>
+          </p>
         </div>
       </div>
 
       <style>{`
         @keyframes lg-fade { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes lg-pop { from { opacity: 0; transform: scale(0.9) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        @keyframes lg-pop { from { opacity: 0; transform: scale(0.92) translateY(12px); } to { opacity: 1; transform: scale(1) translateY(0); } }
       `}</style>
     </div>
   );
