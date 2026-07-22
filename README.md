@@ -4,7 +4,7 @@
 
 **Palmkit** is an AI-powered full-stack development platform that turns natural-language prompts into running web apps. Describe what you want — Palmkit builds it, previews it, and lets you iterate.
 
-> Built on [Bolt.diy](https://github.com/stackblitz-labs/bolt.diy) with a completely redesigned execution pipeline: external Oracle worker, R2 file storage, WebContainer/E2B sandbox routing, and a phase-based roadmap to production quality.
+> An independent project with a completely redesigned execution pipeline: external Oracle worker, Cloudflare R2 file storage, Supabase + Pages Function preview serving, and a phase-based roadmap to production quality. Originally inspired by [Bolt.diy](https://github.com/stackblitz-labs/bolt.diy).
 
 ---
 
@@ -253,4 +253,4 @@ All authors of commits in the PR are mentioned in the squashed commit message an
 
 ## License
 
-[MIT](./LICENSE) — Palmkit is open source. Based on [Bolt.diy](https://github.com/stackblitz-labs/bolt.diy) by the StackBlitz Labs community.
+[MIT](./LICENSE) — Palmkit is an independent open-source project. Originally inspired by [Bolt.diy](https://github.com/stackblitz-labs/bolt.diy) by the StackBlitz Labs community.
