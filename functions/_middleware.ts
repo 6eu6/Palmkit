@@ -4,79 +4,47 @@
  * ROOT FIX for the "white screen on returning users" bug:
  *
  * The old LogStore wrote ALL debug logs as a JSON cookie ('eventLogs').
- * With 500+ entries, this cookie could reach 100-200KB. Browsers send
- * ALL cookies with every HTTP request. When the total cookie header
- * exceeds ~8KB, Cloudflare rejects the request with a 502/400 error,
- * and the user sees a white screen.
+ * With 500+ entries, this cookie could reach 100-200KB. When the browser
+ * sends this giant cookie with every request, it can cause issues.
  *
- * The client-side fix (logs.ts) migrates the cookie to localStorage
- * and deletes it — BUT if the page can't load at all (because the
- * cookie is too large), the client fix never runs. Chicken-and-egg.
+ * This middleware does ONE thing: on every response, it adds a Set-Cookie
+ * header to delete the 'eventLogs' cookie. This is non-destructive — it
+ * doesn't modify the request or the response body, so streaming works
+ * normally. The cookie is deleted on the browser side, and the client-side
+ * logs.ts handles the migration to localStorage.
  *
- * This middleware breaks the cycle: it strips the 'eventLogs' cookie
- * from the incoming request headers BEFORE the app sees it, and sets
- * a response header to delete it from the browser. The page loads
- * cleanly, then the client-side code handles the migration.
- *
- * This is a ROOT fix, not a patch — once all users have been cleaned
- * up, this middleware can be removed (though it's harmless to keep).
+ * Why not strip the cookie from the request? Because modifying the request
+ * body/headers in a Pages Function can break streaming responses (Remix
+ * uses streaming for SSR). The simpler approach is to just delete the
+ * cookie on the response side — the browser stops sending it after the
+ * first load.
  */
 
 export const onRequest: PagesFunction = async (context) => {
-  const { request } = context;
+  /*
+   * Pass through the request normally — don't modify it.
+   * This preserves streaming, headers, and body integrity.
+   */
+  const response = await context.next();
 
   /*
-   * Check if the incoming request has an 'eventLogs' cookie.
-   * If so, strip it from the request so the app never sees the
-   * oversized cookie. This prevents the 502/400 from Cloudflare.
+   * On every response, add a Set-Cookie header to delete eventLogs.
+   * This is idempotent — if the cookie doesn't exist, this is a no-op.
+   * If it does exist (oversized), the browser deletes it immediately.
+   *
+   * We use headers.append (not set) to avoid overwriting other Set-Cookie
+   * headers that the app might have added (like auth tokens).
    */
-  const cookieHeader = request.headers.get('Cookie') || '';
+  const newResponse = new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
 
-  if (cookieHeader.includes('eventLogs=')) {
-    /*
-     * Strip the eventLogs cookie from the request.
-     * We rebuild the cookie header without it.
-     */
-    const cleanedCookies = cookieHeader
-      .split(';')
-      .map((c) => c.trim())
-      .filter((c) => !c.startsWith('eventLogs='))
-      .join('; ');
+  newResponse.headers.append(
+    'Set-Cookie',
+    'eventLogs=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0',
+  );
 
-    /*
-     * Clone the request with cleaned cookies.
-     * This is the critical step — the app receives a request
-     * WITHOUT the giant cookie, so it can process normally.
-     */
-    const cleanedRequest = new Request(request, {
-      headers: new Headers(request.headers),
-    });
-
-    if (cleanedCookies) {
-      cleanedRequest.headers.set('Cookie', cleanedCookies);
-    } else {
-      cleanedRequest.headers.delete('Cookie');
-    }
-
-    /*
-     * Pass the cleaned request to the next handler.
-     * On the response, add a Set-Cookie header to delete
-     * the eventLogs cookie from the browser.
-     */
-    const response = await context.next(cleanedRequest);
-    const newResponse = new Response(response.body, response);
-
-    // Delete the eventLogs cookie (expired + max-age=0)
-    newResponse.headers.append(
-      'Set-Cookie',
-      'eventLogs=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0',
-    );
-
-    return newResponse;
-  }
-
-  /*
-   * No eventLogs cookie — pass through normally.
-   */
-  return context.next();
+  return newResponse;
 };
