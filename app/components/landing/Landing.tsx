@@ -179,9 +179,7 @@ function LandingNav({
         style={{ maxWidth: scrolled ? '48rem' : '80rem', zIndex: 1 }}
       >
         <nav
-          className={`lk-glass flex w-full items-center justify-between gap-3 py-2 pl-3 pr-2.5 transition-all duration-500 sm:pl-5 sm:pr-3 ${
-            menuOpen ? 'rounded-t-full rounded-b-none' : 'rounded-full'
-          }`}
+          className={`lk-glass flex w-full items-center justify-between gap-3 rounded-full py-2 pl-3 pr-2.5 transition-all duration-500 sm:pl-5 sm:pr-3`}
           style={{ paddingBlock: scrolled ? '0.375rem' : '0.5rem' }}
         >
           <Link to="/" className="flex shrink-0 items-center gap-2" aria-label="Palmkit home">
@@ -256,7 +254,7 @@ function LandingNav({
         {/* dropdown menu — slides down from the nav pill, flush with
             the header (no gap) so it reads as part of the nav itself */}
         <div
-          className={`lk-menu lk-glass absolute left-0 right-0 top-[100%] rounded-b-3xl rounded-t-none p-3${
+          className={`lk-menu lk-glass absolute left-0 right-0 top-full rounded-b-3xl rounded-t-none p-3${
             menuOpen ? ' is-open' : ''
           }`}
           style={{
@@ -347,8 +345,8 @@ function Hero({ isDark }: { isDark: boolean }) {
    * dark forest bottom is far from the cream page bg.
    */
   const mask = isDark
-    ? 'linear-gradient(to bottom, #000 0%, #000 55%, rgba(0,0,0,0.85) 70%, rgba(0,0,0,0.5) 82%, rgba(0,0,0,0.15) 90%, rgba(0,0,0,0) 96%, rgba(0,0,0,0) 100%)'
-    : 'linear-gradient(to bottom, #000 0%, #000 50%, rgba(0,0,0,0.88) 68%, rgba(0,0,0,0.5) 82%, rgba(0,0,0,0.15) 90%, rgba(0,0,0,0) 96%, rgba(0,0,0,0) 100%)';
+    ? 'linear-gradient(to bottom, #000 0%, #000 70%, rgba(0,0,0,0.6) 85%, rgba(0,0,0,0) 100%)'
+    : 'linear-gradient(to bottom, #000 0%, #000 65%, rgba(0,0,0,0.5) 82%, rgba(0,0,0,0) 100%)';
 
   return (
     <section id="top" className="relative flex h-[100svh] min-h-[100svh] flex-col overflow-hidden">
@@ -719,8 +717,8 @@ function FooterScene({ isDark }: { isDark: boolean }) {
    * the image's dark/bright top is far from the cream page bg.
    */
   const mask = isDark
-    ? 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 10%, rgba(0,0,0,0.02) 16%, rgba(0,0,0,0.08) 24%, rgba(0,0,0,0.18) 32%, rgba(0,0,0,0.32) 40%, rgba(0,0,0,0.46) 48%, rgba(0,0,0,0.60) 56%, rgba(0,0,0,0.74) 64%, rgba(0,0,0,0.86) 72%, rgba(0,0,0,0.94) 80%, rgba(0,0,0,0.98) 88%, #000 96%, #000 100%)'
-    : 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 16%, rgba(0,0,0,0.02) 22%, rgba(0,0,0,0.06) 30%, rgba(0,0,0,0.14) 38%, rgba(0,0,0,0.24) 46%, rgba(0,0,0,0.36) 54%, rgba(0,0,0,0.50) 62%, rgba(0,0,0,0.64) 70%, rgba(0,0,0,0.78) 78%, rgba(0,0,0,0.88) 85%, rgba(0,0,0,0.95) 91%, rgba(0,0,0,0.98) 95%, #000 100%)';
+    ? 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 15%, rgba(0,0,0,0.4) 40%, rgba(0,0,0,0.8) 65%, #000 85%, #000 100%)'
+    : 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 20%, rgba(0,0,0,0.35) 45%, rgba(0,0,0,0.75) 70%, #000 88%, #000 100%)';
 
   /*
    * Triple-layer text halo — reads on both bright day sky and dark
@@ -741,14 +739,13 @@ function FooterScene({ isDark }: { isDark: boolean }) {
         style={{ maskImage: mask, WebkitMaskImage: mask }}
       />
 
-      {/* LEGIBILITY PANEL — confined to MID band (transparent at top
-          so it doesn't darken the seam zone). Stronger in light mode. */}
+      {/* LEGIBILITY — minimal, only behind text areas, NOT covering the image */}
       <div
         className="absolute inset-0"
         style={{
           background: isDark
-            ? 'radial-gradient(120% 58% at 50% 56%, rgba(6,4,2,0.76) 0%, rgba(6,4,2,0.54) 32%, rgba(6,4,2,0.28) 60%, rgba(6,4,2,0.08) 82%, rgba(6,4,2,0) 100%)'
-            : 'radial-gradient(125% 62% at 50% 54%, rgba(12,8,4,0.74) 0%, rgba(12,8,4,0.58) 30%, rgba(12,8,4,0.34) 56%, rgba(12,8,4,0.12) 78%, rgba(12,8,4,0) 100%)',
+            ? 'linear-gradient(to bottom, rgba(6,4,2,0) 0%, rgba(6,4,2,0) 40%, rgba(6,4,2,0.35) 60%, rgba(6,4,2,0.6) 80%, rgba(6,4,2,0.8) 100%)'
+            : 'linear-gradient(to bottom, rgba(12,8,4,0) 0%, rgba(12,8,4,0) 40%, rgba(12,8,4,0.3) 60%, rgba(12,8,4,0.55) 80%, rgba(12,8,4,0.75) 100%)',
         }}
       />
 
