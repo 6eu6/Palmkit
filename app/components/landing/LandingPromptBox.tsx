@@ -1,24 +1,20 @@
-/*
- * LandingPromptBox — the hero focal point of the marketing landing.
- * Visitors type what they want to build; on submit we stash the prompt
- * in sessionStorage and route them to /login. After they authenticate,
- * Chat.client.tsx picks the prompt back up and auto-sends it, so the
- * journey from "idea typed on the landing page" → "running app" is
- * seamless.
- *
- * variant="hero"  → liquid-glass card floating over the landscape
- * variant="plain" → solid card for the secondary CTA (not used in the
- *                   current redesign but kept for compatibility)
- */
 import { useCallback, useRef, useState, type KeyboardEvent } from 'react';
 import { authModalStore } from '~/lib/stores/auth';
 
-/** sessionStorage key shared with Chat.client.tsx */
 export const PENDING_PROMPT_KEY = 'palmkit_pending_prompt';
 
 const SUGGESTIONS = ['A habit tracker with streaks', 'A split-bill calculator', 'A recipe finder'];
 
-export function LandingPromptBox({ variant = 'hero' }: { variant?: 'hero' | 'plain' }) {
+/**
+ * LandingPromptBox — Liquid Glass input box for the hero section.
+ *
+ * Design: frosted glass card with a solid light input bar inside.
+ * The input bar has high contrast (light bg, dark text) for readability
+ * over the landscape image. Send button is a warm accent pill.
+ *
+ * On submit: saves prompt to sessionStorage, opens AuthModal.
+ */
+export function LandingPromptBox(_props?: { variant?: 'hero' | 'plain' }) {
   const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -31,7 +27,7 @@ export function LandingPromptBox({ variant = 'hero' }: { variant?: 'hero' | 'pla
     }
 
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, []);
 
   const submit = useCallback(() => {
@@ -41,14 +37,12 @@ export function LandingPromptBox({ variant = 'hero' }: { variant?: 'hero' | 'pla
       return;
     }
 
-    // Save the prompt for after login
     try {
       sessionStorage.setItem(PENDING_PROMPT_KEY, trimmed);
     } catch {
       /* sessionStorage may be blocked */
     }
 
-    // Open the auth modal — user logs in, then the prompt auto-sends
     authModalStore.set(true);
   }, [value]);
 
@@ -71,229 +65,119 @@ export function LandingPromptBox({ variant = 'hero' }: { variant?: 'hero' | 'pla
 
   return (
     <div className="w-full">
-      {variant === 'hero' ? (
-        <HeroGlassBox
-          value={value}
-          focused={focused}
-          canSend={canSend}
-          textareaRef={textareaRef}
-          onChange={(v) => {
-            setValue(v);
-            autosize();
-          }}
-          onKeyDown={onKeyDown}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onSubmit={submit}
-          suggestions={SUGGESTIONS}
-          onPick={pickSuggestion}
-        />
-      ) : (
-        <PlainBox
-          value={value}
-          canSend={canSend}
-          textareaRef={textareaRef}
-          onChange={(v) => {
-            setValue(v);
-            autosize();
-          }}
-          onKeyDown={onKeyDown}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onSubmit={submit}
-          suggestions={SUGGESTIONS}
-          onPick={pickSuggestion}
-        />
-      )}
-    </div>
-  );
-}
-
-/* ── Hero variant — liquid glass over the landscape ── */
-
-type BoxProps = {
-  value: string;
-  focused?: boolean;
-  canSend: boolean;
-  textareaRef: React.RefObject<HTMLTextAreaElement>;
-  onChange: (v: string) => void;
-  onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
-  onFocus: () => void;
-  onBlur: () => void;
-  onSubmit: () => void;
-  suggestions: string[];
-  onPick: (s: string) => void;
-};
-
-function HeroGlassBox(props: BoxProps) {
-  const { value, focused, canSend, textareaRef, onChange, onKeyDown, onFocus, onBlur, onSubmit, suggestions, onPick } =
-    props;
-
-  return (
-    <div
-      className="lk-glass relative w-full overflow-hidden rounded-[1.4rem] p-1.5 sm:rounded-[1.6rem]"
-      style={{ boxShadow: focused ? '0 24px 70px -36px rgba(0,0,0,0.7)' : '0 24px 70px -36px rgba(0,0,0,0.6)' }}
-    >
-      {/* conversation area */}
-      <div className="px-4 pt-3 pb-1.5 sm:px-5 sm:pt-4 sm:pb-2">
+      {/* ── Liquid Glass container ── */}
+      <div
+        className="relative rounded-[20px] overflow-hidden"
+        style={{
+          padding: '12px',
+          background: 'rgba(255,255,255,0.06)',
+          backdropFilter: 'blur(30px) saturate(160%)',
+          WebkitBackdropFilter: 'blur(30px) saturate(160%)',
+          boxShadow: `0 16px 50px -12px rgba(0,0,0,${focused ? '0.7' : '0.5'}), inset 0 1px 0 rgba(255,255,255,0.08), inset 0 0 0 1px rgba(255,255,255,0.04)`,
+          border: '1px solid rgba(255,255,255,0.06)',
+          transition: 'box-shadow 0.3s ease',
+        }}
+      >
+        {/* Specular highlight */}
         <div
-          className="flex items-center gap-2 text-[0.7rem] sm:text-xs"
-          style={{ color: 'rgb(var(--lk-fg-raw) / 0.7)' }}
-        >
+          className="absolute inset-0 pointer-events-none rounded-[20px]"
+          style={{
+            background:
+              'linear-gradient(135deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.02) 40%, transparent 70%)',
+          }}
+        />
+
+        {/* Status indicator */}
+        <div className="relative flex items-center gap-2 px-2 pt-1 pb-2">
           <span className="relative flex h-1.5 w-1.5">
             <span
               className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60"
-              style={{ background: 'var(--lk-accent)' }}
+              style={{ background: '#D8825C' }}
             />
-            <span
-              className="relative inline-flex h-1.5 w-1.5 rounded-full"
-              style={{ background: 'var(--lk-accent)' }}
-            />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full" style={{ background: '#D8825C' }} />
           </span>
-          Palmkit is ready
+          <span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>
+            Palmkit is ready
+          </span>
         </div>
-        <p
-          className="lk-display mt-2.5 max-w-[34ch] text-[0.98rem] leading-snug sm:mt-3 sm:text-[1.1rem]"
-          style={{ color: 'rgb(var(--lk-fg-raw) / 0.92)' }}
-        >
-          Tell me what to build. I&rsquo;ll draft the app, preview it live, and hand you the code.
-        </p>
-      </div>
 
-      {/* input row */}
-      <div
-        className="relative m-1.5 mt-1 rounded-[1.1rem] border p-2.5 sm:rounded-[1.25rem] sm:p-3"
-        style={{ borderColor: 'rgb(var(--lk-fg-raw) / 0.18)', background: 'rgb(var(--lk-fg-raw) / 0.06)' }}
-      >
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={onKeyDown}
-          onFocus={onFocus}
-          onBlur={onBlur}
-          rows={1}
-          aria-label="Describe the app you want to build"
-          placeholder="Describe the app you want to build…"
-          className="lk-soft-scroll block w-full resize-none bg-transparent px-2.5 pb-1.5 pt-2 text-[0.98rem] leading-relaxed focus:outline-none sm:px-3 sm:pt-2.5 sm:pb-2 sm:text-[1.05rem]"
-          style={{ color: 'var(--lk-fg)', minHeight: 48 }}
-        />
-        <div className="flex items-end justify-between gap-2 px-1 pb-0.5 pt-1.5 sm:gap-3 sm:px-1.5">
-          <div className="flex flex-1 flex-wrap items-center gap-1.5">
-            {suggestions.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => onPick(s)}
-                className="rounded-full border px-3 py-1.5 text-[0.72rem] leading-none transition-colors duration-200 sm:text-[0.78rem]"
-                style={{
-                  borderColor: 'rgb(var(--lk-fg-raw) / 0.22)',
-                  color: 'rgb(var(--lk-fg-raw) / 0.75)',
-                  background: 'rgb(var(--lk-fg-raw) / 0.06)',
-                }}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
+        {/* ── Input bar — solid bg for contrast ── */}
+        <div
+          className="relative rounded-[14px] flex items-end gap-2 p-2"
+          style={{
+            background: 'rgba(255,255,255,0.92)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)',
+          }}
+        >
+          <textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(e) => {
+              setValue(e.target.value);
+              autosize();
+            }}
+            onKeyDown={onKeyDown}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            rows={1}
+            aria-label="Describe the app you want to build"
+            placeholder="Describe the app you want to build…"
+            className="flex-1 resize-none bg-transparent px-2 py-1.5 text-[14px] leading-relaxed focus:outline-none"
+            style={{ color: '#1a1a1a', minHeight: 36 }}
+          />
+
+          {/* Send button — warm accent pill */}
           <button
             type="button"
-            onClick={onSubmit}
+            onClick={submit}
             disabled={!canSend}
             aria-label="Send prompt"
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full transition-all duration-200 hover:brightness-110 active:scale-95 disabled:opacity-40"
+            className="shrink-0 h-9 px-4 rounded-[10px] text-[12px] font-semibold transition-all hover:scale-[1.03] active:scale-95 disabled:opacity-40 disabled:hover:scale-100"
             style={{
-              background: 'var(--lk-accent)',
-              color: 'var(--lk-accent-fg)',
-              boxShadow: '0 4px 14px -6px rgb(var(--lk-glass-shadow) / 0.6)',
+              background: canSend ? '#D8825C' : 'rgba(0,0,0,0.08)',
+              color: canSend ? '#16120c' : 'rgba(0,0,0,0.3)',
+              boxShadow: canSend ? '0 3px 12px -2px rgba(216,130,92,0.4)' : 'none',
             }}
           >
-            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden>
-              <path d="M4 12 L12 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+            Send
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 16 16"
+              fill="none"
+              className="inline-block ml-1 -mt-0.5"
+              aria-hidden
+            >
+              <path d="M4 12 L12 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
               <path
                 d="M5 3.5 H12 V10.5"
                 stroke="currentColor"
-                strokeWidth="1.7"
+                strokeWidth="1.8"
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
             </svg>
           </button>
         </div>
-      </div>
 
-      <div className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-white/45 to-transparent" />
-    </div>
-  );
-}
-
-/* ── Plain variant — solid card (kept for compatibility) ── */
-
-function PlainBox(props: BoxProps) {
-  const { value, canSend, textareaRef, onChange, onKeyDown, onFocus, onBlur, onSubmit, suggestions, onPick } = props;
-
-  return (
-    <div className="mx-auto w-full max-w-2xl">
-      <div
-        className="relative rounded-2xl border transition-all duration-200"
-        style={{
-          borderColor: 'rgb(var(--lk-bg-raw) / 0.16)',
-          background: 'rgb(var(--lk-bg-raw) / 0.04)',
-        }}
-      >
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={onKeyDown}
-          onFocus={onFocus}
-          onBlur={onBlur}
-          rows={1}
-          aria-label="Describe what you want to build"
-          placeholder="What do you want to build?"
-          className="block w-full resize-none bg-transparent px-4 py-4 pr-16 text-sm focus:outline-none sm:text-base sm:px-5"
-          style={{ color: 'var(--lk-fg)', minHeight: 56, maxHeight: 200 }}
-        />
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={!canSend}
-          aria-label="Start building"
-          className="absolute right-3 bottom-3 grid h-10 w-10 place-items-center rounded-xl transition-all active:scale-95 disabled:cursor-not-allowed"
-          style={{
-            background: canSend ? 'var(--lk-accent)' : 'rgb(var(--lk-bg-raw) / 0.06)',
-            color: 'var(--lk-accent-fg)',
-            opacity: canSend ? 1 : 0.5,
-          }}
-        >
-          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden>
-            <path d="M4 12 L12 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-            <path
-              d="M5 3.5 H12 V10.5"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      </div>
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-        {suggestions.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => onPick(s)}
-            className="rounded-full border px-3 py-1.5 text-[11px] transition-colors sm:text-xs"
-            style={{
-              borderColor: 'rgb(var(--lk-bg-raw) / 0.14)',
-              color: 'var(--lk-fg)',
-              background: 'rgb(var(--lk-bg-raw) / 0.04)',
-            }}
-          >
-            {s}
-          </button>
-        ))}
+        {/* Suggestion chips */}
+        <div className="relative flex flex-wrap items-center gap-1.5 px-2 pt-2">
+          {SUGGESTIONS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => pickSuggestion(s)}
+              className="rounded-full px-2.5 py-1 text-[10px] font-medium transition-colors hover:bg-white/8"
+              style={{
+                border: '1px solid rgba(255,255,255,0.1)',
+                color: 'rgba(255,255,255,0.6)',
+                background: 'rgba(255,255,255,0.04)',
+              }}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

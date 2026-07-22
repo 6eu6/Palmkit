@@ -391,7 +391,7 @@ function Hero({ isDark }: { isDark: boolean }) {
 
       {/* prompt box — anchored to bottom of viewport, fully visible */}
       <div className="relative z-20 mx-auto w-full max-w-2xl px-4 pb-4 sm:px-6 sm:pb-6">
-        <LandingPromptBox variant="hero" />
+        <LandingPromptBox />
       </div>
     </section>
   );
