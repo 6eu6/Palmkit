@@ -1,16 +1,25 @@
 import { useStore } from '@nanostores/react';
 import { useEffect, useState } from 'react';
+import { Form, useActionData, useNavigation } from '@remix-run/react';
 import { authModalStore, closeAuthModal } from '~/lib/stores/auth';
 
 /**
- * Global "sign in to continue" modal. Shown when an unauthenticated user tries
- * to use a gated surface (e.g. the prompt box). OAuth buttons are plain <a>
- * links to /api/auth/github and /api/auth/twitter — no client-side JS or
- * form submission required.
+ * Auth modal — popup that shows login/signup form on the landing page
+ * instead of navigating to a separate /login route.
+ *
+ * Two modes:
+ *   - 'login' (default): email/password + OAuth buttons
+ *   - 'signup': email/password + OAuth buttons (linked to /signup route)
+ *
+ * Styled to match the landing page's liquid glass aesthetic.
  */
 export function AuthModal() {
   const open = useStore(authModalStore);
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [redirectTo, setRedirectTo] = useState('/');
+  const actionData = useActionData<{ error?: string }>();
+  const navigation = useNavigation();
+  const busy = navigation.state !== 'idle';
 
   useEffect(() => {
     if (open && typeof window !== 'undefined') {
@@ -37,7 +46,7 @@ export function AuthModal() {
   }
 
   const oauthBtn =
-    'w-full h-12 rounded-xl font-medium text-sm flex items-center justify-center gap-2.5 border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary bg-palmkit-elements-background-depth-2 hover:bg-palmkit-elements-background-depth-3 transition-colors';
+    'w-full h-11 rounded-xl font-medium text-sm flex items-center justify-center gap-2.5 border transition-colors';
 
   return (
     <div
@@ -53,68 +62,154 @@ export function AuthModal() {
         style={{ animation: 'fade-in 0.2s ease forwards' }}
       />
 
-      {/* Sheet / Card */}
+      {/* Sheet / Card — liquid glass matching landing page */}
       <div
-        className="relative w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl border p-6 pb-8 sm:pb-6"
+        className="lk-glass relative w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-6 pb-8 sm:pb-6"
         style={{
-          background: 'var(--palmkit-mobile-surface-bg, #0e0e16)',
-          borderColor: 'rgba(255, 255, 255, 0.18)',
           animation: 'slide-up 0.28s cubic-bezier(0.16,1,0.3,1) forwards',
         }}
       >
         <button
           onClick={closeAuthModal}
           aria-label="Close"
-          className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-palmkit-elements-textSecondary hover:bg-palmkit-elements-background-depth-3 transition-colors"
+          className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center transition-colors hover:bg-white/10"
+          style={{ color: 'var(--lk-fg)' }}
         >
           <span className="i-ph:x text-lg" />
         </button>
 
+        {/* Header */}
         <div className="flex flex-col items-center text-center mb-5">
           <img src="/palmkit-icon.jpg" alt="Palmkit" className="w-14 h-14 rounded-2xl mb-3 shadow-lg" />
-          <h2 className="text-xl font-bold tracking-tight text-palmkit-elements-textPrimary">
-            Sign in to start building
+          <h2 className="text-xl font-bold tracking-tight" style={{ color: 'var(--lk-fg)' }}>
+            {mode === 'login' ? 'Welcome back' : 'Create your account'}
           </h2>
-          <p className="text-sm text-palmkit-elements-textSecondary mt-1">
-            Create a free account to generate, preview, and keep your projects.
+          <p className="text-sm mt-1" style={{ color: 'rgb(var(--lk-fg-raw) / 0.6)' }}>
+            {mode === 'login'
+              ? 'Log in to keep your projects and key in sync.'
+              : 'Sign up to generate, preview, and keep your projects.'}
           </p>
         </div>
 
+        {/* OAuth buttons */}
         <div className="flex flex-col gap-2.5">
-          {/* GitHub OAuth — plain <a> link to API route */}
-          <a href={`/api/auth/github?redirectTo=${encodeURIComponent(redirectTo)}`} className={oauthBtn}>
+          <a
+            href={`/api/auth/github?redirectTo=${encodeURIComponent(redirectTo)}`}
+            className={oauthBtn}
+            style={{
+              borderColor: 'rgb(var(--lk-fg-raw) / 0.15)',
+              color: 'var(--lk-fg)',
+              background: 'rgb(var(--lk-fg-raw) / 0.04)',
+            }}
+          >
             <span className="i-ph:github-logo-fill text-lg" />
             Continue with GitHub
           </a>
 
-          {/* Twitter/X OAuth — plain <a> link to API route */}
-          <a href={`/api/auth/twitter?redirectTo=${encodeURIComponent(redirectTo)}`} className={oauthBtn}>
+          <a
+            href={`/api/auth/twitter?redirectTo=${encodeURIComponent(redirectTo)}`}
+            className={oauthBtn}
+            style={{
+              borderColor: 'rgb(var(--lk-fg-raw) / 0.15)',
+              color: 'var(--lk-fg)',
+              background: 'rgb(var(--lk-fg-raw) / 0.04)',
+            }}
+          >
             <span className="i-ph:x-logo-fill text-lg" />
             Continue with X
           </a>
         </div>
 
+        {/* Divider */}
         <div className="flex items-center gap-3 my-4">
-          <div className="h-px flex-1 bg-palmkit-elements-borderColor" />
-          <span className="text-[11px] text-palmkit-elements-textTertiary">or</span>
-          <div className="h-px flex-1 bg-palmkit-elements-borderColor" />
+          <div className="h-px flex-1" style={{ background: 'rgb(var(--lk-fg-raw) / 0.12)' }} />
+          <span className="text-[11px]" style={{ color: 'rgb(var(--lk-fg-raw) / 0.4)' }}>
+            or
+          </span>
+          <div className="h-px flex-1" style={{ background: 'rgb(var(--lk-fg-raw) / 0.12)' }} />
         </div>
 
-        <div className="flex flex-col gap-2 text-center">
-          <a
-            href={`/signup?redirectTo=${encodeURIComponent(redirectTo)}`}
-            className="w-full h-12 rounded-xl font-medium text-white text-sm flex items-center justify-center transition-opacity hover:opacity-90"
-            style={{ background: 'linear-gradient(135deg, #00A8B5 0%, #008C97 140%)' }}
+        {/* Email/password form */}
+        <Form method="post" action={mode === 'login' ? '/login' : '/signup'} className="flex flex-col gap-3">
+          <input type="hidden" name="redirectTo" value={redirectTo} />
+
+          <label className="block">
+            <span className="block text-xs font-medium mb-1.5" style={{ color: 'rgb(var(--lk-fg-raw) / 0.6)' }}>
+              Email
+            </span>
+            <input
+              name="email"
+              type="email"
+              autoComplete="email"
+              required
+              placeholder="you@example.com"
+              className="w-full h-11 px-3.5 rounded-xl text-sm border focus:outline-none focus:ring-2 transition-all"
+              style={{
+                background: 'rgb(var(--lk-fg-raw) / 0.06)',
+                borderColor: 'rgb(var(--lk-fg-raw) / 0.15)',
+                color: 'var(--lk-fg)',
+              }}
+            />
+          </label>
+
+          <label className="block">
+            <span className="block text-xs font-medium mb-1.5" style={{ color: 'rgb(var(--lk-fg-raw) / 0.6)' }}>
+              Password
+            </span>
+            <input
+              name="password"
+              type="password"
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              required
+              placeholder="••••••••"
+              className="w-full h-11 px-3.5 rounded-xl text-sm border focus:outline-none focus:ring-2 transition-all"
+              style={{
+                background: 'rgb(var(--lk-fg-raw) / 0.06)',
+                borderColor: 'rgb(var(--lk-fg-raw) / 0.15)',
+                color: 'var(--lk-fg)',
+              }}
+            />
+          </label>
+
+          {actionData?.error && (
+            <div
+              className="flex items-start gap-2 p-3 rounded-xl text-xs"
+              style={{
+                background: 'rgba(239, 68, 68, 0.08)',
+                border: '1px solid rgba(239, 68, 68, 0.15)',
+                color: '#fca5a5',
+              }}
+            >
+              <span className="i-ph:warning-circle-fill text-sm mt-0.5 flex-shrink-0" />
+              <span>{actionData.error}</span>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={busy}
+            className="w-full h-11 rounded-xl font-medium text-sm transition-opacity disabled:opacity-60 mt-1"
+            style={{
+              background: 'var(--lk-accent)',
+              color: 'var(--lk-accent-fg)',
+            }}
           >
-            Sign up with email
-          </a>
-          <a
-            href={`/login?redirectTo=${encodeURIComponent(redirectTo)}`}
-            className="text-xs text-palmkit-elements-textSecondary hover:underline mt-1"
+            {busy ? 'Please wait…' : mode === 'login' ? 'Log in' : 'Sign up'}
+          </button>
+        </Form>
+
+        {/* Toggle login/signup */}
+        <p className="mt-4 text-center text-xs" style={{ color: 'rgb(var(--lk-fg-raw) / 0.5)' }}>
+          {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
+          <button
+            type="button"
+            onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}
+            className="underline font-medium"
+            style={{ color: 'var(--lk-accent)' }}
           >
-            Already have an account? <span style={{ color: '#f5f5f5' }}>Log in</span>
-          </a>
-        </div>
+            {mode === 'login' ? 'Sign up' : 'Log in'}
+          </button>
+        </p>
       </div>
     </div>
   );

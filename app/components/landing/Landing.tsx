@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Link } from '@remix-run/react';
 import { LandingPromptBox } from './LandingPromptBox';
+import { authModalStore } from '~/lib/stores/auth';
+import { AuthModal } from '~/components/auth/AuthModal';
 
 /**
  * Marketing landing page — redesigned with a Liquid Glass aesthetic.
@@ -109,6 +111,7 @@ export function Landing() {
         <BuildFlow />
       </main>
       <FooterScene isDark={isDark} />
+      <AuthModal />
     </div>
   );
 }
@@ -179,9 +182,7 @@ function LandingNav({
         style={{ maxWidth: scrolled ? '48rem' : '80rem', zIndex: 1 }}
       >
         <nav
-          className={`lk-glass flex w-full items-center justify-between gap-3 py-2 pl-3 pr-2.5 transition-all duration-500 sm:pl-5 sm:pr-3 ${
-            menuOpen ? 'rounded-t-full rounded-b-none' : 'rounded-full'
-          }`}
+          className="lk-glass flex w-full items-center justify-between gap-3 rounded-full py-2 pl-3 pr-2.5 transition-all duration-500 sm:pl-5 sm:pr-3"
           style={{ paddingBlock: scrolled ? '0.375rem' : '0.5rem' }}
         >
           <Link to="/" className="flex shrink-0 items-center gap-2" aria-label="Palmkit home">
@@ -256,11 +257,10 @@ function LandingNav({
         {/* dropdown menu — slides down from the nav pill, flush with
             the header (no gap) so it reads as part of the nav itself */}
         <div
-          className={`lk-menu lk-glass absolute left-0 right-0 top-full rounded-b-3xl rounded-t-none p-3${
+          className={`lk-menu lk-glass absolute left-0 right-0 top-full rounded-b-3xl rounded-t-2xl p-3${
             menuOpen ? ' is-open' : ''
           }`}
           style={{
-            borderTop: 'none',
             boxShadow:
               '0 20px 50px -20px rgb(var(--lk-glass-shadow) / 0.4), 0 2px 8px -4px rgb(var(--lk-glass-shadow) / 0.2)',
           }}
@@ -285,18 +285,24 @@ function LandingNav({
             className="mt-2 flex flex-col gap-2 border-t pt-2"
             style={{ borderColor: 'rgb(var(--lk-bg-raw) / 0.1)' }}
           >
-            <Link
-              to="/login"
-              onClick={() => setMenuOpen(false)}
-              className="block rounded-2xl px-4 py-3 text-sm font-medium transition-colors hover:bg-[rgb(var(--lk-glass-fill)/0.5)]"
+            <button
+              type="button"
+              onClick={() => {
+                authModalStore.set(true);
+                setMenuOpen(false);
+              }}
+              className="block w-full text-left rounded-2xl px-4 py-3 text-sm font-medium transition-colors hover:bg-[rgb(var(--lk-glass-fill)/0.5)]"
               style={{ color: 'var(--lk-fg)' }}
               role="menuitem"
             >
               Sign in
-            </Link>
-            <Link
-              to="/signup"
-              onClick={() => setMenuOpen(false)}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                authModalStore.set(true);
+                setMenuOpen(false);
+              }}
               className="flex items-center justify-center gap-1.5 rounded-2xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-[0.98]"
               style={{
                 background: 'var(--lk-accent)',
@@ -316,7 +322,7 @@ function LandingNav({
                   strokeLinejoin="round"
                 />
               </svg>
-            </Link>
+            </button>
           </div>
         </div>
       </div>
