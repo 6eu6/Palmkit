@@ -179,7 +179,9 @@ function LandingNav({
         style={{ maxWidth: scrolled ? '48rem' : '80rem', zIndex: 1 }}
       >
         <nav
-          className={`lk-glass flex w-full items-center justify-between gap-3 rounded-full py-2 pl-3 pr-2.5 transition-all duration-500 sm:pl-5 sm:pr-3`}
+          className={`lk-glass flex w-full items-center justify-between gap-3 py-2 pl-3 pr-2.5 transition-all duration-500 sm:pl-5 sm:pr-3 ${
+            menuOpen ? 'rounded-t-full rounded-b-none' : 'rounded-full'
+          }`}
           style={{ paddingBlock: scrolled ? '0.375rem' : '0.5rem' }}
         >
           <Link to="/" className="flex shrink-0 items-center gap-2" aria-label="Palmkit home">
