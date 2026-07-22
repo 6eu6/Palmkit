@@ -17,8 +17,16 @@ export function LegalLayout({ title, updated, children }: { title: string; updat
         }}
       >
         <Link to="/" className="flex items-center" aria-label="Palmkit home">
-          <img src="/palmkit-logo-light.png" alt="Palmkit" className="h-7 w-auto select-none dark:hidden" />
-          <img src="/palmkit-logo-dark.png" alt="Palmkit" className="h-7 w-auto select-none hidden dark:block" />
+          <img
+            src="/palmkit-logo-light.png"
+            alt="Palmkit"
+            className="h-7 w-auto select-none dark:hidden pointer-events-none"
+          />
+          <img
+            src="/palmkit-logo-dark.png"
+            alt="Palmkit"
+            className="h-7 w-auto select-none hidden dark:block pointer-events-none"
+          />
         </Link>
         <Link
           to="/"

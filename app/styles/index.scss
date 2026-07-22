@@ -19,6 +19,36 @@ body {
   background-color: var(--palmkit-elements-bg-depth-1);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/*
+ * ═══════════════════════════════════════════════════════════
+ * FONT SYSTEM (site-wide)
+ * ═══════════════════════════════════════════════════════════
+ *
+ * Two font families, each with a clear role:
+ *
+ * 1. Inter (sans-serif) — DEFAULT for all body text, UI labels,
+ *    buttons, inputs, code blocks, navigation, chat messages.
+ *    Loaded via Google Fonts (root.tsx links).
+ *    Weights: 400 (regular), 500 (medium), 600 (semibold), 700 (bold).
+ *
+ * 2. Boska (serif display) — ONLY for large marketing headings on
+ *    the landing page (hero h1, section h2, footer title).
+ *    Loaded via @font-face in landing.scss from /fonts/.
+ *    Variable font: weights 200-900, supports italic.
+ *
+ * Rule: if it's NOT a landing-page marketing heading, use Inter.
+ * Never mix Boska into the app shell, chat, settings, or modals.
+ */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Landing page display headings override to Boska */
+.lk-display {
+  font-family: 'Boska', Georgia, serif;
 }
 
 /*

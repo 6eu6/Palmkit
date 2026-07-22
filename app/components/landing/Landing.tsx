@@ -189,7 +189,7 @@ function LandingNav({
             <img
               src={markSrc}
               alt=""
-              className="h-6 w-6 select-none"
+              className="h-6 w-6 select-none pointer-events-none"
               style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.3))' }}
             />
             <span
@@ -777,7 +777,7 @@ function FooterScene({ isDark }: { isDark: boolean }) {
               <img
                 src={markSrc}
                 alt=""
-                className="h-5 w-5 select-none"
+                className="h-5 w-5 select-none pointer-events-none"
                 style={{ filter: 'drop-shadow(0 1px 8px rgba(8,6,3,0.9))' }}
               />
               <span

@@ -10,8 +10,16 @@ export function AuthLayout({ title, subtitle, children }: { title: string; subti
     <div className="min-h-[100dvh] flex flex-col bg-palmkit-elements-background-depth-1 text-palmkit-elements-textPrimary">
       <header className="flex items-center px-4 h-14">
         <Link to="/" className="flex items-center" aria-label="Palmkit home">
-          <img src="/palmkit-logo-light.png" alt="Palmkit" className="h-7 w-auto select-none dark:hidden" />
-          <img src="/palmkit-logo-dark.png" alt="Palmkit" className="h-7 w-auto select-none hidden dark:block" />
+          <img
+            src="/palmkit-logo-light.png"
+            alt="Palmkit"
+            className="h-7 w-auto select-none dark:hidden pointer-events-none"
+          />
+          <img
+            src="/palmkit-logo-dark.png"
+            alt="Palmkit"
+            className="h-7 w-auto select-none hidden dark:block pointer-events-none"
+          />
         </Link>
       </header>
 
