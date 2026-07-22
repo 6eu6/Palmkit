@@ -44,7 +44,28 @@ interface LogDetails extends Record<string, any> {
   message: string;
 }
 
-const MAX_LOGS = 1000; // Maximum number of logs to keep in memory
+/*
+ * ROOT FIX: moved log storage from cookie to localStorage.
+ *
+ * OLD DESIGN (BROKEN): stored ALL logs as a JSON cookie:
+ *   Cookies.set('eventLogs', JSON.stringify(currentLogs));
+ * With MAX_LOGS=1000, each entry ~200-500 bytes, this cookie could reach
+ * 200-500KB — FAR exceeding the browser's 4KB cookie limit. When a cookie
+ * exceeds the limit, browsers silently reject ALL cookies for the domain,
+ * which breaks Supabase auth (sb-*-auth-token cookie) and prevents login.
+ * This is why the user couldn't access the site — the eventLogs cookie had
+ * grown too large and was blocking all other cookies.
+ *
+ * NEW DESIGN (ROOT FIX): store logs in localStorage (no size limit issues):
+ *   localStorage.setItem('palmkit_eventLogs', JSON.stringify(currentLogs))
+ * Cookies are only for small values (auth tokens, session IDs).
+ *
+ * On load, if a legacy 'eventLogs' cookie exists, migrate it to localStorage
+ * and DELETE the cookie to prevent future breakage.
+ */
+const MAX_LOGS = 200; // Reduced from 1000 to 200 (still plenty for debugging)
+const LOGS_STORAGE_KEY = 'palmkit_eventLogs';
+const MAX_STORAGE_BYTES = 500_000; // 500KB safety limit for localStorage
 
 class LogStore {
   private _logs = map<Record<string, LogEntry>>({});
@@ -52,29 +73,63 @@ class LogStore {
   private _readLogs = new Set<string>();
 
   constructor() {
-    // Load saved logs from cookies on initialization
     this._loadLogs();
 
-    // Only load read logs in browser environment
     if (typeof window !== 'undefined') {
       this._loadReadLogs();
     }
   }
 
-  // Expose the logs store for subscription
   get logs() {
     return this._logs;
   }
 
   private _loadLogs() {
-    const savedLogs = Cookies.get('eventLogs');
+    /*
+     * MIGRATION: if a legacy 'eventLogs' cookie exists, migrate it to
+     * localStorage and DELETE the cookie. This prevents the cookie from
+     * growing too large and blocking all other cookies (the root cause
+     * of the "can't access the site" bug).
+     */
+    if (typeof document !== 'undefined') {
+      const legacyCookie = Cookies.get('eventLogs');
 
-    if (savedLogs) {
+      if (legacyCookie) {
+        try {
+          const parsed = JSON.parse(legacyCookie);
+          this._logs.set(parsed);
+
+          // Save to localStorage (the new home)
+          try {
+            localStorage.setItem(LOGS_STORAGE_KEY, legacyCookie);
+          } catch {
+            // localStorage might be full — clear old logs and start fresh
+            this._logs.set({});
+          }
+        } catch {
+          // Corrupted cookie — start fresh
+          this._logs.set({});
+        }
+
+        // DELETE the legacy cookie — this is the critical fix!
+        Cookies.remove('eventLogs', { path: '/' });
+        logger.info('Migrated eventLogs from cookie to localStorage (root fix for login issue)');
+
+        return;
+      }
+    }
+
+    // Load from localStorage (the new storage location)
+    if (typeof window !== 'undefined') {
       try {
-        const parsedLogs = JSON.parse(savedLogs);
-        this._logs.set(parsedLogs);
-      } catch (error) {
-        logger.error('Failed to parse logs from cookies:', error);
+        const saved = localStorage.getItem(LOGS_STORAGE_KEY);
+
+        if (saved) {
+          this._logs.set(JSON.parse(saved));
+        }
+      } catch {
+        // Corrupted localStorage — start fresh
+        this._logs.set({});
       }
     }
   }
@@ -96,9 +151,40 @@ class LogStore {
     }
   }
 
+  /*
+   * ROOT FIX: save to localStorage (NOT cookie).
+   * Cookies have a 4KB limit — storing 200 log entries as JSON
+   * would exceed this and break all cookies (including auth).
+   */
   private _saveLogs() {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
     const currentLogs = this._logs.get();
-    Cookies.set('eventLogs', JSON.stringify(currentLogs));
+
+    try {
+      const serialized = JSON.stringify(currentLogs);
+
+      // Safety check: if serialized logs exceed the limit, trim aggressively
+      if (serialized.length > MAX_STORAGE_BYTES) {
+        // Keep only the most recent 50 logs
+        const sorted = Object.entries(currentLogs)
+          .sort(([, a], [, b]) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+          .slice(0, 50);
+        this._logs.set(Object.fromEntries(sorted));
+        localStorage.setItem(LOGS_STORAGE_KEY, JSON.stringify(Object.fromEntries(sorted)));
+      } else {
+        localStorage.setItem(LOGS_STORAGE_KEY, serialized);
+      }
+    } catch {
+      // localStorage might be full (quota exceeded) — clear old logs
+      try {
+        localStorage.removeItem(LOGS_STORAGE_KEY);
+      } catch {
+        // give up silently — logs are best-effort, never crash the app
+      }
+    }
   }
 
   private _saveReadLogs() {
@@ -125,7 +211,6 @@ class LogStore {
     }
   }
 
-  // Base log method for general logging
   private _addLog(
     message: string,
     level: LogEntry['level'],
@@ -151,7 +236,6 @@ class LogStore {
     return id;
   }
 
-  // Specialized method for API logging
   private _addApiLog(
     message: string,
     method: string,
@@ -172,22 +256,18 @@ class LogStore {
     });
   }
 
-  // System events
   logSystem(message: string, details?: Record<string, any>) {
     return this._addLog(message, 'info', 'system', details);
   }
 
-  // Provider events
   logProvider(message: string, details?: Record<string, any>) {
     return this._addLog(message, 'info', 'provider', details);
   }
 
-  // User actions
   logUserAction(message: string, details?: Record<string, any>) {
     return this._addLog(message, 'info', 'user', details);
   }
 
-  // API Connection Logging
   logAPIRequest(endpoint: string, method: string, duration: number, statusCode: number, details?: Record<string, any>) {
     const message = `${method} ${endpoint} - ${statusCode} (${duration}ms)`;
     const level = statusCode >= 400 ? 'error' : statusCode >= 300 ? 'warning' : 'info';
@@ -202,7 +282,6 @@ class LogStore {
     });
   }
 
-  // Authentication Logging
   logAuth(
     action: 'login' | 'logout' | 'token_refresh' | 'key_validation',
     success: boolean,
@@ -219,7 +298,6 @@ class LogStore {
     });
   }
 
-  // Network Status Logging
   logNetworkStatus(status: 'online' | 'offline' | 'reconnecting' | 'connected', details?: Record<string, any>) {
     const message = `Network ${status}`;
     const level = status === 'offline' ? 'error' : status === 'reconnecting' ? 'warning' : 'info';
@@ -231,7 +309,6 @@ class LogStore {
     });
   }
 
-  // Database Operations Logging
   logDatabase(operation: string, success: boolean, duration: number, details?: Record<string, any>) {
     const message = `DB ${operation} - ${success ? 'Success' : 'Failed'} (${duration}ms)`;
     const level = success ? 'info' : 'error';
@@ -245,7 +322,6 @@ class LogStore {
     });
   }
 
-  // Error events
   logError(message: string, error?: Error | unknown, details?: Record<string, any>) {
     const errorDetails =
       error instanceof Error
@@ -260,12 +336,10 @@ class LogStore {
     return this._addLog(message, 'error', 'error', errorDetails);
   }
 
-  // Warning events
   logWarning(message: string, details?: Record<string, any>) {
     return this._addLog(message, 'warning', 'system', details);
   }
 
-  // Debug events
   logDebug(message: string, details?: Record<string, any>) {
     return this._addLog(message, 'debug', 'system', details);
   }
@@ -308,7 +382,6 @@ class LogStore {
     this._saveReadLogs();
   }
 
-  // API interactions
   logApiCall(
     method: string,
     endpoint: string,
@@ -336,7 +409,6 @@ class LogStore {
     );
   }
 
-  // Network operations
   logNetworkRequest(
     method: string,
     url: string,
@@ -364,7 +436,6 @@ class LogStore {
     );
   }
 
-  // Authentication events
   logAuthEvent(event: string, success: boolean, details?: Record<string, any>) {
     return this._addLog(
       `Auth ${event} ${success ? 'succeeded' : 'failed'}`,
@@ -378,7 +449,6 @@ class LogStore {
     );
   }
 
-  // Performance tracking
   logPerformance(operation: string, duration: number, details?: Record<string, any>) {
     return this._addLog(
       `Performance: ${operation}`,
@@ -396,7 +466,6 @@ class LogStore {
     );
   }
 
-  // Error handling
   logErrorWithStack(error: Error, category: LogEntry['category'] = 'error', details?: Record<string, any>) {
     return this._addLog(
       error.message,
@@ -414,13 +483,11 @@ class LogStore {
     );
   }
 
-  // Refresh logs (useful for real-time updates)
   refreshLogs() {
     const currentLogs = this._logs.get();
     this._logs.set({ ...currentLogs });
   }
 
-  // Enhanced logging methods
   logInfo(message: string, details: LogDetails) {
     return this._addLog(message, 'info', 'system', details);
   }

@@ -145,8 +145,8 @@ export class ImportExportService {
           error_logs: this._safeGetItem('error_logs'),
           palmkit_read_logs: this._safeGetItem('palmkit_read_logs'),
 
-          // Event logs
-          eventLogs: allCookies.eventLogs,
+          // Event logs (now stored in localStorage, not cookies — root fix for login issue)
+          eventLogs: typeof window !== 'undefined' ? localStorage.getItem('palmkit_eventLogs') : null,
         },
 
         // Update settings
@@ -491,8 +491,8 @@ export class ImportExportService {
         }
       });
 
-      // Import debug cookies
-      const debugCookies = ['isDebugEnabled', 'eventLogs'];
+      // Import debug cookies (eventLogs moved to localStorage — root fix)
+      const debugCookies = ['isDebugEnabled'];
       debugCookies.forEach((key) => {
         if (data.debug[key]) {
           try {
@@ -565,7 +565,8 @@ export class ImportExportService {
             'tabConfiguration',
             'cachedPrompt',
             'isDebugEnabled',
-            'eventLogs',
+
+            // 'eventLogs' removed from cookies — now stored in localStorage
           ].includes(key);
 
           if (isCookie) {
