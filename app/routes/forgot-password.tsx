@@ -58,7 +58,7 @@ export default function ForgotPassword() {
             If an account exists for <span className="text-palmkit-elements-textPrimary">{actionData.email}</span>, a
             link to reset your password is on its way.
           </p>
-          <Link to="/login" className="text-xs underline" style={{ color: '#f5f5f5' }}>
+          <Link to="/" className="text-xs underline" style={{ color: '#f5f5f5' }}>
             Back to log in
           </Link>
         </div>
@@ -87,7 +87,7 @@ export default function ForgotPassword() {
 
       <p className="mt-4 text-center text-xs text-palmkit-elements-textSecondary">
         Remembered it?{' '}
-        <Link to="/login" className="underline" style={{ color: '#f5f5f5' }}>
+        <Link to="/" className="underline" style={{ color: '#f5f5f5' }}>
           Log in
         </Link>
       </p>

@@ -155,6 +155,7 @@ export function AuthModal() {
           width: '420px',
           height: '420px',
           maxWidth: 'calc(100vw - 32px)',
+          maxHeight: 'calc(100vh - 32px)',
           background: T.ambient,
           filter: 'blur(60px)',
           animation: 'lg-fade 0.4s ease 0.1s forwards',
@@ -166,8 +167,10 @@ export function AuthModal() {
       <div
         className="relative rounded-[28px] overflow-hidden"
         style={{
-          width: '380px',
+          width: '420px',
           maxWidth: 'calc(100vw - 32px)',
+          height: '420px',
+          maxHeight: 'calc(100vh - 32px)',
           padding: '40px 36px',
           background: T.cardBg,
           backdropFilter: T.blur,
@@ -242,7 +245,11 @@ export function AuthModal() {
           </div>
 
           {/* Form */}
-          <Form method="post" action={mode === 'login' ? '/login' : '/signup'} className="flex flex-col gap-3 w-full">
+          <Form
+            method="post"
+            action={mode === 'login' ? '/api/auth/login' : '/api/auth/signup'}
+            className="flex flex-col gap-3 w-full"
+          >
             <input type="hidden" name="redirectTo" value={redirectTo} />
 
             <input

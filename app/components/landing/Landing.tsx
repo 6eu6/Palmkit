@@ -645,7 +645,7 @@ function BuildFlow() {
             </p>
           </div>
           <Link
-            to="/signup"
+            to="/#templates"
             className="inline-flex w-fit items-center gap-1.5 text-sm font-semibold transition-colors"
             style={{ color: 'var(--lk-fg)' }}
           >
