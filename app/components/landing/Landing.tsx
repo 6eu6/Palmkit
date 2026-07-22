@@ -345,8 +345,8 @@ function Hero({ isDark }: { isDark: boolean }) {
    * dark forest bottom is far from the cream page bg.
    */
   const mask = isDark
-    ? 'linear-gradient(to bottom, #000 0%, #000 30%, rgba(0,0,0,0.94) 42%, rgba(0,0,0,0.82) 52%, rgba(0,0,0,0.66) 60%, rgba(0,0,0,0.48) 67%, rgba(0,0,0,0.32) 73%, rgba(0,0,0,0.18) 79%, rgba(0,0,0,0.08) 84%, rgba(0,0,0,0.02) 88%, rgba(0,0,0,0) 92%, rgba(0,0,0,0) 100%)'
-    : 'linear-gradient(to bottom, #000 0%, #000 22%, rgba(0,0,0,0.96) 34%, rgba(0,0,0,0.88) 44%, rgba(0,0,0,0.76) 53%, rgba(0,0,0,0.62) 61%, rgba(0,0,0,0.46) 68%, rgba(0,0,0,0.32) 74%, rgba(0,0,0,0.20) 80%, rgba(0,0,0,0.10) 85%, rgba(0,0,0,0.04) 89%, rgba(0,0,0,0.01) 92%, rgba(0,0,0,0) 95%, rgba(0,0,0,0) 100%)';
+    ? 'linear-gradient(to bottom, #000 0%, #000 55%, rgba(0,0,0,0.85) 70%, rgba(0,0,0,0.5) 82%, rgba(0,0,0,0.15) 90%, rgba(0,0,0,0) 96%, rgba(0,0,0,0) 100%)'
+    : 'linear-gradient(to bottom, #000 0%, #000 50%, rgba(0,0,0,0.88) 68%, rgba(0,0,0,0.5) 82%, rgba(0,0,0,0.15) 90%, rgba(0,0,0,0) 96%, rgba(0,0,0,0) 100%)';
 
   return (
     <section id="top" className="relative flex h-[100svh] min-h-[100svh] flex-col overflow-hidden">
