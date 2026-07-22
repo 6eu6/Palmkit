@@ -365,13 +365,13 @@ function Hero({ isDark }: { isDark: boolean }) {
       </div>
 
       {/* headline */}
-      <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col items-center justify-center px-5 pb-4 pt-24 text-center sm:pt-28">
+      <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col items-center justify-center px-5 pb-4 pt-20 text-center sm:pt-24">
         <h1
           className="lk-display font-semibold leading-[0.98] tracking-[-0.02em]"
           style={{
             fontSize: 'clamp(2.2rem, 6.5vw, 5rem)',
             color: '#FBF7EE',
-            textShadow: '0 2px 28px rgba(8,6,3,0.92), 0 1px 6px rgba(8,6,3,0.78), 0 0 1px rgba(8,6,3,0.9)',
+            textShadow: '0 2px 30px rgba(8,6,3,0.95), 0 1px 8px rgba(8,6,3,0.85), 0 0 2px rgba(8,6,3,0.95)',
           }}
         >
           Build web apps
@@ -383,10 +383,11 @@ function Hero({ isDark }: { isDark: boolean }) {
           you are.
         </h1>
         <p
-          className="mt-4 max-w-[50ch] text-[0.95rem] leading-relaxed sm:mt-5 sm:text-[1.05rem]"
+          className="mt-4 max-w-[50ch] text-[0.98rem] leading-relaxed sm:mt-5 sm:text-[1.1rem]"
           style={{
             color: '#FBF7EE',
-            textShadow: '0 2px 20px rgba(8,6,3,0.95), 0 1px 5px rgba(8,6,3,0.75), 0 0 1px rgba(8,6,3,0.85)',
+            textShadow: '0 2px 22px rgba(8,6,3,0.95), 0 1px 6px rgba(8,6,3,0.85), 0 0 2px rgba(8,6,3,0.95)',
+            fontWeight: 500,
           }}
         >
           One prompt becomes a live, exportable app — drafted, previewed and shipped straight from your phone.
@@ -394,7 +395,7 @@ function Hero({ isDark }: { isDark: boolean }) {
       </div>
 
       {/* prompt box — anchored to bottom of viewport, fully visible */}
-      <div className="relative z-20 mx-auto w-full max-w-2xl px-4 pb-5 sm:px-6 sm:pb-7">
+      <div className="relative z-20 mx-auto w-full max-w-2xl px-4 pb-4 sm:px-6 sm:pb-6">
         <LandingPromptBox variant="hero" />
       </div>
     </section>

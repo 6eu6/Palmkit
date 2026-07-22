@@ -137,7 +137,7 @@ function HeroGlassBox(props: BoxProps) {
       <div className="px-4 pt-3 pb-1.5 sm:px-5 sm:pt-4 sm:pb-2">
         <div
           className="flex items-center gap-2 text-[0.7rem] sm:text-xs"
-          style={{ color: 'rgb(var(--lk-fg-raw) / 0.55)' }}
+          style={{ color: 'rgb(var(--lk-fg-raw) / 0.7)' }}
         >
           <span className="relative flex h-1.5 w-1.5">
             <span
@@ -152,8 +152,8 @@ function HeroGlassBox(props: BoxProps) {
           Palmkit is ready
         </div>
         <p
-          className="lk-display mt-2.5 max-w-[34ch] text-[0.98rem] leading-snug sm:mt-3 sm:text-[1.05rem]"
-          style={{ color: 'rgb(var(--lk-fg-raw) / 0.85)' }}
+          className="lk-display mt-2.5 max-w-[34ch] text-[0.98rem] leading-snug sm:mt-3 sm:text-[1.1rem]"
+          style={{ color: 'rgb(var(--lk-fg-raw) / 0.92)' }}
         >
           Tell me what to build. I&rsquo;ll draft the app, preview it live, and hand you the code.
         </p>
@@ -161,8 +161,8 @@ function HeroGlassBox(props: BoxProps) {
 
       {/* input row */}
       <div
-        className="relative m-1.5 mt-1 rounded-[1.1rem] border p-2 sm:rounded-[1.25rem] sm:p-2.5"
-        style={{ borderColor: 'rgb(var(--lk-fg-raw) / 0.12)', background: 'rgb(var(--lk-fg-raw) / 0.03)' }}
+        className="relative m-1.5 mt-1 rounded-[1.1rem] border p-2.5 sm:rounded-[1.25rem] sm:p-3"
+        style={{ borderColor: 'rgb(var(--lk-fg-raw) / 0.18)', background: 'rgb(var(--lk-fg-raw) / 0.06)' }}
       >
         <textarea
           ref={textareaRef}
@@ -174,8 +174,8 @@ function HeroGlassBox(props: BoxProps) {
           rows={1}
           aria-label="Describe the app you want to build"
           placeholder="Describe the app you want to build…"
-          className="lk-soft-scroll block w-full resize-none bg-transparent px-2 pb-1 pt-1.5 text-[0.92rem] leading-relaxed focus:outline-none sm:px-2.5 sm:pt-2 sm:pb-1.5 sm:text-[0.98rem]"
-          style={{ color: 'var(--lk-fg)', minHeight: 40 }}
+          className="lk-soft-scroll block w-full resize-none bg-transparent px-2.5 pb-1.5 pt-2 text-[0.98rem] leading-relaxed focus:outline-none sm:px-3 sm:pt-2.5 sm:pb-2 sm:text-[1.05rem]"
+          style={{ color: 'var(--lk-fg)', minHeight: 48 }}
         />
         <div className="flex items-end justify-between gap-2 px-1 pb-0.5 pt-1.5 sm:gap-3 sm:px-1.5">
           <div className="flex flex-1 flex-wrap items-center gap-1.5">
@@ -184,11 +184,11 @@ function HeroGlassBox(props: BoxProps) {
                 key={s}
                 type="button"
                 onClick={() => onPick(s)}
-                className="rounded-full border px-2.5 py-1 text-[0.68rem] leading-none transition-colors duration-200 sm:text-[0.72rem]"
+                className="rounded-full border px-3 py-1.5 text-[0.72rem] leading-none transition-colors duration-200 sm:text-[0.78rem]"
                 style={{
-                  borderColor: 'rgb(var(--lk-fg-raw) / 0.15)',
-                  color: 'rgb(var(--lk-fg-raw) / 0.55)',
-                  background: 'rgb(var(--lk-fg-raw) / 0.04)',
+                  borderColor: 'rgb(var(--lk-fg-raw) / 0.22)',
+                  color: 'rgb(var(--lk-fg-raw) / 0.75)',
+                  background: 'rgb(var(--lk-fg-raw) / 0.06)',
                 }}
               >
                 {s}
@@ -200,14 +200,14 @@ function HeroGlassBox(props: BoxProps) {
             onClick={onSubmit}
             disabled={!canSend}
             aria-label="Send prompt"
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-full transition-all duration-200 hover:brightness-110 active:scale-95 disabled:opacity-40"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full transition-all duration-200 hover:brightness-110 active:scale-95 disabled:opacity-40"
             style={{
               background: 'var(--lk-accent)',
               color: 'var(--lk-accent-fg)',
               boxShadow: '0 4px 14px -6px rgb(var(--lk-glass-shadow) / 0.6)',
             }}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden>
               <path d="M4 12 L12 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
               <path
                 d="M5 3.5 H12 V10.5"
