@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, lazy, Suspense } from 'react';
 import { flushSync } from 'react-dom';
 import { Link } from '@remix-run/react';
 import { LandingPromptBox } from './LandingPromptBox';
 import { authModalStore } from '~/lib/stores/auth';
 import { AuthModal } from '~/components/auth/AuthModal';
+
+// Dither — lazy loaded (three.js is heavy, only load when BuildFlow is visible)
+const Dither = lazy(() => import('./dither/Dither'));
 
 /**
  * Marketing landing page — redesigned with a Liquid Glass aesthetic.
@@ -108,7 +111,7 @@ export function Landing() {
       <LandingNav isDark={isDark} onToggleTheme={toggleTheme as (e?: { clientX: number; clientY: number }) => void} />
       <main className="flex-1">
         <Hero isDark={isDark} />
-        <BuildFlow />
+        <BuildFlow isDark={isDark} />
       </main>
       <FooterScene isDark={isDark} />
       <AuthModal />
@@ -407,12 +410,19 @@ function Hero({ isDark }: { isDark: boolean }) {
  * visible line against the pure page-bg above and below.
  */
 
-function BuildFlow() {
+function BuildFlow({ isDark }: { isDark: boolean }) {
   const habits = [
     { name: 'Read 20 pages', streak: 18, done: [1, 1, 1, 1, 1, 0, 0] },
     { name: 'Walk after lunch', streak: 9, done: [1, 1, 0, 1, 1, 1, 0] },
     { name: 'No phone before 9', streak: 31, done: [1, 1, 1, 1, 1, 1, 0] },
   ];
+
+  /*
+   * Dither wave color: warm earthy tone matching landing palette
+   * Dark: muted warm brown [0.52, 0.40, 0.30] ≈ #854D4D
+   * Light: muted cream [0.85, 0.80, 0.72] ≈ #D9CCB8
+   */
+  const ditherColor: [number, number, number] = isDark ? [0.52, 0.4, 0.3] : [0.85, 0.8, 0.72];
 
   return (
     <section
@@ -420,6 +430,22 @@ function BuildFlow() {
       className="relative w-full overflow-hidden px-4 pb-48 pt-16 sm:px-6 sm:pb-56 sm:pt-24"
       style={{ background: 'var(--lk-bg)' }}
     >
+      {/* Dither background — liquid wave effect filling the belly section */}
+      <div className="absolute inset-0" style={{ opacity: 0.4, zIndex: 0 }}>
+        <Suspense fallback={null}>
+          <Dither
+            waveSpeed={0.05}
+            waveFrequency={3}
+            waveAmplitude={0.3}
+            waveColor={ditherColor}
+            colorNum={4}
+            pixelSize={2}
+            disableAnimation={false}
+            enableMouseInteraction={true}
+            mouseRadius={0.5}
+          />
+        </Suspense>
+      </div>
       <div className="relative mx-auto w-full max-w-6xl">
         <div className="max-w-2xl">
           <h2
