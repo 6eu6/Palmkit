@@ -48,10 +48,26 @@ export function AuthModal() {
     return null;
   }
 
-  const isDark =
-    typeof document !== 'undefined' &&
-    (document.documentElement.getAttribute('data-landing-theme') === 'dark' ||
-      !document.documentElement.getAttribute('data-landing-theme'));
+  const isDark = (() => {
+    if (typeof document === 'undefined') {
+      return true;
+    }
+
+    // Check the landing page's root element (not documentElement)
+    const root = document.querySelector('[data-landing-theme]');
+
+    if (root) {
+      return root.getAttribute('data-landing-theme') === 'dark';
+    }
+
+    // Fallback: check localStorage
+    try {
+      const saved = localStorage.getItem('palmkit-landing-theme');
+      return saved !== 'light';
+    } catch {
+      return true;
+    }
+  })();
 
   // ── Theme tokens ──
   const T = isDark
@@ -152,8 +168,8 @@ export function AuthModal() {
       <div
         className="absolute"
         style={{
-          width: '420px',
-          height: '420px',
+          width: '460px',
+          height: '460px',
           maxWidth: 'calc(100vw - 32px)',
           maxHeight: 'calc(100vh - 32px)',
           background: T.ambient,
@@ -167,9 +183,9 @@ export function AuthModal() {
       <div
         className="relative rounded-[28px] overflow-hidden"
         style={{
-          width: '420px',
+          width: '460px',
           maxWidth: 'calc(100vw - 32px)',
-          height: '420px',
+          height: '460px',
           maxHeight: 'calc(100vh - 32px)',
           padding: '40px 36px',
           background: T.cardBg,
@@ -220,7 +236,7 @@ export function AuthModal() {
           <div className="flex gap-3 w-full mb-4">
             <a
               href={`/api/auth/github?redirectTo=${encodeURIComponent(redirectTo)}`}
-              className="flex-1 h-11 flex items-center justify-center gap-2 text-[13px] font-medium transition-all hover:scale-[1.02]"
+              className="flex-1 h-12 flex items-center justify-center gap-2 text-[13px] font-medium transition-all hover:scale-[1.02]"
               style={btnStyle}
             >
               <span className="i-ph:github-logo-fill text-base" />
@@ -228,7 +244,7 @@ export function AuthModal() {
             </a>
             <a
               href={`/api/auth/twitter?redirectTo=${encodeURIComponent(redirectTo)}`}
-              className="flex-1 h-11 flex items-center justify-center gap-2 text-[13px] font-medium transition-all hover:scale-[1.02]"
+              className="flex-1 h-12 flex items-center justify-center gap-2 text-[13px] font-medium transition-all hover:scale-[1.02]"
               style={btnStyle}
             >
               <span className="i-ph:x-logo-fill text-base" />X
@@ -258,7 +274,7 @@ export function AuthModal() {
               autoComplete="email"
               required
               placeholder="Email"
-              className="w-full h-11 px-4 text-[13px] focus:outline-none transition-all"
+              className="w-full h-12 px-4 text-sm focus:outline-none transition-all"
               style={inputStyle}
             />
             <input
@@ -267,7 +283,7 @@ export function AuthModal() {
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               required
               placeholder="Password"
-              className="w-full h-11 px-4 text-[13px] focus:outline-none transition-all"
+              className="w-full h-12 px-4 text-sm focus:outline-none transition-all"
               style={inputStyle}
             />
 
@@ -281,7 +297,7 @@ export function AuthModal() {
             <button
               type="submit"
               disabled={busy}
-              className="w-full h-11 text-[13px] font-semibold transition-all disabled:opacity-50 mt-1 hover:scale-[1.02]"
+              className="w-full h-12 text-sm font-semibold transition-all disabled:opacity-50 mt-1 hover:scale-[1.02]"
               style={{
                 background: T.accentSolid,
                 color: T.accentFg,

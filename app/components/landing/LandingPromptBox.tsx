@@ -10,8 +10,8 @@
  * variant="plain" → solid card for the secondary CTA (not used in the
  *                   current redesign but kept for compatibility)
  */
-import { useNavigate } from '@remix-run/react';
 import { useCallback, useRef, useState, type KeyboardEvent } from 'react';
+import { authModalStore } from '~/lib/stores/auth';
 
 /** sessionStorage key shared with Chat.client.tsx */
 export const PENDING_PROMPT_KEY = 'palmkit_pending_prompt';
@@ -19,7 +19,6 @@ export const PENDING_PROMPT_KEY = 'palmkit_pending_prompt';
 const SUGGESTIONS = ['A habit tracker with streaks', 'A split-bill calculator', 'A recipe finder'];
 
 export function LandingPromptBox({ variant = 'hero' }: { variant?: 'hero' | 'plain' }) {
-  const navigate = useNavigate();
   const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -42,14 +41,16 @@ export function LandingPromptBox({ variant = 'hero' }: { variant?: 'hero' | 'pla
       return;
     }
 
+    // Save the prompt for after login
     try {
       sessionStorage.setItem(PENDING_PROMPT_KEY, trimmed);
     } catch {
-      navigate(`/login?redirectTo=${encodeURIComponent(`/?prompt=${encodeURIComponent(trimmed)}`)}`);
-      return;
+      /* sessionStorage may be blocked */
     }
-    navigate('/login?redirectTo=/');
-  }, [value, navigate]);
+
+    // Open the auth modal — user logs in, then the prompt auto-sends
+    authModalStore.set(true);
+  }, [value]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

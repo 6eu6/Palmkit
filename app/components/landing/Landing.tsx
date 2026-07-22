@@ -281,18 +281,15 @@ function LandingNav({
               </li>
             ))}
           </ul>
-          <div
-            className="mt-2 flex flex-col gap-2 border-t pt-2"
-            style={{ borderColor: 'rgb(var(--lk-bg-raw) / 0.1)' }}
-          >
+          <div className="mt-2 flex gap-2 border-t pt-2" style={{ borderColor: 'rgb(var(--lk-bg-raw) / 0.1)' }}>
             <button
               type="button"
               onClick={() => {
                 authModalStore.set(true);
                 setMenuOpen(false);
               }}
-              className="block w-full text-left rounded-2xl px-4 py-3 text-sm font-medium transition-colors hover:bg-[rgb(var(--lk-glass-fill)/0.5)]"
-              style={{ color: 'var(--lk-fg)' }}
+              className="flex-1 rounded-2xl px-4 py-3 text-sm font-medium transition-colors hover:bg-[rgb(var(--lk-glass-fill)/0.5)]"
+              style={{ color: 'var(--lk-fg)', border: '1px solid rgb(var(--lk-fg-raw) / 0.12)' }}
               role="menuitem"
             >
               Sign in
@@ -303,7 +300,7 @@ function LandingNav({
                 authModalStore.set(true);
                 setMenuOpen(false);
               }}
-              className="flex items-center justify-center gap-1.5 rounded-2xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-[0.98]"
+              className="flex-1 rounded-2xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-[0.98]"
               style={{
                 background: 'var(--lk-accent)',
                 color: 'var(--lk-accent-fg)',
@@ -311,17 +308,7 @@ function LandingNav({
               }}
               role="menuitem"
             >
-              Open Palmkit
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
-                <path d="M4 12 L12 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-                <path
-                  d="M5 3.5 H12 V10.5"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+              Sign up
             </button>
           </div>
         </div>
