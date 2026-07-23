@@ -152,7 +152,7 @@ export function Landing() {
         className="pointer-events-none absolute inset-0"
         style={{
           zIndex: 0,
-          opacity: isDark ? 0.55 : 0.5,
+          opacity: isDark ? 0.65 : 0.55,
           maskImage: ditherMask,
           WebkitMaskImage: ditherMask,
         }}
@@ -789,7 +789,7 @@ function FooterScene({ isDark }: { isDark: boolean }) {
     : '0 0 1px rgba(8,5,2,0.95), 0 1px 3px rgba(8,5,2,0.88), 0 2px 10px rgba(8,5,2,0.78), 0 3px 24px rgba(8,5,2,0.62), 0 0 44px rgba(8,5,2,0.42)';
 
   return (
-    <footer id="pricing" className="relative z-10 w-full overflow-hidden" style={{ background: 'var(--lk-bg)' }}>
+    <footer id="pricing" className="relative z-10 w-full overflow-hidden">
       {/* full-bleed landscape background — masked in (alpha fade) over the page bg */}
       <img
         src={gif}
