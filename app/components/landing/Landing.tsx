@@ -11,26 +11,33 @@ const Dither = lazy(() => import('./dither/Dither'));
 /**
  * Marketing landing page — redesigned with a Liquid Glass aesthetic.
  *
- * SEAMLESS BLEND — MASK-ONLY with LONG FADE + CLEAN HANDOFF:
- * Each image uses a CSS mask-image that fades its own alpha over a
- * very tall zone (~60-70% of the section height). The fade completes
- * BEFORE the section boundary, leaving a band of pure page-bg at the
- * top (footer) or bottom (hero) of each image section. This pure
- * page-bg band is the SAME color as the belly section's background,
- * so the hero→belly→footer handoff is page-bg → page-bg → page-bg =
- * invisible. No bridge overlays, no double-fades, no color mismatches.
+ * SEAMLESS BLEND — DITHER AS THE CONNECTIVE TISSUE:
+ * The Dither wave layer lives at the ROOT level (not inside BuildFlow)
+ * and spans the entire page height. A vertical CSS mask creates two
+ * crossfade zones:
+ *   - Top zone (≈24-35% of page): Dither alpha 0→1, perfectly
+ *     complementary to the hero image's alpha 1→0 fade. Where the
+ *     hero image is at 50% alpha, Dither is also at 50% — true
+ *     crossfade, no pure-page-bg band, no seam.
+ *   - Bottom zone (≈80-92% of page): Dither alpha 1→0, complementary
+ *     to the footer image's alpha 0→1 fade-in. Same crossfade math.
+ * In the middle (belly), Dither is at full strength and the
+ * hero/footer images are gone — no conflict.
  *
- * Hero: image alpha 1→0, fade completes at ~88-92% of viewport.
- *   Bottom ~8-12% is pure page-bg. NO radial scrim (the previous
- *   dark-center scrim hurt the animated image's beauty; headline
- *   legibility now relies on the triple-layer text halo alone).
- * Footer: image alpha 0→1, fade starts at ~10-16% of footer height.
- *   Top ~10-16% is pure page-bg. Legibility panel confined to MID
- *   band (transparent at top so it never darkens the seam zone).
+ * Z-INDEX STACKING:
+ *   root (relative)
+ *   ├─ Dither layer (absolute, z-0) — full-page, masked
+ *   ├─ Nav (z-50)
+ *   ├─ main (relative, z-10) — establishes stacking context above Dither
+ *   │   ├─ Hero (relative) — image at -z-10 within Hero's context
+ *   │   │                     (still above root Dither because main is z-10)
+ *   │   └─ BuildFlow (relative) — content sits above Dither naturally
+ *   ├─ footer (relative, z-10) — image + content above Dither
+ *   └─ AuthModal (z-50)
  *
- * NAV: hamburger button (≡ → ✕) replaces the "Open Palmkit" text
- * button. Menu slides down from the nav pill itself. Same pattern on
- * mobile and desktop. Reference: hackathon.telegraphprotocol.com.
+ * Hero image alpha 1→0 over 70-100% of hero (≈24-35% of page).
+ * Footer image alpha 0→1 over 0-65% of footer (≈80-92% of page).
+ * Dither alpha 0→1→0 mirrors these zones for a continuous blend.
  */
 
 type Theme = 'dark' | 'light';
@@ -102,16 +109,73 @@ export function Landing() {
   const [theme, toggleTheme] = useLandingTheme();
   const isDark = theme === 'dark';
 
+  /*
+   * Dither wave color — warm earthy tone matching the landing palette.
+   * Dark: muted warm brown [0.52, 0.40, 0.30] ≈ #854D4D.
+   * Light: muted cream [0.85, 0.80, 0.72] ≈ #D9CCB8.
+   * These hues harmonize with both the hero's sunset valley and the
+   * footer's mountain lake, so the crossfade reads as a continuous
+   * warm landscape rather than an abrupt texture change.
+   */
+  const ditherColor: [number, number, number] = isDark ? [0.52, 0.4, 0.3] : [0.85, 0.8, 0.72];
+
+  /*
+   * Dither vertical mask — the heart of the seamless blend.
+   *
+   * Page composition (desktop approx):
+   *   0-35%   Hero (100svh)
+   *   35-80%  BuildFlow belly
+   *   80-100% Footer
+   *
+   * Hero image fades out over 70-100% of hero = 24.5-35% of page.
+   * Footer image fades in over 0-65% of footer = 80-93% of page.
+   *
+   * Dither mask mirrors these zones so alpha_dither + alpha_image ≈ 1
+   * throughout each crossfade band — true complementary blend.
+   */
+  const ditherMask = isDark
+    ? 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 23%, rgba(0,0,0,0.4) 27%, #000 36%, #000 78%, rgba(0,0,0,0.4) 88%, rgba(0,0,0,0) 93%, rgba(0,0,0,0) 100%)'
+    : 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 23%, rgba(0,0,0,0.4) 28%, #000 37%, #000 76%, rgba(0,0,0,0.4) 86%, rgba(0,0,0,0) 92%, rgba(0,0,0,0) 100%)';
+
   return (
     <div
       data-landing-theme={theme}
-      className="lk-root flex min-h-[100dvh] flex-col overflow-x-hidden"
+      className="lk-root relative flex min-h-[100dvh] flex-col overflow-x-hidden"
       style={{ background: 'var(--lk-bg)', color: 'var(--lk-fg)' }}
     >
+      {/* Dither — full-page absolute layer, masked to crossfade with
+          the hero image (top) and footer image (bottom). Sits behind
+          all section content (z-0); sections establish their own
+          stacking contexts at z-10 so their images render above the
+          Dither, allowing the alpha crossfade to work. */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          zIndex: 0,
+          opacity: isDark ? 0.55 : 0.5,
+          maskImage: ditherMask,
+          WebkitMaskImage: ditherMask,
+        }}
+      >
+        <Suspense fallback={null}>
+          <Dither
+            waveSpeed={0.05}
+            waveFrequency={3}
+            waveAmplitude={0.3}
+            waveColor={ditherColor}
+            colorNum={4}
+            pixelSize={2}
+            disableAnimation={false}
+            enableMouseInteraction={true}
+            mouseRadius={0.5}
+          />
+        </Suspense>
+      </div>
+
       <LandingNav isDark={isDark} onToggleTheme={toggleTheme as (e?: { clientX: number; clientY: number }) => void} />
-      <main className="flex-1">
+      <main className="relative z-10 flex-1">
         <Hero isDark={isDark} />
-        <BuildFlow isDark={isDark} />
+        <BuildFlow />
       </main>
       <FooterScene isDark={isDark} />
       <AuthModal />
@@ -400,53 +464,28 @@ function Hero({ isDark }: { isDark: boolean }) {
   );
 }
 
-/*
+/**
  * ════════ Build flow — the middle beat ════════
  *
- * PURE PAGE-BG: no bridge overlays, NO grain. The belly is flat
- * var(--lk-bg), matching the hero's faded-out bottom and the footer's
- * faded-in top. Grain would add a subtle brightness shift at the
- * boundaries (screen in dark / multiply in light) that reads as a
- * visible line against the pure page-bg above and below.
+ * NO LOCAL BACKGROUND LAYER. The Dither now lives at the page root
+ * (see Landing component) and is masked to crossfade with the hero
+ * and footer images. BuildFlow just hosts the content island on a
+ * transparent background — the Dither shows through from below.
+ * Keeping this section transparent (no background, no overflow:hidden
+ * on the Dither's account) is what lets the root Dither layer remain
+ * visible here.
  */
 
-function BuildFlow({ isDark }: { isDark: boolean }) {
+function BuildFlow() {
   const habits = [
     { name: 'Read 20 pages', streak: 18, done: [1, 1, 1, 1, 1, 0, 0] },
     { name: 'Walk after lunch', streak: 9, done: [1, 1, 0, 1, 1, 1, 0] },
     { name: 'No phone before 9', streak: 31, done: [1, 1, 1, 1, 1, 1, 0] },
   ];
 
-  /*
-   * Dither wave color: warm earthy tone matching landing palette
-   * Dark: muted warm brown [0.52, 0.40, 0.30] ≈ #854D4D
-   * Light: muted cream [0.85, 0.80, 0.72] ≈ #D9CCB8
-   */
-  const ditherColor: [number, number, number] = isDark ? [0.52, 0.4, 0.3] : [0.85, 0.8, 0.72];
-
   return (
-    <section
-      id="build"
-      className="relative w-full overflow-hidden px-4 pb-48 pt-16 sm:px-6 sm:pb-56 sm:pt-24"
-      style={{ background: 'var(--lk-bg)' }}
-    >
-      {/* Dither background — liquid wave effect filling the belly section */}
-      <div className="absolute inset-0" style={{ opacity: 0.4, zIndex: 0 }}>
-        <Suspense fallback={null}>
-          <Dither
-            waveSpeed={0.05}
-            waveFrequency={3}
-            waveAmplitude={0.3}
-            waveColor={ditherColor}
-            colorNum={4}
-            pixelSize={2}
-            disableAnimation={false}
-            enableMouseInteraction={true}
-            mouseRadius={0.5}
-          />
-        </Suspense>
-      </div>
-      <div className="relative mx-auto w-full max-w-6xl">
+    <section id="build" className="relative w-full overflow-hidden px-4 pb-48 pt-16 sm:px-6 sm:pb-56 sm:pt-24">
+      <div className="relative z-10 mx-auto w-full max-w-6xl">
         <div className="max-w-2xl">
           <h2
             className="lk-display font-semibold leading-[1.05] tracking-[-0.02em]"
@@ -750,7 +789,7 @@ function FooterScene({ isDark }: { isDark: boolean }) {
     : '0 0 1px rgba(8,5,2,0.95), 0 1px 3px rgba(8,5,2,0.88), 0 2px 10px rgba(8,5,2,0.78), 0 3px 24px rgba(8,5,2,0.62), 0 0 44px rgba(8,5,2,0.42)';
 
   return (
-    <footer id="pricing" className="relative w-full overflow-hidden" style={{ background: 'var(--lk-bg)' }}>
+    <footer id="pricing" className="relative z-10 w-full overflow-hidden" style={{ background: 'var(--lk-bg)' }}>
       {/* full-bleed landscape background — masked in (alpha fade) over the page bg */}
       <img
         src={gif}
