@@ -1,4 +1,4 @@
-import { useRef, useEffect, forwardRef } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { EffectComposer, wrapEffect } from '@react-three/postprocessing';
 import { Effect } from 'postprocessing';
@@ -57,12 +57,13 @@ class RetroEffectImpl extends Effect {
   }
 }
 
-const WrappedRetro = wrapEffect(RetroEffectImpl);
-const RetroEffect = forwardRef<{ colorNum: number; pixelSize: number }, { colorNum: number; pixelSize: number }>(
-  (props, ref) => {
-    return <WrappedRetro ref={ref} colorNum={props.colorNum} pixelSize={props.pixelSize} />;
-  },
-);
+/*
+ * wrapEffect in R3F v8 returns a component with stricter generics than v9.
+ * Cast to a permissive type so we can pass colorNum/pixelSize props without TS errors.
+ */
+const RetroEffect = wrapEffect(RetroEffectImpl) as unknown as React.ForwardRefExoticComponent<
+  { colorNum: number; pixelSize: number } & React.RefAttributes<unknown>
+>;
 RetroEffect.displayName = 'RetroEffect';
 
 function DitheredWaves({
@@ -191,6 +192,21 @@ export default function Dither({
   enableMouseInteraction?: boolean;
   mouseRadius?: number;
 }) {
+  /*
+   * Client-only guard: three.js + WebGL require a browser environment.
+   * On SSR (Cloudflare Workers) we render nothing; the lazy() + Suspense
+   * in Landing.tsx already defers the import, but this is defense-in-depth
+   * in case the component is ever imported server-side.
+   */
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return null;
+  }
+
   return (
     <Canvas
       className="dither-container"
