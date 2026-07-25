@@ -363,6 +363,14 @@ export const ChatImpl = memo(
         promptId,
         contextOptimization: contextOptimizationEnabled,
         chatMode: effectiveChatMode,
+        sidebarMode:
+          typeof window !== 'undefined'
+            ? window.location.pathname.startsWith('/chat')
+              ? 'chat'
+              : window.location.pathname.startsWith('/work')
+                ? 'work'
+                : 'code'
+            : 'code',
         designScheme,
         memoryBlock: memoryBlockRef.current,
         supabase: {

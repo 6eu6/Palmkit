@@ -16,6 +16,7 @@ import type { DesignScheme } from '~/types/design-scheme';
 import { MCPService } from '~/lib/services/mcpService';
 import { StreamRecoveryManager } from '~/lib/.server/llm/stream-recovery';
 import { builtInTools, phase2Tools } from '~/lib/.server/llm/built-in-tools';
+import { workModeTools } from '~/lib/.server/llm/work-mode-tools';
 import { shouldDecompose, orchestrateBuild } from '~/lib/.server/llm/build-orchestrator';
 import { validateBuildOutput, completenessToJobStatus } from '~/lib/runtime/output-validator';
 
@@ -44,25 +45,36 @@ function parseCookies(cookieHeader: string): Record<string, string> {
 }
 
 async function chatAction({ context, request }: ActionFunctionArgs) {
-  const { messages, files, promptId, contextOptimization, supabase, chatMode, designScheme, maxLLMSteps, memoryBlock } =
-    await request.json<{
-      messages: Messages;
-      files: any;
-      promptId?: string;
-      contextOptimization: boolean;
-      chatMode: 'discuss' | 'build';
-      designScheme?: DesignScheme;
-      supabase?: {
-        isConnected: boolean;
-        hasSelectedProject: boolean;
-        credentials?: {
-          anonKey?: string;
-          supabaseUrl?: string;
-        };
+  const {
+    messages,
+    files,
+    promptId,
+    contextOptimization,
+    supabase,
+    chatMode,
+    sidebarMode,
+    designScheme,
+    maxLLMSteps,
+    memoryBlock,
+  } = await request.json<{
+    messages: Messages;
+    files: any;
+    promptId?: string;
+    contextOptimization: boolean;
+    chatMode: 'discuss' | 'build';
+    sidebarMode?: 'chat' | 'work' | 'code';
+    designScheme?: DesignScheme;
+    supabase?: {
+      isConnected: boolean;
+      hasSelectedProject: boolean;
+      credentials?: {
+        anonKey?: string;
+        supabaseUrl?: string;
       };
-      maxLLMSteps: number;
-      memoryBlock?: string;
-    }>();
+    };
+    maxLLMSteps: number;
+    memoryBlock?: string;
+  }>();
 
   const cookieHeader = request.headers.get('Cookie');
   let apiKeys: Record<string, string> = {};
@@ -292,8 +304,9 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
         /*
          * Mode-specific tool selection.
          *
-         * Chat mode: web_search + read_url only (general Q&A, no files)
-         * Work mode: web_search + read_url + (future: generate_image, create_pdf)
+         * Chat mode: web_search + read_url (general Q&A, no files)
+         * Work mode: web_search + read_url + generate_image + create_document
+         *            + analyze_data + format_table + deep_search + read_and_extract
          * Code mode: full toolset (read_file, list_files, grep, run_shell, etc.)
          */
         const toolsForRequest: Record<string, any> = {
@@ -302,17 +315,19 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
         if (chatMode === 'discuss') {
           /*
-           * CHAT / WORK MODE — lightweight tools only.
-           * No file operations, no sandbox, no build tools.
-           * The model can search the web and read URLs — that's it.
-           * This prevents the model from trying to create files in chat mode.
+           * CHAT MODE — lightweight tools only.
+           * General Q&A, no file operations, no build tools.
            */
           toolsForRequest.web_search = { ...builtInTools.web_search };
           toolsForRequest.read_url = { ...builtInTools.read_url };
+
+          // WORK MODE — add office + analytical + investigative tools
+          if (sidebarMode === 'work') {
+            Object.assign(toolsForRequest, workModeTools);
+          }
         } else {
           /*
            * CODE MODE — full development toolset.
-           * Includes file operations, sandbox tools, and build verification.
            */
           toolsForRequest.web_search = { ...builtInTools.web_search };
           toolsForRequest.read_url = { ...builtInTools.read_url };
