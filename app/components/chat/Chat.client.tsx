@@ -28,6 +28,7 @@ import { createScopedLogger, renderLogger } from '~/utils/logger';
 import { BaseChat } from './BaseChat';
 import { PENDING_PROMPT_KEY } from '~/components/landing/LandingPromptBox';
 import Cookies from 'js-cookie';
+import { useMemory } from '~/lib/hooks/useMemory';
 import { debounce } from '~/utils/debounce';
 import { useSettings } from '~/lib/hooks/useSettings';
 import type { ProviderInfo } from '~/types/model';
@@ -277,6 +278,10 @@ export const ChatImpl = memo(
     const pendingEditPrompt = useStore(pendingEditPromptStore);
     const mcpSettings = useMCPStore((state) => state.settings);
 
+    // 3-tier memory system: fetch before send, extract after finish
+    const { fetchMemoryBlock, triggerExtraction } = useMemory();
+    const memoryBlockRef = useRef<string>('');
+
     const {
       messages,
       isLoading,
@@ -300,6 +305,7 @@ export const ChatImpl = memo(
         contextOptimization: contextOptimizationEnabled,
         chatMode,
         designScheme,
+        memoryBlock: memoryBlockRef.current,
         supabase: {
           isConnected: supabaseConn.isConnected,
           hasSelectedProject: !!selectedProject,
@@ -323,6 +329,16 @@ export const ChatImpl = memo(
 
         // Finalize any open parser actions (files that were mid-stream)
         finalizeMessageParser();
+
+        /*
+         * Trigger async memory extraction (Layer 1 + Layer 3)
+         * Runs every 3 messages — fire and forget, no UI blocking
+         */
+        const mode = chatMode === 'discuss' ? 'chat' : 'code';
+        triggerExtraction(
+          messages.map((m: Message) => ({ role: m.role, content: typeof m.content === 'string' ? m.content : '' })),
+          mode,
+        );
 
         // Auto-reset after 3 seconds
         setTimeout(() => {
@@ -1086,6 +1102,17 @@ export const ChatImpl = memo(
       if (isLoading) {
         abort();
         return;
+      }
+
+      /*
+       * Fetch memory block before sending (Layer 1 + Layer 3)
+       * This injects user profile + relevant facts into the system prompt
+       */
+      try {
+        const mode = chatMode === 'discuss' ? 'chat' : 'code';
+        memoryBlockRef.current = await fetchMemoryBlock(messageContent, mode);
+      } catch {
+        memoryBlockRef.current = '';
       }
 
       let finalMessageContent = messageContent;
