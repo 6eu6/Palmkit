@@ -22,6 +22,56 @@ import {
 } from './capabilities';
 import { ROLE_CAPABILITY_SPEC } from '~/lib/stores/model-roles';
 
+describe('classifyModelCapabilities — reasoning disqualify patterns', () => {
+  it('does NOT classify gpt-5-image as reasoning (it is image)', () => {
+    const caps = classifyModelCapabilities('gpt-5-image');
+    expect(caps.reasoning).toBe(false);
+    expect(caps.image).toBe(true);
+  });
+
+  it('does NOT classify gpt-5-codex as reasoning (it is code)', () => {
+    const caps = classifyModelCapabilities('gpt-5-codex');
+    expect(caps.reasoning).toBe(false);
+    expect(caps.code).toBe(true);
+  });
+
+  it('does NOT classify gpt-5-mini as reasoning', () => {
+    const caps = classifyModelCapabilities('gpt-5-mini');
+    expect(caps.reasoning).toBe(false);
+  });
+
+  it('does NOT classify gpt-5-nano as reasoning', () => {
+    const caps = classifyModelCapabilities('gpt-5-nano');
+    expect(caps.reasoning).toBe(false);
+  });
+
+  it('does NOT classify gpt-5-chat as reasoning', () => {
+    const caps = classifyModelCapabilities('gpt-5-chat');
+    expect(caps.reasoning).toBe(false);
+  });
+
+  it('does NOT classify glm-5v as reasoning (it is vision)', () => {
+    const caps = classifyModelCapabilities('glm-5v');
+    expect(caps.reasoning).toBe(false);
+    expect(caps.vision).toBe(true);
+  });
+
+  it('classifies gpt-5 (base) as reasoning', () => {
+    const caps = classifyModelCapabilities('gpt-5');
+    expect(caps.reasoning).toBe(true);
+  });
+
+  it('classifies gpt-5.2 as reasoning', () => {
+    const caps = classifyModelCapabilities('gpt-5.2');
+    expect(caps.reasoning).toBe(true);
+  });
+
+  it('classifies glm-5.2 as reasoning', () => {
+    const caps = classifyModelCapabilities('glm-5.2');
+    expect(caps.reasoning).toBe(true);
+  });
+});
+
 describe('classifyModelCapabilities — image generation', () => {
   const imageModels = [
     'dall-e-3',

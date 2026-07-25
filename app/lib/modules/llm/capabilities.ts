@@ -71,6 +71,9 @@ const IMAGE_GEN_PATTERNS: RegExp[] = [
   /lumia/i,
   /bfl[-_]?\.:/i,
   /black[-_]?forest/i,
+  /gpt[-_]?5[-_]?image/i,
+  /gpt[-_]?5\.[0-9]+[-_]?image/i,
+  /inkling/i,
 ];
 
 /** Models that can generate video as output. */
@@ -116,6 +119,9 @@ const VISION_INPUT_PATTERNS: RegExp[] = [
   /cogagent/i,
   /glm[-_]?4v/i,
   /glm[-_]?4[-_]?v/i,
+  /glm[-_]?5v/i,
+  /glm[-_]?5[-_]?v/i,
+  /glm[-_]?5[-_]?vl/i,
   /pixtral/i,
   /phi[-_]?3[-_]?vision/i,
   /phi[-_]?3[-_.]?5[-_]?vision/i,
@@ -134,9 +140,8 @@ const REASONING_PATTERNS: RegExp[] = [
   /openai[-_]?o1/i,
   /openai[-_]?o3/i,
   /openai[-_]?o4/i,
-  /gpt-?5/i,
   /reasoning/i,
-  /r1\b/i,
+  /\br1\b/i,
   /deepseek[-_]?r1/i,
   /deepseek[-_]?reason/i,
   /qwen[-_]?qwq/i,
@@ -146,10 +151,35 @@ const REASONING_PATTERNS: RegExp[] = [
   /gemini[-_]?2[-_.]?0[-_]?flash[-_]?thinking/i,
   /gemini[-_]?thinking/i,
   /glm[-_]?zero/i,
-  /glm[-_]?5/i,
-  /glm-?5\.?\d/i,
+  /glm[-_]?5\.\d/i,
   /o3[-_]?mini/i,
   /o1[-_]?mini/i,
+  /nemotron.*nano.*omni/i,
+  /sonar[-_]?reasoning/i,
+
+  // GPT-5 base variants (NOT image/codex/mini/nano/chat — those are disqualified)
+  /^gpt[-_]?5$/i,
+  /^gpt[-_]?5\.[0-9]+$/i,
+
+  // GLM-5 base (NOT glm-5v which is vision)
+  /^glm[-_]?5$/i,
+];
+
+/**
+ * Patterns that DISQUALIFY a model from being reasoning — even if a reasoning
+ * pattern matches. For example, "gpt-5-image" should NOT be reasoning even
+ * though "gpt-5" is. We check these first and skip reasoning classification.
+ */
+const REASONING_DISQUALIFY_PATTERNS: RegExp[] = [
+  /gpt[-_]?5[-_]?image/i,
+  /gpt[-_]?5[-_]?codex/i,
+  /gpt[-_]?5\.[0-9]+[-_]?codex/i,
+  /gpt[-_]?5[-_]?nano/i,
+  /gpt[-_]?5[-_]?mini/i,
+  /gpt[-_]?5[-_]?pro/i,
+  /gpt[-_]?5[-_]?chat/i,
+  /glm[-_]?5[-_]?v/i,
+  /glm[-_]?5[-_]?image/i,
 ];
 
 /** Code-optimized models. */
@@ -174,12 +204,12 @@ const CODE_PATTERNS: RegExp[] = [
   /codegen/i,
   /polycoder/i,
   /refact/i,
+  /gpt[-_]?5[-_]?codex/i,
+  /gpt[-_]?5\.[0-9]+[-_]?codex/i,
+  /qwen3[-_]?coder/i,
   /glm[-_]?4[-_]?5/i,
   /glm[-_]?4\.5/i,
   /glm[-_]?4\.6/i,
-  /claude[-_]?sonnet/i,
-  /claude[-_]?3[-_]?5[-_]?sonnet/i,
-  /gpt-?5/i,
 ];
 
 /**
@@ -218,8 +248,10 @@ export function classifyModelCapabilities(modelName: string): ModelCapabilities 
     caps.text = true; // vision models also do text
   }
 
-  // Reasoning
-  if (REASONING_PATTERNS.some((re) => re.test(stripped))) {
+  // Reasoning — but only if not disqualified (e.g., gpt-5-image is NOT reasoning)
+  const isDisqualified = REASONING_DISQUALIFY_PATTERNS.some((re) => re.test(stripped));
+
+  if (!isDisqualified && REASONING_PATTERNS.some((re) => re.test(stripped))) {
     caps.reasoning = true;
     caps.text = true;
   }
