@@ -117,32 +117,27 @@ export const Menu = () => {
   });
 
   const loadEntries = useCallback(() => {
+    void db;
+
     /*
-     * BUG FIX (2026-06-29): The previous `useCallback([])` had an empty
-     * dep array, so the closure captured whatever `db` was at first render
-     * — which was often `undefined` (the top-level `await openDatabase()`
-     * in useChatHistory.ts may not have resolved yet when Menu mounts).
-     *
-     * Now: re-read `db` from the module on every call. Since `db` is a
-     * module-level export that's only set once, this is cheap and avoids
-     * the stale-closure problem entirely.
+     * Filter conversations by the current sidebar mode (chat/work/code).
+     * Existing conversations without a mode default to 'code' (backward compat).
      */
-    void db; // dependency tracking — re-create callback when db changes
+    const filterByMode = (list: ChatHistoryItem[]) => {
+      const currentMode = sidebarModeStore.get();
+
+      return list.filter((item) => item.urlId && item.description && (item.mode || 'code') === currentMode);
+    };
 
     if (db) {
       getAll(db)
-        .then((list) => list.filter((item) => item.urlId && item.description))
+        .then((list) => filterByMode(list))
         .then(setList)
         .catch((error) => toast.error(error.message));
 
       return;
     }
 
-    /*
-     * Fallback: open the database directly if the module-level `db`
-     * export hasn't resolved yet. This ensures the sidebar shows
-     * chats even on a cold first render.
-     */
     import('~/lib/persistence/db')
       .then(({ openDatabase }) => openDatabase())
       .then((dbInstance) => {
@@ -150,7 +145,7 @@ export const Menu = () => {
           return undefined;
         }
 
-        return getAll(dbInstance).then((list) => setList(list.filter((item) => item.urlId && item.description)));
+        return getAll(dbInstance).then((list) => setList(filterByMode(list)));
       })
       .catch((error) => toast.error(error.message));
   }, [db]);
@@ -413,6 +408,11 @@ export const Menu = () => {
       clearInterval(interval);
     };
   }, [open, loadEntries]);
+
+  // Reload conversations when sidebar mode changes (chat/work/code)
+  useEffect(() => {
+    loadEntries();
+  }, [mode, loadEntries]);
 
   // Exit selection mode when sidebar is closed
   useEffect(() => {

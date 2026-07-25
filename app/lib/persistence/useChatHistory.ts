@@ -8,6 +8,7 @@ import { workbenchStore } from '~/lib/stores/workbench';
 import { logStore } from '~/lib/stores/logs';
 import { authUserStore } from '~/lib/stores/auth';
 import { setRestoreStep, isRestoring } from '~/lib/stores/generationStatus';
+import { sidebarModeStore } from '~/lib/stores/sidebar';
 
 /*
  * Build-status stores — must be reset whenever the route changes so that a
@@ -1164,6 +1165,7 @@ ${value.content}
                           storedMessages.description,
                           storedMessages.timestamp,
                           newMetadata,
+                          sidebarModeStore.get(),
                         );
                       }
                     }
@@ -1315,7 +1317,16 @@ ${value.content}
       }
 
       try {
-        await setMessages(db, id, initialMessages, urlId, description.get(), undefined, metadata);
+        await setMessages(
+          db,
+          id,
+          initialMessages,
+          urlId,
+          description.get(),
+          undefined,
+          metadata,
+          sidebarModeStore.get(),
+        );
         chatMetadata.set(metadata);
       } catch (error) {
         toast.error('Failed to update chat metadata');
@@ -1448,6 +1459,7 @@ ${value.content}
           description.get(),
           undefined,
           chatMetadata.get(),
+          sidebarModeStore.get(),
         );
 
         /*

@@ -124,6 +124,7 @@ export async function setMessages(
   description?: string,
   timestamp?: string,
   metadata?: IChatMetadata,
+  mode?: 'chat' | 'work' | 'code',
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction('chats', 'readwrite');
@@ -134,17 +135,28 @@ export async function setMessages(
       return;
     }
 
-    const request = store.put({
-      id,
-      messages,
-      urlId,
-      description,
-      timestamp: timestamp ?? new Date().toISOString(),
-      metadata,
-    });
+    // Preserve existing mode if not provided (for updates to existing chats)
+    const existingRequest = store.get(id);
 
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
+    existingRequest.onsuccess = () => {
+      const existing = existingRequest.result;
+      const finalMode = mode || existing?.mode || 'code';
+
+      const request = store.put({
+        id,
+        messages,
+        urlId,
+        description,
+        timestamp: timestamp ?? new Date().toISOString(),
+        metadata,
+        mode: finalMode,
+      });
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    };
+
+    existingRequest.onerror = () => reject(existingRequest.error);
   });
 }
 
