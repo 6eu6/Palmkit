@@ -55,6 +55,7 @@ export const SIDEBAR_QUICK_ACTIONS: Record<SidebarMode, SidebarQuickAction[]> = 
     { label: 'Scheduled', icon: 'i-ph:clock' },
   ],
   code: [
+    { label: 'Context', icon: 'i-ph:squares-four' },
     { label: 'My Builds', icon: 'i-ph:clock-counter-clockwise', href: '/builds' },
     { label: 'Extensions', icon: 'i-ph:puzzle-piece' },
   ],

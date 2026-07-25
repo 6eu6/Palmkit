@@ -27,6 +27,7 @@ import {
 import { killCurrentRemotePreview } from '~/lib/sandbox/remotePreview';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { deleteAllLockedForChat } from '~/lib/persistence/lockedFiles';
+import { ConnectorsPanel } from './ConnectorsPanel';
 
 const menuVariants = {
   closed: {
@@ -103,6 +104,7 @@ export const Menu = () => {
   const [dialogContent, setDialogContent] = useState<DialogContent>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'mcp' | 'github' | undefined>(undefined);
+  const [isConnectorsOpen, setIsConnectorsOpen] = useState(false);
   const profile = useStore(profileStore);
   const authUser = useStore(authUserStore);
   const mode = useStore(sidebarModeStore);
@@ -526,8 +528,8 @@ export const Menu = () => {
               </button>
             </div>
 
-            {/* Per-tab quick actions. Items without a destination yet show a
-                'Soon' chip; My Builds (Code) links to the build history. */}
+            {/* Per-tab quick actions. Context opens the Connectors panel;
+                My Builds (Code) links to build history; others show 'Soon'. */}
             <div className="flex flex-col gap-0.5">
               {SIDEBAR_QUICK_ACTIONS[mode].map((a) =>
                 a.href ? (
@@ -539,6 +541,15 @@ export const Menu = () => {
                     <span className={classNames(a.icon, 'h-4 w-4 text-gray-500 dark:text-gray-400')} />
                     {a.label}
                   </a>
+                ) : a.label === 'Context' ? (
+                  <button
+                    key={a.label}
+                    onClick={() => setIsConnectorsOpen(true)}
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors text-left"
+                  >
+                    <span className={classNames(a.icon, 'h-4 w-4 text-gray-500 dark:text-gray-400')} />
+                    <span className="flex-1">{a.label}</span>
+                  </button>
                 ) : (
                   <button
                     key={a.label}
@@ -752,6 +763,8 @@ export const Menu = () => {
       </motion.div>
 
       <ControlPanel open={isSettingsOpen} onClose={handleSettingsClose} initialTab={settingsTab} />
+
+      <ConnectorsPanel open={isConnectorsOpen} onClose={() => setIsConnectorsOpen(false)} />
     </>
   );
 };
