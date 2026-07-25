@@ -320,20 +320,19 @@ export function getModelCapabilityIcon(modelName: string): string {
 /**
  * Filter a list of models by capability requirement.
  *
- * Returns models that support the `primary` capability OR (if
- * `allowTextFallback` is true) general text models. Specialized models
- * that DON'T match (e.g., an image-gen model in the "brain" dropdown)
- * are excluded.
+ * Returns models that support the `primary` capability OR the `secondary`
+ * capability (if specified). General text models are only included if
+ * `allowTextFallback` is true.
  *
  * The result is split into two groups so the UI can show a "Recommended"
  * section (primary capability matches) and a "Compatible" section
- * (text fallback).
+ * (secondary capability matches).
  */
 export interface FilteredModels<T> {
   /** Models that match the primary capability (recommended). */
   recommended: T[];
 
-  /** Models that are compatible via fallback (text or other). */
+  /** Models that match the secondary capability (compatible). */
   compatible: T[];
 
   /** Combined list (recommended + compatible), deduped. */
@@ -344,7 +343,7 @@ export function filterModelsByCapability<T extends { name: string }>(
   models: T[],
   spec: {
     primary: ModelCapability;
-    fallback: ModelCapability;
+    secondary?: ModelCapability;
     allowTextFallback: boolean;
   },
 ): FilteredModels<T> {
@@ -366,8 +365,8 @@ export function filterModelsByCapability<T extends { name: string }>(
       continue;
     }
 
-    // Fallback capability match → compatible
-    if (caps[spec.fallback] && spec.fallback !== spec.primary) {
+    // Secondary capability match → compatible
+    if (spec.secondary && caps[spec.secondary]) {
       compatible.push(model);
       continue;
     }

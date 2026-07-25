@@ -22,32 +22,34 @@ export type ReasoningEffort = 'off' | 'medium' | 'max';
 /**
  * Capability requirement for each role.
  *
- * - brain:   needs reasoning (or text fallback — smartest model)
- * - builder: needs code (or text fallback — code-capable model)
- * - tester:  needs code (or text fallback — verification)
- * - vision:  needs vision (multimodal input — can see images)
- * - media:   needs image OR video (output generation)
+ * - brain:   needs reasoning (smartest model). No text fallback — only
+ *            reasoning models appear. If none available, "Main model" is used.
+ * - builder: needs code (code-capable). Reasoning models also accepted.
+ * - tester:  needs code (verification). Reasoning models also accepted.
+ * - vision:  needs vision (multimodal input). No text fallback.
+ * - media:   needs image OR video (output generation). No text fallback.
  *
- * The `fallback` field is the capability shown when no specialized models
- * match — so the dropdown is never empty.
+ * `allowTextFallback` is false for all roles — this ensures each dropdown
+ * shows ONLY specialized models, not the hundreds of general text models.
+ * Users who don't have a specialized model can always pick "Main model".
  */
 export interface RoleCapabilitySpec {
   /** Required capability (model must support this). */
   primary: ModelCapability;
 
-  /** Fallback capability when no primary matches (shown as "also compatible"). */
-  fallback: ModelCapability;
+  /** Secondary capability (also acceptable, shown in "compatible" group). */
+  secondary?: ModelCapability;
 
-  /** Whether text-only models are also acceptable for this role. */
+  /** Whether general text models are also acceptable (default: false). */
   allowTextFallback: boolean;
 }
 
 export const ROLE_CAPABILITY_SPEC: Record<ModelRole, RoleCapabilitySpec> = {
-  brain: { primary: 'reasoning', fallback: 'text', allowTextFallback: true },
-  builder: { primary: 'code', fallback: 'text', allowTextFallback: true },
-  tester: { primary: 'code', fallback: 'text', allowTextFallback: true },
-  vision: { primary: 'vision', fallback: 'text', allowTextFallback: true },
-  media: { primary: 'image', fallback: 'video', allowTextFallback: false },
+  brain: { primary: 'reasoning', allowTextFallback: false },
+  builder: { primary: 'code', secondary: 'reasoning', allowTextFallback: false },
+  tester: { primary: 'code', secondary: 'reasoning', allowTextFallback: false },
+  vision: { primary: 'vision', allowTextFallback: false },
+  media: { primary: 'image', secondary: 'video', allowTextFallback: false },
 };
 
 export const MODEL_ROLE_META: Record<ModelRole, { label: string; hint: string; wired: boolean }> = {
