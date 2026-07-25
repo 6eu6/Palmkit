@@ -73,6 +73,8 @@ export function Chat() {
     workbenchStore.setReloadedMessages(initialMessages.map((m) => m.id));
   }, [initialMessages]);
 
+  // Track URL changes for mode switching
+
   /*
    * Keying <ChatImpl> by the route id remounts the whole chat tree when the
    * user switches conversations (/chat/A -> /chat/B) or starts a new one
@@ -230,8 +232,12 @@ export const ChatImpl = memo(
       }
     }, [initialMessages]);
 
+    // Track URL changes for mode switching
+    const locationKey = typeof window !== 'undefined' ? window.location.pathname : '';
+
     /*
      * Route-based mode detection: sync sidebar mode + chat mode with the URL.
+     * Runs on mount AND when the URL changes (navigation between /chat /work /code).
      * /chat → sidebarMode='chat', chatMode='discuss'
      * /work → sidebarMode='work', chatMode='discuss'
      * /code → sidebarMode='code', chatMode='build'
@@ -249,8 +255,11 @@ export const ChatImpl = memo(
       } else if (path.startsWith('/code')) {
         setSidebarMode('code');
         setChatMode('build');
+      } else {
+        setSidebarMode('code');
+        setChatMode('build');
       }
-    }, []); // Run once on mount
+    }, [locationKey]); // Re-run when URL changes
 
     const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
     const [imageDataList, setImageDataList] = useState<string[]>([]);
@@ -295,7 +304,23 @@ export const ChatImpl = memo(
 
       return {};
     });
-    const [chatMode, setChatMode] = useState<'discuss' | 'build'>('build');
+
+    // Determine chat mode from URL — /chat and /work = discuss, /code and / = build
+    const getModeFromUrl = () => {
+      if (typeof window === 'undefined') {
+        return 'build' as const;
+      }
+
+      const path = window.location.pathname;
+
+      if (path.startsWith('/chat') || path.startsWith('/work')) {
+        return 'discuss' as const;
+      }
+
+      return 'build' as const;
+    };
+
+    const [chatMode, setChatMode] = useState<'discuss' | 'build'>(getModeFromUrl);
     const [selectedElement, setSelectedElement] = useState<ElementInfo | null>(null);
     const pendingEditPrompt = useStore(pendingEditPromptStore);
     const mcpSettings = useMCPStore((state) => state.settings);
