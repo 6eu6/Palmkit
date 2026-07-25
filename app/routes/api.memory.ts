@@ -135,7 +135,16 @@ async function handleExtraction(authed: any, request: Request) {
   const result = await extractMemoryOperations(currentMemory, body.messages, apiKeys);
 
   if (!result.changed) {
-    return Response.json({ ok: true, operations: 0 });
+    return Response.json({
+      ok: true,
+      operations: 0,
+      debug: {
+        apiKeyFound: !!apiKeys.OpenRouter,
+        currentMemory: currentMemory.slice(0, 100),
+        messageCount: body.messages.length,
+        operationsReturned: result.operations.length,
+      },
+    });
   }
 
   // Save updated profile (Layer 1)
