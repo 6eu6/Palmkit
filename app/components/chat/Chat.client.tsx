@@ -20,7 +20,6 @@ import {
   activeBuildJobIdStore,
 } from '~/lib/stores/build-status';
 import type { BuildCompleteness, BuildJobStatus } from '~/lib/stores/build-status';
-import { workerEventsStore } from '~/lib/stores/build-status';
 import { useExternalWorker, useExternalWorkerFlag } from '~/lib/hooks/use-external-worker';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROMPT_COOKIE_KEY, PROVIDER_LIST } from '~/utils/constants';
 import { cubicEasingFn } from '~/utils/easings';
@@ -908,23 +907,9 @@ export const ChatImpl = memo(
       }
 
       /*
-       * Update the UI IMMEDIATELY — don't wait for the cancel event to come
-       * back from the worker via polling (that takes 5-30s). Push a local
-       * 'job_failed' event with the cancel message so BuildStream shows
-       * "Build stopped" right away, and set buildStatus to idle so the
-       * "Building..." header disappears.
+       * SILENT CANCEL — no "Build cancelled" message in the stream.
+       * Just reset build status. The worker detects the cancel on next poll.
        */
-      const existingEvents = workerEventsStore.get();
-      workerEventsStore.set([
-        ...existingEvents,
-        {
-          type: 'job_failed',
-          seq: existingEvents.length,
-          message: 'Build cancelled by user — saving partial state...',
-          payload: {},
-          created_at: new Date().toISOString(),
-        },
-      ]);
       resetBuildStatus();
 
       logStore.logProvider('Chat response aborted', {

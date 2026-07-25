@@ -634,6 +634,17 @@ export function foldEvents(events: WorkerEvent[]): Section[] {
 
     const p = (ev.payload ?? {}) as Record<string, any>;
 
+    // FILTER: Suppress annoying noise events
+    if (
+      ev.message &&
+      (ev.message.includes('re-prompting') ||
+        ev.message.includes('No files written yet') ||
+        ev.message.includes('Build cancelled by user') ||
+        ev.message.includes('saving partial state'))
+    ) {
+      continue;
+    }
+
     /*
      * agent_thinking — the guaranteed pre-LLM signal ("processing your
      * request…") and the edit path's "waiting for the previous build…".

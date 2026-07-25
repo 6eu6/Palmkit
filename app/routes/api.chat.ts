@@ -2,6 +2,7 @@ import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { createDataStream, generateId, formatDataStreamPart } from 'ai';
 import { isReasoningModel, MAX_RESPONSE_SEGMENTS, type FileMap } from '~/lib/common/llm/constants';
 import { CLOSE_OUT_PROMPT, CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
+import { discussPrompt } from '~/lib/common/prompts/discuss-prompt';
 import { PROVIDER_LIST } from '~/utils/constants';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
 import type { IProviderSetting } from '~/types/model';
@@ -386,7 +387,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
         const isFreshBuild = !hasExistingFiles;
         const isComplexPrompt = shouldDecompose(userPromptText);
 
-        if (isFreshBuild && isComplexPrompt) {
+        if (isFreshBuild && isComplexPrompt && chatMode === 'build') {
           logger.info(`[orchestrator] Complex prompt detected (${userPromptText.length} chars), using orchestrator`);
 
           // Get the model instance for direct generateText calls
@@ -564,6 +565,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             summary,
             messageSliceId,
             memoryBlock,
+            customSystemPrompt: chatMode === 'discuss' ? discussPrompt() : undefined,
           });
 
           /*
@@ -762,6 +764,19 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               .join('\n') +
             '\n' +
             text;
+
+          // GUARD: Skip validation entirely in discuss mode
+          if (chatMode === 'discuss') {
+            streamRecovery?.stop();
+            dataStream.writeData({
+              type: 'progress',
+              label: 'response',
+              status: 'complete',
+              order: progressCounter++,
+              message: 'Response complete',
+            } satisfies ProgressAnnotation);
+            break;
+          }
 
           const validationResult = validateBuildOutput(fullAssistantText);
           const jobStatus = completenessToJobStatus(validationResult);
