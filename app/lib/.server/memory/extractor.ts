@@ -117,7 +117,7 @@ export async function extractMemoryOperations(
         'X-Title': 'PalmKit Memory Extractor',
       },
       body: JSON.stringify({
-        model: 'z-ai/glm-4.5-flash',
+        model: 'z-ai/glm-4.7-flash',
         messages: [{ role: 'user', content: prompt }],
         temperature: 0,
         max_tokens: 500,
@@ -226,7 +226,7 @@ async function compressMemory(memory: string, maxLines: number, apiKey: string):
         'X-Title': 'PalmKit Memory Compressor',
       },
       body: JSON.stringify({
-        model: 'z-ai/glm-4.5-flash',
+        model: 'z-ai/glm-4.7-flash',
         messages: [
           { role: 'user', content: prompt },
           { role: 'user', content: memory },
