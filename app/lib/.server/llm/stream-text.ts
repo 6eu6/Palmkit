@@ -64,6 +64,9 @@ export async function streamText(props: {
   messageSliceId?: number;
   chatMode?: 'discuss' | 'build';
   designScheme?: DesignScheme;
+
+  /** Memory block injected after system prompt (user profile + relevant facts). */
+  memoryBlock?: string;
 }) {
   const {
     messages,
@@ -78,6 +81,7 @@ export async function streamText(props: {
     summary,
     chatMode,
     designScheme,
+    memoryBlock,
   } = props;
   let currentModel = DEFAULT_MODEL;
   let currentProvider = DEFAULT_PROVIDER.name;
@@ -209,6 +213,24 @@ export async function streamText(props: {
     `;
   } else {
     logger.debug('No locked files in prompt.');
+  }
+
+  /*
+   * Inject memory block (user profile + relevant facts) after all other context.
+   * This is placed LAST in the system prompt so it's closest to the conversation
+   * (better attention from the model) but still cache-friendly (changes rarely).
+   */
+  if (memoryBlock) {
+    systemPrompt = `${systemPrompt}
+
+    ## Memory
+
+    You have persistent memory about this user, injected below. Treat it as
+    background knowledge you already have. Never say "according to my memory"
+    or mention the memory system unless the user asks about it directly.
+
+    ${memoryBlock}
+    `;
   }
 
   logger.info(`Sending llm call to ${provider.name} with model ${modelDetails.name}`);
