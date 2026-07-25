@@ -289,21 +289,40 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
          */
         const sandboxId = (context as any)?.cloudflare?.env?.CURRENT_SANDBOX_ID as string | undefined;
 
+        /*
+         * Mode-specific tool selection.
+         *
+         * Chat mode: web_search + read_url only (general Q&A, no files)
+         * Work mode: web_search + read_url + (future: generate_image, create_pdf)
+         * Code mode: full toolset (read_file, list_files, grep, run_shell, etc.)
+         */
         const toolsForRequest: Record<string, any> = {
           ...mcpService.toolsWithoutExecute,
-          web_search: {
-            ...builtInTools.web_search,
-          },
-          read_url: {
-            ...builtInTools.read_url,
-          },
+        };
+
+        if (chatMode === 'discuss') {
+          /*
+           * CHAT / WORK MODE — lightweight tools only.
+           * No file operations, no sandbox, no build tools.
+           * The model can search the web and read URLs — that's it.
+           * This prevents the model from trying to create files in chat mode.
+           */
+          toolsForRequest.web_search = { ...builtInTools.web_search };
+          toolsForRequest.read_url = { ...builtInTools.read_url };
+        } else {
+          /*
+           * CODE MODE — full development toolset.
+           * Includes file operations, sandbox tools, and build verification.
+           */
+          toolsForRequest.web_search = { ...builtInTools.web_search };
+          toolsForRequest.read_url = { ...builtInTools.read_url };
 
           // grep doesn't need a sandbox — searches the project's file map
-          grep: {
+          toolsForRequest.grep = {
             ...phase2Tools.grep,
             execute: (args: any, opts: any) => (phase2Tools.grep as any).execute(args, { ...opts, files }),
-          },
-        };
+          };
+        }
 
         if (hasExistingFiles) {
           // Edit/iterate mode: enable file verification tools
