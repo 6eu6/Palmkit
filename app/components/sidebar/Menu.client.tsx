@@ -518,7 +518,7 @@ export const Menu = () => {
             {/* Primary action (label varies by mode) + selection toggle. */}
             <div className="flex gap-2">
               <a
-                href="/"
+                href={`/${mode}`}
                 className="flex-1 flex gap-2 items-center bg-gray-50 dark:bg-gray-500/10 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-500/20 rounded-lg px-4 py-2 transition-colors"
               >
                 <span className="inline-block i-ph:plus-circle h-4 w-4" />

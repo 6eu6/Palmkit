@@ -30,7 +30,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     const { supabase, headers } = getSupabaseServerClient(request, context);
     const origin = new URL(request.url).origin;
 
-    const redirectTo = new URL(request.url).searchParams.get('redirectTo') ?? '/';
+    const redirectTo = new URL(request.url).searchParams.get('redirectTo') ?? '/chat';
     const callbackUrl = `${origin}/auth/callback?next=${encodeURIComponent(redirectTo)}`;
 
     const { data, error } = await supabase.auth.signInWithOAuth({

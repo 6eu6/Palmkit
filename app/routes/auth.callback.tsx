@@ -9,7 +9,7 @@ import { getSupabaseServerClient } from '~/lib/auth/supabase.server';
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const code = url.searchParams.get('code');
-  const next = url.searchParams.get('next') ?? '/';
+  const next = url.searchParams.get('next') ?? '/chat';
 
   if (!code) {
     return redirect('/login?error=missing_code');

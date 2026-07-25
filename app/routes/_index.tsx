@@ -1,9 +1,15 @@
-import { json, type LoaderFunctionArgs, type MetaFunction } from '@remix-run/cloudflare';
+/**
+ * / — Root route.
+ *
+ * - Logged OUT: shows marketing landing page.
+ * - Logged IN: redirects to /chat (default tab).
+ *
+ * The redirect happens server-side in the loader for instant navigation
+ * (no flash of the chat UI before redirect).
+ */
+
+import { json, redirect, type LoaderFunctionArgs, type MetaFunction } from '@remix-run/cloudflare';
 import { useLoaderData } from '@remix-run/react';
-import { ClientOnly } from 'remix-utils/client-only';
-import { BaseChat } from '~/components/chat/BaseChat';
-import { Chat } from '~/components/chat/Chat.client';
-import { Header } from '~/components/header/Header';
 import { Landing } from '~/components/landing/Landing';
 import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
 
@@ -21,13 +27,20 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context);
   const authEnabled = Boolean(env.SUPABASE_URL && env.SUPABASE_ANON_KEY);
 
-  // When auth is configured, logged-out visitors see the marketing landing.
   if (authEnabled) {
     const { user, headers } = await getAuthedUser(request, context);
-    return json({ authed: Boolean(user) }, { headers });
+
+    // Logged IN → redirect to /chat immediately (server-side, no flash)
+    if (user) {
+      return redirect('/chat', { headers });
+    }
+
+    // Logged OUT → show landing page
+    return json({ authed: false }, { headers });
   }
 
-  return json({ authed: true });
+  // No auth configured → redirect to /chat
+  return redirect('/chat');
 }
 
 export default function Index() {
@@ -37,10 +50,9 @@ export default function Index() {
     return <Landing />;
   }
 
-  return (
-    <div className="relative flex flex-col h-full w-full bg-palmkit-elements-background-depth-1">
-      <Header />
-      <ClientOnly fallback={<BaseChat />}>{() => <Chat />}</ClientOnly>
-    </div>
-  );
+  /*
+   * This should never render — the loader redirects logged-in users.
+   * But just in case, show the landing.
+   */
+  return <Landing />;
 }

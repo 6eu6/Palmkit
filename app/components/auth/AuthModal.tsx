@@ -19,14 +19,24 @@ import { authModalStore, closeAuthModal } from '~/lib/stores/auth';
 export function AuthModal() {
   const open = useStore(authModalStore);
   const [mode, setMode] = useState<'login' | 'signup'>('login');
-  const [redirectTo, setRedirectTo] = useState('/');
+  const [redirectTo, setRedirectTo] = useState('/chat');
   const actionData = useActionData<{ error?: string }>();
   const navigation = useNavigation();
   const busy = navigation.state !== 'idle';
 
   useEffect(() => {
     if (open && typeof window !== 'undefined') {
-      setRedirectTo(window.location.pathname + window.location.search);
+      const path = window.location.pathname;
+
+      /*
+       * If on landing page (/) or login routes, redirect to /chat after login.
+       * Otherwise, redirect back to the current page.
+       */
+      if (path === '/' || path === '/login' || path === '/signup') {
+        setRedirectTo('/chat');
+      } else {
+        setRedirectTo(path + window.location.search);
+      }
     }
   }, [open]);
 
