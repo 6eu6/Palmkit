@@ -108,6 +108,13 @@ export async function extractMemoryOperations(
   );
 
   try {
+    /*
+     * Cloudflare Workers don't support AbortSignal.timeout().
+     * Use a manual AbortController with setTimeout instead.
+     */
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -123,11 +130,15 @@ export async function extractMemoryOperations(
         max_tokens: 1000,
         response_format: { type: 'json_object' },
       }),
-      signal: AbortSignal.timeout(8000),
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      logger.warn(`Memory extraction HTTP ${response.status}`);
+      const errText = await response.text().catch(() => '');
+      logger.warn(`Memory extraction HTTP ${response.status}: ${errText.slice(0, 200)}`);
+
       return { operations: [], newMemory: currentMemory, changed: false };
     }
 
@@ -135,6 +146,7 @@ export async function extractMemoryOperations(
     const content = data.choices?.[0]?.message?.content;
 
     if (!content) {
+      logger.warn('Memory extraction: model returned null content');
       return { operations: [], newMemory: currentMemory, changed: false };
     }
 
@@ -234,7 +246,12 @@ async function compressMemory(memory: string, maxLines: number, apiKey: string):
         temperature: 0,
         max_tokens: 1000,
       }),
-      signal: AbortSignal.timeout(5000),
+      signal: (() => {
+        const c = new AbortController();
+        setTimeout(() => c.abort(), 8000);
+
+        return c.signal;
+      })(),
     });
 
     if (!response.ok) {

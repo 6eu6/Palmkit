@@ -45,7 +45,12 @@ async function generateEmbedding(text: string, apiKeys: Record<string, string>):
         model: 'openai/text-embedding-3-small',
         input: text.slice(0, 8000), // cap input length
       }),
-      signal: AbortSignal.timeout(5000),
+      signal: (() => {
+        const c = new AbortController();
+        setTimeout(() => c.abort(), 8000);
+
+        return c.signal;
+      })(),
     });
 
     if (!response.ok) {

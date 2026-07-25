@@ -68,7 +68,12 @@ async function generateFactEmbedding(text: string, apiKeys: Record<string, strin
         model: 'openai/text-embedding-3-small',
         input: text.slice(0, 8000),
       }),
-      signal: AbortSignal.timeout(5000),
+      signal: (() => {
+        const c = new AbortController();
+        setTimeout(() => c.abort(), 8000);
+
+        return c.signal;
+      })(),
     });
 
     if (!response.ok) {
