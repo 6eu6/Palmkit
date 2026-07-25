@@ -62,7 +62,9 @@ site
 
 # Agent sandbox artifacts — temporary tool outputs & uploaded screenshots.
 # Never belong in the repository.
-tool-results/
+/tool-results/
+# But DO include our React tool-results components:
+!app/components/chat/tool-results/
 upload/
 
 # Claude skills (external Claude.ai skill packages — not part of Palmkit)
