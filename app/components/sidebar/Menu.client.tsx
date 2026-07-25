@@ -409,9 +409,14 @@ export const Menu = () => {
     };
   }, [open, loadEntries]);
 
-  // Reload conversations when sidebar mode changes (chat/work/code)
+  /*
+   * Reload conversations when sidebar mode changes (chat/work/code)
+   * Small delay ensures the store has updated before filtering
+   */
   useEffect(() => {
-    loadEntries();
+    const timer = setTimeout(() => loadEntries(), 100);
+
+    return () => clearTimeout(timer);
   }, [mode, loadEntries]);
 
   // Exit selection mode when sidebar is closed
