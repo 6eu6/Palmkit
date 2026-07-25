@@ -321,6 +321,18 @@ export const ChatImpl = memo(
     };
 
     const [chatMode, setChatMode] = useState<'discuss' | 'build'>(getModeFromUrl);
+
+    /*
+     * Compute the EFFECTIVE chat mode from the URL on every render.
+     * This ensures the useChat body always sends the correct mode,
+     * even on the first render after hydration.
+     */
+    const effectiveChatMode =
+      typeof window !== 'undefined'
+        ? window.location.pathname.startsWith('/chat') || window.location.pathname.startsWith('/work')
+          ? 'discuss'
+          : 'build'
+        : chatMode;
     const [selectedElement, setSelectedElement] = useState<ElementInfo | null>(null);
     const pendingEditPrompt = useStore(pendingEditPromptStore);
     const mcpSettings = useMCPStore((state) => state.settings);
@@ -350,7 +362,7 @@ export const ChatImpl = memo(
         files,
         promptId,
         contextOptimization: contextOptimizationEnabled,
-        chatMode,
+        chatMode: effectiveChatMode,
         designScheme,
         memoryBlock: memoryBlockRef.current,
         supabase: {
