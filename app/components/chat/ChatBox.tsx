@@ -213,6 +213,7 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                     );
                     const hasRecommended = filtered.recommended.length > 0;
                     const hasCompatible = filtered.compatible.length > 0;
+                    const hasOthers = filtered.others.length > 0;
                     const totalCount = filtered.all.length;
                     const currentValue = modelRoles[role] ?? '';
                     const currentCapability = currentValue ? getModelCapabilityLabel(currentValue) : '';
@@ -221,7 +222,7 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                       <label
                         key={role}
                         className="flex items-center gap-2 rounded-lg border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 px-2 py-1.5"
-                        title={`${meta.hint} (${totalCount} compatible models)`}
+                        title={`${meta.hint} (${totalCount} models available)`}
                       >
                         <span className="flex-1 min-w-0">
                           <span className="block text-[11px] font-medium text-palmkit-elements-textSecondary truncate">
@@ -248,11 +249,6 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                           onChange={(e) => setModelRole(role, e.target.value)}
                           className="max-w-[46%] appearance-none text-[11px] rounded-md border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary px-2 py-1 outline-none focus:border-[var(--pk-accent)] cursor-pointer"
                           style={{
-                            /*
-                             * native <select> ignores utility bg classes in some
-                             * engines and rendered as a white pill on dark —
-                             * force the surface + a drawn caret
-                             */
                             background:
                               'var(--palmkit-elements-bg-depth-1) url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%278%27 height=%275%27%3E%3Cpath d=%27M0 0l4 5 4-5z%27 fill=%27%23888888%27/%3E%3C/svg%3E") no-repeat right 7px center',
                             paddingRight: 20,
@@ -260,7 +256,7 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                         >
                           <option value="">Main model</option>
                           {hasRecommended && (
-                            <optgroup label={`Recommended · ${spec.primary}`}>
+                            <optgroup label={`Recommended · ${spec.primary} (${filtered.recommended.length})`}>
                               {filtered.recommended.map((m) => (
                                 <option key={m.name} value={m.name}>
                                   {m.label ?? m.name}
@@ -269,7 +265,13 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                             </optgroup>
                           )}
                           {hasCompatible && (
-                            <optgroup label={hasRecommended ? `Also compatible` : `Compatible`}>
+                            <optgroup
+                              label={
+                                hasRecommended
+                                  ? `Also compatible (${filtered.compatible.length})`
+                                  : `Compatible (${filtered.compatible.length})`
+                              }
+                            >
                               {filtered.compatible.map((m) => (
                                 <option key={m.name} value={m.name}>
                                   {m.label ?? m.name}
@@ -277,9 +279,18 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                               ))}
                             </optgroup>
                           )}
-                          {!hasRecommended && !hasCompatible && (
+                          {hasOthers && (
+                            <optgroup label={`All models (${filtered.others.length})`}>
+                              {filtered.others.map((m) => (
+                                <option key={m.name} value={m.name}>
+                                  {m.label ?? m.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {!hasRecommended && !hasCompatible && !hasOthers && (
                             <option disabled value="">
-                              No compatible models
+                              No models available
                             </option>
                           )}
                         </select>

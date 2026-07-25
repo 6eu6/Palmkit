@@ -58,6 +58,13 @@ export interface ChatHistoryItem {
   messages: Message[];
   timestamp: string;
   metadata?: IChatMetadata;
+
+  /**
+   * Workspace mode: 'chat' (general Q&A), 'work' (documents/media), 'code' (build apps).
+   * Conversations are filtered by mode in the sidebar so each tab shows only its own chats.
+   * Defaults to 'code' for backward compatibility with existing chats.
+   */
+  mode?: 'chat' | 'work' | 'code';
 }
 
 const persistenceEnabled = !import.meta.env.VITE_DISABLE_PERSISTENCE;

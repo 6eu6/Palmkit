@@ -352,22 +352,25 @@ export function getModelCapabilityIcon(modelName: string): string {
 /**
  * Filter a list of models by capability requirement.
  *
- * Returns models that support the `primary` capability OR the `secondary`
- * capability (if specified). General text models are only included if
- * `allowTextFallback` is true.
+ * Returns THREE groups so the UI can show:
+ *   - "Recommended" — models matching the primary capability (best fit)
+ *   - "Compatible" — models matching the secondary capability (also good)
+ *   - "All Models" — every model (user can override and pick any)
  *
- * The result is split into two groups so the UI can show a "Recommended"
- * section (primary capability matches) and a "Compatible" section
- * (secondary capability matches).
+ * NO model is hidden. The classifier only SORTS models into recommended vs
+ * compatible vs other — the user always has access to the full list.
  */
 export interface FilteredModels<T> {
-  /** Models that match the primary capability (recommended). */
+  /** Models that match the primary capability (best fit for the role). */
   recommended: T[];
 
-  /** Models that match the secondary capability (compatible). */
+  /** Models that match the secondary capability (also good). */
   compatible: T[];
 
-  /** Combined list (recommended + compatible), deduped. */
+  /** All other models (general text, image, etc. — user can still pick). */
+  others: T[];
+
+  /** Combined list (recommended + compatible + others), deduped. */
   all: T[];
 }
 
@@ -381,6 +384,7 @@ export function filterModelsByCapability<T extends { name: string }>(
 ): FilteredModels<T> {
   const recommended: T[] = [];
   const compatible: T[] = [];
+  const others: T[] = [];
   const seen = new Set<string>();
 
   for (const model of models) {
@@ -403,15 +407,14 @@ export function filterModelsByCapability<T extends { name: string }>(
       continue;
     }
 
-    // Text fallback (if allowed)
-    if (spec.allowTextFallback && caps.text && spec.primary !== 'text') {
-      compatible.push(model);
-    }
+    // Everything else → others (NOT hidden — user can still pick)
+    others.push(model);
   }
 
   return {
     recommended,
     compatible,
-    all: [...recommended, ...compatible],
+    others,
+    all: [...recommended, ...compatible, ...others],
   };
 }

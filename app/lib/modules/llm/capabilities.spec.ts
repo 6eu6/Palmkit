@@ -306,7 +306,7 @@ describe('getModelCapabilityIcon', () => {
   });
 });
 
-describe('filterModelsByCapability — role specs', () => {
+describe('filterModelsByCapability — role specs (shows ALL models, no hiding)', () => {
   // Sample model list (mix of all capabilities)
   const sampleModels = [
     { name: 'gpt-4o', label: 'GPT-4o' },
@@ -323,7 +323,7 @@ describe('filterModelsByCapability — role specs', () => {
     { name: 'llama-3.1-70b', label: 'Llama 3.1 70B' },
   ];
 
-  it('brain role: reasoning models in recommended, text in compatible', () => {
+  it('brain role: reasoning in recommended, others NOT hidden', () => {
     const spec = ROLE_CAPABILITY_SPEC.brain;
     const result = filterModelsByCapability(sampleModels, spec);
 
@@ -331,12 +331,18 @@ describe('filterModelsByCapability — role specs', () => {
     expect(result.recommended.some((m) => m.name === 'o1')).toBe(true);
     expect(result.recommended.some((m) => m.name === 'glm-5.2')).toBe(true);
 
-    // Image/video models should NOT be in brain dropdown
-    expect(result.all.some((m) => m.name === 'dall-e-3')).toBe(false);
-    expect(result.all.some((m) => m.name === 'sora')).toBe(false);
+    // ALL models appear in the full list (no hiding)
+    expect(result.all.some((m) => m.name === 'dall-e-3')).toBe(true);
+    expect(result.all.some((m) => m.name === 'sora')).toBe(true);
+    expect(result.all.some((m) => m.name === 'gpt-3.5-turbo')).toBe(true);
+    expect(result.all.some((m) => m.name === 'llama-3.1-70b')).toBe(true);
+
+    // Image models go to "others" (not recommended, not compatible)
+    expect(result.others.some((m) => m.name === 'dall-e-3')).toBe(true);
+    expect(result.others.some((m) => m.name === 'sora')).toBe(true);
   });
 
-  it('builder role: code models in recommended', () => {
+  it('builder role: code in recommended, reasoning in compatible, others visible', () => {
     const spec = ROLE_CAPABILITY_SPEC.builder;
     const result = filterModelsByCapability(sampleModels, spec);
 
@@ -344,11 +350,15 @@ describe('filterModelsByCapability — role specs', () => {
     expect(result.recommended.some((m) => m.name === 'deepseek-coder-v2')).toBe(true);
     expect(result.recommended.some((m) => m.name === 'qwen-2.5-coder-32b')).toBe(true);
 
-    // Image models should NOT appear
-    expect(result.all.some((m) => m.name === 'dall-e-3')).toBe(false);
+    // Reasoning in compatible (secondary: reasoning)
+    expect(result.compatible.some((m) => m.name === 'o1')).toBe(true);
+
+    // Image models in others (NOT hidden)
+    expect(result.all.some((m) => m.name === 'dall-e-3')).toBe(true);
+    expect(result.others.some((m) => m.name === 'dall-e-3')).toBe(true);
   });
 
-  it('vision role: vision models in recommended', () => {
+  it('vision role: vision in recommended, others NOT hidden', () => {
     const spec = ROLE_CAPABILITY_SPEC.vision;
     const result = filterModelsByCapability(sampleModels, spec);
 
@@ -357,34 +367,54 @@ describe('filterModelsByCapability — role specs', () => {
     expect(result.recommended.some((m) => m.name === 'claude-3-5-sonnet')).toBe(true);
     expect(result.recommended.some((m) => m.name === 'llava-1.5')).toBe(true);
 
-    // Image-gen models should NOT appear (they generate, not see)
-    expect(result.all.some((m) => m.name === 'dall-e-3')).toBe(false);
+    // Image-gen models in others (NOT hidden)
+    expect(result.all.some((m) => m.name === 'dall-e-3')).toBe(true);
+    expect(result.others.some((m) => m.name === 'dall-e-3')).toBe(true);
   });
 
-  it('media role: image/video models in recommended, NO text fallback', () => {
+  it('media role: image/video in recommended, ALL others still visible', () => {
     const spec = ROLE_CAPABILITY_SPEC.media;
     const result = filterModelsByCapability(sampleModels, spec);
 
-    // Recommended: dall-e-3, flux-pro (image), sora (video via fallback)
+    // Recommended: dall-e-3, flux-pro (image)
     expect(result.recommended.some((m) => m.name === 'dall-e-3')).toBe(true);
     expect(result.recommended.some((m) => m.name === 'flux-pro')).toBe(true);
 
-    // Text models should NOT appear (allowTextFallback: false)
-    expect(result.all.some((m) => m.name === 'gpt-3.5-turbo')).toBe(false);
-    expect(result.all.some((m) => m.name === 'llama-3.1-70b')).toBe(false);
+    // Compatible: sora (video, secondary)
+    expect(result.compatible.some((m) => m.name === 'sora')).toBe(true);
 
-    // But vision models (which have text=true) should also NOT appear
-    expect(result.all.some((m) => m.name === 'gpt-4o')).toBe(false);
+    // Text models in others (NOT hidden — user can still pick)
+    expect(result.all.some((m) => m.name === 'gpt-3.5-turbo')).toBe(true);
+    expect(result.all.some((m) => m.name === 'llama-3.1-70b')).toBe(true);
+    expect(result.all.some((m) => m.name === 'gpt-4o')).toBe(true);
+
+    // They go to "others"
+    expect(result.others.some((m) => m.name === 'gpt-3.5-turbo')).toBe(true);
+    expect(result.others.some((m) => m.name === 'gpt-4o')).toBe(true);
   });
 
-  it('tester role: code models in recommended, text in compatible', () => {
+  it('tester role: code in recommended, reasoning in compatible, others visible', () => {
     const spec = ROLE_CAPABILITY_SPEC.tester;
     const result = filterModelsByCapability(sampleModels, spec);
 
     expect(result.recommended.some((m) => m.name === 'deepseek-coder-v2')).toBe(true);
+    expect(result.compatible.some((m) => m.name === 'o1')).toBe(true);
 
-    // Image models excluded
-    expect(result.all.some((m) => m.name === 'dall-e-3')).toBe(false);
+    // Image models in others (NOT hidden)
+    expect(result.all.some((m) => m.name === 'dall-e-3')).toBe(true);
+    expect(result.others.some((m) => m.name === 'dall-e-3')).toBe(true);
+  });
+
+  it('all models are preserved in the "all" list (no hiding)', () => {
+    const spec = ROLE_CAPABILITY_SPEC.brain;
+    const result = filterModelsByCapability(sampleModels, spec);
+
+    // Every input model appears in result.all
+    expect(result.all).toHaveLength(sampleModels.length);
+
+    for (const m of sampleModels) {
+      expect(result.all.some((r) => r.name === m.name)).toBe(true);
+    }
   });
 });
 
