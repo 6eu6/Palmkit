@@ -32,6 +32,7 @@ import { debounce } from '~/utils/debounce';
 import { useSettings } from '~/lib/hooks/useSettings';
 import type { ProviderInfo } from '~/types/model';
 import { useSearchParams } from '@remix-run/react';
+import { setSidebarMode } from '~/lib/stores/sidebar';
 import { createSampler } from '~/utils/sampler';
 import { getTemplates, selectStarterTemplate } from '~/utils/selectStarterTemplate';
 import { isMemoryConstrainedDevice } from '~/lib/sandbox/remoteSandbox';
@@ -228,6 +229,28 @@ export const ChatImpl = memo(
         setChatStarted(true);
       }
     }, [initialMessages]);
+
+    /*
+     * Route-based mode detection: sync sidebar mode + chat mode with the URL.
+     * /chat → sidebarMode='chat', chatMode='discuss'
+     * /work → sidebarMode='work', chatMode='discuss'
+     * /code → sidebarMode='code', chatMode='build'
+     * /     → sidebarMode='code', chatMode='build' (default)
+     */
+    useEffect(() => {
+      const path = window.location.pathname;
+
+      if (path.startsWith('/chat')) {
+        setSidebarMode('chat');
+        setChatMode('discuss');
+      } else if (path.startsWith('/work')) {
+        setSidebarMode('work');
+        setChatMode('discuss');
+      } else if (path.startsWith('/code')) {
+        setSidebarMode('code');
+        setChatMode('build');
+      }
+    }, []); // Run once on mount
 
     const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
     const [imageDataList, setImageDataList] = useState<string[]>([]);

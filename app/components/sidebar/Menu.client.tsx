@@ -1,5 +1,6 @@
 import { motion, type Variants } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from '@remix-run/react';
 import { toast } from 'react-toastify';
 import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
 import { ThemeSwitch } from '~/components/ui/ThemeSwitch';
@@ -108,6 +109,7 @@ export const Menu = () => {
   const profile = useStore(profileStore);
   const authUser = useStore(authUserStore);
   const mode = useStore(sidebarModeStore);
+  const navigate = useNavigate();
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
 
@@ -492,12 +494,15 @@ export const Menu = () => {
         <CurrentDateTime />
         <div className="flex-1 flex flex-col h-full w-full overflow-hidden">
           <div className="p-4 space-y-3">
-            {/* Chat / Work / Code — same clean control as the mobile drawer. */}
+            {/* Chat / Work / Code — navigates to the corresponding route. */}
             <div className="flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-neutral-900">
               {(['chat', 'work', 'code'] as SidebarMode[]).map((m) => (
                 <button
                   key={m}
-                  onClick={() => setSidebarMode(m)}
+                  onClick={() => {
+                    setSidebarMode(m);
+                    navigate(`/${m}`);
+                  }}
                   className={classNames(
                     'flex-1 rounded-lg py-1.5 text-[13px] font-semibold capitalize transition-all',
                     mode === m
