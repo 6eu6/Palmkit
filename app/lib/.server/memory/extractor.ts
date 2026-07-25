@@ -117,10 +117,10 @@ export async function extractMemoryOperations(
         'X-Title': 'PalmKit Memory Extractor',
       },
       body: JSON.stringify({
-        model: 'z-ai/glm-4.7-flash',
+        model: 'qwen/qwen3.6-flash',
         messages: [{ role: 'user', content: prompt }],
         temperature: 0,
-        max_tokens: 500,
+        max_tokens: 1000,
         response_format: { type: 'json_object' },
       }),
       signal: AbortSignal.timeout(8000),
@@ -226,13 +226,13 @@ async function compressMemory(memory: string, maxLines: number, apiKey: string):
         'X-Title': 'PalmKit Memory Compressor',
       },
       body: JSON.stringify({
-        model: 'z-ai/glm-4.7-flash',
+        model: 'qwen/qwen3.6-flash',
         messages: [
           { role: 'user', content: prompt },
           { role: 'user', content: memory },
         ],
         temperature: 0,
-        max_tokens: 500,
+        max_tokens: 1000,
       }),
       signal: AbortSignal.timeout(5000),
     });
