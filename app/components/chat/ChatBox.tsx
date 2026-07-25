@@ -21,7 +21,14 @@ import { WebSearch } from './WebSearch.client';
 import { ThinkingMeter, PlusMenu } from './ComposerControls';
 import { useStore } from '@nanostores/react';
 import { sidebarModeStore } from '~/lib/stores/sidebar';
-import { MODEL_ROLE_META, modelRolesStore, setModelRole, type ModelRole } from '~/lib/stores/model-roles';
+import {
+  MODEL_ROLE_META,
+  modelRolesStore,
+  setModelRole,
+  ROLE_CAPABILITY_SPEC,
+  type ModelRole,
+} from '~/lib/stores/model-roles';
+import { filterModelsByCapability, getModelCapabilityLabel } from '~/lib/modules/llm/capabilities';
 
 interface ChatBoxProps {
   isModelSettingsCollapsed: boolean;
@@ -199,12 +206,22 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 px-1">
                   {(Object.keys(MODEL_ROLE_META) as ModelRole[]).map((role) => {
                     const meta = MODEL_ROLE_META[role];
+                    const spec = ROLE_CAPABILITY_SPEC[role];
+                    const filtered = filterModelsByCapability(
+                      (props.modelList || []) as Array<{ name: string; label?: string }>,
+                      spec,
+                    );
+                    const hasRecommended = filtered.recommended.length > 0;
+                    const hasCompatible = filtered.compatible.length > 0;
+                    const totalCount = filtered.all.length;
+                    const currentValue = modelRoles[role] ?? '';
+                    const currentCapability = currentValue ? getModelCapabilityLabel(currentValue) : '';
 
                     return (
                       <label
                         key={role}
                         className="flex items-center gap-2 rounded-lg border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 px-2 py-1.5"
-                        title={meta.hint}
+                        title={`${meta.hint} (${totalCount} compatible models)`}
                       >
                         <span className="flex-1 min-w-0">
                           <span className="block text-[11px] font-medium text-palmkit-elements-textSecondary truncate">
@@ -214,10 +231,20 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                                 soon
                               </span>
                             )}
+                            {totalCount > 0 && (
+                              <span className="ml-1 text-[9px] text-palmkit-elements-textTertiary">({totalCount})</span>
+                            )}
+                            {currentCapability &&
+                              currentCapability !== spec.primary &&
+                              currentCapability !== 'text' && (
+                                <span className="ml-1 text-[9px] text-palmkit-elements-button-warning-text">
+                                  · {currentCapability}
+                                </span>
+                              )}
                           </span>
                         </span>
                         <select
-                          value={modelRoles[role] ?? ''}
+                          value={currentValue}
                           onChange={(e) => setModelRole(role, e.target.value)}
                           className="max-w-[46%] appearance-none text-[11px] rounded-md border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary px-2 py-1 outline-none focus:border-[var(--pk-accent)] cursor-pointer"
                           style={{
@@ -232,11 +259,29 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                           }}
                         >
                           <option value="">Main model</option>
-                          {props.modelList.map((m: { name: string; label?: string }) => (
-                            <option key={m.name} value={m.name}>
-                              {m.label ?? m.name}
+                          {hasRecommended && (
+                            <optgroup label={`Recommended · ${spec.primary}`}>
+                              {filtered.recommended.map((m) => (
+                                <option key={m.name} value={m.name}>
+                                  {m.label ?? m.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {hasCompatible && (
+                            <optgroup label={hasRecommended ? `Also compatible` : `Compatible`}>
+                              {filtered.compatible.map((m) => (
+                                <option key={m.name} value={m.name}>
+                                  {m.label ?? m.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {!hasRecommended && !hasCompatible && (
+                            <option disabled value="">
+                              No compatible models
                             </option>
-                          ))}
+                          )}
                         </select>
                       </label>
                     );

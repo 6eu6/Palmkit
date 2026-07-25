@@ -1,4 +1,5 @@
 import { atom, map } from 'nanostores';
+import type { ModelCapability } from '~/lib/modules/llm/capabilities';
 
 /**
  * Model Router (Design v2) — one model per JOB, not one model for everything.
@@ -17,6 +18,37 @@ import { atom, map } from 'nanostores';
 export type ModelRole = 'brain' | 'builder' | 'tester' | 'vision' | 'media';
 
 export type ReasoningEffort = 'off' | 'medium' | 'max';
+
+/**
+ * Capability requirement for each role.
+ *
+ * - brain:   needs reasoning (or text fallback — smartest model)
+ * - builder: needs code (or text fallback — code-capable model)
+ * - tester:  needs code (or text fallback — verification)
+ * - vision:  needs vision (multimodal input — can see images)
+ * - media:   needs image OR video (output generation)
+ *
+ * The `fallback` field is the capability shown when no specialized models
+ * match — so the dropdown is never empty.
+ */
+export interface RoleCapabilitySpec {
+  /** Required capability (model must support this). */
+  primary: ModelCapability;
+
+  /** Fallback capability when no primary matches (shown as "also compatible"). */
+  fallback: ModelCapability;
+
+  /** Whether text-only models are also acceptable for this role. */
+  allowTextFallback: boolean;
+}
+
+export const ROLE_CAPABILITY_SPEC: Record<ModelRole, RoleCapabilitySpec> = {
+  brain: { primary: 'reasoning', fallback: 'text', allowTextFallback: true },
+  builder: { primary: 'code', fallback: 'text', allowTextFallback: true },
+  tester: { primary: 'code', fallback: 'text', allowTextFallback: true },
+  vision: { primary: 'vision', fallback: 'text', allowTextFallback: true },
+  media: { primary: 'image', fallback: 'video', allowTextFallback: false },
+};
 
 export const MODEL_ROLE_META: Record<ModelRole, { label: string; hint: string; wired: boolean }> = {
   brain: { label: 'Brain · Planning', hint: 'Orchestrates & plans — use your smartest model', wired: true },
