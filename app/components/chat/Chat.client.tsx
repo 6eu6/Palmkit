@@ -31,7 +31,7 @@ import { useMemory } from '~/lib/hooks/useMemory';
 import { debounce } from '~/utils/debounce';
 import { useSettings } from '~/lib/hooks/useSettings';
 import type { ProviderInfo } from '~/types/model';
-import { useSearchParams } from '@remix-run/react';
+import { useSearchParams, useLocation } from '@remix-run/react';
 import { setSidebarMode } from '~/lib/stores/sidebar';
 import { createSampler } from '~/utils/sampler';
 import { getTemplates, selectStarterTemplate } from '~/utils/selectStarterTemplate';
@@ -306,33 +306,24 @@ export const ChatImpl = memo(
     });
 
     // Determine chat mode from URL — /chat and /work = discuss, /code and / = build
-    const getModeFromUrl = () => {
-      if (typeof window === 'undefined') {
-        return 'build' as const;
-      }
+    const location = useLocation();
+    const path = location.pathname;
 
-      const path = window.location.pathname;
+    const effectiveChatMode: 'discuss' | 'build' =
+      path.startsWith('/chat') || path.startsWith('/work') ? 'discuss' : 'build';
 
-      if (path.startsWith('/chat') || path.startsWith('/work')) {
-        return 'discuss' as const;
-      }
+    const effectiveSidebarMode: 'chat' | 'work' | 'code' = path.startsWith('/chat')
+      ? 'chat'
+      : path.startsWith('/work')
+        ? 'work'
+        : 'code';
 
-      return 'build' as const;
-    };
+    // Sync sidebarModeStore with URL on every render (ensures UI matches route)
+    useEffect(() => {
+      setSidebarMode(effectiveSidebarMode);
+    }, [effectiveSidebarMode]);
 
-    const [chatMode, setChatMode] = useState<'discuss' | 'build'>(getModeFromUrl);
-
-    /*
-     * Compute the EFFECTIVE chat mode from the URL on every render.
-     * This ensures the useChat body always sends the correct mode,
-     * even on the first render after hydration.
-     */
-    const effectiveChatMode =
-      typeof window !== 'undefined'
-        ? window.location.pathname.startsWith('/chat') || window.location.pathname.startsWith('/work')
-          ? 'discuss'
-          : 'build'
-        : chatMode;
+    const [chatMode, setChatMode] = useState<'discuss' | 'build'>(effectiveChatMode);
     const [selectedElement, setSelectedElement] = useState<ElementInfo | null>(null);
     const pendingEditPrompt = useStore(pendingEditPromptStore);
     const mcpSettings = useMCPStore((state) => state.settings);
@@ -363,14 +354,7 @@ export const ChatImpl = memo(
         promptId,
         contextOptimization: contextOptimizationEnabled,
         chatMode: effectiveChatMode,
-        sidebarMode:
-          typeof window !== 'undefined'
-            ? window.location.pathname.startsWith('/chat')
-              ? 'chat'
-              : window.location.pathname.startsWith('/work')
-                ? 'work'
-                : 'code'
-            : 'code',
+        sidebarMode: effectiveSidebarMode,
         designScheme,
         memoryBlock: memoryBlockRef.current,
         supabase: {

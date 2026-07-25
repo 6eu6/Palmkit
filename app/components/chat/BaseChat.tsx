@@ -33,6 +33,8 @@ import { expoUrlAtom } from '~/lib/stores/qrCodeStore';
 import { useStore } from '@nanostores/react';
 import { StickToBottom, useStickToBottomContext } from '~/lib/hooks';
 import { ChatBox } from './ChatBox';
+import { StreamProgress } from './stream-v2/StreamProgress';
+import { ModeSpecificComposer } from './stream-v2/ModeSpecificComposer';
 import type { DesignScheme } from '~/types/design-scheme';
 import type { ElementInfo } from '~/components/workbench/Inspector';
 import LlmErrorAlert from './LLMApiAlert';
@@ -407,6 +409,14 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
               initial="smooth"
             >
               <StickToBottom.Content className="flex flex-col gap-4 relative ">
+                {/* Stream v2: Progress bar at top of conversation */}
+                {chatStarted && (
+                  <StreamProgress
+                    isStreaming={isStreaming}
+                    phase={progressAnnotations?.[progressAnnotations.length - 1]?.message}
+                    status={progressAnnotations?.[progressAnnotations.length - 1]?.status}
+                  />
+                )}
                 <ClientOnly>
                   {() => {
                     return chatStarted ? (
@@ -539,6 +549,22 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   setSelectedElement={setSelectedElement}
                   onWebSearchResult={onWebSearchResult}
                 />
+                {/* Stream v2: Mode-specific quick-action toolbar below the chat box */}
+                {chatStarted && (
+                  <ModeSpecificComposer
+                    input={input}
+                    handleInputChange={handleInputChange}
+                    handleSend={handleSendMessage}
+                    handleStop={handleStop}
+                    isStreaming={isStreaming}
+                    textareaRef={textareaRef}
+                    textareaMinHeight={TEXTAREA_MIN_HEIGHT}
+                    textareaMaxHeight={TEXTAREA_MAX_HEIGHT}
+                    model={model}
+                    onModelClick={() => setIsModelSettingsCollapsed(!isModelSettingsCollapsed)}
+                    onFileUpload={handleFileUpload}
+                  />
+                )}
               </div>
             </StickToBottom>
             <div className="flex flex-col justify-center">

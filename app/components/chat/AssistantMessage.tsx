@@ -15,8 +15,7 @@ import type {
   FileUIPart,
   StepStartUIPart,
 } from '@ai-sdk/ui-utils';
-import { ToolInvocations } from './ToolInvocations';
-import type { ToolCallAnnotation } from '~/types/context';
+import { StreamMessage } from './stream-v2/StreamMessage';
 
 interface AssistantMessageProps {
   content: string;
@@ -29,6 +28,12 @@ interface AssistantMessageProps {
   setChatMode?: (mode: 'discuss' | 'build') => void;
   model?: string;
   provider?: ProviderInfo;
+
+  /** Sidebar mode — FormatConversionActions only shows in 'work' mode. */
+  sidebarMode?: 'chat' | 'work' | 'code';
+
+  /** Whether the assistant is currently streaming (hide conversion buttons while streaming). */
+  isStreaming?: boolean;
   parts:
     | (TextUIPart | ReasoningUIPart | ToolInvocationUIPart | SourceUIPart | FileUIPart | StepStartUIPart)[]
     | undefined;
@@ -71,6 +76,8 @@ export const AssistantMessage = memo(
     setChatMode,
     model,
     provider,
+    sidebarMode: _sidebarMode,
+    isStreaming,
     parts,
     addToolResult,
   }: AssistantMessageProps) => {
@@ -97,11 +104,10 @@ export const AssistantMessage = memo(
       totalTokens: number;
     } = filteredAnnotations.find((annotation) => annotation.type === 'usage')?.value;
 
-    const toolInvocations = parts?.filter((part) => part.type === 'tool-invocation');
-    const reasoningParts = parts?.filter((part) => part.type === 'reasoning');
-    const toolCallAnnotations = filteredAnnotations.filter(
-      (annotation) => annotation.type === 'toolCall',
-    ) as ToolCallAnnotation[];
+    /*
+     * toolInvocations, reasoningParts, toolCallAnnotations are now handled
+     * by UnifiedStreamRenderer — no longer needed here.
+     */
 
     return (
       <div className="overflow-hidden w-full">
@@ -177,30 +183,29 @@ export const AssistantMessage = memo(
             </div>
           </div>
         </>
-        {reasoningParts && reasoningParts.length > 0 && (
-          <details className="mb-2 rounded-md border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-1">
-            <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-palmkit-elements-textSecondary">
-              Reasoning ({reasoningParts.length} step{reasoningParts.length === 1 ? '' : 's'})
-            </summary>
-            <div className="px-3 pb-3 pt-1 text-xs leading-relaxed text-palmkit-elements-textSecondary whitespace-pre-wrap">
-              {reasoningParts.map((part, idx) => (
-                <div key={idx} className="mb-2 last:mb-0">
-                  {(part as any).text || (part as any).reasoning || ''}
-                </div>
-              ))}
-            </div>
-          </details>
-        )}
-        <Markdown append={append} chatMode={chatMode} setChatMode={setChatMode} model={model} provider={provider} html>
-          {content}
-        </Markdown>
-        {toolInvocations && toolInvocations.length > 0 && (
-          <ToolInvocations
-            toolInvocations={toolInvocations}
-            toolCallAnnotations={toolCallAnnotations}
-            addToolResult={addToolResult}
-          />
-        )}
+        {/*
+         * Stream v2: Unified content renderer.
+         * Handles: reasoning, markdown, tool invocations (with rich UI),
+         * format conversion buttons (work mode), and build timeline
+         * (code mode, lazy-loaded).
+         *
+         * The header above (tokens, rewind, fork, code context) stays
+         * in AssistantMessage — only the content area is delegated.
+         */}
+        <StreamMessage
+          content={content}
+          parts={parts}
+          annotations={annotations as Message['annotations']}
+          messageId={messageId}
+          append={append}
+          model={model}
+          provider={provider}
+          chatMode={chatMode}
+          setChatMode={setChatMode}
+          addToolResult={addToolResult}
+          isStreaming={isStreaming}
+          buildJobId={filteredAnnotations.find((a) => a.type === 'palmkit-build')?.jobId as string | undefined}
+        />
       </div>
     );
   },

@@ -14,6 +14,44 @@ import { logger } from '~/utils/logger';
 import { themeStore, type Theme } from '~/lib/stores/theme';
 import { useStore } from '@nanostores/react';
 import type { ToolCallAnnotation } from '~/types/context';
+import { ToolResultRenderer } from './tool-results/ToolResultRenderer';
+
+/**
+ * Set of tool names that have native rich renderers in
+ * app/components/chat/tool-results/. For these tools, we render the
+ * rich UI instead of raw JSON. All other tools (MCP plugins, etc.)
+ * fall back to the JSON view.
+ */
+const NATIVE_TOOL_NAMES = new Set([
+  // Investigative
+  'web_search',
+  'read_url',
+  'scrape_page',
+  'deep_search',
+  'read_and_extract',
+
+  // Office
+  'create_pdf',
+  'create_docx',
+  'create_xlsx',
+  'read_document',
+
+  // Analytics
+  'make_chart',
+  'build_table',
+  'analyze_data',
+
+  // Creative
+  'generate_image',
+
+  // Code
+  'read_file',
+  'list_files',
+  'grep',
+  'run_shell',
+  'screenshot',
+  'read_sandbox_file',
+]);
 
 const highlighterOptions = {
   langs: ['json'],
@@ -254,9 +292,17 @@ const ToolResultsList = memo(({ toolInvocations, toolCallAnnotations, theme }: T
                   <JsonCodeBlock className="mb-0" code={JSON.stringify(tool.toolInvocation.args)} theme={theme} />
                 </div>
                 <div className="text-palmkit-elements-textSecondary text-xs mt-3 mb-1">Result:</div>
-                <div className="bg-[#FAFAFA] dark:bg-[#0A0A0A] p-3 rounded-md">
-                  <JsonCodeBlock className="mb-0" code={JSON.stringify(tool.toolInvocation.result)} theme={theme} />
-                </div>
+
+                {NATIVE_TOOL_NAMES.has(toolName) && !isErrorResult ? (
+                  <ToolResultRenderer
+                    toolInvocation={tool.toolInvocation}
+                    theme={theme === 'dark' ? 'dark' : 'light'}
+                  />
+                ) : (
+                  <div className="bg-[#FAFAFA] dark:bg-[#0A0A0A] p-3 rounded-md">
+                    <JsonCodeBlock className="mb-0" code={JSON.stringify(tool.toolInvocation.result)} theme={theme} />
+                  </div>
+                )}
               </div>
             </motion.li>
           );

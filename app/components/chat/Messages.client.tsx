@@ -6,6 +6,7 @@ import { AssistantMessage } from './AssistantMessage';
 import { UserMessage } from './UserMessage';
 import { TurnBuildStream } from './TurnBuildStream';
 import { activeBuildJobIdStore, workerEventsStore, workerProgressStore } from '~/lib/stores/build-status';
+import { sidebarModeStore } from '~/lib/stores/sidebar';
 import { PalmkitLoader } from '~/components/ui/PalmkitLoader';
 import { useLocation } from '@remix-run/react';
 import { db, chatId } from '~/lib/persistence/useChatHistory';
@@ -78,6 +79,7 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
     const { id, isStreaming = false, messages = [] } = props;
     const location = useLocation();
     const activeBuildJobId = useStore(activeBuildJobIdStore);
+    const sidebarMode = useStore(sidebarModeStore);
 
     /* Extract the per-turn build jobId stamped on an assistant message. */
     const getBuildJobId = (annotations: Message['annotations']): string | null => {
@@ -121,6 +123,7 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
               const { role, content, id: messageId, annotations, parts } = message;
               const isUserMessage = role === 'user';
               const isFirst = index === 0;
+              const isLast = index === messages.length - 1;
               const isHidden = annotations?.includes('hidden');
 
               if (isHidden) {
@@ -175,6 +178,8 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
                           setChatMode={props.setChatMode}
                           model={props.model}
                           provider={props.provider}
+                          sidebarMode={sidebarMode}
+                          isStreaming={isStreaming && isLast}
                           parts={parts}
                           addToolResult={props.addToolResult}
                         />
