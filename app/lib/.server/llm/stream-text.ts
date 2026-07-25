@@ -64,6 +64,9 @@ export async function streamText(props: {
   messageSliceId?: number;
   chatMode?: 'discuss' | 'build';
   designScheme?: DesignScheme;
+
+  /** Override the system prompt entirely (skips PromptLibrary lookup). */
+  customSystemPrompt?: string;
 }) {
   const {
     messages,
@@ -78,6 +81,7 @@ export async function streamText(props: {
     summary,
     chatMode,
     designScheme,
+    customSystemPrompt,
   } = props;
   let currentModel = DEFAULT_MODEL;
   let currentProvider = DEFAULT_PROVIDER.name;
@@ -142,6 +146,7 @@ export async function streamText(props: {
   );
 
   let systemPrompt =
+    customSystemPrompt ??
     PromptLibrary.getPropmtFromLibrary(promptId || 'default', {
       cwd: WORK_DIR,
       allowedHtmlElements: allowedHTMLElements,
@@ -152,9 +157,11 @@ export async function streamText(props: {
         hasSelectedProject: options?.supabaseConnection?.hasSelectedProject || false,
         credentials: options?.supabaseConnection?.credentials || undefined,
       },
-    }) ?? getSystemPrompt();
+    }) ??
+    getSystemPrompt();
 
-  if (chatMode === 'build' && contextFiles && contextOptimization) {
+  // Skip context injection when using customSystemPrompt (discuss mode)
+  if (!customSystemPrompt && chatMode === 'build' && contextFiles && contextOptimization) {
     const codeContext = createFilesContext(contextFiles, true);
 
     systemPrompt = `${systemPrompt}
