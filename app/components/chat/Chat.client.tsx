@@ -1462,12 +1462,19 @@ export const ChatImpl = memo(
          */
         /*
          * Only claim the URL for a BRAND-NEW chat (started from "/"). On a
-         * follow-up we're already on this chat's /chat/<slug> URL, and
+         * follow-up we're already on this chat's /<mode>/<slug> URL, and
          * storeMessageHistory keeps that slug — replacing it with the internal
          * numeric id here would needlessly change the address bar mid-conversation.
+         *
+         * ROOT FIX: Use the current sidebar mode for the URL prefix instead
+         * of hardcoding '/chat/'. This preserves the tab the user is on
+         * (e.g. /code/$id stays in /code, not redirected to /chat).
          */
-        if (!window.location.pathname.startsWith('/chat/')) {
-          window.history.replaceState({}, '', `/chat/${workerChatId}`);
+        const currentPath = window.location.pathname;
+        const currentMode = effectiveSidebarMode || 'code';
+
+        if (!currentPath.startsWith(`/${currentMode}/`)) {
+          window.history.replaceState({}, '', `/${currentMode}/${workerChatId}`);
         }
 
         return;

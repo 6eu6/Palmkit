@@ -172,7 +172,20 @@ export function useChatHistory() {
           const parsed = JSON.parse(sessionData);
           const previewFiles: Record<string, string> = parsed.files || {};
 
-          if (Object.keys(previewFiles).length > 0) {
+          /*
+           * ROOT FIX: Only short-circuit if the sessionStorage data is for
+           * THIS chat (parsed.chatId === mixedId). The previous code applied
+           * the sessionStorage files to ANY chat the user opened, so after
+           * visiting a worker build, every subsequent chat opened would
+           * display that build's files instead of its own messages — the
+           * "open old chat → shows wrong content" bug.
+           *
+           * If the chatId doesn't match, clear the stale data and fall
+           * through to the normal IndexedDB restore path.
+           */
+          if (parsed.chatId && parsed.chatId !== mixedId) {
+            sessionStorage.removeItem('palmkit_restore_files');
+          } else if (Object.keys(previewFiles).length > 0) {
             // Populate workbench
             const fileMap: Record<string, { type: 'file'; content: string; isBinary?: boolean }> = {};
 
@@ -208,6 +221,13 @@ export function useChatHistory() {
             ]);
             chatId.set(mixedId);
             setReady(true);
+
+            /*
+             * Clear sessionStorage after use so it doesn't pollute the next
+             * chat the user opens. (Previous code intentionally kept it as a
+             * "flag" — but that's what caused the cross-chat contamination.)
+             */
+            sessionStorage.removeItem('palmkit_restore_files');
 
             return; // Don't proceed to db check
           }
@@ -376,7 +396,25 @@ export function useChatHistory() {
             }
 
             isRestoring.set(false);
-            navigate('/', { replace: true });
+
+            /*
+             * ROOT FIX: Don't redirect to '/' when chat data isn't found yet.
+             * The previous `navigate('/', { replace: true })` caused the
+             * "click history item → bounces back to new chat" bug:
+             *   - First click: IndexedDB/account-sync hasn't loaded yet →
+             *     getMessages returns null → redirect to '/' (looks broken)
+             *   - User clicks again: now data is loaded → opens correctly
+             *
+             * Instead, stay on the URL and set ready=true so the chat input
+             * is usable. If the data arrives later (via account-sync), the
+             * loadEpoch guard prevents stale writes. The user can still
+             * navigate away manually if they want.
+             *
+             * Side effect: messages won't appear until next refresh if the
+             * data truly doesn't exist — but that's better than a redirect
+             * loop, and the account-sync mechanism will populate IndexedDB
+             * shortly.
+             */
             setReady(true);
 
             return;
@@ -1497,7 +1535,8 @@ ${value.content}
 
       try {
         const newId = await duplicateChat(db, mixedId || listItemId);
-        navigate(`/chat/${newId}`);
+        const mode = sidebarModeStore.get() || 'chat';
+        navigate(`/${mode}/${newId}`);
         toast.success('Chat duplicated successfully');
       } catch (error) {
         toast.error('Failed to duplicate chat');
@@ -1548,7 +1587,20 @@ ${value.content}
 
 function navigateChat(nextId: string) {
   const url = new URL(window.location.href);
-  url.pathname = `/chat/${nextId}`;
+
+  /*
+   * ROOT FIX: Use the current sidebar mode for the URL prefix instead of
+   * hardcoding '/chat/'. The previous code always wrote '/chat/$id' to the
+   * URL even when the user was in /work or /code, which:
+   *   1. Forced the URL back to /chat/... after the first message in any tab
+   *   2. Triggered Chat.client.tsx's URL-sync effect to reset sidebarMode='chat'
+   *   3. Caused the next storeMessageHistory to save mode='chat' — corrupting
+   *      the chat's actual mode and making all chats appear in every tab.
+   *
+   * Reading sidebarModeStore here preserves the tab the user is actually on.
+   */
+  const mode = sidebarModeStore.get() || 'chat';
+  url.pathname = `/${mode}/${nextId}`;
 
   window.history.replaceState({}, '', url);
 }

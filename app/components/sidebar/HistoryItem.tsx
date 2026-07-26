@@ -104,7 +104,7 @@ export function HistoryItem({
         </form>
       ) : (
         <Link
-          to={`/chat/${item.urlId}`}
+          to={`/${item.mode || 'code'}/${item.urlId}`}
           className="flex w-full relative truncate block"
           onClick={selectionMode ? handleItemClick : undefined}
         >
