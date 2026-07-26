@@ -15,6 +15,8 @@ import { MCPService } from '~/lib/services/mcpService';
 import { StreamRecoveryManager } from '~/lib/.server/llm/stream-recovery';
 import { toolRegistry, resolveToolMode, type ToolContext } from '~/lib/.server/tools/registry';
 import { validateBuildOutput, completenessToJobStatus } from '~/lib/runtime/output-validator';
+import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
+import { decryptSecret } from '~/lib/auth/crypto.server';
 
 export async function action(args: ActionFunctionArgs) {
   return chatAction(args);
@@ -150,6 +152,52 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     providerSettings = JSON.parse(parseCookies(cookieHeader || '').providers || '{}');
   } catch {
     logger.warn('Malformed providers cookie — treating as empty');
+  }
+
+  /*
+   * FALLBACK: read encrypted API key from Supabase user_api_keys table.
+   * If the user is logged in but has no `apiKeys` cookie (e.g. they stored
+   * their key via the account settings UI which persists to DB only), we
+   * decrypt it here so api.chat works for authenticated users.
+   *
+   * This fixes the "Invalid or missing API key" bug for users who stored
+   * their key via the encrypted DB storage path instead of the legacy
+   * cookie-based path.
+   */
+  if (Object.keys(apiKeys).length === 0) {
+    try {
+      const { user, supabase } = await getAuthedUser(request, context);
+
+      if (user && supabase) {
+        const { data } = await supabase
+          .from('user_api_keys')
+          .select('provider, encrypted_key')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (data?.encrypted_key) {
+          const masterKey = getEnv(context).API_KEY_ENCRYPTION_KEY;
+
+          if (masterKey) {
+            try {
+              const decrypted = await decryptSecret(data.encrypted_key, masterKey);
+              const providerName = data.provider || 'OpenRouter';
+              apiKeys[providerName] = decrypted;
+              logger.info(`Loaded encrypted API key from DB for provider: ${providerName}`);
+            } catch (decryptErr) {
+              logger.warn(`Failed to decrypt stored API key: ${(decryptErr as Error).message}`);
+            }
+          }
+        }
+      }
+    } catch (authErr) {
+      /*
+       * Not logged in or Supabase misconfigured — continue with whatever
+       * cookies we have. The streamText call will fail with a clear error
+       * if no API key is available.
+       */
+      logger.debug(`Auth/API key DB lookup skipped: ${(authErr as Error).message}`);
+    }
   }
 
   const cumulativeUsage = {
