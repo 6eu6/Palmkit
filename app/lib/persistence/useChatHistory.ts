@@ -338,9 +338,8 @@ export function useChatHistory() {
                  * Set BOTH previewFilesStore AND buildStatusStore
                  * so Preview component can find files and show blob preview
                  */
-                const { buildStatusStore, setPreviewFiles: setPreviewFilesStore } = await import(
-                  '~/lib/stores/build-status'
-                );
+                const { buildStatusStore, setPreviewFiles: setPreviewFilesStore } =
+                  await import('~/lib/stores/build-status');
                 setPreviewFilesStore(previewFiles);
 
                 const current = buildStatusStore.get();

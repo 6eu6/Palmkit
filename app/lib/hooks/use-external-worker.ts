@@ -256,13 +256,7 @@ export interface JobEvent {
 export interface ExternalWorkerState {
   jobId: string | null;
   status:
-    | 'idle'
-    | 'pending'
-    | 'generating'
-    | 'validating'
-    | 'uploading_snapshot'
-    | 'ready_for_preview'
-    | 'failed_clean';
+    'idle' | 'pending' | 'generating' | 'validating' | 'uploading_snapshot' | 'ready_for_preview' | 'failed_clean';
   progress: number;
   currentStep: string;
   error: string | null;

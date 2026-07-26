@@ -75,10 +75,6 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     memoryBlock?: string;
   }>();
 
-  logger.info(
-    `[api.chat] Received: chatMode=${chatMode}, sidebarMode=${sidebarMode}, messages=${messages?.length || 0}`,
-  );
-
   const cookieHeader = request.headers.get('Cookie');
   let apiKeys: Record<string, string> = {};
   let providerSettings: Record<string, IProviderSetting> = {};

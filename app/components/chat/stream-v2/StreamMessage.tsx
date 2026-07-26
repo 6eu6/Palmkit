@@ -48,8 +48,7 @@ const BuildTimeline = lazy(() => import('./BuildTimeline').then((m) => ({ defaul
 export interface StreamMessageProps {
   content: string;
   parts:
-    | (TextUIPart | ReasoningUIPart | ToolInvocationUIPart | SourceUIPart | FileUIPart | StepStartUIPart)[]
-    | undefined;
+    (TextUIPart | ReasoningUIPart | ToolInvocationUIPart | SourceUIPart | FileUIPart | StepStartUIPart)[] | undefined;
   annotations?: Message['annotations'];
   messageId?: string;
   append?: (message: Message) => void;
@@ -132,14 +131,22 @@ function StreamMessageImpl({
     <div className="overflow-hidden w-full">
       <style>{CURSOR_STYLE}</style>
 
-      {/* Loading state — connecting to model */}
+      {/* Loading state — visible while waiting for first token */}
       {showLoading && (
-        <div className="flex items-center gap-2 py-2 text-xs text-palmkit-elements-textSecondary">
+        <div className="flex items-center gap-2 py-3 text-xs text-palmkit-elements-textSecondary">
           <div
-            className="w-3 h-3 rounded-full border border-palmkit-elements-textSecondary"
-            style={{ animation: 'ai-connect-pulse 1.5s ease-in-out infinite' }}
+            className="w-3 h-3 rounded-full border-2 border-palmkit-elements-textSecondary border-t-transparent"
+            style={{ animation: 'ai-connect-pulse 1s linear infinite' }}
           />
-          <Shimmer>Connecting…</Shimmer>
+          <Shimmer>Connecting to model…</Shimmer>
+        </div>
+      )}
+
+      {/* Streaming indicator — visible during generation */}
+      {isStreaming && hasContent && (
+        <div className="flex items-center gap-1.5 mb-2 text-[10px] text-palmkit-elements-textSecondary">
+          <div className="i-ph:pencil-simple text-xs" />
+          <span>Generating…</span>
         </div>
       )}
 

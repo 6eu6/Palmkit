@@ -35,8 +35,7 @@ interface AssistantMessageProps {
   /** Whether the assistant is currently streaming (hide conversion buttons while streaming). */
   isStreaming?: boolean;
   parts:
-    | (TextUIPart | ReasoningUIPart | ToolInvocationUIPart | SourceUIPart | FileUIPart | StepStartUIPart)[]
-    | undefined;
+    (TextUIPart | ReasoningUIPart | ToolInvocationUIPart | SourceUIPart | FileUIPart | StepStartUIPart)[] | undefined;
   addToolResult: ({ toolCallId, result }: { toolCallId: string; result: any }) => void;
 }
 
