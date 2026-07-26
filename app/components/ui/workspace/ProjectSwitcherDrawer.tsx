@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useState } from 'react';
-import { useNavigate } from '@remix-run/react';
+import { useNavigate, Link } from '@remix-run/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
 import { db, getAll, deleteById, getSnapshot, type ChatHistoryItem } from '~/lib/persistence';
@@ -249,24 +249,21 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
             {/*
              * Chat / Work / Code segmented control.
              *
-             * ROOT FIX: Use <a href> (real link) instead of <button onClick={setSidebarMode}>.
-             * The previous button-only approach on mobile (ProjectSwitcherDrawer)
-             * updated sidebarModeStore but never called navigate() — so the URL
-             * stayed on /chat/... even after the user tapped Work or Code. The
-             * user saw the tab visually switch but the URL and route never
-             * changed, causing "I switch tabs but the URL stays /chat" bug.
+             * Uses Remix <Link> for SPA navigation — no full page reload, no
+             * flicker, no "white flash" between tab switches. The URL changes
+             * instantly and Remix swaps only the route's content, keeping the
+             * sidebar and layout mounted.
              *
-             * Using <a href> guarantees browser-native navigation. Remix's
-             * client-side router intercepts same-origin <a> clicks so we still
-             * get SPA navigation. setSidebarMode is preserved for instant
-             * visual feedback before the route transition.
+             * setSidebarMode is called onClick for instant visual feedback
+             * (the active pill slides to the new tab) before Remix's route
+             * transition completes.
              */}
             <div className="px-4">
               <div className="flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-neutral-900">
                 {(['chat', 'work', 'code'] as SidebarMode[]).map((m) => (
-                  <a
+                  <Link
                     key={m}
-                    href={`/${m}`}
+                    to={`/${m}`}
                     onClick={() => setSidebarMode(m)}
                     className={classNames(
                       'flex-1 rounded-lg py-1.5 text-[13px] font-semibold capitalize transition-all text-center',
@@ -276,7 +273,7 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                     )}
                   >
                     {m}
-                  </a>
+                  </Link>
                 ))}
               </div>
             </div>

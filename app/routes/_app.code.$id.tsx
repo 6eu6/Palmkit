@@ -1,6 +1,13 @@
+/**
+ * /code/:id — individual code conversation.
+ *
+ * The loader reads the chat ID for the chat history hook (useChatHistory).
+ * The UI is rendered by the parent _app.tsx layout route — this route
+ * returns null.
+ */
+
 import { json, type LoaderFunctionArgs } from '@remix-run/cloudflare';
 import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
-import { default as IndexRoute } from './_index';
 
 export async function loader(args: LoaderFunctionArgs) {
   const env = getEnv(args.context);
@@ -18,4 +25,6 @@ export async function loader(args: LoaderFunctionArgs) {
   return json({ id: args.params.id, authed }, { headers });
 }
 
-export default IndexRoute;
+export default function CodeIdRoute() {
+  return null;
+}

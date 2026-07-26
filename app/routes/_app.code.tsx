@@ -6,14 +6,13 @@
  *
  * Code mode = build apps, write code, preview, deploy.
  * Tools: read_file, list_files, run_shell, generate_image (assets), grep.
+ *
+ * NOTE: <Header /> and <Chat /> are rendered by the parent _app.tsx layout
+ * route, so they stay mounted across tab switches (no flicker).
  */
 
 import { json, type LoaderFunctionArgs, type MetaFunction } from '@remix-run/cloudflare';
 import { useLoaderData } from '@remix-run/react';
-import { ClientOnly } from 'remix-utils/client-only';
-import { BaseChat } from '~/components/chat/BaseChat';
-import { Chat } from '~/components/chat/Chat.client';
-import { Header } from '~/components/header/Header';
 import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
 
 export const meta: MetaFunction = () => {
@@ -46,10 +45,5 @@ export default function CodeRoute() {
     return null;
   }
 
-  return (
-    <div className="relative flex flex-col h-full w-full bg-palmkit-elements-background-depth-1">
-      <Header />
-      <ClientOnly fallback={<BaseChat />}>{() => <Chat />}</ClientOnly>
-    </div>
-  );
+  return null;
 }

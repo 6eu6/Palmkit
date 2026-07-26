@@ -6,14 +6,13 @@
  *
  * Work mode = documents, images, PDFs, analysis, scheduled tasks.
  * Tools: generate_image, generate_video, create_pdf, read_url, web_search.
+ *
+ * NOTE: <Header /> and <Chat /> are rendered by the parent _app.tsx layout
+ * route, so they stay mounted across tab switches (no flicker).
  */
 
 import { json, type LoaderFunctionArgs, type MetaFunction } from '@remix-run/cloudflare';
 import { useLoaderData } from '@remix-run/react';
-import { ClientOnly } from 'remix-utils/client-only';
-import { BaseChat } from '~/components/chat/BaseChat';
-import { Chat } from '~/components/chat/Chat.client';
-import { Header } from '~/components/header/Header';
 import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
 
 export const meta: MetaFunction = () => {
@@ -46,10 +45,5 @@ export default function WorkRoute() {
     return null;
   }
 
-  return (
-    <div className="relative flex flex-col h-full w-full bg-palmkit-elements-background-depth-1">
-      <Header />
-      <ClientOnly fallback={<BaseChat />}>{() => <Chat />}</ClientOnly>
-    </div>
-  );
+  return null;
 }

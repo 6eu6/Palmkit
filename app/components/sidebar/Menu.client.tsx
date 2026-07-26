@@ -1,6 +1,6 @@
 import { motion, type Variants } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from '@remix-run/react';
+import { useNavigate, Link } from '@remix-run/react';
 import { toast } from 'react-toastify';
 import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
 import { ThemeSwitch } from '~/components/ui/ThemeSwitch';
@@ -495,19 +495,18 @@ export const Menu = () => {
             {/*
              * Chat / Work / Code — navigates to the corresponding route.
              *
-             * ROOT FIX: Use <a href> (real link) instead of <button onClick={navigate}>.
-             * The previous onClick={navigate('/${m}')} approach failed on mobile:
-             * the click handler ran but navigate() didn't update the URL. Using a
-             * real <a href> guarantees navigation works in all contexts (mobile
-             * sidebar overlay, desktop sidebar, etc.) because the browser handles
-             * it natively. Remix's client-side routing intercepts same-origin <a>
-             * clicks automatically, so we still get SPA navigation (no full reload).
+             * Uses Remix <Link> for SPA navigation — no full page reload, no
+             * flicker. The URL changes instantly and Remix swaps only the
+             * route's content while keeping the sidebar/layout mounted.
+             *
+             * setSidebarMode is called onClick for instant visual feedback
+             * (active pill slides) before Remix's route transition completes.
              */}
             <div className="flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-neutral-900">
               {(['chat', 'work', 'code'] as SidebarMode[]).map((m) => (
-                <a
+                <Link
                   key={m}
-                  href={`/${m}`}
+                  to={`/${m}`}
                   onClick={() => setSidebarMode(m)}
                   className={classNames(
                     'flex-1 rounded-lg py-1.5 text-[13px] font-semibold capitalize transition-all text-center',
@@ -517,7 +516,7 @@ export const Menu = () => {
                   )}
                 >
                   {m}
-                </a>
+                </Link>
               ))}
             </div>
 

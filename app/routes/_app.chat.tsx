@@ -6,14 +6,14 @@
  *
  * Chat mode = general Q&A, no file generation, no preview.
  * Tools: web_search, read_url only.
+ *
+ * NOTE: <Header /> and <Chat /> are rendered by the parent _app.tsx layout
+ * route, so they stay mounted across tab switches (no flicker). This route
+ * only handles the auth check + loader.
  */
 
 import { json, type LoaderFunctionArgs, type MetaFunction } from '@remix-run/cloudflare';
 import { useLoaderData } from '@remix-run/react';
-import { ClientOnly } from 'remix-utils/client-only';
-import { BaseChat } from '~/components/chat/BaseChat';
-import { Chat } from '~/components/chat/Chat.client';
-import { Header } from '~/components/header/Header';
 import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
 
 export const meta: MetaFunction = () => {
@@ -39,15 +39,14 @@ export default function ChatRoute() {
   const { authed } = useLoaderData<typeof loader>();
 
   if (!authed) {
-    // Redirect to landing if not logged in
     window.location.href = '/';
     return null;
   }
 
-  return (
-    <div className="relative flex flex-col h-full w-full bg-palmkit-elements-background-depth-1">
-      <Header />
-      <ClientOnly fallback={<BaseChat />}>{() => <Chat />}</ClientOnly>
-    </div>
-  );
+  /*
+   * <Header /> and <Chat /> are rendered by _app.tsx (layout route).
+   * This route returns null — the layout's <Outlet /> is just a placeholder.
+   * This prevents <Header /> and <ClientOnly> from remounting on tab switch.
+   */
+  return null;
 }

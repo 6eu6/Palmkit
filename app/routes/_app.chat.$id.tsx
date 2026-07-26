@@ -1,12 +1,13 @@
 /**
- * /code/$id — individual code conversation.
- * Reuses the same component as /chat/$id — the mode is determined
- * by the conversation's 'mode' field in IndexedDB.
+ * /chat/:id — Individual chat route.
+ *
+ * The loader reads the chat ID for the chat history hook (useChatHistory)
+ * which restores messages from IndexedDB. The UI (<Header /> + <Chat />)
+ * is rendered by the parent _app.tsx layout route — this route returns null.
  */
 
 import { json, type LoaderFunctionArgs } from '@remix-run/cloudflare';
 import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
-import { default as IndexRoute } from './_index';
 
 export async function loader(args: LoaderFunctionArgs) {
   const env = getEnv(args.context);
@@ -24,4 +25,11 @@ export async function loader(args: LoaderFunctionArgs) {
   return json({ id: args.params.id, authed }, { headers });
 }
 
-export default IndexRoute;
+export default function ChatIdRoute() {
+  /*
+   * <Header /> and <Chat /> are rendered by _app.tsx (layout route).
+   * The chat ID from the URL is picked up by useChatHistory hook which
+   * reads it from the route params and loads the messages.
+   */
+  return null;
+}
