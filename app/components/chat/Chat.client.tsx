@@ -367,8 +367,6 @@ export const ChatImpl = memo(
         files,
         promptId,
         contextOptimization: contextOptimizationEnabled,
-        chatMode: effectiveChatMode,
-        sidebarMode: effectiveSidebarMode,
         designScheme,
         memoryBlock: memoryBlockRef.current,
         supabase: {
@@ -380,6 +378,31 @@ export const ChatImpl = memo(
           },
         },
         maxLLMSteps: mcpSettings.maxLLMSteps,
+      },
+
+      /*
+       * CRITICAL: useChat caches `body` in a closure at mount time.
+       * When the user switches tabs (/code → /chat), the body still
+       * contains the old chatMode='build'. This function runs on EVERY
+       * request, reading the current URL to determine the correct mode.
+       * Without this, /chat tab sends chatMode='build' → the API
+       * tries to build a project instead of just chatting.
+       */
+      experimental_prepareRequestBody: ({ requestBody }) => {
+        const currentPath = window.location.pathname;
+        const currentChatMode: 'discuss' | 'build' =
+          currentPath.startsWith('/chat') || currentPath.startsWith('/work') ? 'discuss' : 'build';
+        const currentSidebarMode: 'chat' | 'work' | 'code' = currentPath.startsWith('/chat')
+          ? 'chat'
+          : currentPath.startsWith('/work')
+            ? 'work'
+            : 'code';
+
+        return {
+          ...requestBody,
+          chatMode: currentChatMode,
+          sidebarMode: currentSidebarMode,
+        };
       },
       sendExtraMessageFields: true,
       onError: (e) => {
