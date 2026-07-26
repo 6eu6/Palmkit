@@ -465,7 +465,20 @@ export const Menu = () => {
     <>
       <motion.div
         ref={menuRef}
-        initial="closed"
+        /*
+         * ROOT FIX for "sidebar flickers on page load and on tab switch":
+         *
+         * `initial="closed"` was forcing the sidebar to animate from
+         * opacity:0 + left:-340px → opacity:1 + left:0 on EVERY mount,
+         * including when the user navigated between /chat, /work, /code.
+         * That produced the visible "flash" every time the route changed.
+         *
+         * By setting `initial={open ? 'open' : 'closed'}`, the sidebar
+         * starts in its actual current state — no animation on mount.
+         * The framer-motion `animate` prop still drives open/close
+         * transitions when the user toggles the sidebar via the button.
+         */
+        initial={open ? 'open' : 'closed'}
         animate={open ? 'open' : 'closed'}
         variants={menuVariants}
         style={{ width: '340px' }}

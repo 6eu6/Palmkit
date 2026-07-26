@@ -126,7 +126,15 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
   }, [open, onClose]);
 
   const handleOpenProject = (item: ChatHistoryItem) => {
-    const targetUrl = item.urlId ? `/chat/${item.urlId}` : `/chat/${item.id}`;
+    /*
+     * ROOT FIX: Use the chat's mode for the URL prefix instead of
+     * hardcoding '/chat/'. A chat saved in /work mode should open at
+     * /work/<id>, not /chat/<id> — otherwise the URL-sync effect in
+     * Chat.client.tsx resets sidebarMode to 'chat', corrupting the
+     * chat's mode and making it appear in the wrong tab.
+     */
+    const mode = item.mode || 'code';
+    const targetUrl = item.urlId ? `/${mode}/${item.urlId}` : `/${mode}/${item.id}`;
     navigate(targetUrl);
     onClose();
   };
