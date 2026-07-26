@@ -381,12 +381,18 @@ export const ChatImpl = memo(
       },
 
       /*
-       * CRITICAL: useChat caches `body` in a closure at mount time.
-       * When the user switches tabs (/code → /chat), the body still
-       * contains the old chatMode='build'. This function runs on EVERY
-       * request, reading the current URL to determine the correct mode.
-       * Without this, /chat tab sends chatMode='build' → the API
-       * tries to build a project instead of just chatting.
+       * CRITICAL FIX: useChat caches `body` in a closure at mount time.
+       * When the user switches tabs (/code → /chat), the cached body
+       * still has chatMode='build'. The API receives build mode → tries
+       * to build a project instead of chatting.
+       *
+       * experimental_prepareRequestBody runs on EVERY request. When it
+       * returns, it COMPLETELY REPLACES the body (not merges). So we
+       * must include ALL original body fields + the dynamic mode fields.
+       *
+       * `requestBody` here is the per-message extra body (from
+       * sendMessage options), NOT the useChat body. We need to
+       * reconstruct the full body manually.
        */
       experimental_prepareRequestBody: ({ requestBody }) => {
         const currentPath = window.location.pathname;
@@ -399,9 +405,29 @@ export const ChatImpl = memo(
             : 'code';
 
         return {
-          ...requestBody,
+          // Original body fields (must be re-included since prepareRequestBody replaces entirely)
+          apiKeys,
+          files,
+          promptId,
+          contextOptimization: contextOptimizationEnabled,
+          designScheme,
+          memoryBlock: memoryBlockRef.current,
+          supabase: {
+            isConnected: supabaseConn.isConnected,
+            hasSelectedProject: !!selectedProject,
+            credentials: {
+              supabaseUrl: supabaseConn?.credentials?.supabaseUrl,
+              anonKey: supabaseConn?.credentials?.anonKey,
+            },
+          },
+          maxLLMSteps: mcpSettings.maxLLMSteps,
+
+          // Dynamic mode fields (read from URL at request time, not mount time)
           chatMode: currentChatMode,
           sidebarMode: currentSidebarMode,
+
+          // Per-message extra body
+          ...(requestBody as object),
         };
       },
       sendExtraMessageFields: true,
