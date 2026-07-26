@@ -394,7 +394,7 @@ export const ChatImpl = memo(
        * sendMessage options), NOT the useChat body. We need to
        * reconstruct the full body manually.
        */
-      experimental_prepareRequestBody: ({ requestBody }) => {
+      experimental_prepareRequestBody: ({ requestBody, messages: chatMessages, id }) => {
         const currentPath = window.location.pathname;
         const currentChatMode: 'discuss' | 'build' =
           currentPath.startsWith('/chat') || currentPath.startsWith('/work') ? 'discuss' : 'build';
@@ -405,6 +405,14 @@ export const ChatImpl = memo(
             : 'code';
 
         return {
+          // CRITICAL: messages and id MUST be included — without them,
+          // api.chat.ts receives an empty messages array and crashes with
+          // "Cannot read properties of undefined (reading 'reduce')".
+          // When experimental_prepareRequestBody is provided, the AI SDK
+          // does NOT auto-merge messages into the body — we must do it.
+          messages: chatMessages,
+          id,
+
           // Original body fields (must be re-included since prepareRequestBody replaces entirely)
           apiKeys,
           files,
@@ -426,7 +434,7 @@ export const ChatImpl = memo(
           chatMode: currentChatMode,
           sidebarMode: currentSidebarMode,
 
-          // Per-message extra body
+          // Per-message extra body (e.g. experimental_attachments)
           ...(requestBody as object),
         };
       },
