@@ -68,7 +68,14 @@ export async function streamText(props: {
   /** Memory block injected after system prompt (user profile + relevant facts). */
   memoryBlock?: string;
 
-  /** Override the system prompt entirely (skips PromptLibrary lookup). */
+  /**
+   * Override the system prompt entirely (skips PromptLibrary lookup).
+   *
+   * NOTE: This is now KEPT for backwards-compat but the chat API no
+   * longer passes a discuss-specific prompt. The unified prompt in
+   * prompts.ts lets the MODEL decide whether to answer, build, create
+   * a file, or search — no hardcoded "discuss never builds" rule.
+   */
   customSystemPrompt?: string;
 }) {
   const {
