@@ -44,36 +44,50 @@ function parseCookies(cookieHeader: string): Record<string, string> {
 }
 
 async function chatAction({ context, request }: ActionFunctionArgs) {
-  const {
-    messages,
-    files,
-    promptId,
-    contextOptimization,
-    supabase,
-    chatMode,
-    sidebarMode,
-    designScheme,
-    maxLLMSteps,
-    memoryBlock,
-  } = await request.json<{
-    messages: Messages;
-    files: any;
-    promptId?: string;
-    contextOptimization: boolean;
-    chatMode: 'discuss' | 'build';
-    sidebarMode?: 'chat' | 'work' | 'code';
-    designScheme?: DesignScheme;
-    supabase?: {
-      isConnected: boolean;
-      hasSelectedProject: boolean;
-      credentials?: {
-        anonKey?: string;
-        supabaseUrl?: string;
+  /*
+   * Read the Referer header to determine the ACTUAL tab the user is on.
+   * This is the NUCLEAR fix: even if the client sends chatMode='build'
+   * (due to useChat closure caching), the Referer header tells us the
+   * real URL the user is on.
+   */
+  const referer = request.headers.get('Referer') || '';
+  const refererPath = referer.replace(/^https?:\/\/[^/]+/, '').split('?')[0];
+  const urlChatMode: 'discuss' | 'build' =
+    refererPath.startsWith('/chat') || refererPath.startsWith('/work') ? 'discuss' : 'build';
+  const urlSidebarMode: 'chat' | 'work' | 'code' = refererPath.startsWith('/chat')
+    ? 'chat'
+    : refererPath.startsWith('/work')
+      ? 'work'
+      : 'code';
+
+  const { messages, files, promptId, contextOptimization, supabase, designScheme, maxLLMSteps, memoryBlock } =
+    await request.json<{
+      messages: Messages;
+      files: any;
+      promptId?: string;
+      contextOptimization: boolean;
+      chatMode: 'discuss' | 'build';
+      sidebarMode?: 'chat' | 'work' | 'code';
+      designScheme?: DesignScheme;
+      supabase?: {
+        isConnected: boolean;
+        hasSelectedProject: boolean;
+        credentials?: {
+          anonKey?: string;
+          supabaseUrl?: string;
+        };
       };
-    };
-    maxLLMSteps: number;
-    memoryBlock?: string;
-  }>();
+      maxLLMSteps: number;
+      memoryBlock?: string;
+    }>();
+
+  /*
+   * OVERRIDE: Use the URL-derived mode, NOT the client-sent mode.
+   * The client's useChat caches chatMode in a closure and may send
+   * stale 'build' even when the user switched to /chat.
+   */
+  const chatMode = urlChatMode;
+  const sidebarMode = urlSidebarMode;
 
   const cookieHeader = request.headers.get('Cookie');
   let apiKeys: Record<string, string> = {};
