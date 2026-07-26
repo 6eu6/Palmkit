@@ -24,7 +24,6 @@ import DeployChatAlert from '~/components/deploy/DeployAlert';
 import ChatAlert from './ChatAlert';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import ProgressCompilation from './ProgressCompilation';
-import { BuildStream } from './BuildStream';
 import { SessionAdvisor } from './SessionAdvisor';
 import { ContinuationSuggestion } from './ContinuationSuggestion';
 import type { ProgressAnnotation } from '~/types/context';
@@ -34,7 +33,6 @@ import { useStore } from '@nanostores/react';
 import { StickToBottom, useStickToBottomContext } from '~/lib/hooks';
 import { ChatBox } from './ChatBox';
 import { StreamProgress } from './stream-v2/StreamProgress';
-import { ModeSpecificComposer } from './stream-v2/ModeSpecificComposer';
 import type { DesignScheme } from '~/types/design-scheme';
 import type { ElementInfo } from '~/components/workbench/Inspector';
 import LlmErrorAlert from './LLMApiAlert';
@@ -442,11 +440,11 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                  * exactly how an agent shows its work in a conversation. Reads
                  * workerEventsStore + workerProgressStore; hides when no data.
                  */}
-                {chatStarted && (
-                  <div className="w-full max-w-chat mx-auto px-4">
-                    <BuildStream />
-                  </div>
-                )}
+                {/*
+                 * BuildStream removed — StreamMessage (in AssistantMessage)
+                 * now handles all streaming display. Having both caused
+                 * duplicate stream rendering.
+                 */}
                 <ScrollToBottom />
               </StickToBottom.Content>
               <div
@@ -549,22 +547,6 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   setSelectedElement={setSelectedElement}
                   onWebSearchResult={onWebSearchResult}
                 />
-                {/* Stream v2: Mode-specific quick-action toolbar below the chat box */}
-                {chatStarted && (
-                  <ModeSpecificComposer
-                    input={input}
-                    handleInputChange={handleInputChange}
-                    handleSend={handleSendMessage}
-                    handleStop={handleStop}
-                    isStreaming={isStreaming}
-                    textareaRef={textareaRef}
-                    textareaMinHeight={TEXTAREA_MIN_HEIGHT}
-                    textareaMaxHeight={TEXTAREA_MAX_HEIGHT}
-                    model={model}
-                    onModelClick={() => setIsModelSettingsCollapsed(!isModelSettingsCollapsed)}
-                    onFileUpload={handleFileUpload}
-                  />
-                )}
               </div>
             </StickToBottom>
             <div className="flex flex-col justify-center">

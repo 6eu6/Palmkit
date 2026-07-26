@@ -57,6 +57,8 @@ const logger = createScopedLogger('Chat');
 export function Chat() {
   renderLogger.trace('Chat');
 
+  const location = useLocation();
+
   const {
     ready,
     routeId,
@@ -89,7 +91,7 @@ export function Chat() {
       <RestoreOverlay />
       {ready && (
         <ChatImpl
-          key={routeId ?? 'home'}
+          key={routeId ?? location.pathname}
           description={title}
           initialMessages={initialMessages}
           exportChat={exportChat}
