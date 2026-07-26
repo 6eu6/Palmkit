@@ -1238,9 +1238,16 @@ export const ChatImpl = memo(
        * generates files, uploads to R2, and we poll for status.
        * Preview renders from R2 files when status=ready_for_preview.
        *
+       * IMPORTANT: External worker is ONLY for /code mode (build mode).
+       * In /chat and /work (discuss mode), the user expects a streaming
+       * text response via /api/chat — running it through the external
+       * worker (which is designed to BUILD projects, not answer questions)
+       * produced the "Thinking... then nothing" bug. Discuss mode MUST
+       * use /api/chat for token-by-token text streaming.
+       *
        * Toggle via: localStorage.setItem('palmkit_use_external_worker', 'true')
        */
-      if (externalWorkerEnabled) {
+      if (externalWorkerEnabled && chatMode === 'build') {
         chatStore.setKey('started', true);
         chatStore.setKey('aborted', false);
 
