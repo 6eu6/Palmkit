@@ -84,14 +84,26 @@ export function Chat() {
    * without this key the previous chat's messages would stay on screen until
    * a manual page refresh. Brand-new chats are created via history.replaceState
    * (no loader re-run), so routeId stays undefined during creation and the
-   * in-flight stream is preserved.
+   * /*
+   * Key MUST include the tab prefix (chat/work/code) so switching tabs
+   * forces a full remount — otherwise useChat keeps the old messages
+   * and the old chatMode/sidebarMode in its closure.
+   *
+   * Format: "{tab}-{chatId|new}"
+   *   /code/abc123 → "code-abc123"
+   *   /code        → "code-new"
+   *   /chat        → "chat-new"
+   *   /work/xyz    → "work-xyz"
    */
+  const tabPrefix = location.pathname.split('/')[1] || 'home';
+  const chatKey = `${tabPrefix}-${routeId ?? 'new'}`;
+
   return (
     <>
       <RestoreOverlay />
       {ready && (
         <ChatImpl
-          key={routeId ?? location.pathname}
+          key={chatKey}
           description={title}
           initialMessages={initialMessages}
           exportChat={exportChat}
