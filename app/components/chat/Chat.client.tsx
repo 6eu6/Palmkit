@@ -1253,9 +1253,18 @@ export const ChatImpl = memo(
        * produced the "Thinking... then nothing" bug. Discuss mode MUST
        * use /api/chat for token-by-token text streaming.
        *
+       * EXCEPTION: Even in /code mode, if the user asks for a PDF, Word
+       * doc, Excel sheet, or any document (not a code build), we use
+       * /api/chat instead of the external worker. The external worker
+       * builds web apps — it can't create PDFs. Falling through to
+       * /api/chat lets the model use create_pdf/create_docx/create_xlsx
+       * tools (which are now available in all modes).
+       *
        * Toggle via: localStorage.setItem('palmkit_use_external_worker', 'true')
        */
-      if (externalWorkerEnabled && chatMode === 'build') {
+      const lowerMsg = finalMessageContent.toLowerCase();
+      const isDocumentRequest = /\b(pdf|word|docx|xlsx|excel|spreadsheet|document|report|downloadable)\b/i.test(lowerMsg);
+      if (externalWorkerEnabled && chatMode === 'build' && !isDocumentRequest) {
         chatStore.setKey('started', true);
         chatStore.setKey('aborted', false);
 

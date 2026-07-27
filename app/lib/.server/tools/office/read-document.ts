@@ -37,7 +37,7 @@ export const readDocumentTool: ToolDefinition<typeof readDocumentSchema> = {
     'Do NOT use this for URLs (use read_url or scrape_page) or for code files (use read_file in code mode).',
 
   inputSchema: readDocumentSchema,
-  availableIn: ['work'],
+  availableIn: ['chat', 'work', 'code'],
 
   execute: async (input: ReadDocumentInput): Promise<ToolResult> => {
     const { filename, mimeType, contentBase64, maxLength = 20000 } = input;

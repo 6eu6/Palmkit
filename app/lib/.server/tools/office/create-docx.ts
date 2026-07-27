@@ -40,7 +40,7 @@ export const createDocxTool: ToolDefinition<typeof createDocxSchema> = {
     'Do NOT use this for spreadsheets (use create_xlsx) or print-ready PDFs (use create_pdf).',
 
   inputSchema: createDocxSchema,
-  availableIn: ['work'],
+  availableIn: ['chat', 'work', 'code'],
 
   execute: async (input: CreateDocxInput): Promise<ToolResult> => {
     const { title, content, author, headings = 'plain' } = input;

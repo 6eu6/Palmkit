@@ -39,7 +39,7 @@ export const createXlsxTool: ToolDefinition<typeof createXlsxSchema> = {
     'Do NOT use this for documents (use create_pdf or create_docx) or for markdown tables (use build_table).',
 
   inputSchema: createXlsxSchema,
-  availableIn: ['work'],
+  availableIn: ['chat', 'work', 'code'],
 
   execute: async (input: CreateXlsxInput): Promise<ToolResult> => {
     const { filename = 'spreadsheet', sheets } = input;
