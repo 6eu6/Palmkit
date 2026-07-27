@@ -575,38 +575,42 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           }
 
           /*
-           * ONE-TIME validation annotation (no retry loop).
-           * The frontend gets the validation result as a message
-           * annotation and can show it in the BuildTimeline. We do
-           * NOT re-run the LLM based on this — that was the disease.
+           * ONE-TIME validation annotation — ONLY in build mode.
+           * In discuss mode (/chat, /work), the model answers questions
+           * and creates files — there's no <palmkitArtifact> expected.
+           * Running validation in discuss mode produces "garbage"/"failed_clean"
+           * which shows "Build failed" in the UI — confusing for users
+           * who just asked a question.
            */
-          const fullAssistantText =
-            currentMessages
-              .filter((m) => m.role === 'assistant')
-              .map((m) => (typeof m.content === 'string' ? m.content : ''))
-              .join('\n') +
-            '\n' +
-            text;
+          if (chatMode === 'build') {
+            const fullAssistantText =
+              currentMessages
+                .filter((m) => m.role === 'assistant')
+                .map((m) => (typeof m.content === 'string' ? m.content : ''))
+                .join('\n') +
+              '\n' +
+              text;
 
-          try {
-            const validationResult = validateBuildOutput(fullAssistantText);
-            const jobStatus = completenessToJobStatus(validationResult);
+            try {
+              const validationResult = validateBuildOutput(fullAssistantText);
+              const jobStatus = completenessToJobStatus(validationResult);
 
-            dataStream.writeMessageAnnotation({
-              type: 'validation' as const,
-              value: {
-                completeness: validationResult.completeness,
-                jobStatus,
-                hasCompletionMarker: validationResult.hasCompletionMarker,
-                artifactTagsBalanced: validationResult.artifactTagsBalanced,
-                fileActionsBalanced: validationResult.fileActionsBalanced,
-                fileCount: validationResult.fileCount,
-                issues: validationResult.issues,
-                retryCount: continueSegmentCount,
-              },
-            } as any);
-          } catch {
-            /* validation is best-effort — never block the response */
+              dataStream.writeMessageAnnotation({
+                type: 'validation' as const,
+                value: {
+                  completeness: validationResult.completeness,
+                  jobStatus,
+                  hasCompletionMarker: validationResult.hasCompletionMarker,
+                  artifactTagsBalanced: validationResult.artifactTagsBalanced,
+                  fileActionsBalanced: validationResult.fileActionsBalanced,
+                  fileCount: validationResult.fileCount,
+                  issues: validationResult.issues,
+                  retryCount: continueSegmentCount,
+                },
+              } as any);
+            } catch {
+              /* validation is best-effort — never block the response */
+            }
           }
 
           /*
