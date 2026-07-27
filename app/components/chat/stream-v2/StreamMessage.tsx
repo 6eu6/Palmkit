@@ -403,7 +403,13 @@ function StreamMessageImpl({
       )}
 
       {/* Action buttons — after streaming completes */}
-      {hasContent && !isStreaming && <ActionButtons content={content} isStreaming={isStreaming} onRetry={onRetry} />}
+      {hasContent && !isStreaming && (
+        <ActionButtons 
+          content={content} 
+          isStreaming={isStreaming} 
+          onRetry={onRetry || (() => window.dispatchEvent(new CustomEvent('palmkit:retry-build')))} 
+        />
+      )}
 
       {/* Build timeline — code mode only */}
       {sidebarMode === 'code' && (

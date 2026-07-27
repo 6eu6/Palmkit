@@ -300,18 +300,23 @@ export function getExternalWorkerFlag(): boolean {
   const stored = localStorage.getItem(FLAG_KEY);
 
   /*
-   * Default to TRUE — the external worker is now the primary build path.
-   * It uses the agent-builder + workspace-manager architecture:
-   * - Agent reads worklog.md (project memory) at start of every build
-   * - Agent writes files to unified workspace in R2
-   * - Agent appends to worklog.md after build
-   * - Agent can read/edit existing files from previous builds
+   * Default to FALSE — streaming via /api/chat is the primary path for ALL tabs.
+   * The external worker (Oracle) is opt-in only.
    *
-   * The old streaming path (XML <palmkitArtifact> tags) is deprecated.
-   * Users can still opt out by setting localStorage.palmkit_use_external_worker = 'false'.
+   * Why: The user wants consistent streaming behavior across all tabs.
+   * /chat, /work, and /code should all stream via /api/chat with:
+   *   - Token-by-token text
+   *   - Reasoning visible
+   *   - Code blocks with syntax highlighting
+   *   - Tool calls inline
+   *   - Retry/Copy/Like/Dislike buttons
+   *
+   * The external worker is available for heavy builds but should not
+   * be the default — it doesn't support code blocks, reasoning, or
+   * any of the streaming UI features.
    */
   if (stored === null) {
-    return true;
+    return false;
   }
 
   return stored === 'true';
