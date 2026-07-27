@@ -40,6 +40,7 @@ import { readAndExtractTool } from './investigative/read-and-extract';
 import { createPdfTool } from './office/create-pdf';
 import { createDocxTool } from './office/create-docx';
 import { createXlsxTool } from './office/create-xlsx';
+import { createMdTool } from './office/create-md';
 import { readDocumentTool } from './office/read-document';
 
 // ─── Analytics tools (Phase 2 + 3 — native) ───────────────────────────
@@ -102,6 +103,7 @@ const NATIVE_TOOLS: AnyToolDefinition[] = [
   createPdfTool as unknown as AnyToolDefinition,
   createDocxTool as unknown as AnyToolDefinition,
   createXlsxTool as unknown as AnyToolDefinition,
+  createMdTool as unknown as AnyToolDefinition,
   readDocumentTool as unknown as AnyToolDefinition,
 
   // Analytics (Phase 2 + 3)

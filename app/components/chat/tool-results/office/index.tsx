@@ -9,6 +9,7 @@
  *   - create_pdf    → PDFPreviewRenderer
  *   - create_docx   → DocxPreviewRenderer
  *   - create_xlsx   → XlsxPreviewRenderer
+ *   - create_md     → MarkdownPreviewRenderer
  *   - read_document → DocumentContentRenderer
  */
 
@@ -16,6 +17,7 @@ import { memo } from 'react';
 import { PDFPreviewRenderer } from './PDFPreviewRenderer';
 import { DocxPreviewRenderer } from './DocxPreviewRenderer';
 import { XlsxPreviewRenderer } from './XlsxPreviewRenderer';
+import { MarkdownPreviewRenderer } from './MarkdownPreviewRenderer';
 import { DocumentContentRenderer } from './DocumentContentRenderer';
 import { GenericToolResult } from '~/components/chat/tool-results/shared/GenericToolResult';
 
@@ -33,6 +35,8 @@ function OfficeRenderersImpl({ toolName, result, theme: _theme }: OfficeRenderer
       return <DocxPreviewRenderer result={result} theme={_theme} />;
     case 'create_xlsx':
       return <XlsxPreviewRenderer result={result} theme={_theme} />;
+    case 'create_md':
+      return <MarkdownPreviewRenderer result={result} theme={_theme} />;
     case 'read_document':
       return <DocumentContentRenderer result={result} theme={_theme} />;
     default:

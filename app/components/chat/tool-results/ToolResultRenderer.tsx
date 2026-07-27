@@ -59,6 +59,7 @@ const TOOL_TO_CATEGORY: Record<string, 'office' | 'analytics' | 'creative' | 'in
   create_pdf: 'office',
   create_docx: 'office',
   create_xlsx: 'office',
+  create_md: 'office',
   read_document: 'office',
 
   // Analytics
