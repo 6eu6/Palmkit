@@ -445,6 +445,7 @@ export const ChatImpl = memo(
         handleError(e, 'chat');
       },
       onFinish: (message, response) => {
+        setFakeLoading(false);
         const usage = response.usage;
         setData(undefined);
         setGenerationStep('done');
