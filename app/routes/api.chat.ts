@@ -366,8 +366,9 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
         const toolContext: ToolContext = {
           files: hasExistingFiles ? files : undefined,
           sandboxId,
-          openRouterApiKey: (process.env.OPENROUTER_API_KEY ?? process.env.OPEN_ROUTER_API_KEY) as string | undefined,
-          searchApiKey: (process.env.TAVILY_API_KEY ?? process.env.SERPAPI_KEY) as string | undefined,
+          // Cloudflare Pages: env vars live on context.cloudflare.env, NOT process.env
+          openRouterApiKey: (context.cloudflare?.env?.OPEN_ROUTER_API_KEY ?? process.env.OPENROUTER_API_KEY ?? process.env.OPEN_ROUTER_API_KEY) as string | undefined,
+          searchApiKey: ((context.cloudflare?.env as any)?.TAVILY_API_KEY ?? (context.cloudflare?.env as any)?.SERPAPI_KEY ?? process.env.TAVILY_API_KEY ?? process.env.SERPAPI_KEY) as string | undefined,
           mode: toolMode,
         };
 

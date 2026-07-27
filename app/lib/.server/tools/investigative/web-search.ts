@@ -60,11 +60,17 @@ export const webSearchTool: ToolDefinition<typeof webSearchSchema> = {
     const apiKey = ctx.searchApiKey;
 
     if (!apiKey) {
-      return {
-        ok: false,
-        error: 'Web search is not configured. Set TAVILY_API_KEY or SERPAPI_KEY in the environment.',
-        hint: 'Tavily offers a free tier (1000 searches/month). Get a key at https://tavily.com',
-      };
+      /*
+       * Throw instead of returning an error result.
+       * When we return { ok: false, error: ... }, the AI SDK treats it as
+       * a successful tool result (the tool "ran" but returned an error).
+       * The model sees the error text and tries again with a different
+       * query — producing 15-20 failed tool calls.
+       *
+       * By throwing, the AI SDK marks the tool call as failed, and the
+       * model's built-in error handling kicks in (it stops retrying).
+       */
+      throw new Error('Web search is not configured. Set TAVILY_API_KEY in Cloudflare env. Free tier: https://tavily.com');
     }
 
     // Detect provider by key prefix — Tavily keys start with "tvly-".

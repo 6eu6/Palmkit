@@ -2,24 +2,23 @@
  * StreamMessage — Professional Streaming Display (v2, AI Elements)
  * ================================================================
  *
- * Replaces the old colored StreamMessage with a clean, monochrome
- * implementation using the AI Elements library.
+ * Renders message parts IN ORDER (inline) — not separated into sections.
+ * This means tool calls appear between text chunks, matching the natural
+ * flow of the model's response during streaming.
  *
  * Components used:
  *   - Reasoning     → AI thinking (auto-open during stream, auto-collapse after)
  *   - Tool          → Tool calls (collapsible, monochrome)
  *   - Sources       → Web search source citations
  *   - Shimmer       → Loading text animation
- *   - Task          → Build phase tracking (code mode)
- *   - Suggestion    → Follow-up suggestions after response
  *
- * Mode-specific behavior:
- *   chat:  Reasoning + Markdown + Sources (minimal)
- *   work:  Reasoning + Markdown + Tool + Sources + FormatConversion
- *   code:  Reasoning + Markdown + Tool + Task(build) + Sources
+ * After streaming completes, action buttons appear:
+ *   - Retry (regenerate response)
+ *   - Copy (markdown only, no reasoning)
+ *   - Like / Dislike
  */
 
-import { memo, lazy, Suspense } from 'react';
+import { memo, lazy, Suspense, useState, useCallback } from 'react';
 import { useStore } from '@nanostores/react';
 import { Markdown } from '~/components/chat/Markdown';
 import { ToolInvocations } from '~/components/chat/ToolInvocations';
@@ -41,6 +40,7 @@ import type { ProviderInfo } from '~/types/model';
 import { Reasoning, type ReasoningStep } from '~/components/ai-elements/Reasoning';
 import { Shimmer } from '~/components/ai-elements/Shimmer';
 import { Sources, type SourceItem } from '~/components/ai-elements/Sources';
+import WithTooltip from '~/components/ui/Tooltip';
 
 // Lazy-load build timeline only in code mode
 const BuildTimeline = lazy(() => import('./BuildTimeline').then((m) => ({ default: m.BuildTimeline })));
@@ -61,7 +61,7 @@ export interface StreamMessageProps {
   buildJobId?: string;
 }
 
-// ─── Typing cursor (monochrome, subtle) ─────────────────────────
+// ─── Typing cursor ──────────────────────────────────────────────
 const TypingCursor = memo(() => (
   <span
     className="inline-block w-[2px] h-[1em] bg-palmkit-elements-textSecondary ml-0.5 align-text-bottom"
@@ -73,6 +73,74 @@ const CURSOR_STYLE = `
 @keyframes ai-cursor-blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
 @keyframes ai-connect-pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
 `;
+
+// ─── Action buttons (retry, copy, like, dislike) ────────────────
+interface ActionButtonsProps {
+  content: string;
+  isStreaming?: boolean;
+}
+
+const ActionButtons = memo(({ content, isStreaming }: ActionButtonsProps) => {
+  const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState<'like' | 'dislike' | null>(null);
+
+  const handleCopy = useCallback(() => {
+    // Copy ONLY the markdown content (not reasoning/thinking parts)
+    navigator.clipboard.writeText(content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [content]);
+
+  if (isStreaming) return null;
+
+  return (
+    <div className="flex items-center gap-1 mt-3 -ml-1 opacity-60 hover:opacity-100 transition-opacity">
+      {/* Copy — copies the response markdown only (no reasoning) */}
+      <WithTooltip tooltip={copied ? 'Copied!' : 'Copy response'}>
+        <button
+          onClick={handleCopy}
+          className="p-1.5 rounded-lg hover:bg-palmkit-elements-background-depth-2 text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
+        >
+          {copied ? (
+            <div className="i-ph:check text-base" />
+          ) : (
+            <div className="i-ph:copy text-base" />
+          )}
+        </button>
+      </WithTooltip>
+
+      {/* Like */}
+      <WithTooltip tooltip="Good response">
+        <button
+          onClick={() => setFeedback(feedback === 'like' ? null : 'like')}
+          className={`p-1.5 rounded-lg hover:bg-palmkit-elements-background-depth-2 transition-colors ${
+            feedback === 'like'
+              ? 'text-emerald-500'
+              : 'text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary'
+          }`}
+        >
+          <div className="i-ph:thumbs-up text-base" />
+        </button>
+      </WithTooltip>
+
+      {/* Dislike */}
+      <WithTooltip tooltip="Bad response">
+        <button
+          onClick={() => setFeedback(feedback === 'dislike' ? null : 'dislike')}
+          className={`p-1.5 rounded-lg hover:bg-palmkit-elements-background-depth-2 transition-colors ${
+            feedback === 'dislike'
+              ? 'text-red-500'
+              : 'text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary'
+          }`}
+        >
+          <div className="i-ph:thumbs-down text-base" />
+        </button>
+      </WithTooltip>
+    </div>
+  );
+});
+ActionButtons.displayName = 'ActionButtons';
 
 function StreamMessageImpl({
   content,
@@ -124,14 +192,54 @@ function StreamMessageImpl({
   const hasContent = Boolean(content && content.length > 0);
   const hasSources = sources.length > 0;
 
-  // Determine current phase for the loading indicator
   const showLoading = isStreaming && !hasContent && !hasThinking && !hasTools;
+
+  /*
+   * Render parts IN ORDER — not separated into sections.
+   * The parts array from AI SDK v4 preserves the natural flow:
+   * [reasoning, text, tool-call, text, tool-call, text, source, ...]
+   *
+   * We group consecutive text parts together (for markdown rendering)
+   * and render tool/reasoning parts at their natural position.
+   */
+
+  // Group parts into render blocks
+  const renderBlocks: Array<{ type: 'reasoning' | 'text' | 'tools' | 'sources'; data: any }> = [];
+  let textBuffer = '';
+
+  if (parts && parts.length > 0) {
+    for (const part of parts) {
+      if (part.type === 'text') {
+        textBuffer += (part as TextUIPart).text || '';
+      } else {
+        // Flush text buffer
+        if (textBuffer) {
+          renderBlocks.push({ type: 'text', data: textBuffer });
+          textBuffer = '';
+        }
+        if (part.type === 'reasoning') {
+          renderBlocks.push({ type: 'reasoning', data: part });
+        } else if (part.type === 'tool-invocation') {
+          renderBlocks.push({ type: 'tools', data: part });
+        } else if (part.type === 'source') {
+          renderBlocks.push({ type: 'sources', data: part });
+        }
+      }
+    }
+    // Flush remaining text
+    if (textBuffer) {
+      renderBlocks.push({ type: 'text', data: textBuffer });
+    }
+  }
+
+  // Fallback: if no parts but content exists (v1 compat)
+  const useInlineRendering = renderBlocks.length > 0;
 
   return (
     <div className="overflow-hidden w-full">
       <style>{CURSOR_STYLE}</style>
 
-      {/* Loading state — visible while waiting for first token */}
+      {/* Loading state */}
       {showLoading && (
         <div className="flex items-center gap-2 py-3 text-xs text-palmkit-elements-textSecondary">
           <div
@@ -142,7 +250,7 @@ function StreamMessageImpl({
         </div>
       )}
 
-      {/* Streaming indicator — visible during generation */}
+      {/* Streaming indicator */}
       {isStreaming && hasContent && (
         <div className="flex items-center gap-1.5 mb-2 text-[10px] text-palmkit-elements-textSecondary">
           <div className="i-ph:pencil-simple text-xs" />
@@ -150,41 +258,102 @@ function StreamMessageImpl({
         </div>
       )}
 
-      {/* Reasoning — auto-open during stream, auto-collapse after */}
-      {hasThinking && <Reasoning isStreaming={isStreaming} steps={reasoningSteps} />}
+      {useInlineRendering ? (
+        /*
+         * INLINE RENDERING — parts in their natural order.
+         * Text chunks are rendered as markdown, tool calls as rich UI,
+         * reasoning as collapsible blocks — all interleaved.
+         */
+        <>
+          {renderBlocks.map((block, i) => {
+            if (block.type === 'reasoning') {
+              const step: ReasoningStep = {
+                text: (block.data as any).text || (block.data as any).reasoning || '',
+              };
+              return <Reasoning key={`r-${i}`} isStreaming={isStreaming} steps={[step]} />;
+            }
+            if (block.type === 'text') {
+              return (
+                <div key={`t-${i}`} className="ai-fade-in">
+                  <Markdown
+                    append={append}
+                    chatMode={chatMode}
+                    setChatMode={setChatMode}
+                    model={model}
+                    provider={provider}
+                    html
+                  >
+                    {block.data}
+                  </Markdown>
+                  {isStreaming && i === renderBlocks.length - 1 && <TypingCursor />}
+                </div>
+              );
+            }
+            if (block.type === 'tools') {
+              return (
+                <div key={`tool-${i}`} className="my-2">
+                  <ToolInvocations
+                    toolInvocations={[block.data as ToolInvocationUIPart]}
+                    toolCallAnnotations={toolCallAnnotations}
+                    addToolResult={addToolResult}
+                  />
+                </div>
+              );
+            }
+            if (block.type === 'sources' && !isStreaming) {
+              const src: SourceItem = {
+                title: (block.data as any).title || 'Source',
+                url: (block.data as any).url || '',
+                snippet: (block.data as any).snippet,
+              };
+              return <Sources key={`s-${i}`} sources={[src]} />;
+            }
+            return null;
+          })}
+        </>
+      ) : (
+        /*
+         * FALLBACK RENDERING — no parts array (v1 compat or restored messages).
+         * Renders content, then tools, then sources in separate sections.
+         */
+        <>
+          {/* Reasoning */}
+          {hasThinking && <Reasoning isStreaming={isStreaming} steps={reasoningSteps} />}
 
-      {/* Main content — markdown with typing cursor */}
-      {hasContent && (
-        <div className="ai-fade-in">
-          <Markdown
-            append={append}
-            chatMode={chatMode}
-            setChatMode={setChatMode}
-            model={model}
-            provider={provider}
-            html
-          >
-            {content}
-          </Markdown>
-          {isStreaming && <TypingCursor />}
-        </div>
+          {/* Main content */}
+          {hasContent && (
+            <div className="ai-fade-in">
+              <Markdown
+                append={append}
+                chatMode={chatMode}
+                setChatMode={setChatMode}
+                model={model}
+                provider={provider}
+                html
+              >
+                {content}
+              </Markdown>
+              {isStreaming && <TypingCursor />}
+            </div>
+          )}
+
+          {/* Tool invocations */}
+          {hasTools && (
+            <div className="mt-2">
+              <ToolInvocations
+                toolInvocations={toolInvocations!}
+                toolCallAnnotations={toolCallAnnotations}
+                addToolResult={addToolResult}
+              />
+            </div>
+          )}
+
+          {/* Sources */}
+          {hasSources && !isStreaming && <Sources sources={sources} />}
+        </>
       )}
 
-      {/* Tool invocations — rich UI via ToolInvocations (which uses ToolResultRenderer) */}
-      {hasTools && (
-        <div className="mt-2">
-          <ToolInvocations
-            toolInvocations={toolInvocations!}
-            toolCallAnnotations={toolCallAnnotations}
-            addToolResult={addToolResult}
-          />
-        </div>
-      )}
-
-      {/* Sources — web search citations */}
-      {hasSources && !isStreaming && <Sources sources={sources} />}
-
-      {/* Format conversion buttons — work mode only, after streaming */}
+      {/* Format conversion — work mode only */}
       {append && content && sidebarMode === 'work' && !isStreaming && (
         <FormatConversionActions
           content={content}
@@ -197,7 +366,10 @@ function StreamMessageImpl({
         />
       )}
 
-      {/* Build timeline — code mode only, lazy loaded */}
+      {/* Action buttons — after streaming completes */}
+      {hasContent && !isStreaming && <ActionButtons content={content} isStreaming={isStreaming} />}
+
+      {/* Build timeline — code mode only */}
       {sidebarMode === 'code' && (
         <Suspense fallback={null}>
           <BuildTimeline
