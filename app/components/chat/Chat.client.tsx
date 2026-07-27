@@ -1724,10 +1724,11 @@ export const ChatImpl = memo(
 
     return (
       <>
-        {/* Desktop only — on mobile the unified bottom status bar (RemotePreviewTrigger) owns status. */}
-        <div className="hidden sm:block">
-          <GenerationStatusBar />
-        </div>
+        {/*
+         * GenerationStatusBar removed — the streaming itself (reasoning,
+         * text tokens, tool calls) is sufficient visual feedback. The
+         * progress bar was redundant and added visual noise at the top.
+         */}
         <BaseChat
           ref={animationScope}
           textareaRef={textareaRef}

@@ -1,6 +1,7 @@
 import { memo, Fragment } from 'react';
 import { Markdown } from './Markdown';
 import type { JSONValue } from 'ai';
+import { toast } from 'react-toastify';
 import Popover from '~/components/ui/Popover';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { WORK_DIR } from '~/utils/constants';
@@ -159,28 +160,41 @@ export const AssistantMessage = memo(
                   Tokens: {usage.totalTokens} (prompt: {usage.promptTokens}, completion: {usage.completionTokens})
                 </div>
               )}
-              {(onRewind || onFork) && messageId && (
-                <div className="flex gap-2 flex-col lg:flex-row ml-auto">
-                  {onRewind && (
-                    <WithTooltip tooltip="Revert to this message">
-                      <button
-                        onClick={() => onRewind(messageId)}
-                        key="i-ph:arrow-u-up-left"
-                        className="i-ph:arrow-u-up-left text-xl text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
-                      />
-                    </WithTooltip>
-                  )}
-                  {onFork && (
-                    <WithTooltip tooltip="Fork chat from this message">
-                      <button
-                        onClick={() => onFork(messageId)}
-                        key="i-ph:git-fork"
-                        className="i-ph:git-fork text-xl text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
-                      />
-                    </WithTooltip>
-                  )}
-                </div>
-              )}
+              <div className="flex gap-2 flex-col lg:flex-row ml-auto">
+                {/* Share button — top right */}
+                {messageId && !isStreaming && (
+                  <WithTooltip tooltip="Share conversation">
+                    <button
+                      onClick={() => {
+                        const url = window.location.href;
+                        navigator.clipboard.writeText(url).then(() => {
+                          toast.success('Chat link copied!');
+                        });
+                      }}
+                      key="i-ph:share-network"
+                      className="i-ph:share-network text-xl text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
+                    />
+                  </WithTooltip>
+                )}
+                {onRewind && messageId && (
+                  <WithTooltip tooltip="Revert to this message">
+                    <button
+                      onClick={() => onRewind(messageId)}
+                      key="i-ph:arrow-u-up-left"
+                      className="i-ph:arrow-u-up-left text-xl text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
+                    />
+                  </WithTooltip>
+                )}
+                {onFork && messageId && (
+                  <WithTooltip tooltip="Fork chat from this message">
+                    <button
+                      onClick={() => onFork(messageId)}
+                      key="i-ph:git-fork"
+                      className="i-ph:git-fork text-xl text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
+                    />
+                  </WithTooltip>
+                )}
+              </div>
             </div>
           </div>
         </>
