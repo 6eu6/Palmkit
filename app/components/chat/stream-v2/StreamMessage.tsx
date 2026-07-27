@@ -95,7 +95,15 @@ const ActionButtons = memo(({ content, isStreaming, onRetry }: ActionButtonsProp
     });
   }, [content]);
 
-  if (isStreaming) return null;
+  // During streaming: show a minimal "Generating..." indicator instead of buttons
+  if (isStreaming) {
+    return (
+      <div className="flex items-center gap-1.5 mt-3 -ml-1 text-[10px] text-palmkit-elements-textSecondary">
+        <div className="i-ph:spinner text-sm animate-spin" />
+        <span>Generating…</span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-1 mt-3 -ml-1 opacity-60 hover:opacity-100 transition-opacity">
@@ -402,12 +410,13 @@ function StreamMessageImpl({
         />
       )}
 
-      {/* Action buttons — after streaming completes */}
-      {hasContent && !isStreaming && (
-        <ActionButtons 
-          content={content} 
-          isStreaming={isStreaming} 
-          onRetry={onRetry || (() => window.dispatchEvent(new CustomEvent('palmkit:retry-build')))} 
+      {/* Action buttons — always show when content exists.
+          ActionButtons internally hides itself during streaming. */}
+      {hasContent && (
+        <ActionButtons
+          content={content}
+          isStreaming={isStreaming}
+          onRetry={onRetry || (() => window.dispatchEvent(new CustomEvent('palmkit:retry-build')))}
         />
       )}
 
