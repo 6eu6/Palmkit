@@ -42,7 +42,10 @@ import {
   type LiveChunk,
 } from '~/lib/stores/live-stream';
 
-const FLAG_KEY = 'palmkit_use_external_worker';
+// Changed key name from 'palmkit_use_external_worker' to force-reset
+// all users who had the old default (true) stored in localStorage.
+// The new key starts fresh with default=false (streaming via /api/chat).
+const FLAG_KEY = 'palmkit_use_external_worker_v2';
 const POLL_INTERVAL_MS = 1000; // 1s — faster updates for smoother streaming feel
 
 /*
