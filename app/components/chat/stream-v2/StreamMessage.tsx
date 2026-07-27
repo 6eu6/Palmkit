@@ -95,71 +95,70 @@ const ActionButtons = memo(({ content, isStreaming, onRetry }: ActionButtonsProp
     });
   }, [content]);
 
-  // During streaming: show a minimal "Generating..." indicator instead of buttons
-  if (isStreaming) {
-    return (
-      <div className="flex items-center gap-1.5 mt-3 -ml-1 text-[10px] text-palmkit-elements-textSecondary">
-        <div className="i-ph:spinner text-sm animate-spin" />
-        <span>Generating…</span>
-      </div>
-    );
-  }
-
+  // During streaming: show spinner. After: show all buttons.
+  // But ALWAYS render the buttons too (just hide during streaming via CSS)
+  // so they're available immediately when streaming ends.
   return (
     <div className="flex items-center gap-1 mt-3 -ml-1 opacity-60 hover:opacity-100 transition-opacity">
-      {/* Retry — regenerate the response */}
-      {onRetry && (
-        <WithTooltip tooltip="Retry">
+      {isStreaming && (
+        <div className="flex items-center gap-1.5 text-[10px] text-palmkit-elements-textSecondary">
+          <div className="i-ph:spinner text-sm animate-spin" />
+          <span>Generating…</span>
+        </div>
+      )}
+      {!isStreaming && (
+        <>
+          {/* Retry */}
+          {onRetry && (
+            <button
+              onClick={onRetry}
+              title="Retry"
+              className="p-1.5 rounded-lg hover:bg-palmkit-elements-background-depth-2 text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
+            >
+              <div className="i-ph:arrow-clockwise text-base" />
+            </button>
+          )}
+
+          {/* Copy */}
           <button
-            onClick={onRetry}
+            onClick={handleCopy}
+            title={copied ? 'Copied!' : 'Copy response'}
             className="p-1.5 rounded-lg hover:bg-palmkit-elements-background-depth-2 text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
           >
-            <div className="i-ph:arrow-clockwise text-base" />
+            {copied ? (
+              <div className="i-ph:check text-base" />
+            ) : (
+              <div className="i-ph:copy text-base" />
+            )}
           </button>
-        </WithTooltip>
+
+          {/* Like */}
+          <button
+            onClick={() => setFeedback(feedback === 'like' ? null : 'like')}
+            title="Good response"
+            className={`p-1.5 rounded-lg hover:bg-palmkit-elements-background-depth-2 transition-colors ${
+              feedback === 'like'
+                ? 'text-emerald-500'
+                : 'text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary'
+            }`}
+          >
+            <div className="i-ph:thumbs-up text-base" />
+          </button>
+
+          {/* Dislike */}
+          <button
+            onClick={() => setFeedback(feedback === 'dislike' ? null : 'dislike')}
+            title="Bad response"
+            className={`p-1.5 rounded-lg hover:bg-palmkit-elements-background-depth-2 transition-colors ${
+              feedback === 'dislike'
+                ? 'text-red-500'
+                : 'text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary'
+            }`}
+          >
+            <div className="i-ph:thumbs-down text-base" />
+          </button>
+        </>
       )}
-
-      {/* Copy — copies the response markdown only (no reasoning) */}
-      <WithTooltip tooltip={copied ? 'Copied!' : 'Copy response'}>
-        <button
-          onClick={handleCopy}
-          className="p-1.5 rounded-lg hover:bg-palmkit-elements-background-depth-2 text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
-        >
-          {copied ? (
-            <div className="i-ph:check text-base" />
-          ) : (
-            <div className="i-ph:copy text-base" />
-          )}
-        </button>
-      </WithTooltip>
-
-      {/* Like */}
-      <WithTooltip tooltip="Good response">
-        <button
-          onClick={() => setFeedback(feedback === 'like' ? null : 'like')}
-          className={`p-1.5 rounded-lg hover:bg-palmkit-elements-background-depth-2 transition-colors ${
-            feedback === 'like'
-              ? 'text-emerald-500'
-              : 'text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary'
-          }`}
-        >
-          <div className="i-ph:thumbs-up text-base" />
-        </button>
-      </WithTooltip>
-
-      {/* Dislike */}
-      <WithTooltip tooltip="Bad response">
-        <button
-          onClick={() => setFeedback(feedback === 'dislike' ? null : 'dislike')}
-          className={`p-1.5 rounded-lg hover:bg-palmkit-elements-background-depth-2 transition-colors ${
-            feedback === 'dislike'
-              ? 'text-red-500'
-              : 'text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary'
-          }`}
-        >
-          <div className="i-ph:thumbs-down text-base" />
-        </button>
-      </WithTooltip>
     </div>
   );
 });
