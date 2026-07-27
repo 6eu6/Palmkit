@@ -22,6 +22,7 @@ import { memo, lazy, Suspense, useState, useCallback } from 'react';
 import { useStore } from '@nanostores/react';
 import { Markdown } from '~/components/chat/Markdown';
 import { ToolInvocations } from '~/components/chat/ToolInvocations';
+import { ToolResultRenderer } from '~/components/chat/tool-results/ToolResultRenderer';
 import { FormatConversionActions } from '~/components/chat/tool-results/shared/FormatConversionActions';
 import { sidebarModeStore } from '~/lib/stores/sidebar';
 import type { Message } from 'ai';
@@ -305,12 +306,32 @@ function StreamMessageImpl({
               );
             }
             if (block.type === 'tools') {
+              /*
+               * Render tool results INLINE — directly via ToolResultRenderer,
+               * NOT wrapped in ToolInvocations (which adds "MCP Tool Invocations"
+               * collapsible header). This makes PDF/docx/xlsx previews appear
+               * right in the chat flow where the model generated them.
+               */
+              const toolPart = block.data as ToolInvocationUIPart;
+              const inv = toolPart.toolInvocation;
+
+              // If the tool call is still pending (no result yet), show a compact
+              // "calling tool..." indicator
+              if (inv.state === 'call' || inv.state === 'partial-call') {
+                return (
+                  <div key={`tool-${i}`} className="my-2 flex items-center gap-2 text-xs text-palmkit-elements-textSecondary">
+                    <div className="i-ph:spinner text-sm animate-spin" />
+                    <span>Calling {inv.toolName}…</span>
+                  </div>
+                );
+              }
+
+              // Tool has a result — render it directly via ToolResultRenderer
+              // (shows PDF preview, docx preview, etc. inline, no MCP wrapper)
               return (
-                <div key={`tool-${i}`} className="my-2">
-                  <ToolInvocations
-                    toolInvocations={[block.data as ToolInvocationUIPart]}
-                    toolCallAnnotations={toolCallAnnotations}
-                    addToolResult={addToolResult}
+                <div key={`tool-${i}`} className="my-3">
+                  <ToolResultRenderer
+                    toolInvocation={inv}
                   />
                 </div>
               );
