@@ -213,7 +213,10 @@ function StreamMessageImpl({
 
   const hasThinking = reasoningSteps.length > 0;
   const hasTools = (toolInvocations?.length ?? 0) > 0;
-  const hasContent = Boolean(content && content.length > 0);
+  // hasContent checks BOTH the content string AND parts (inline rendering)
+  // because in v4, content may be empty while parts contain the text
+  const hasTextParts = (parts?.filter(p => p.type === 'text').length ?? 0) > 0;
+  const hasContent = Boolean((content && content.length > 0) || hasTextParts);
   const hasSources = sources.length > 0;
 
   const showLoading = isStreaming && !hasContent && !hasThinking && !hasTools;
