@@ -59,6 +59,7 @@ export interface StreamMessageProps {
   addToolResult: ({ toolCallId, result }: { toolCallId: string; result: any }) => void;
   isStreaming?: boolean;
   buildJobId?: string;
+  onRetry?: () => void;
 }
 
 // ─── Typing cursor ──────────────────────────────────────────────
@@ -78,9 +79,10 @@ const CURSOR_STYLE = `
 interface ActionButtonsProps {
   content: string;
   isStreaming?: boolean;
+  onRetry?: () => void;
 }
 
-const ActionButtons = memo(({ content, isStreaming }: ActionButtonsProps) => {
+const ActionButtons = memo(({ content, isStreaming, onRetry }: ActionButtonsProps) => {
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState<'like' | 'dislike' | null>(null);
 
@@ -96,6 +98,18 @@ const ActionButtons = memo(({ content, isStreaming }: ActionButtonsProps) => {
 
   return (
     <div className="flex items-center gap-1 mt-3 -ml-1 opacity-60 hover:opacity-100 transition-opacity">
+      {/* Retry — regenerate the response */}
+      {onRetry && (
+        <WithTooltip tooltip="Retry">
+          <button
+            onClick={onRetry}
+            className="p-1.5 rounded-lg hover:bg-palmkit-elements-background-depth-2 text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
+          >
+            <div className="i-ph:arrow-clockwise text-base" />
+          </button>
+        </WithTooltip>
+      )}
+
       {/* Copy — copies the response markdown only (no reasoning) */}
       <WithTooltip tooltip={copied ? 'Copied!' : 'Copy response'}>
         <button
@@ -155,6 +169,7 @@ function StreamMessageImpl({
   addToolResult,
   isStreaming,
   buildJobId,
+  onRetry,
 }: StreamMessageProps) {
   const sidebarMode = useStore(sidebarModeStore);
 
@@ -367,7 +382,7 @@ function StreamMessageImpl({
       )}
 
       {/* Action buttons — after streaming completes */}
-      {hasContent && !isStreaming && <ActionButtons content={content} isStreaming={isStreaming} />}
+      {hasContent && !isStreaming && <ActionButtons content={content} isStreaming={isStreaming} onRetry={onRetry} />}
 
       {/* Build timeline — code mode only */}
       {sidebarMode === 'code' && (

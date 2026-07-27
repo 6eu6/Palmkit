@@ -23,6 +23,7 @@ interface AssistantMessageProps {
   messageId?: string;
   onRewind?: (messageId: string) => void;
   onFork?: (messageId: string) => void;
+  onRetry?: () => void;
   append?: (message: Message) => void;
   chatMode?: 'discuss' | 'build';
   setChatMode?: (mode: 'discuss' | 'build') => void;
@@ -69,6 +70,7 @@ export const AssistantMessage = memo(
     annotations,
     messageId,
     onRewind,
+    onRetry,
     onFork,
     append,
     chatMode,
@@ -204,6 +206,7 @@ export const AssistantMessage = memo(
           addToolResult={addToolResult}
           isStreaming={isStreaming}
           buildJobId={filteredAnnotations.find((a) => a.type === 'palmkit-build')?.jobId as string | undefined}
+          onRetry={onRetry}
         />
       </div>
     );

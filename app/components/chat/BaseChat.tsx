@@ -89,6 +89,7 @@ interface BaseChatProps {
   onOpenProjectList?: () => void;
   isInterruptedGeneration?: boolean;
   onResumeGeneration?: () => void;
+  onRetry?: () => void;
 }
 
 export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
@@ -140,6 +141,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       onOpenProjectList: _onOpenProjectList,
       isInterruptedGeneration,
       onResumeGeneration,
+      onRetry,
     },
     ref,
   ) => {
@@ -428,6 +430,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                         provider={provider}
                         model={model}
                         addToolResult={addToolResult}
+                        onRetry={onRetry}
                       />
                     ) : null;
                   }}

@@ -1792,6 +1792,7 @@ export const ChatImpl = memo(
           onResumeGeneration={() => {
             append({ role: 'user', content: CONTINUE_PROMPT });
           }}
+          onRetry={() => reload()}
         />
       </>
     );

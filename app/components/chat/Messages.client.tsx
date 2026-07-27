@@ -27,6 +27,7 @@ interface MessagesProps {
   model?: string;
   provider?: ProviderInfo;
   addToolResult: ({ toolCallId, result }: { toolCallId: string; result: any }) => void;
+  onRetry?: () => void;
 }
 
 /**
@@ -76,7 +77,7 @@ function isBuildBannerContent(content: unknown): boolean {
 
 export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
   (props: MessagesProps, ref: ForwardedRef<HTMLDivElement> | undefined) => {
-    const { id, isStreaming = false, messages = [] } = props;
+    const { id, isStreaming = false, messages = [], onRetry } = props;
     const location = useLocation();
     const activeBuildJobId = useStore(activeBuildJobIdStore);
     const sidebarMode = useStore(sidebarModeStore);
@@ -173,6 +174,7 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
                           messageId={messageId}
                           onRewind={handleRewind}
                           onFork={handleFork}
+                          onRetry={onRetry}
                           append={props.append}
                           chatMode={props.chatMode}
                           setChatMode={props.setChatMode}
