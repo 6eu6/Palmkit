@@ -47,7 +47,6 @@ import { useMCPStore } from '~/lib/stores/mcp';
 import type { LlmErrorAlertType } from '~/types/actions';
 import type { FileMap } from '~/lib/stores/files';
 import { RestoreOverlay } from '~/components/ui/RestoreOverlay';
-import { GenerationStatusBar } from '~/components/ui/GenerationStatusBar';
 import { ProjectList } from '~/components/ui/ProjectList';
 import { setGenerationStep, resetGenerationStatus, generationStatusStore } from '~/lib/stores/generationStatus';
 import { pendingEditPromptStore } from '~/lib/stores/inspector';
@@ -1725,11 +1724,6 @@ export const ChatImpl = memo(
 
     return (
       <>
-        {/*
-         * GenerationStatusBar removed — the streaming itself (reasoning,
-         * text tokens, tool calls) is sufficient visual feedback. The
-         * progress bar was redundant and added visual noise at the top.
-         */}
         <BaseChat
           ref={animationScope}
           textareaRef={textareaRef}

@@ -114,8 +114,11 @@ export const RemotePreviewTrigger = memo(() => {
    * mid-build. Errors still surface here for both phases.
    */
   const sandboxPreparing = sandbox.state === 'creating' || sandbox.state === 'installing';
-  const active = sandboxPreparing;
-  const hasError = sandbox.state === 'error' || gen.step === 'error';
+  // Disabled: the floating progress bar was redundant with the streaming UI.
+  // The streaming itself (reasoning, text tokens, tool calls) provides
+  // sufficient visual feedback. This bar was causing confusion on mobile.
+  const active = false;
+  const hasError = sandbox.state === 'error';
 
   // 1s ticker for the counters while active.
   const [, setNow] = useState(0);

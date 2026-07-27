@@ -160,39 +160,33 @@ export const AssistantMessage = memo(
                   Tokens: {usage.totalTokens} (prompt: {usage.promptTokens}, completion: {usage.completionTokens})
                 </div>
               )}
-              <div className="flex gap-2 flex-col lg:flex-row ml-auto">
-                {/* Share button — top right */}
+              <div className="flex gap-1 sm:gap-2 flex-row ml-auto">
+                {/* Share button — top right — ALL tabs, ALL screen sizes */}
                 {messageId && !isStreaming && (
-                  <WithTooltip tooltip="Share conversation">
-                    <button
-                      onClick={() => {
-                        const url = window.location.href;
-                        navigator.clipboard.writeText(url).then(() => {
-                          toast.success('Chat link copied!');
-                        });
-                      }}
-                      key="i-ph:share-network"
-                      className="i-ph:share-network text-xl text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
-                    />
-                  </WithTooltip>
+                  <button
+                    onClick={() => {
+                      const url = window.location.href;
+                      navigator.clipboard.writeText(url).then(() => {
+                        toast.success('Chat link copied!');
+                      });
+                    }}
+                    title="Share conversation"
+                    className="i-ph:share-network text-lg sm:text-xl text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors p-1"
+                  />
                 )}
                 {onRewind && messageId && (
-                  <WithTooltip tooltip="Revert to this message">
-                    <button
-                      onClick={() => onRewind(messageId)}
-                      key="i-ph:arrow-u-up-left"
-                      className="i-ph:arrow-u-up-left text-xl text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
-                    />
-                  </WithTooltip>
+                  <button
+                    onClick={() => onRewind(messageId)}
+                    title="Revert to this message"
+                    className="i-ph:arrow-u-up-left text-lg sm:text-xl text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors p-1"
+                  />
                 )}
                 {onFork && messageId && (
-                  <WithTooltip tooltip="Fork chat from this message">
-                    <button
-                      onClick={() => onFork(messageId)}
-                      key="i-ph:git-fork"
-                      className="i-ph:git-fork text-xl text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
-                    />
-                  </WithTooltip>
+                  <button
+                    onClick={() => onFork(messageId)}
+                    title="Fork chat"
+                    className="i-ph:git-fork text-lg sm:text-xl text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors p-1"
+                  />
                 )}
               </div>
             </div>
