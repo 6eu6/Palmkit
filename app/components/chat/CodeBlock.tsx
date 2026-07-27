@@ -1,16 +1,13 @@
 /**
- * CodeBlock — displays code with syntax highlighting + optional live Preview.
+ * CodeBlock — kibo-ui style code display with syntax highlighting.
  *
- * For frontend code (jsx, tsx, html, css, javascript), a "Preview" tab renders
- * the code live in a sandboxed iframe using Babel standalone for transpilation.
- * For other languages (python, bash, json, etc.), only the Code tab is shown.
- *
- * Used in Chat tab to show code snippets with instant visual feedback —
- * the user sees the result without leaving the conversation.
- *
- * Security: the iframe uses sandbox="allow-scripts" (no allow-same-origin)
- * so the previewed code cannot access the parent page's cookies, localStorage,
- * or DOM. It runs in a null origin.
+ * Features:
+ *   - Language badge (top-left)
+ *   - Copy button (top-right, always visible)
+ *   - Syntax highlighting via shiki
+ *   - Preview tab for frontend code (html, css, jsx, tsx, js)
+ *   - Collapsible for long code (>20 lines)
+ *   - Clean monochrome design matching Palmkit's aesthetic
  */
 
 import { memo, useEffect, useState, type FormEvent } from 'react';
@@ -32,126 +29,53 @@ interface CodeBlockProps {
 
 type Tab = 'code' | 'preview';
 
-/** Languages that support live preview. */
 const PREVIEWABLE_LANGUAGES = new Set(['jsx', 'tsx', 'html', 'css', 'javascript']);
 
-/** Check if a language supports live preview. */
 function isPreviewable(language: string): boolean {
   return PREVIEWABLE_LANGUAGES.has(language.toLowerCase());
 }
 
-/** HTML template for the preview iframe. */
 function buildPreviewHtml(code: string, language: string): string {
-  // For HTML, inject directly
-  if (language === 'html') {
-    return code;
-  }
-
-  // For CSS, wrap in a simple HTML page
+  if (language === 'html') return code;
   if (language === 'css') {
-    return `<!DOCTYPE html>
-<html>
-<head>
-<style>${code}</style>
-</head>
-<body>
-<div style="padding: 20px; font-family: sans-serif;">
-<h2>CSS Preview</h2>
-<p>Sample text with the applied styles.</p>
-<button>Button</button>
-<input placeholder="Input" />
-</div>
-</body>
-</html>`;
+    return `<!DOCTYPE html><html><head><style>${code}</style></head><body><div style="padding:20px;font-family:sans-serif;"><h2>CSS Preview</h2><p>Sample text with the applied styles.</p><button>Button</button><input placeholder="Input" /></div></body></html>`;
   }
-
-  // For JSX/TSX/JS, use Babel standalone to transpile and React to render
   const isTsx = language === 'tsx';
   const babelPreset = isTsx ? 'react,typescript' : 'react';
+  return `<!DOCTYPE html><html><head><meta charset="utf-8" /><style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}#root{padding:16px;}</style><script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script><script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script><script src="https://unpkg.com/@babel/standalone/babel.min.js"></script></head><body><div id="root"></div><script type="text/babel" data-presets="${babelPreset}">${code.replace(/<\/script>/g, '<\\/script>')}</script></body></html>`;
+}
 
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8" />
-<style>
-  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-  #root { padding: 16px; }
-</style>
-<script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-</head>
-<body>
-<div id="root"></div>
-<script type="text/babel" data-presets="${babelPreset}">
-try {
-${code}
-} catch(e) {
-  document.getElementById('root').innerHTML = '<pre style="color:red;padding:16px;">' + e.message + '</pre>';
-}
-</script>
-<script>
-// Auto-mount: find React components in the global scope after Babel transpiles
-window.addEventListener('load', function() {
-  setTimeout(function() {
-    var rootEl = document.getElementById('root');
-    if (rootEl.children.length === 0) {
-      // Try to find a React component in the global scope
-      var keys = Object.keys(window).filter(function(k) {
-        return typeof window[k] === 'function' && /^[A-Z]/.test(k);
-      });
-      if (keys.length > 0) {
-        var Component = window[keys[keys.length - 1]];
-        var root = ReactDOM.createRoot(rootEl);
-        root.render(React.createElement(Component));
-      } else {
-        rootEl.innerHTML = '<p style="color:#888;padding:16px;">No React component found. Define a component starting with a capital letter.</p>';
-      }
-    }
-  }, 100);
-});
-</script>
-</body>
-</html>`;
-}
+// Collapsible threshold (lines)
+const COLLAPSE_THRESHOLD = 20;
 
 export const CodeBlock = memo(
   ({ className, code, language = 'plaintext', theme = 'dark-plus', disableCopy = false }: CodeBlockProps) => {
     const [html, setHTML] = useState<string | undefined>(undefined);
     const [copied, setCopied] = useState(false);
     const [activeTab, setActiveTab] = useState<Tab>('code');
+    const [expanded, setExpanded] = useState(true);
 
     const languageStr = String(language);
     const canPreview = isPreviewable(languageStr);
+    const lineCount = code.split('\n').length;
+    const shouldCollapse = lineCount > COLLAPSE_THRESHOLD;
 
     const copyToClipboard = () => {
-      if (copied) {
-        return;
-      }
-
+      if (copied) return;
       navigator.clipboard.writeText(code);
-
       setCopied(true);
-
-      setTimeout(() => {
-        setCopied(false);
-      }, 2000);
+      setTimeout(() => setCopied(false), 2000);
     };
 
     useEffect(() => {
       let effectiveLanguage = language;
-
       if (language && !isSpecialLang(language) && !(language in bundledLanguages)) {
         logger.warn(`Unsupported language '${language}', falling back to plaintext`);
         effectiveLanguage = 'plaintext';
       }
-
-      logger.trace(`Language = ${effectiveLanguage}`);
-
       const processCode = async () => {
         setHTML(await codeToHtml(code, { lang: effectiveLanguage, theme }));
       };
-
       processCode();
     }, [code, language, theme]);
 
@@ -162,36 +86,46 @@ export const CodeBlock = memo(
 
     const previewHtml = canPreview ? buildPreviewHtml(code, languageStr) : '';
 
-    // If no preview support, render the original CodeBlock (no tabs)
+    // If no preview support, render clean code block with header
     if (!canPreview) {
       return (
-        <div className={classNames('relative group text-left', className)}>
-          <div
-            className={classNames(
-              styles.CopyButtonContainer,
-              'bg-transparant absolute top-[10px] right-[10px] rounded-md z-10 text-lg flex items-center justify-center opacity-0 group-hover:opacity-100',
-              {
-                'rounded-l-0 opacity-100': copied,
-              },
-            )}
-          >
+        <div className={classNames('relative group text-left my-2 rounded-lg overflow-hidden border border-palmkit-elements-borderColor', className)}>
+          {/* Header bar */}
+          <div className="flex items-center justify-between px-3 py-1.5 bg-palmkit-elements-background-depth-2 border-b border-palmkit-elements-borderColor">
+            <span className="text-[10px] font-mono text-palmkit-elements-textTertiary uppercase tracking-wider">
+              {languageStr}
+            </span>
             {!disableCopy && (
               <button
-                className={classNames(
-                  'flex items-center bg-gray-800 dark:bg-gray-300 p-[6px] justify-center before:bg-white before:rounded-l-md before:text-gray-500 before:border-r before:border-gray-300 rounded-md transition-theme',
-                  {
-                    'before:opacity-0': !copied,
-                    'before:opacity-100': copied,
-                  },
-                )}
-                title="Copy Code"
                 onClick={() => copyToClipboard()}
+                className="flex items-center gap-1 text-[11px] text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary transition-colors"
+                title="Copy code"
               >
-                <div className="i-ph:clipboard-text-duotone"></div>
+                <span className={copied ? 'i-ph:check inline-block w-3.5 h-3.5 text-emerald-500' : 'i-ph:copy inline-block w-3.5 h-3.5'} />
+                {copied ? 'Copied' : 'Copy'}
               </button>
             )}
           </div>
-          <div dangerouslySetInnerHTML={{ __html: html ?? '' }}></div>
+          {/* Code content — collapsible if long */}
+          <div
+            className={classNames('relative overflow-auto', {
+              'max-h-[400px]': shouldCollapse && !expanded,
+            })}
+          >
+            <div dangerouslySetInnerHTML={{ __html: html ?? '' }} />
+            {shouldCollapse && !expanded && (
+              <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-palmkit-elements-background-depth-1 to-transparent pointer-events-none" />
+            )}
+          </div>
+          {/* Expand/collapse button */}
+          {shouldCollapse && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="w-full py-1.5 text-[11px] text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary transition-colors border-t border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2"
+            >
+              {expanded ? '▲ Collapse' : `▼ Show all ${lineCount} lines`}
+            </button>
+          )}
         </div>
       );
     }
@@ -200,7 +134,7 @@ export const CodeBlock = memo(
     return (
       <div
         className={classNames(
-          'relative text-left my-3 rounded-lg overflow-hidden border border-palmkit-elements-borderColor',
+          'relative text-left my-2 rounded-lg overflow-hidden border border-palmkit-elements-borderColor',
           className,
         )}
       >
@@ -233,7 +167,7 @@ export const CodeBlock = memo(
               <span className="i-ph:eye inline-block w-3 h-3 align-middle mr-1" />
               Preview
             </button>
-            <span className="ml-2 text-[10px] text-palmkit-elements-textTertiary uppercase tracking-wider">
+            <span className="ml-2 text-[10px] font-mono text-palmkit-elements-textTertiary uppercase tracking-wider">
               {languageStr}
             </span>
           </div>
@@ -241,17 +175,27 @@ export const CodeBlock = memo(
             <button
               type="button"
               onClick={() => copyToClipboard()}
-              className="text-[11px] text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary transition-colors"
+              className="flex items-center gap-1 text-[11px] text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary transition-colors"
               title="Copy code"
             >
-              <span className={copied ? 'i-ph:check inline-block w-3.5 h-3.5' : 'i-ph:copy inline-block w-3.5 h-3.5'} />
+              <span className={copied ? 'i-ph:check inline-block w-3.5 h-3.5 text-emerald-500' : 'i-ph:copy inline-block w-3.5 h-3.5'} />
+              {copied ? 'Copied' : 'Copy'}
             </button>
           )}
         </div>
 
         {/* Tab content */}
         {activeTab === 'code' ? (
-          <div dangerouslySetInnerHTML={{ __html: html ?? '' }} />
+          <div
+            className={classNames('overflow-auto', {
+              'max-h-[400px]': shouldCollapse && !expanded,
+            })}
+          >
+            <div dangerouslySetInnerHTML={{ __html: html ?? '' }} />
+            {shouldCollapse && !expanded && (
+              <div className="absolute bottom-12 left-0 right-0 h-16 bg-gradient-to-t from-palmkit-elements-background-depth-1 to-transparent pointer-events-none" />
+            )}
+          </div>
         ) : (
           <div className="bg-white">
             <iframe
@@ -262,6 +206,16 @@ export const CodeBlock = memo(
               title="Code preview"
             />
           </div>
+        )}
+
+        {/* Expand/collapse button for code tab */}
+        {shouldCollapse && activeTab === 'code' && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="w-full py-1.5 text-[11px] text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary transition-colors border-t border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2"
+          >
+            {expanded ? '▲ Collapse' : `▼ Show all ${lineCount} lines`}
+          </button>
         )}
       </div>
     );
