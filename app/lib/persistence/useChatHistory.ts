@@ -1,4 +1,4 @@
-import { useLoaderData, useNavigate, useSearchParams } from '@remix-run/react';
+import { useLoaderData, useLocation, useNavigate, useSearchParams } from '@remix-run/react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useStore } from '@nanostores/react';
 import { atom } from 'nanostores';
@@ -103,13 +103,51 @@ export function useChatHistory() {
    * stale frame is never committed.
    *
    * NOTE: brand-new chats are created via window.history.replaceState (see
-   * Chat.client.tsx), which does NOT re-run the Remix loader, so `mixedId`
+   * navigateChat below), which does NOT re-run the Remix loader — so `mixedId`
    * stays undefined during creation and this teardown never fires mid-stream.
+   *
+   * `mixedId` alone was not enough, though. A conversation created in this
+   * session sits at /chat/7 in the address bar while the loader still says
+   * "no id", so moving from it to ANOTHER TAB'S ROOT (/work) left `mixedId`
+   * undefined on both sides: the teardown never ran, `chatId` and `urlId`
+   * still pointed at the previous conversation, and the next message was
+   * written on top of it. The second conversation got neither its own record
+   * nor its own URL, and the first one's messages were overwritten (before
+   * mode was made immutable it also dragged the first conversation into the
+   * second tab).
+   *
+   * So the tab root is tracked as well — but ONLY while the URL has no id.
+   * The router's location does follow replaceState, so keying on the raw
+   * pathname would fire this teardown the moment a new chat is assigned its
+   * URL, killing the in-flight stream. Freezing the tracked root while a
+   * conversation is open keeps replaceState invisible here and still catches
+   * "user moved to a different tab".
    */
+  const location = useLocation();
+  const pathHasChatId = /^\/(chat|work|code)\/.+/.test(location.pathname);
+  const tabRoot = pathHasChatId ? undefined : location.pathname;
+
   const [prevRouteId, setPrevRouteId] = useState<string | undefined>(mixedId);
 
-  if (mixedId !== prevRouteId) {
+  /*
+   * A ref, not state. The teardown must run exactly ONCE per transition, and a
+   * render-phase `setState` is not a reliable latch here: the guard was still
+   * reading its previous value on the following renders, so the teardown
+   * re-fired on every render of the new tab — continuously clearing chatId,
+   * description and initialMessages, which meant a conversation started there
+   * could never be saved and its messages never stayed on screen. A ref is
+   * updated immediately and cannot be lost.
+   */
+  const prevTabRootRef = useRef<string | undefined>(tabRoot);
+  const tabRootChanged = tabRoot !== undefined && tabRoot !== prevTabRootRef.current;
+
+  if (mixedId !== prevRouteId || tabRootChanged) {
     setPrevRouteId(mixedId);
+
+    if (tabRoot !== undefined) {
+      prevTabRootRef.current = tabRoot;
+    }
+
     setReady(false);
     setInitialMessages([]);
     setArchivedMessages([]);
