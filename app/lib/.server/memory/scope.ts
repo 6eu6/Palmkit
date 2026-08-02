@@ -39,18 +39,33 @@ export async function resolveMemoryScope(
     return { projectOnly: false };
   }
 
-  const { data, error } = await supabase
-    .from('folders')
-    .select('memory_mode, instructions')
-    .eq('user_id', userId)
-    .eq('id', folderId)
-    .maybeSingle();
+  const read = (columns: string) =>
+    supabase.from('folders').select(columns).eq('user_id', userId).eq('id', folderId).maybeSingle();
+
+  /*
+   * Asked for column by column, newest first.
+   *
+   * PostgREST rejects the WHOLE select when one column is missing, so asking
+   * for `instructions` before migration 0017 has run would take `memory_mode`
+   * down with it — a project set to "Project-only" would quietly go back to
+   * sharing the global memory, which is the one failure this feature must not
+   * have. Each step drops the newest column and tries again.
+   */
+  type FolderRow = { data: Record<string, unknown> | null; error: { message: string } | null };
+
+  let result = (await read('memory_mode, instructions')) as unknown as FolderRow;
+
+  if (result.error) {
+    result = (await read('memory_mode')) as unknown as FolderRow;
+  }
+
+  const { data, error } = result;
 
   if (error) {
     /*
-     * Missing column/table (migration 0016 not run yet) or a genuine failure.
-     * Fall back to shared memory — the pre-projects behaviour — rather than
-     * silently hiding the user's memory from them.
+     * The folders table itself is missing (migration 0015/0016 not run) or a
+     * genuine failure. Fall back to shared memory — the pre-projects
+     * behaviour — rather than silently hiding the user's memory from them.
      */
     logger.warn(`Could not resolve project memory mode: ${error.message}`);
     return { folderId, projectOnly: false };
