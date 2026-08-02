@@ -39,6 +39,11 @@ interface ProjectSheetProps {
  * is presented up front rather than buried, because it is the one setting
  * that changes what the model can see — see `app/lib/.server/memory/scope.ts`
  * for where it actually takes effect.
+ *
+ * The `pk-no-fullscreen` class is required, not decorative: mobile.scss
+ * stretches every direct div child of a `[role=dialog]` to 100dvh to make the
+ * settings modal full-screen. Without opting out, every row of this sheet
+ * became a full screen tall.
  */
 export function ProjectSheet({ open, onClose, folder, movingLabel, onSubmit }: ProjectSheetProps) {
   /*
@@ -95,12 +100,6 @@ export function ProjectSheet({ open, onClose, folder, movingLabel, onSubmit }: P
             <RadixDialog.Content asChild>
               <motion.div
                 className={classNames(
-                  /*
-                   * `pk-no-fullscreen` is required: mobile.scss stretches every
-                   * direct div child of a [role=dialog] to 100dvh for the
-                   * full-screen settings modal. Without opting out, each row of
-                   * this sheet became a full screen tall.
-                   */
                   'pk-no-fullscreen fixed z-[1201] flex flex-col bg-white dark:bg-neutral-900',
 
                   // phone: bottom sheet · desktop: centred card
