@@ -6,11 +6,14 @@ type Bin = { category: string; items: ChatHistoryItem[] };
 /**
  * Split a list into its pinned conversations and the rest.
  *
- * Pinned items are lifted out of the date bins entirely and shown in their own
- * section at the top — inside a date bin they'd still be buried under
- * "Yesterday"/"Past 30 days", which defeats the point of pinning.
+ * Pinned items are lifted out of the ordering entirely and held at the top —
+ * left in place they'd still be buried under everything newer, which defeats
+ * the point of pinning.
+ *
+ * Generic so callers keep whatever they put in: the drawer's rows carry a
+ * `status` the plain history item does not have.
  */
-export function partitionPinned(list: ChatHistoryItem[]) {
+export function partitionPinned<T extends ChatHistoryItem>(list: T[]) {
   const pinned = list
     .filter((item) => item.pinned)
     .toSorted((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));

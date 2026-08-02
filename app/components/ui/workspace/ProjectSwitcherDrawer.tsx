@@ -6,7 +6,7 @@ import { toast } from 'react-toastify';
 import { db, getAll, deleteChatCompletely, getSnapshot, type ChatHistoryItem } from '~/lib/persistence';
 import { chatId } from '~/lib/persistence';
 import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
-import { binDates, partitionPinned } from '~/components/sidebar/date-binning';
+import { partitionPinned } from '~/components/sidebar/date-binning';
 import { ChatItemMenu } from '~/components/sidebar/ChatItemMenu';
 import { renameChat, setChatPinned } from '~/lib/persistence/chatActions';
 import { useLongPress } from '~/lib/hooks/useLongPress';
@@ -54,7 +54,6 @@ function DrawerChatRow({
   onDelete,
   onTogglePin,
   onRenamed,
-  formatTime,
   folders,
   onMoveToProject,
   onCreateProjectAndMove,
@@ -64,7 +63,6 @@ function DrawerChatRow({
   onDelete: (item: ChatHistoryItem) => void;
   onTogglePin: (item: ChatHistoryItem) => void;
   onRenamed: () => void;
-  formatTime: (t: string) => string;
   folders: Folder[];
   onMoveToProject: (item: ChatHistoryItem, folderId: string | undefined) => void;
   onCreateProjectAndMove: (item: ChatHistoryItem) => void;
@@ -144,7 +142,6 @@ function DrawerChatRow({
         <span className="min-w-0 flex-1 truncate text-[14px] text-palmkit-elements-textPrimary">
           {item.description || 'Untitled'}
         </span>
-        <span className="shrink-0 text-[11px] text-palmkit-elements-textTertiary">{formatTime(item.timestamp)}</span>
       </button>
       <ChatItemMenu
         open={menuOpen}
@@ -469,19 +466,19 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
   );
 
   /*
-   * Pinned first, then the usual date bins — except while searching, where a
-   * flat list of hits is the answer to the question being asked. Splitting six
-   * results across "Today / Yesterday / Last 30 days" buries them.
+   * One flat list, newest first, with pinned conversations held at the top.
+   *
+   * No "Today / Yesterday / Previous 30 days" headers: the list is already in
+   * date order, so the headings restated what the ordering said and spent a
+   * row of a phone screen doing it — three conversations could arrive under
+   * three separate banners. Pinned rows carry a pin icon, so they do not need
+   * a heading to announce themselves either.
    */
-  const sections = useMemo(() => {
-    if (trimmedQuery) {
-      return visible.length ? [{ category: `${visible.length} found`, items: visible }] : [];
-    }
-
+  const ordered = useMemo(() => {
     const { pinned, rest } = partitionPinned(visible);
 
-    return [...(pinned.length ? [{ category: 'Pinned', items: pinned }] : []), ...binDates(rest)];
-  }, [visible, trimmedQuery]);
+    return [...pinned, ...rest];
+  }, [visible]);
 
   const handleNewProject = () => {
     /*
@@ -492,33 +489,6 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
      */
     navigate(activeFolderId ? `/${mode}?project=${activeFolderId}` : `/${mode}`);
     onClose();
-  };
-
-  const formatTime = (timestamp: string) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) {
-      return 'Just now';
-    }
-
-    if (diffMins < 60) {
-      return `${diffMins}m ago`;
-    }
-
-    if (diffHours < 24) {
-      return `${diffHours}h ago`;
-    }
-
-    if (diffDays < 7) {
-      return `${diffDays}d ago`;
-    }
-
-    return date.toLocaleDateString();
   };
 
   /*
@@ -747,31 +717,25 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                   </p>
                 </div>
               ) : (
-                sections.map(({ category, items }) => (
-                  <div key={category} className="mb-1">
-                    <div className="px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-600">
-                      {category}
-                    </div>
-                    {(items as ProjectItem[]).map((item) => (
-                      <DrawerChatRow
-                        key={item.id}
-                        item={item}
-                        onOpen={handleOpenProject}
-                        onDelete={setPendingDelete}
-                        onTogglePin={handleTogglePin}
-                        onRenamed={loadProjects}
-                        formatTime={formatTime}
-                        folders={folders}
-                        onMoveToProject={handleMoveToProject}
-                        onCreateProjectAndMove={(item) => {
-                          setPendingMoveItem(item);
-                          setSheetFolder(undefined);
-                          setSheetOpen(true);
-                        }}
-                      />
-                    ))}
-                  </div>
-                ))
+                <div className="pt-2">
+                  {ordered.map((item) => (
+                    <DrawerChatRow
+                      key={item.id}
+                      item={item}
+                      onOpen={handleOpenProject}
+                      onDelete={setPendingDelete}
+                      onTogglePin={handleTogglePin}
+                      onRenamed={loadProjects}
+                      folders={folders}
+                      onMoveToProject={handleMoveToProject}
+                      onCreateProjectAndMove={(item) => {
+                        setPendingMoveItem(item);
+                        setSheetFolder(undefined);
+                        setSheetOpen(true);
+                      }}
+                    />
+                  ))}
+                </div>
               )}
             </div>
 
