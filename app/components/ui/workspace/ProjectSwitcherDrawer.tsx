@@ -186,6 +186,13 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
   const folders = useStore(foldersStore);
   const activeFolderId = useStore(activeFolderIdStore);
   const { selectFolder } = useProjectScope();
+  const [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState('');
+
+  const closeSearch = useCallback(() => {
+    setSearching(false);
+    setQuery('');
+  }, []);
 
   const loadProjects = useCallback(async () => {
     if (!db) {
@@ -445,12 +452,36 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
     [loadProjects],
   );
 
-  /** Pinned section on top, then the usual date bins over what's left. */
+  const trimmedQuery = query.trim().toLowerCase();
+
+  /**
+   * Search runs over the conversations the drawer is already showing, so it
+   * stays inside the current tab and the current project — the same scope
+   * every other list in here uses. A hit that belongs to another tab would be
+   * unreachable without silently switching tabs under the user.
+   */
+  const visible = useMemo(
+    () =>
+      trimmedQuery
+        ? projects.filter((item) => (item.description || '').toLowerCase().includes(trimmedQuery))
+        : projects,
+    [projects, trimmedQuery],
+  );
+
+  /*
+   * Pinned first, then the usual date bins — except while searching, where a
+   * flat list of hits is the answer to the question being asked. Splitting six
+   * results across "Today / Yesterday / Last 30 days" buries them.
+   */
   const sections = useMemo(() => {
-    const { pinned, rest } = partitionPinned(projects);
+    if (trimmedQuery) {
+      return visible.length ? [{ category: `${visible.length} found`, items: visible }] : [];
+    }
+
+    const { pinned, rest } = partitionPinned(visible);
 
     return [...(pinned.length ? [{ category: 'Pinned', items: pinned }] : []), ...binDates(rest)];
-  }, [projects]);
+  }, [visible, trimmedQuery]);
 
   const handleNewProject = () => {
     /*
@@ -514,7 +545,16 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
   // Keep the panel in step when open/close comes from a button rather than a drag.
   useEffect(() => {
     animateDrawer(open ? 1 : 0);
-  }, [open]);
+
+    /*
+     * The panel stays mounted, so a search left running would still be there
+     * — and still filtering — the next time it opens, which reads as "half my
+     * conversations are gone".
+     */
+    if (!open) {
+      closeSearch();
+    }
+  }, [open, closeSearch]);
 
   return (
     <>
@@ -540,7 +580,16 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
             {/* Scrim over the drawer while the conversation still covers it. */}
             <motion.div className="pointer-events-none absolute inset-0 z-50 bg-black" style={{ opacity: dim }} />
 
-            {/* Brand + close */}
+            {/*
+             * Brand + search.
+             *
+             * Search sits where the close button used to. The drawer already
+             * has two ways to dismiss it — drag it back, or tap the strip of
+             * conversation still showing — so the corner was spending itself
+             * on something the panel could already do, while the one thing it
+             * could not do was find a conversation. While the field is open
+             * the same button becomes the way out of it.
+             */}
             <div className="flex items-center justify-between px-4 pt-4 pb-3">
               <div className="flex items-center gap-2">
                 <img src="/palmkit-mark.png" alt="" className="h-7 w-7 select-none dark:hidden pointer-events-none" />
@@ -552,13 +601,40 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                 <span className="text-[15px] font-semibold text-palmkit-elements-textPrimary">Palmkit</span>
               </div>
               <button
-                onClick={onClose}
-                aria-label="Close"
+                onClick={() => (searching ? closeSearch() : setSearching(true))}
+                aria-label={searching ? 'Close search' : 'Search conversations'}
+                aria-expanded={searching}
                 className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition active:scale-95 hover:text-gray-900 dark:hover:text-white"
               >
-                <div className="i-ph:x text-base" />
+                <div className={classNames('text-base', searching ? 'i-ph:x' : 'i-ph:magnifying-glass')} />
               </button>
             </div>
+
+            {searching && (
+              <div className="px-4 pb-2">
+                {/* The field's 16px text size is deliberate: iOS zooms the
+                    whole page in when it focuses anything smaller. */}
+                <div className="flex items-center gap-2 rounded-xl bg-gray-100 px-3 py-2 dark:bg-neutral-900">
+                  <span className="i-ph:magnifying-glass h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+                  <input
+                    autoFocus
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Escape' && closeSearch()}
+                    placeholder="Search conversations"
+                    aria-label="Search conversations"
+                    className="min-w-0 flex-1 bg-transparent text-[16px] text-palmkit-elements-textPrimary outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                  />
+                  {query && (
+                    <button
+                      onClick={() => setQuery('')}
+                      aria-label="Clear search"
+                      className="i-ph:x-circle-fill h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500"
+                    />
+                  )}
+                </div>
+              </div>
+            )}
 
             {/*
              * Chat / Work / Code segmented control.
@@ -592,67 +668,83 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="space-y-0.5 px-3 pt-3">
-              <button
-                onClick={handleNewProject}
-                className="flex w-full items-center gap-3 rounded-xl bg-gray-50 px-3 py-2.5 text-[14px] font-medium text-gray-900 transition active:bg-gray-100 dark:bg-neutral-900 dark:text-white dark:active:bg-neutral-800"
-              >
-                <span className="i-ph:plus-circle text-lg text-gray-500 dark:text-gray-400" />
-                {mode === 'code' ? 'New Session' : 'New Chat'}
-              </button>
-              {SIDEBAR_QUICK_ACTIONS[mode].map((a) =>
-                a.href ? (
-                  <a
-                    key={a.label}
-                    href={a.href}
-                    onClick={onClose}
-                    className="flex items-center gap-3 rounded-xl px-3 py-2 text-[14px] text-gray-700 transition active:bg-gray-50 dark:text-gray-300 dark:active:bg-neutral-900"
-                  >
-                    <span className={classNames(a.icon, 'text-lg text-gray-400 dark:text-gray-500')} />
-                    {a.label}
-                  </a>
-                ) : (
+            {/*
+             * Actions and Projects step aside once a query is typed. The
+             * results are what the user is looking at now, and on a phone
+             * these two blocks push most of them below the fold.
+             */}
+            {!trimmedQuery && (
+              <>
+                {/* Actions */}
+                <div className="space-y-0.5 px-3 pt-3">
                   <button
-                    key={a.label}
-                    onClick={() => toast.info(`${a.label} — coming soon`)}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-[14px] text-gray-700 transition active:bg-gray-50 dark:text-gray-300 dark:active:bg-neutral-900"
+                    onClick={handleNewProject}
+                    className="flex w-full items-center gap-3 rounded-xl bg-gray-50 px-3 py-2.5 text-[14px] font-medium text-gray-900 transition active:bg-gray-100 dark:bg-neutral-900 dark:text-white dark:active:bg-neutral-800"
                   >
-                    <span className={classNames(a.icon, 'text-lg text-gray-400 dark:text-gray-500')} />
-                    <span className="flex-1">{a.label}</span>
-                    <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:bg-neutral-800 dark:text-gray-500">
-                      Soon
-                    </span>
+                    <span className="i-ph:plus-circle text-lg text-gray-500 dark:text-gray-400" />
+                    {mode === 'code' ? 'New Session' : 'New Chat'}
                   </button>
-                ),
-              )}
-            </div>
+                  {SIDEBAR_QUICK_ACTIONS[mode].map((a) =>
+                    a.href ? (
+                      <a
+                        key={a.label}
+                        href={a.href}
+                        onClick={onClose}
+                        className="flex items-center gap-3 rounded-xl px-3 py-2 text-[14px] text-gray-700 transition active:bg-gray-50 dark:text-gray-300 dark:active:bg-neutral-900"
+                      >
+                        <span className={classNames(a.icon, 'text-lg text-gray-400 dark:text-gray-500')} />
+                        {a.label}
+                      </a>
+                    ) : (
+                      <button
+                        key={a.label}
+                        onClick={() => toast.info(`${a.label} — coming soon`)}
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-[14px] text-gray-700 transition active:bg-gray-50 dark:text-gray-300 dark:active:bg-neutral-900"
+                      >
+                        <span className={classNames(a.icon, 'text-lg text-gray-400 dark:text-gray-500')} />
+                        <span className="flex-1">{a.label}</span>
+                        <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:bg-neutral-800 dark:text-gray-500">
+                          Soon
+                        </span>
+                      </button>
+                    ),
+                  )}
+                </div>
 
-            <ProjectsSection
-              compact
-              folders={folders}
-              counts={folderCounts}
-              activeFolderId={activeFolderId}
-              onSelect={openFolder}
-              onNew={() => {
-                setSheetFolder(undefined);
-                setPendingMoveItem(null);
-                setSheetOpen(true);
-              }}
-              onOpenSettings={(folder) => {
-                setSheetFolder(folder);
-                setPendingMoveItem(null);
-                setSheetOpen(true);
-              }}
-              onDelete={setPendingDeleteFolder}
-            />
+                <ProjectsSection
+                  compact
+                  folders={folders}
+                  counts={folderCounts}
+                  activeFolderId={activeFolderId}
+                  onSelect={openFolder}
+                  onNew={() => {
+                    setSheetFolder(undefined);
+                    setPendingMoveItem(null);
+                    setSheetOpen(true);
+                  }}
+                  onOpenSettings={(folder) => {
+                    setSheetFolder(folder);
+                    setPendingMoveItem(null);
+                    setSheetOpen(true);
+                  }}
+                  onDelete={setPendingDeleteFolder}
+                />
+              </>
+            )}
 
             {/* Recent list */}
             <div className="mt-1 flex-1 overflow-y-auto overscroll-contain px-3 pb-2">
-              {projects.length === 0 ? (
+              {visible.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-600">
-                  <div className="i-ph:chats-circle mb-3 text-4xl opacity-40" />
-                  <p className="text-sm">Nothing here yet</p>
+                  <div
+                    className={classNames(
+                      'mb-3 text-4xl opacity-40',
+                      trimmedQuery ? 'i-ph:magnifying-glass' : 'i-ph:chats-circle',
+                    )}
+                  />
+                  <p className="px-6 text-center text-sm">
+                    {trimmedQuery ? `No conversations match “${query.trim()}”` : 'Nothing here yet'}
+                  </p>
                 </div>
               ) : (
                 sections.map(({ category, items }) => (
