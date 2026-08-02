@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, Link } from '@remix-run/react';
-import { motion, useTransform } from 'framer-motion';
+import { animate, motion, useMotionValue, useTransform } from 'framer-motion';
 import { animateDrawer, drawerProgress, drawerWidth } from '~/lib/stores/drawerMotion';
 import { toast } from 'react-toastify';
 import { db, getAll, deleteChatCompletely, getSnapshot, type ChatHistoryItem } from '~/lib/persistence';
@@ -29,6 +29,9 @@ import { classNames } from '~/utils/classNames';
 import { useStore } from '@nanostores/react';
 import { sidebarModeStore, setSidebarMode, SIDEBAR_QUICK_ACTIONS, type SidebarMode } from '~/lib/stores/sidebar';
 import { ProfileMenu } from '~/components/ui/ProfileMenu';
+
+/** The shut search pill is a circle this wide — the icon's own footprint. */
+const SEARCH_PILL_SIZE = 36;
 
 type ProjectStatus = 'saved' | 'generating' | 'interrupted';
 
@@ -513,6 +516,36 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
   const width = typeof window === 'undefined' ? 300 : drawerWidth();
 
   /*
+   * One value drives the whole search gesture — the pill's width, the fill
+   * behind it, the brand it covers, and the input and close button inside it.
+   *
+   * They used to move on three separate curves: a 150ms opacity tween on the
+   * brand, a 200ms CSS colour transition on the fill, and a ~450ms spring on
+   * the width. The brand was gone before the pill had finished sweeping over
+   * it and the fill arrived somewhere in between, so the logo appeared to
+   * blink rather than hand over. Deriving all four from one spring makes them
+   * a single movement by construction — the same reason the drawer and the
+   * conversation it pushes share `drawerProgress`.
+   */
+  const searchProgress = useMotionValue(0);
+
+  /* px-4 on the row either side. */
+  const rowWidth = Math.max(SEARCH_PILL_SIZE, width - 32);
+
+  const pillWidth = useTransform(searchProgress, [0, 1], [SEARCH_PILL_SIZE, rowWidth]);
+  const fillOpacity = useTransform(searchProgress, [0, 0.35], [0, 1]);
+
+  /* The brand is clear of the pill before the pill reaches it. */
+  const brandOpacity = useTransform(searchProgress, [0, 0.45], [1, 0]);
+
+  /* The input and the close button arrive once there is room for them. */
+  const contentOpacity = useTransform(searchProgress, [0.25, 0.7], [0, 1]);
+
+  useEffect(() => {
+    animate(searchProgress, searching ? 1 : 0, { type: 'spring', damping: 30, stiffness: 320, mass: 0.7 });
+  }, [searching]);
+
+  /*
    * The drawer barely moves — it sits UNDER the conversation and is revealed
    * as that slides away, which is what the reference does. A small counter
    * translate gives the parallax that stops the two layers looking glued
@@ -582,8 +615,7 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
               <div className="relative flex h-9 items-center">
                 <motion.div
                   className="flex items-center gap-2"
-                  animate={{ opacity: searching ? 0 : 1 }}
-                  transition={{ duration: 0.15 }}
+                  style={{ opacity: brandOpacity }}
                   aria-hidden={searching}
                 >
                   <img src="/palmkit-mark.png" alt="" className="h-7 w-7 select-none dark:hidden pointer-events-none" />
@@ -596,21 +628,25 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                 </motion.div>
 
                 <motion.div
-                  initial={false}
-                  animate={{ width: searching ? '100%' : 36 }}
-                  transition={{ type: 'spring', damping: 30, stiffness: 320, mass: 0.7 }}
-                  className={classNames(
-                    'absolute right-0 flex h-9 items-center overflow-hidden rounded-full transition-colors duration-200',
-                    searching ? 'bg-gray-100 dark:bg-neutral-900' : 'bg-transparent',
-                  )}
+                  className="absolute right-0 flex h-9 items-center overflow-hidden rounded-full"
+                  style={{ width: pillWidth }}
                 >
+                  {/* The fill is its own layer riding the same progress, not a
+                      CSS colour transition. Two curves — a 200ms colour fade
+                      under a 450ms spring — is what made the brand appear to
+                      blink as the pill swept over it. */}
+                  <motion.div
+                    className="absolute inset-0 rounded-full bg-gray-100 dark:bg-neutral-900"
+                    style={{ opacity: fillOpacity }}
+                  />
+
                   {/* ml-2.5 centres the glass inside the 36px circle while the
                       field is shut, and becomes its leading icon once open. */}
-                  <span className="i-ph:magnifying-glass ml-2.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+                  <span className="i-ph:magnifying-glass relative ml-2.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
 
                   {/* 16px text: iOS zooms the whole page in when it focuses
                       anything smaller. */}
-                  <input
+                  <motion.input
                     ref={searchInputRef}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
@@ -619,18 +655,20 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                     aria-label="Search conversations"
                     aria-hidden={!searching}
                     tabIndex={searching ? 0 : -1}
-                    className="min-w-0 flex-1 bg-transparent px-2 text-[16px] text-palmkit-elements-textPrimary outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                    style={{ opacity: contentOpacity }}
+                    className="relative min-w-0 flex-1 bg-transparent px-2 text-[16px] text-palmkit-elements-textPrimary outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
                   />
 
-                  <button
+                  <motion.button
                     onClick={closeSearch}
                     aria-label="Close search"
                     aria-hidden={!searching}
                     tabIndex={searching ? 0 : -1}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center text-gray-400 transition active:scale-90 hover:text-gray-900 dark:hover:text-white"
+                    style={{ opacity: contentOpacity }}
+                    className="relative flex h-9 w-9 shrink-0 items-center justify-center text-gray-400 transition-transform active:scale-90 hover:text-gray-900 dark:hover:text-white"
                   >
                     <span className="i-ph:x h-4 w-4" />
-                  </button>
+                  </motion.button>
 
                   {/* While shut, the whole pill is the button — the glass in
                       front of it is only an icon. */}
@@ -639,7 +677,7 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                       onClick={() => setSearching(true)}
                       aria-label="Search conversations"
                       aria-expanded={false}
-                      className="absolute inset-0 rounded-full transition active:scale-90"
+                      className="absolute inset-0 z-10 rounded-full transition-transform active:scale-90"
                     />
                   )}
                 </motion.div>
