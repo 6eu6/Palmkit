@@ -1,5 +1,6 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { type ReactNode } from 'react';
+import { useCallback, type ReactNode } from 'react';
+import { useDismissOnScroll } from '~/lib/hooks/useDismissOnScroll';
 import { classNames } from '~/utils/classNames';
 import type { Folder } from '~/lib/stores/folders';
 
@@ -92,6 +93,14 @@ export function ChatItemMenu({
   onExport,
   trigger,
 }: ChatItemMenuProps) {
+  /*
+   * The menu is positioned once, against the ⋯ it opened from. Scroll the list
+   * and it stays pinned where it was, floating over an unrelated conversation,
+   * so it has to go away instead of following the finger.
+   */
+  const close = useCallback(() => onOpenChange(false), [onOpenChange]);
+  useDismissOnScroll(open, close, '[role="menu"]');
+
   return (
     <DropdownMenu.Root open={open} onOpenChange={onOpenChange}>
       <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>

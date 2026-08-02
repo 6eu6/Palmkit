@@ -11,6 +11,7 @@ import { ChatItemMenu } from '~/components/sidebar/ChatItemMenu';
 import { renameChat, setChatPinned } from '~/lib/persistence/chatActions';
 import { useLongPress } from '~/lib/hooks/useLongPress';
 import { useProjectScope } from '~/lib/hooks/useProjectScope';
+import { useDismissOnScroll } from '~/lib/hooks/useDismissOnScroll';
 import { ProjectsSection } from '~/components/sidebar/ProjectsSection';
 import { ProjectSheet, type MemoryMode } from '~/components/sidebar/ProjectSheet';
 import {
@@ -205,6 +206,12 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
       searchInputRef.current?.focus();
     }
   }, [searching]);
+
+  /*
+   * A field left open over a list the user has started scrolling is stale —
+   * they have moved on to looking, not typing.
+   */
+  useDismissOnScroll(searching, closeSearch, '[data-pk-search]');
 
   const loadProjects = useCallback(async () => {
     if (!db) {
@@ -627,6 +634,7 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                 </motion.div>
 
                 <motion.div
+                  data-pk-search
                   className={classNames(
                     'absolute right-0 flex h-9 items-center overflow-hidden rounded-full',
                     GLASS_SURFACE,
@@ -658,6 +666,14 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                        * sitting inside the glass pill.
                        */
                       'appearance-none border-0 shadow-none outline-none [-webkit-appearance:none]',
+
+                      /*
+                       * index.scss puts a 2px focus ring on *:focus-visible.
+                       * On this field it drew a second rounded rectangle
+                       * inside the glass pill — the "raised box". The pill
+                       * itself is the focus indicator here.
+                       */
+                      'focus-visible:outline-none focus:outline-none',
                       'placeholder:text-gray-400 dark:placeholder:text-gray-500',
                     )}
                   />
@@ -830,16 +846,16 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
               className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex items-center gap-2.5 px-4"
               style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
             >
+              <button
+                onClick={handleNewProject}
+                className="pointer-events-auto flex h-11 items-center gap-2 rounded-full bg-blue-600 pl-4 pr-5 text-[15px] font-semibold text-white shadow-[0_8px_22px_-6px_rgba(37,99,235,0.55)] transition active:scale-[0.97] hover:bg-blue-500"
+              >
+                <span className="i-ph:pencil-simple-line h-[18px] w-[18px]" />
+                {mode === 'code' ? 'Build' : 'Chat'}
+              </button>
               <div className="pointer-events-auto">
                 <ProfileMenu variant="icon" />
               </div>
-              <button
-                onClick={handleNewProject}
-                className="pointer-events-auto flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-blue-600 px-5 text-[15px] font-semibold text-white shadow-[0_8px_22px_-6px_rgba(37,99,235,0.55)] transition active:scale-[0.97] hover:bg-blue-500"
-              >
-                <span className="i-ph:plus h-4 w-4" />
-                {mode === 'code' ? 'New Session' : 'New Chat'}
-              </button>
             </div>
           </motion.div>
 
