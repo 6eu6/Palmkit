@@ -61,7 +61,11 @@ export async function loadFolders(db: IDBDatabase): Promise<void> {
  * conversations can be moved into it before the account round-trip finishes,
  * and the mirror later lands under the same identity rather than forking.
  */
-export async function createFolder(db: IDBDatabase, rawName: string): Promise<Folder | null> {
+export async function createFolder(
+  db: IDBDatabase,
+  rawName: string,
+  memoryMode: 'default' | 'project_only' = 'default',
+): Promise<Folder | null> {
   const check = validateFolderName(rawName);
 
   if (!check.ok) {
@@ -69,13 +73,32 @@ export async function createFolder(db: IDBDatabase, rawName: string): Promise<Fo
   }
 
   const now = new Date().toISOString();
-  const folder: Folder = { id: crypto.randomUUID(), name: rawName.trim(), createdAt: now, updatedAt: now };
+  const folder: Folder = { id: crypto.randomUUID(), name: rawName.trim(), memoryMode, createdAt: now, updatedAt: now };
 
   await putFolderLocal(db, folder);
   await loadFolders(db);
   void pushFolder(folder);
 
   return folder;
+}
+
+/** Change a project's memory mode. */
+export async function setFolderMemoryMode(
+  db: IDBDatabase,
+  id: string,
+  memoryMode: 'default' | 'project_only',
+): Promise<void> {
+  const existing = foldersStore.get().find((f) => f.id === id);
+
+  if (!existing) {
+    throw new Error('Project not found.');
+  }
+
+  const updated: Folder = { ...existing, memoryMode, updatedAt: new Date().toISOString() };
+
+  await putFolderLocal(db, updated);
+  await loadFolders(db);
+  void pushFolder(updated);
 }
 
 export async function renameFolder(db: IDBDatabase, id: string, rawName: string): Promise<void> {

@@ -16,14 +16,10 @@
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from '@remix-run/cloudflare';
 import { getAuthedUser } from '~/lib/auth/supabase.server';
 import { createScopedLogger } from '~/utils/logger';
-import {
-  getUserProfile,
-  retrieveRelevantFacts,
-  formatFactsForInjection,
-  buildMemoryBlock,
-} from '~/lib/.server/memory/retriever';
+import { retrieveRelevantFacts, formatFactsForInjection, buildMemoryBlock } from '~/lib/.server/memory/retriever';
 import { extractMemoryOperations } from '~/lib/.server/memory/extractor';
-import { saveProfile, storeFact, extractFactsFromMemory, getProfile } from '~/lib/.server/memory/store';
+import { storeFact, extractFactsFromMemory } from '~/lib/.server/memory/store';
+import { readScopedProfile, resolveMemoryScope, writeScopedProfile } from '~/lib/.server/memory/scope';
 
 const logger = createScopedLogger('api.memory');
 
@@ -54,6 +50,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const query = url.searchParams.get('query') || '';
   const mode = url.searchParams.get('mode') || undefined;
+  const folderId = url.searchParams.get('folderId') || undefined;
 
   // Parse API keys from cookies
   const cookieHeader = request.headers.get('Cookie') || '';
@@ -65,11 +62,20 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     /* ignore */
   }
 
-  // Layer 1: Get user profile (always injected in full)
-  const profile = await getUserProfile(authed!.supabase, authed!.user!.id);
+  /*
+   * Which memory this conversation may see. A project set to "Project-only"
+   * reads its OWN profile and never the global one — that is what makes the
+   * setting real rather than decorative.
+   */
+  const scope = await resolveMemoryScope(authed!.supabase, authed!.user!.id, folderId);
 
-  // Layer 3: Retrieve relevant facts via hybrid search
-  const facts = query ? await retrieveRelevantFacts(authed!.supabase, authed!.user!.id, query, apiKeys, 5, mode) : [];
+  // Layer 1: the profile (always injected in full)
+  const profile = await readScopedProfile(authed!.supabase, authed!.user!.id, scope);
+
+  // Layer 3: relevant facts via hybrid search, scoped the same way
+  const facts = query
+    ? await retrieveRelevantFacts(authed!.supabase, authed!.user!.id, query, apiKeys, 5, mode, scope)
+    : [];
 
   const factsText = formatFactsForInjection(facts);
   const memoryBlock = buildMemoryBlock(profile, factsText);
@@ -112,6 +118,7 @@ async function handleExtraction(authed: any, request: Request) {
     messages: Array<{ role: string; content: string }>;
     conversationId?: string;
     mode?: string;
+    folderId?: string;
   }>();
 
   if (!body.messages || body.messages.length === 0) {
@@ -128,8 +135,14 @@ async function handleExtraction(authed: any, request: Request) {
     /* ignore */
   }
 
-  // Get current memory
-  const currentMemory = await getProfile(authed!.supabase, authed!.user!.id);
+  /*
+   * Read AND write the same scope: what a Project-only conversation learns
+   * stays in that project's profile, so it can never surface in an outside
+   * chat. A Default project reads and writes the global profile, so the two
+   * directions stay shared exactly as before projects existed.
+   */
+  const scope = await resolveMemoryScope(authed!.supabase, authed!.user!.id, body.folderId);
+  const currentMemory = await readScopedProfile(authed!.supabase, authed!.user!.id, scope);
 
   // Extract operations
   const result = await extractMemoryOperations(currentMemory, body.messages, apiKeys);
@@ -147,15 +160,24 @@ async function handleExtraction(authed: any, request: Request) {
     });
   }
 
-  // Save updated profile (Layer 1)
-  await saveProfile(authed!.supabase, authed!.user!.id, result.newMemory);
+  // Save updated profile (Layer 1) into the resolved scope
+  await writeScopedProfile(authed!.supabase, authed!.user!.id, scope, result.newMemory);
 
   // Extract and store facts (Layer 3)
   const facts = extractFactsFromMemory(result.newMemory);
   const mode = body.mode || 'chat';
 
   for (const fact of facts) {
-    await storeFact(authed!.supabase, authed!.user!.id, fact.key, fact.value, mode, body.conversationId, apiKeys);
+    await storeFact(
+      authed!.supabase,
+      authed!.user!.id,
+      fact.key,
+      fact.value,
+      mode,
+      body.conversationId,
+      apiKeys,
+      scope.projectOnly ? scope.folderId : undefined,
+    );
   }
 
   logger.info(`Memory extraction complete: ${result.operations.length} ops, ${facts.length} facts stored`);
@@ -170,6 +192,9 @@ async function handleExtraction(authed: any, request: Request) {
 async function handleClear(authed: any) {
   // Clear Layer 1
   await authed!.supabase.from('user_memory').delete().eq('user_id', authed!.user!.id);
+
+  // Clear per-project profiles too, or "clear memory" would leave them behind
+  await authed!.supabase.from('folder_memory').delete().eq('user_id', authed!.user!.id);
 
   // Clear Layer 3
   await authed!.supabase.from('memory_facts').delete().eq('user_id', authed!.user!.id);

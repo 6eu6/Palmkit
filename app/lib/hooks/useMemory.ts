@@ -12,7 +12,7 @@
 
 import { useCallback, useRef } from 'react';
 import { useStore } from '@nanostores/react';
-import { chatId } from '~/lib/persistence';
+import { chatId, db, getMessages } from '~/lib/persistence';
 
 const EXTRACTION_INTERVAL = 3; // trigger extraction every N messages
 
@@ -27,27 +27,57 @@ export function useMemory() {
   const currentChatId = useStore(chatId);
 
   /**
+   * Which project the open conversation belongs to.
+   *
+   * Read from the stored record rather than the sidebar's scope: what governs
+   * memory is the project the CONVERSATION is filed under, not whichever
+   * project the user happens to be browsing.
+   */
+  const currentFolderId = useCallback(async (): Promise<string | undefined> => {
+    const id = chatId.get();
+
+    if (!db || !id) {
+      return undefined;
+    }
+
+    try {
+      return (await getMessages(db, id))?.folderId;
+    } catch {
+      return undefined;
+    }
+  }, []);
+
+  /**
    * Fetch the memory block for system prompt injection.
    * Called before sending a chat message.
    */
-  const fetchMemoryBlock = useCallback(async (query: string, mode: string): Promise<string> => {
-    try {
-      const params = new URLSearchParams({ query, mode });
-      const response = await fetch(`/api/memory?${params}`, {
-        credentials: 'same-origin',
-      });
+  const fetchMemoryBlock = useCallback(
+    async (query: string, mode: string): Promise<string> => {
+      try {
+        const folderId = await currentFolderId();
+        const params = new URLSearchParams({ query, mode });
 
-      if (!response.ok) {
+        if (folderId) {
+          params.set('folderId', folderId);
+        }
+
+        const response = await fetch(`/api/memory?${params}`, {
+          credentials: 'same-origin',
+        });
+
+        if (!response.ok) {
+          return '';
+        }
+
+        const data: MemoryResponse = await response.json();
+
+        return data.memoryBlock || '';
+      } catch {
         return '';
       }
-
-      const data: MemoryResponse = await response.json();
-
-      return data.memoryBlock || '';
-    } catch {
-      return '';
-    }
-  }, []);
+    },
+    [currentFolderId],
+  );
 
   /**
    * Trigger async memory extraction after a conversation turn.
@@ -74,13 +104,14 @@ export function useMemory() {
             messages: messages.slice(-8), // last 8 turns
             conversationId: currentChatId,
             mode,
+            folderId: await currentFolderId(),
           }),
         });
       } catch {
         // Silent — extraction is best-effort
       }
     },
-    [currentChatId],
+    [currentChatId, currentFolderId],
   );
 
   return {

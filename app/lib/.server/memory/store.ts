@@ -100,12 +100,13 @@ export async function storeFact(
   mode: string,
   conversationId: string | undefined,
   apiKeys: Record<string, string>,
+  folderId?: string,
 ): Promise<void> {
   // Generate embedding
   const embeddingText = `${key}=${value}`;
   const embedding = await generateFactEmbedding(embeddingText, apiKeys);
 
-  const { error } = await supabase.from('memory_facts').upsert({
+  const row = {
     user_id: userId,
     fact_key: key,
     fact_value: value,
@@ -113,7 +114,14 @@ export async function storeFact(
     conversation_id: conversationId,
     embedding,
     updated_at: new Date().toISOString(),
-  });
+  };
+
+  // folder_id ships in 0016; retry without it on a database that lacks it.
+  let { error } = await supabase.from('memory_facts').upsert({ ...row, folder_id: folderId ?? null });
+
+  if (error) {
+    ({ error } = await supabase.from('memory_facts').upsert(row));
+  }
 
   if (error) {
     logger.warn(`Failed to store fact ${key}: ${error.message}`);

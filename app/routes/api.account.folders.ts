@@ -40,7 +40,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const { data, error } = await supabase
     .from('folders')
-    .select('id, name, color, created_at, updated_at')
+    .select('id, name, color, memory_mode, created_at, updated_at')
     .eq('user_id', user.id)
     .order('updated_at', { ascending: false });
 
@@ -82,6 +82,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     id?: string;
     name?: string;
     color?: string;
+    memory_mode?: string;
     created_at?: string;
   };
 
@@ -95,6 +96,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
    * The id is generated on the client so a project can be created, used and
    * moved into offline, then mirrored later under the same identity.
    */
+  const memoryMode = body.memory_mode === 'project_only' ? 'project_only' : 'default';
+
   const row = {
     ...(body.id ? { id: body.id } : {}),
     user_id: user.id,
@@ -104,7 +107,16 @@ export async function action({ request, context }: ActionFunctionArgs) {
     ...(body.created_at ? { created_at: body.created_at } : {}),
   };
 
-  const { data, error } = await supabase.from('folders').upsert(row, { onConflict: 'id' }).select().maybeSingle();
+  // memory_mode ships in 0016; retry without it on a database that lacks it.
+  let { data, error } = await supabase
+    .from('folders')
+    .upsert({ ...row, memory_mode: memoryMode }, { onConflict: 'id' })
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    ({ data, error } = await supabase.from('folders').upsert(row, { onConflict: 'id' }).select().maybeSingle());
+  }
 
   if (error) {
     if (isMissingFolders(error)) {

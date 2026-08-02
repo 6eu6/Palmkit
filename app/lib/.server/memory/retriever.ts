@@ -105,6 +105,7 @@ export async function retrieveRelevantFacts(
   apiKeys: Record<string, string>,
   limit: number = 5,
   mode?: string,
+  scope?: { folderId?: string; projectOnly: boolean },
 ): Promise<RetrievedFact[]> {
   // Generate embedding for the query
   const embedding = await generateEmbedding(query, apiKeys);
@@ -116,13 +117,31 @@ export async function retrieveRelevantFacts(
 
   try {
     // Call the hybrid search RPC
-    const { data, error } = await supabase.rpc('search_memory_facts', {
+    /*
+     * The scoped RPC ships in migration 0016. On a database that has not run
+     * it, fall back to the original — facts are then unscoped, but the
+     * profile (the layer that actually reaches the model) is still scoped by
+     * readScopedProfile, so Project-only never leaks the real memory.
+     */
+    let { data, error } = await supabase.rpc('search_memory_facts_scoped', {
       p_user_id: userId,
       p_query: query,
       p_query_embedding: embedding,
       p_limit: limit,
       p_mode: mode || null,
+      p_folder_id: scope?.folderId ?? null,
+      p_project_only: scope?.projectOnly ?? false,
     });
+
+    if (error) {
+      ({ data, error } = await supabase.rpc('search_memory_facts', {
+        p_user_id: userId,
+        p_query: query,
+        p_query_embedding: embedding,
+        p_limit: limit,
+        p_mode: mode || null,
+      }));
+    }
 
     if (error) {
       logger.warn(`Hybrid search failed: ${error.message}`);

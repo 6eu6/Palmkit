@@ -236,6 +236,12 @@ export interface Folder {
   id: string;
   name: string;
   color?: string;
+
+  /**
+   * 'default'      the project shares the global memory both ways.
+   * 'project_only' the project reads and writes only its own memory.
+   */
+  memoryMode?: 'default' | 'project_only';
   createdAt: string;
   updatedAt: string;
 }

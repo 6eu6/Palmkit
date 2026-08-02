@@ -10,6 +10,7 @@ import { ChatItemMenu } from '~/components/sidebar/ChatItemMenu';
 import { renameChat, setChatPinned } from '~/lib/persistence/chatActions';
 import { useLongPress } from '~/lib/hooks/useLongPress';
 import { ProjectsSection } from '~/components/sidebar/ProjectsSection';
+import { ProjectSheet, type MemoryMode } from '~/components/sidebar/ProjectSheet';
 import {
   activeFolderIdStore,
   createFolder,
@@ -18,6 +19,7 @@ import {
   loadFolders,
   moveChatToFolder,
   renameFolder,
+  setFolderMemoryMode,
   type Folder,
 } from '~/lib/stores/folders';
 import { classNames } from '~/utils/classNames';
@@ -206,7 +208,8 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
   const [pendingDelete, setPendingDelete] = useState<ChatHistoryItem | null>(null);
   const [pendingMoveItem, setPendingMoveItem] = useState<ChatHistoryItem | null>(null);
   const [pendingDeleteFolder, setPendingDeleteFolder] = useState<Folder | null>(null);
-  const [newProjectName, setNewProjectName] = useState('');
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetFolder, setSheetFolder] = useState<Folder | undefined>(undefined);
   const mode = useStore(sidebarModeStore);
   const folders = useStore(foldersStore);
   const activeFolderId = useStore(activeFolderIdStore);
@@ -295,6 +298,31 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
     }
   }, [open]);
 
+  /*
+   * Push the app surface aside while the drawer is open (see `.pk-app-shell`
+   * in index.scss) — the X / Twitter pattern: the conversation slides right
+   * and stays partly visible instead of being covered over.
+   *
+   * Driven through a data attribute on <html> rather than React state,
+   * because the shell is a SIBLING of this drawer in the route layout. It has
+   * to be a sibling: a transform makes an element the containing block for
+   * `position: fixed` descendants, so a drawer nested inside the shell would
+   * be pushed along by the very transform it is causing.
+   */
+  useEffect(() => {
+    const root = document.documentElement;
+
+    if (open) {
+      root.dataset.pkDrawer = 'open';
+    } else {
+      delete root.dataset.pkDrawer;
+    }
+
+    return () => {
+      delete root.dataset.pkDrawer;
+    };
+  }, [open]);
+
   /** The URL owns the project scope, so it survives reloads and tab switches. */
   const selectFolder = useCallback(
     (folderId: string | undefined) => {
@@ -344,49 +372,47 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
     [folders, loadProjects],
   );
 
-  const closeMoveDialog = useCallback(() => {
+  const closeSheet = useCallback(() => {
+    setSheetOpen(false);
+    setSheetFolder(undefined);
     setPendingMoveItem(null);
-    setNewProjectName('');
   }, []);
 
-  const submitNewProject = useCallback(async () => {
-    const item = pendingMoveItem;
-
-    if (!db || !item) {
-      return;
-    }
-
-    try {
-      const folder = await createFolder(db, newProjectName);
-
-      if (folder) {
-        await moveChatToFolder(db, item.id, folder.id);
-        await loadProjects();
-        toast.success(`Moved to ${folder.name}`);
+  /**
+   * Create or update a project from the sheet. When it was opened from a
+   * conversation's "New project…", the conversation is filed into the new
+   * project in the same step.
+   */
+  const submitSheet = useCallback(
+    async (name: string, memoryMode: MemoryMode) => {
+      if (!db) {
+        return;
       }
 
-      closeMoveDialog();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to create project');
-    }
-  }, [pendingMoveItem, newProjectName, loadProjects, closeMoveDialog]);
+      try {
+        if (sheetFolder) {
+          await renameFolder(db, sheetFolder.id, name);
+          await setFolderMemoryMode(db, sheetFolder.id, memoryMode);
+          toast.success('Project updated');
+        } else {
+          const folder = await createFolder(db, name, memoryMode);
 
-  // Escape closes the drawer (it used to trap the user until they found the X).
-  useEffect(() => {
-    if (!open) {
-      return undefined;
-    }
+          if (folder && pendingMoveItem) {
+            await moveChatToFolder(db, pendingMoveItem.id, folder.id);
+            await loadProjects();
+            toast.success(`Moved to ${folder.name}`);
+          } else {
+            toast.success('Project created');
+          }
+        }
 
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
+        closeSheet();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to save project');
       }
-    };
-
-    window.addEventListener('keydown', onKey);
-
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+    },
+    [sheetFolder, pendingMoveItem, loadProjects, closeSheet],
+  );
 
   const handleOpenProject = (item: ChatHistoryItem) => {
     /*
@@ -496,8 +522,12 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
       {open && (
         <>
           {/* Backdrop */}
+          {/* Invisible: tapping the pushed-aside conversation closes the
+              drawer, but it is not dimmed — the shell already carries its own
+              subtle scrim, and stacking a second one over a surface that has
+              moved out of the way just looks muddy. */}
           <motion.div
-            className="fixed inset-0 z-[998] bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-[998]"
             variants={OVERLAY_VARIANTS}
             initial="hidden"
             animate="visible"
@@ -509,9 +539,9 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
           {/* Drawer — left side panel, themed with the same classes as the desktop sidebar */}
           <motion.div
             className={classNames(
-              'fixed left-0 top-0 bottom-0 z-[999] flex flex-col w-[85%] max-w-[340px]',
+              'fixed left-0 top-0 bottom-0 z-[999] flex flex-col w-[78%] max-w-[330px]',
               'bg-white dark:bg-black border-r border-gray-200 dark:border-neutral-800',
-              'rounded-r-2xl shadow-2xl',
+              'shadow-2xl',
             )}
             style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
             variants={DRAWER_VARIANTS}
@@ -626,29 +656,15 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
               counts={folderCounts}
               activeFolderId={activeFolderId}
               onSelect={selectFolder}
-              onCreate={async (name) => {
-                if (!db) {
-                  return;
-                }
-
-                try {
-                  await createFolder(db, name);
-                  toast.success('Project created');
-                } catch (error) {
-                  toast.error(error instanceof Error ? error.message : 'Failed to create project');
-                }
+              onNew={() => {
+                setSheetFolder(undefined);
+                setPendingMoveItem(null);
+                setSheetOpen(true);
               }}
-              onRename={async (folder, name) => {
-                if (!db) {
-                  return;
-                }
-
-                try {
-                  await renameFolder(db, folder.id, name);
-                  toast.success('Project renamed');
-                } catch (error) {
-                  toast.error(error instanceof Error ? error.message : 'Failed to rename project');
-                }
+              onOpenSettings={(folder) => {
+                setSheetFolder(folder);
+                setPendingMoveItem(null);
+                setSheetOpen(true);
               }}
               onDelete={setPendingDeleteFolder}
             />
@@ -677,7 +693,11 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                         formatTime={formatTime}
                         folders={folders}
                         onMoveToProject={handleMoveToProject}
-                        onCreateProjectAndMove={setPendingMoveItem}
+                        onCreateProjectAndMove={(item) => {
+                          setPendingMoveItem(item);
+                          setSheetFolder(undefined);
+                          setSheetOpen(true);
+                        }}
                       />
                     ))}
                   </div>
@@ -691,40 +711,13 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
             </div>
           </motion.div>
 
-          <DialogRoot open={pendingMoveItem !== null}>
-            <Dialog onBackdrop={closeMoveDialog} onClose={closeMoveDialog}>
-              <div className="p-6 bg-white dark:bg-gray-950">
-                <DialogTitle className="text-gray-900 dark:text-white">New project</DialogTitle>
-                <DialogDescription className="mt-2 text-gray-600 dark:text-gray-400">
-                  <p className="mb-3">
-                    <span className="font-medium text-gray-900 dark:text-white">{pendingMoveItem?.description}</span>{' '}
-                    will be moved into it.
-                  </p>
-                  <input
-                    autoFocus
-                    value={newProjectName}
-                    placeholder="Project name"
-                    onChange={(e) => setNewProjectName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        void submitNewProject();
-                      }
-                    }}
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-1 focus:ring-gray-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
-                  />
-                </DialogDescription>
-              </div>
-              <div className="flex justify-end gap-3 px-6 py-4 bg-gray-50 dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800">
-                <DialogButton type="secondary" onClick={closeMoveDialog}>
-                  Cancel
-                </DialogButton>
-                <DialogButton type="primary" onClick={() => void submitNewProject()}>
-                  Create &amp; move
-                </DialogButton>
-              </div>
-            </Dialog>
-          </DialogRoot>
+          <ProjectSheet
+            open={sheetOpen}
+            folder={sheetFolder}
+            movingLabel={sheetFolder ? undefined : (pendingMoveItem?.description ?? undefined)}
+            onClose={closeSheet}
+            onSubmit={submitSheet}
+          />
 
           <DialogRoot open={pendingDeleteFolder !== null}>
             <Dialog onBackdrop={() => setPendingDeleteFolder(null)} onClose={() => setPendingDeleteFolder(null)}>

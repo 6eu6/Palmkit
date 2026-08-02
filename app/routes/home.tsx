@@ -46,9 +46,11 @@ export default function Home() {
 
   return (
     <div className="relative flex flex-col h-full w-full bg-palmkit-elements-background-depth-1">
-      <Header />
       <PersistentChrome />
-      <ClientOnly fallback={<BaseChat />}>{() => <Chat />}</ClientOnly>
+      <div className="pk-app-shell relative flex h-full w-full flex-col">
+        <Header />
+        <ClientOnly fallback={<BaseChat />}>{() => <Chat />}</ClientOnly>
+      </div>
     </div>
   );
 }

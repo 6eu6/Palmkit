@@ -13,6 +13,7 @@ import { HistoryItem } from './HistoryItem';
 import { binDates, partitionPinned } from './date-binning';
 import { setChatPinned } from '~/lib/persistence/chatActions';
 import { ProjectsSection } from './ProjectsSection';
+import { ProjectSheet, type MemoryMode } from './ProjectSheet';
 import {
   activeFolderIdStore,
   createFolder,
@@ -21,6 +22,7 @@ import {
   loadFolders,
   moveChatToFolder,
   renameFolder,
+  setFolderMemoryMode,
   type Folder,
 } from '~/lib/stores/folders';
 import { useSearchFilter } from '~/lib/hooks/useSearchFilter';
@@ -137,7 +139,8 @@ export const Menu = () => {
   const [selectionMode, setSelectionMode] = useState(false);
   const [pendingMoveItem, setPendingMoveItem] = useState<ChatHistoryItem | null>(null);
   const [pendingDeleteFolder, setPendingDeleteFolder] = useState<Folder | null>(null);
-  const [newProjectName, setNewProjectName] = useState('');
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetFolder, setSheetFolder] = useState<Folder | undefined>(undefined);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
 
   const { filteredItems: filteredList, handleSearchChange } = useSearchFilter({
@@ -457,38 +460,47 @@ export const Menu = () => {
     [folders, loadEntries],
   );
 
-  const closeMoveDialog = useCallback(() => {
+  const closeSheet = useCallback(() => {
+    setSheetOpen(false);
+    setSheetFolder(undefined);
     setPendingMoveItem(null);
-    setNewProjectName('');
   }, []);
 
-  /*
-   * Not a <form>: DialogButton renders a bare <button>, which inside a form
-   * defaults to type="submit" — so Cancel would submit it too. The primary
-   * button and the Enter key both call this instead.
+  /**
+   * Create or update a project from the sheet. When it was opened from a
+   * conversation's "New project…", the conversation is filed into the new
+   * project in the same step.
    */
-  const submitNewProject = useCallback(async () => {
-    const item = pendingMoveItem;
-    const name = newProjectName;
-
-    if (!db || !item) {
-      return;
-    }
-
-    try {
-      const folder = await createFolder(db, name);
-
-      if (folder) {
-        await moveChatToFolder(db, item.id, folder.id);
-        loadEntries();
-        toast.success(`Moved to ${folder.name}`);
+  const submitSheet = useCallback(
+    async (name: string, memoryMode: MemoryMode) => {
+      if (!db) {
+        return;
       }
 
-      closeMoveDialog();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to create project');
-    }
-  }, [pendingMoveItem, newProjectName, loadEntries, closeMoveDialog]);
+      try {
+        if (sheetFolder) {
+          await renameFolder(db, sheetFolder.id, name);
+          await setFolderMemoryMode(db, sheetFolder.id, memoryMode);
+          toast.success('Project updated');
+        } else {
+          const folder = await createFolder(db, name, memoryMode);
+
+          if (folder && pendingMoveItem) {
+            await moveChatToFolder(db, pendingMoveItem.id, folder.id);
+            loadEntries();
+            toast.success(`Moved to ${folder.name}`);
+          } else {
+            toast.success('Project created');
+          }
+        }
+
+        closeSheet();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to save project');
+      }
+    },
+    [sheetFolder, pendingMoveItem, loadEntries, closeSheet],
+  );
 
   const handleCreateProjectAndMove = useCallback(async (item: ChatHistoryItem) => {
     if (!db) {
@@ -710,29 +722,15 @@ export const Menu = () => {
             counts={folderCounts}
             activeFolderId={activeFolderId}
             onSelect={selectFolder}
-            onCreate={async (name) => {
-              if (!db) {
-                return;
-              }
-
-              try {
-                await createFolder(db, name);
-                toast.success('Project created');
-              } catch (error) {
-                toast.error(error instanceof Error ? error.message : 'Failed to create project');
-              }
+            onNew={() => {
+              setSheetFolder(undefined);
+              setPendingMoveItem(null);
+              setSheetOpen(true);
             }}
-            onRename={async (folder, name) => {
-              if (!db) {
-                return;
-              }
-
-              try {
-                await renameFolder(db, folder.id, name);
-                toast.success('Project renamed');
-              } catch (error) {
-                toast.error(error instanceof Error ? error.message : 'Failed to rename project');
-              }
+            onOpenSettings={(folder) => {
+              setSheetFolder(folder);
+              setPendingMoveItem(null);
+              setSheetOpen(true);
             }}
             onDelete={setPendingDeleteFolder}
           />
@@ -922,44 +920,18 @@ export const Menu = () => {
 
       {/* "New project…" from a conversation's Move-to-project submenu:
           create the project and move the conversation in one step. */}
-      <DialogRoot open={pendingMoveItem !== null}>
-        <Dialog onBackdrop={closeMoveDialog} onClose={closeMoveDialog}>
-          <div className="p-6 bg-white dark:bg-gray-950">
-            <DialogTitle className="text-gray-900 dark:text-white">New project</DialogTitle>
-            <DialogDescription className="mt-2 text-gray-600 dark:text-gray-400">
-              <p className="mb-3">
-                <span className="font-medium text-gray-900 dark:text-white">{pendingMoveItem?.description}</span> will
-                be moved into it.
-              </p>
-              <input
-                autoFocus
-                value={newProjectName}
-                placeholder="Project name"
-                onChange={(e) => setNewProjectName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    void submitNewProject();
-                  }
-
-                  if (e.key === 'Escape') {
-                    closeMoveDialog();
-                  }
-                }}
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-1 focus:ring-gray-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
-              />
-            </DialogDescription>
-          </div>
-          <div className="flex justify-end gap-3 px-6 py-4 bg-gray-50 dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800">
-            <DialogButton type="secondary" onClick={closeMoveDialog}>
-              Cancel
-            </DialogButton>
-            <DialogButton type="primary" onClick={() => void submitNewProject()}>
-              Create &amp; move
-            </DialogButton>
-          </div>
-        </Dialog>
-      </DialogRoot>
+      {/*
+        One sheet serves both "New project" and "Project settings", and both
+        entry points into creating one — the Projects list and a conversation's
+        Move-to-project → New project…
+      */}
+      <ProjectSheet
+        open={sheetOpen}
+        folder={sheetFolder}
+        movingLabel={sheetFolder ? undefined : (pendingMoveItem?.description ?? undefined)}
+        onClose={closeSheet}
+        onSubmit={submitSheet}
+      />
 
       {/* Deleting a project keeps its conversations — they return to the
           ungrouped list. The copy says so, because "Delete project" reads
