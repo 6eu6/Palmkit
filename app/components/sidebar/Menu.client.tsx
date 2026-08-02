@@ -10,7 +10,7 @@ import { Button } from '~/components/ui/Button';
 import { db, deleteChatCompletely, getAll, chatId, type ChatHistoryItem, useChatHistory } from '~/lib/persistence';
 import { cubicEasingFn } from '~/utils/easings';
 import { HistoryItem } from './HistoryItem';
-import { binDates, partitionPinned } from './date-binning';
+import { partitionPinned } from './date-binning';
 import { setChatPinned } from '~/lib/persistence/chatActions';
 import { ProjectsSection } from './ProjectsSection';
 import { ProjectSheet, type MemoryMode } from './ProjectSheet';
@@ -81,28 +81,6 @@ type DialogContent =
   | { type: 'bulkDelete'; items: ChatHistoryItem[] }
   | null;
 
-function CurrentDateTime() {
-  const [dateTime, setDateTime] = useState(new Date());
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setDateTime(new Date());
-    }, 60000);
-
-    return () => clearInterval(timer);
-  }, []);
-
-  return (
-    <div className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800/50">
-      <div className="h-4 w-4 i-ph:clock opacity-80" />
-      <div className="flex gap-2">
-        <span>{dateTime.toLocaleDateString()}</span>
-        <span>{dateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-      </div>
-    </div>
-  );
-}
-
 export const Menu = () => {
   const { duplicateCurrentChat, exportChat } = useChatHistory();
   const menuRef = useRef<HTMLDivElement>(null);
@@ -152,10 +130,15 @@ export const Menu = () => {
   });
 
   /** Pinned section on top, then the usual date bins over what's left. */
-  const sections = useMemo(() => {
+  /*
+   * One flat list, newest first, pinned held at the top — the same shape as
+   * the mobile drawer. The date headings restated what the ordering already
+   * said, and "Pinned" restated the pin icon on the row.
+   */
+  const ordered = useMemo(() => {
     const { pinned, rest } = partitionPinned(filteredList);
 
-    return [...(pinned.length ? [{ category: 'Pinned', items: pinned }] : []), ...binDates(rest)];
+    return [...pinned, ...rest];
   }, [filteredList]);
 
   const loadEntries = useCallback(() => {
@@ -593,7 +576,6 @@ export const Menu = () => {
             <ThemeSwitch />
           </div>
         </div>
-        <CurrentDateTime />
         <div className="flex-1 flex flex-col h-full w-full overflow-hidden">
           <div className="p-4 space-y-3">
             {/*
@@ -761,31 +743,24 @@ export const Menu = () => {
               </div>
             )}
             <DialogRoot open={dialogContent !== null}>
-              {sections.map(({ category, items }) => (
-                <div key={category} className="mt-2 first:mt-0 space-y-1">
-                  <div className="text-xs font-medium text-gray-500 dark:text-gray-400 sticky top-0 z-1 bg-white dark:bg-gray-950 px-4 py-1">
-                    {category}
-                  </div>
-                  <div className="space-y-0.5 pr-1">
-                    {items.map((item) => (
-                      <HistoryItem
-                        key={item.id}
-                        item={item}
-                        exportChat={exportChat}
-                        onDelete={() => setDialogContentWithLogging({ type: 'delete', item })}
-                        onDuplicate={() => handleDuplicate(item.id)}
-                        onTogglePin={handleTogglePin}
-                        folders={folders}
-                        onMoveToProject={handleMoveToProject}
-                        onCreateProjectAndMove={handleCreateProjectAndMove}
-                        selectionMode={selectionMode}
-                        isSelected={selectedItems.includes(item.id)}
-                        onToggleSelection={toggleItemSelection}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
+              <div className="mt-2 space-y-0.5 pr-1">
+                {ordered.map((item) => (
+                  <HistoryItem
+                    key={item.id}
+                    item={item}
+                    exportChat={exportChat}
+                    onDelete={() => setDialogContentWithLogging({ type: 'delete', item })}
+                    onDuplicate={() => handleDuplicate(item.id)}
+                    onTogglePin={handleTogglePin}
+                    folders={folders}
+                    onMoveToProject={handleMoveToProject}
+                    onCreateProjectAndMove={handleCreateProjectAndMove}
+                    selectionMode={selectionMode}
+                    isSelected={selectedItems.includes(item.id)}
+                    onToggleSelection={toggleItemSelection}
+                  />
+                ))}
+              </div>
               <Dialog onBackdrop={closeDialog} onClose={closeDialog}>
                 {dialogContent?.type === 'delete' && (
                   <>
