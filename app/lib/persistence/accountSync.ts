@@ -2,6 +2,7 @@ import type { Message } from 'ai';
 import { authUserStore } from '~/lib/stores/auth';
 import type { Snapshot } from './types';
 import {
+  deleteFolderLocal,
   getAllFolders,
   getMessages,
   putFolderLocal,
@@ -361,13 +362,39 @@ export async function syncFoldersFromAccount(db: IDBDatabase): Promise<void> {
 
     const data = (await res.json()) as { folders?: AccountFolder[]; unavailable?: boolean };
 
-    if (data.unavailable || !data.folders?.length) {
+    /*
+     * `unavailable` means the folders table itself is missing, so the empty
+     * list is "we don't know", not "you have none" — deleting against it would
+     * wipe every project the user has. An empty list from a healthy table, on
+     * the other hand, is authoritative and must be honoured.
+     */
+    if (data.unavailable) {
       return;
     }
 
+    const remotes = data.folders ?? [];
     const local = new Map((await getAllFolders(db)).map((f) => [f.id, f]));
 
-    for (const remote of data.folders) {
+    /*
+     * Deletions propagate. The account is the source of truth for WHICH
+     * projects exist, so a project deleted on one device has to disappear from
+     * the others — without this it lingered on every other device forever, and
+     * re-appeared in the sidebar after each sync.
+     *
+     * The grace window protects a project created moments ago on this device
+     * whose mirror is still in flight: it is legitimately absent from the
+     * server's answer, and deleting it would destroy work the user just did.
+     */
+    const remoteIds = new Set(remotes.map((f) => f.id));
+    const graceCutoff = Date.now() - 2 * 60 * 1000;
+
+    for (const [id, mine] of local) {
+      if (!remoteIds.has(id) && Date.parse(mine.createdAt) < graceCutoff) {
+        await deleteFolderLocal(db, id);
+      }
+    }
+
+    for (const remote of remotes) {
       const mine = local.get(remote.id);
 
       // Last write wins, which is all a name and a colour need.

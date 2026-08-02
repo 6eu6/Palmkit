@@ -154,8 +154,21 @@ export function AppShell({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  /*
+   * `z-10` and an opaque background below are load-bearing, not styling.
+   *
+   * The drawer is revealed from UNDERNEATH this surface — that is the whole
+   * pattern — so it renders at a lower z-index and this sheet has to cover it
+   * completely while closed. Without both, the drawer sat on top of the
+   * conversation permanently: at rest it is only pulled back by its parallax
+   * offset, so most of it stayed on screen, greyed by its own scrim and with
+   * its text clipped at the left edge. That is a drawer that never shuts.
+   */
   return (
-    <motion.div className="pk-app-shell relative flex h-full w-full flex-col" style={{ x, boxShadow: shadow }}>
+    <motion.div
+      className="pk-app-shell relative z-10 flex h-full w-full flex-col bg-palmkit-elements-background-depth-1"
+      style={{ x, boxShadow: shadow }}
+    >
       {children}
 
       {/* Tapping the strip that is still showing brings the conversation back.

@@ -520,9 +520,16 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
     <>
       {
         <>
-          {/* Drawer — left side panel, themed with the same classes as the desktop sidebar */}
+          {/* Drawer — left side panel, themed with the same classes as the
+              desktop sidebar.
+
+              z-0 is load-bearing: this panel lives BENEATH the conversation
+              and is revealed as that slides away. AppShell is the sheet on
+              top, and it has to cover this one completely while closed —
+              at rest the drawer is only pulled back by its parallax offset,
+              so most of it is still on screen. */}
           <motion.div
-            className={classNames('fixed left-0 top-0 bottom-0 z-[999] flex flex-col', 'bg-white dark:bg-black')}
+            className={classNames('fixed left-0 top-0 bottom-0 z-0 flex flex-col', 'bg-white dark:bg-black')}
             style={{
               x,
               pointerEvents,

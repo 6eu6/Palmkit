@@ -1,10 +1,11 @@
 import { useStore } from '@nanostores/react';
-import { AnimatePresence, animate, motion, useMotionValue } from 'framer-motion';
+import { AnimatePresence, animate, motion, useMotionValue, useTransform } from 'framer-motion';
 import { memo, useEffect, useRef, useState } from 'react';
 import { chatStore } from '~/lib/stores/chat';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { buildStatusStore } from '~/lib/stores/build-status';
 import { mobileActiveTab } from '~/lib/stores/mobile';
+import { drawerProgress } from '~/lib/stores/drawerMotion';
 import { previewFilesStore } from '~/lib/stores/build-status';
 import { classNames } from '~/utils/classNames';
 
@@ -85,6 +86,18 @@ export const FloatingViewToggle = memo(() => {
   const draggingRef = useRef(false);
   const x = useMotionValue(0);
   const y = useMotionValue(0);
+
+  /*
+   * Fades out as the drawer opens. This button floats OUTSIDE the surface the
+   * drawer pushes, so it would otherwise hang over the open drawer, anchored
+   * to a screen edge that has moved out from under it.
+   *
+   * Declared here, above every early return — the component bails out for
+   * "nothing to preview yet" and "still building", and a hook below those
+   * would change the hook order between renders.
+   */
+  const toggleOpacity = useTransform(drawerProgress, [0, 0.25], [1, 0]);
+  const togglePointer = useTransform(drawerProgress, (v) => (v > 0.05 ? 'none' : 'auto'));
 
   useEffect(() => {
     setMounted(true);
@@ -185,7 +198,15 @@ export const FloatingViewToggle = memo(() => {
         // iOS material: lit top rim + faint bottom shade + inner glow + soft lift.
         'shadow-[inset_0_1px_0_0_rgba(255,255,255,0.5),inset_0_-1px_0_0_rgba(0,0,0,0.05),inset_0_0_14px_0_rgba(255,255,255,0.07),0_8px_22px_-6px_rgba(0,0,0,0.35)]',
       )}
-      style={{ x, y, height: SIZE, minWidth: SIZE, touchAction: 'none' }}
+      style={{
+        x,
+        y,
+        height: SIZE,
+        minWidth: SIZE,
+        touchAction: 'none',
+        opacity: toggleOpacity,
+        pointerEvents: togglePointer,
+      }}
       whileTap={{ scale: 0.9 }}
       drag
       dragMomentum={false}
