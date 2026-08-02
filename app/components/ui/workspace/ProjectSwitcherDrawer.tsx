@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, Link } from '@remix-run/react';
 import { motion, useTransform } from 'framer-motion';
 import { animateDrawer, drawerProgress, drawerWidth } from '~/lib/stores/drawerMotion';
@@ -186,10 +186,22 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState('');
 
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   const closeSearch = useCallback(() => {
     setSearching(false);
     setQuery('');
   }, []);
+
+  /*
+   * The input is always mounted now — it is the pill that grows, not a field
+   * that appears — so `autoFocus` would only ever fire once, on first render.
+   */
+  useEffect(() => {
+    if (searching) {
+      searchInputRef.current?.focus();
+    }
+  }, [searching]);
 
   const loadProjects = useCallback(async () => {
     if (!db) {
@@ -551,60 +563,88 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
             <motion.div className="pointer-events-none absolute inset-0 z-50 bg-black" style={{ opacity: dim }} />
 
             {/*
-             * Brand + search.
+             * Brand + search, sharing one row.
+             *
+             * The field GROWS OUT OF the icon rather than appearing beneath
+             * it: the pill is anchored to the right edge and animates its
+             * width, so the magnifier you pressed slides left to become the
+             * field's own icon and the input fills the space that opens up.
+             * A field that dropped into a new row below made the whole panel
+             * jump and read as a second, unrelated control.
              *
              * Search sits where the close button used to. The drawer already
              * has two ways to dismiss it — drag it back, or tap the strip of
              * conversation still showing — so the corner was spending itself
              * on something the panel could already do, while the one thing it
-             * could not do was find a conversation. While the field is open
-             * the same button becomes the way out of it.
+             * could not do was find a conversation.
              */}
-            <div className="flex items-center justify-between px-4 pt-4 pb-3">
-              <div className="flex items-center gap-2">
-                <img src="/palmkit-mark.png" alt="" className="h-7 w-7 select-none dark:hidden pointer-events-none" />
-                <img
-                  src="/palmkit-mark-ondark.png"
-                  alt=""
-                  className="hidden h-7 w-7 select-none dark:block pointer-events-none"
-                />
-                <span className="text-[15px] font-semibold text-palmkit-elements-textPrimary">Palmkit</span>
-              </div>
-              <button
-                onClick={() => (searching ? closeSearch() : setSearching(true))}
-                aria-label={searching ? 'Close search' : 'Search conversations'}
-                aria-expanded={searching}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition active:scale-95 hover:text-gray-900 dark:hover:text-white"
-              >
-                <div className={classNames('text-base', searching ? 'i-ph:x' : 'i-ph:magnifying-glass')} />
-              </button>
-            </div>
+            <div className="px-4 pt-4 pb-3">
+              <div className="relative flex h-9 items-center">
+                <motion.div
+                  className="flex items-center gap-2"
+                  animate={{ opacity: searching ? 0 : 1 }}
+                  transition={{ duration: 0.15 }}
+                  aria-hidden={searching}
+                >
+                  <img src="/palmkit-mark.png" alt="" className="h-7 w-7 select-none dark:hidden pointer-events-none" />
+                  <img
+                    src="/palmkit-mark-ondark.png"
+                    alt=""
+                    className="hidden h-7 w-7 select-none dark:block pointer-events-none"
+                  />
+                  <span className="text-[15px] font-semibold text-palmkit-elements-textPrimary">Palmkit</span>
+                </motion.div>
 
-            {searching && (
-              <div className="px-4 pb-2">
-                {/* The field's 16px text size is deliberate: iOS zooms the
-                    whole page in when it focuses anything smaller. */}
-                <div className="flex items-center gap-2 rounded-xl bg-gray-100 px-3 py-2 dark:bg-neutral-900">
-                  <span className="i-ph:magnifying-glass h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+                <motion.div
+                  initial={false}
+                  animate={{ width: searching ? '100%' : 36 }}
+                  transition={{ type: 'spring', damping: 30, stiffness: 320, mass: 0.7 }}
+                  className={classNames(
+                    'absolute right-0 flex h-9 items-center overflow-hidden rounded-full transition-colors duration-200',
+                    searching ? 'bg-gray-100 dark:bg-neutral-900' : 'bg-transparent',
+                  )}
+                >
+                  {/* ml-2.5 centres the glass inside the 36px circle while the
+                      field is shut, and becomes its leading icon once open. */}
+                  <span className="i-ph:magnifying-glass ml-2.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+
+                  {/* 16px text: iOS zooms the whole page in when it focuses
+                      anything smaller. */}
                   <input
-                    autoFocus
+                    ref={searchInputRef}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={(e) => e.key === 'Escape' && closeSearch()}
                     placeholder="Search conversations"
                     aria-label="Search conversations"
-                    className="min-w-0 flex-1 bg-transparent text-[16px] text-palmkit-elements-textPrimary outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                    aria-hidden={!searching}
+                    tabIndex={searching ? 0 : -1}
+                    className="min-w-0 flex-1 bg-transparent px-2 text-[16px] text-palmkit-elements-textPrimary outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
                   />
-                  {query && (
+
+                  <button
+                    onClick={closeSearch}
+                    aria-label="Close search"
+                    aria-hidden={!searching}
+                    tabIndex={searching ? 0 : -1}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center text-gray-400 transition active:scale-90 hover:text-gray-900 dark:hover:text-white"
+                  >
+                    <span className="i-ph:x h-4 w-4" />
+                  </button>
+
+                  {/* While shut, the whole pill is the button — the glass in
+                      front of it is only an icon. */}
+                  {!searching && (
                     <button
-                      onClick={() => setQuery('')}
-                      aria-label="Clear search"
-                      className="i-ph:x-circle-fill h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500"
+                      onClick={() => setSearching(true)}
+                      aria-label="Search conversations"
+                      aria-expanded={false}
+                      className="absolute inset-0 rounded-full transition active:scale-90"
                     />
                   )}
-                </div>
+                </motion.div>
               </div>
-            )}
+            </div>
 
             {/*
              * Chat / Work / Code segmented control.
