@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react';
-import { memo, useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect } from 'react';
 import { FloatingViewToggle } from '~/components/mobile/FloatingViewToggle';
 import { ProjectSwitcherDrawer } from '~/components/ui/workspace/ProjectSwitcherDrawer';
 import { mobileActiveTab } from '~/lib/stores/mobile';
@@ -117,37 +117,36 @@ export const MobileShell = memo(() => {
   const isSettingsTab = activeTab === 'settings';
   const isProjectsTab = activeTab === 'projects';
 
-  const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
-  const [mobileProjectsOpen, setMobileProjectsOpen] = useState(false);
-
   /*
-   * The Settings drawer (ControlPanel) renders at z-[100/101], while the
-   * Projects drawer sits at z-[999]. If both are open at once the Projects
-   * drawer covers Settings — so the user taps "Settings" from the account
-   * menu and sees nothing change. Make the two drawers mutually exclusive:
-   * opening one closes the other.
+   * Which surface is showing is DERIVED from `mobileActiveTab`, never latched
+   * into local state beside it.
+   *
+   * It used to be mirrored into two useState flags that an effect only ever
+   * turned ON: `if (isProjectsTab) setMobileProjectsOpen(true)`. Nothing turned
+   * them back off except each drawer's own close button — so closing the
+   * projects drawer by DRAGGING it shut, or by tapping the strip of
+   * conversation still showing, set the tab back to 'chat' and left the flag
+   * stuck at true. The next tap on the menu icon set the tab to 'projects'
+   * again, the effect set the flag to true again — the value it already had —
+   * and React skipped the re-render. The drawer's `open` prop never changed,
+   * so the effect that animates it never ran, and the drawer simply refused to
+   * open until a reload cleared the flag. That is the intermittent "sometimes
+   * it won't open" — it happened precisely after a close that wasn't the X
+   * button.
+   *
+   * Deriving both flags makes that state unrepresentable. It also makes the
+   * two drawers mutually exclusive for free: `mobileActiveTab` holds one value,
+   * so both can never be open at once — which is what the pair of effects was
+   * trying to arrange by hand.
    */
-  useEffect(() => {
-    if (isSettingsTab) {
-      setMobileProjectsOpen(false);
-      setMobileSettingsOpen(true);
-    }
-  }, [isSettingsTab]);
-
-  useEffect(() => {
-    if (isProjectsTab) {
-      setMobileSettingsOpen(false);
-      setMobileProjectsOpen(true);
-    }
-  }, [isProjectsTab]);
+  const mobileSettingsOpen = isSettingsTab;
+  const mobileProjectsOpen = isProjectsTab;
 
   const handleCloseSettings = useCallback(() => {
-    setMobileSettingsOpen(false);
     mobileActiveTab.set('chat');
   }, []);
 
   const handleCloseProjects = useCallback(() => {
-    setMobileProjectsOpen(false);
     mobileActiveTab.set('chat');
   }, []);
 
