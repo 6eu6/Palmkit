@@ -4,7 +4,7 @@ import { ClientOnly } from 'remix-utils/client-only';
 import { BaseChat } from '~/components/chat/BaseChat';
 import { Chat } from '~/components/chat/Chat.client';
 import { Header } from '~/components/header/Header';
-import { PersistentChrome } from '~/components/layout/PersistentChrome.client';
+import { PersistentChrome } from '~/components/layout/PersistentChrome';
 import { Landing } from '~/components/landing/Landing';
 import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
 

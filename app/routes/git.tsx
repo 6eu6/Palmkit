@@ -4,7 +4,7 @@ import { ClientOnly } from 'remix-utils/client-only';
 import { BaseChat } from '~/components/chat/BaseChat';
 import { GitUrlImport } from '~/components/git/GitUrlImport.client';
 import { Header } from '~/components/header/Header';
-import { PersistentChrome } from '~/components/layout/PersistentChrome.client';
+import { PersistentChrome } from '~/components/layout/PersistentChrome';
 import BackgroundRays from '~/components/ui/BackgroundRays';
 
 export const meta: MetaFunction = () => {
