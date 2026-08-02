@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, Link } from '@remix-run/react';
+import { useNavigate, useSearchParams, Link } from '@remix-run/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
 import { db, getAll, deleteChatCompletely, getSnapshot, type ChatHistoryItem } from '~/lib/persistence';
@@ -9,6 +9,17 @@ import { binDates, partitionPinned } from '~/components/sidebar/date-binning';
 import { ChatItemMenu } from '~/components/sidebar/ChatItemMenu';
 import { renameChat, setChatPinned } from '~/lib/persistence/chatActions';
 import { useLongPress } from '~/lib/hooks/useLongPress';
+import { ProjectsSection } from '~/components/sidebar/ProjectsSection';
+import {
+  activeFolderIdStore,
+  createFolder,
+  deleteFolder,
+  foldersStore,
+  loadFolders,
+  moveChatToFolder,
+  renameFolder,
+  type Folder,
+} from '~/lib/stores/folders';
 import { classNames } from '~/utils/classNames';
 import { useStore } from '@nanostores/react';
 import { sidebarModeStore, setSidebarMode, SIDEBAR_QUICK_ACTIONS, type SidebarMode } from '~/lib/stores/sidebar';
@@ -70,6 +81,9 @@ function DrawerChatRow({
   onTogglePin,
   onRenamed,
   formatTime,
+  folders,
+  onMoveToProject,
+  onCreateProjectAndMove,
 }: {
   item: ProjectItem;
   onOpen: (item: ChatHistoryItem) => void;
@@ -77,6 +91,9 @@ function DrawerChatRow({
   onTogglePin: (item: ChatHistoryItem) => void;
   onRenamed: () => void;
   formatTime: (t: string) => string;
+  folders: Folder[];
+  onMoveToProject: (item: ChatHistoryItem, folderId: string | undefined) => void;
+  onCreateProjectAndMove: (item: ChatHistoryItem) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -164,7 +181,10 @@ function DrawerChatRow({
           setDraft(item.description ?? '');
           setEditing(true);
         }}
-        onMoveToProject={() => undefined}
+        folders={folders}
+        currentFolderId={item.folderId}
+        onMoveToProject={(folderId) => onMoveToProject(item, folderId)}
+        onCreateProjectAndMove={() => onCreateProjectAndMove(item)}
         onDelete={() => onDelete(item)}
         trigger={
           <button
@@ -184,7 +204,13 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
   const navigate = useNavigate();
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [pendingDelete, setPendingDelete] = useState<ChatHistoryItem | null>(null);
+  const [pendingMoveItem, setPendingMoveItem] = useState<ChatHistoryItem | null>(null);
+  const [pendingDeleteFolder, setPendingDeleteFolder] = useState<Folder | null>(null);
+  const [newProjectName, setNewProjectName] = useState('');
   const mode = useStore(sidebarModeStore);
+  const folders = useStore(foldersStore);
+  const activeFolderId = useStore(activeFolderIdStore);
+  const [searchParams] = useSearchParams();
 
   const loadProjects = useCallback(async () => {
     if (!db) {
@@ -203,10 +229,17 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
        * existed default to 'code'.
        */
       const currentMode = sidebarModeStore.get();
+      const folderId = activeFolderIdStore.get();
 
       const withStatus: ProjectItem[] = await Promise.all(
         chats
-          .filter((item) => item.urlId && item.description && (item.mode || 'code') === currentMode)
+          .filter(
+            (item) =>
+              item.urlId &&
+              item.description &&
+              (item.mode || 'code') === currentMode &&
+              (folderId === undefined || item.folderId === folderId),
+          )
           .map(async (item) => {
             let status: ProjectStatus = 'saved';
 
@@ -250,7 +283,93 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
     if (open) {
       loadProjects();
     }
-  }, [open, mode, loadProjects]);
+  }, [open, mode, activeFolderId, loadProjects]);
+
+  useEffect(() => {
+    activeFolderIdStore.set(searchParams.get('project') ?? undefined);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (open && db) {
+      loadFolders(db);
+    }
+  }, [open]);
+
+  /** The URL owns the project scope, so it survives reloads and tab switches. */
+  const selectFolder = useCallback(
+    (folderId: string | undefined) => {
+      const params = new URLSearchParams(window.location.search);
+
+      if (folderId) {
+        params.set('project', folderId);
+      } else {
+        params.delete('project');
+      }
+
+      const qs = params.toString();
+      navigate(`${window.location.pathname}${qs ? `?${qs}` : ''}`, { replace: true, preventScrollReset: true });
+    },
+    [navigate],
+  );
+
+  const folderCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+
+    for (const item of projects) {
+      if (item.folderId) {
+        counts[item.folderId] = (counts[item.folderId] ?? 0) + 1;
+      }
+    }
+
+    return counts;
+  }, [projects]);
+
+  const handleMoveToProject = useCallback(
+    async (item: ChatHistoryItem, folderId: string | undefined) => {
+      if (!db) {
+        return;
+      }
+
+      try {
+        await moveChatToFolder(db, item.id, folderId);
+        await loadProjects();
+
+        const name = folderId ? folders.find((f) => f.id === folderId)?.name : undefined;
+        toast.success(name ? `Moved to ${name}` : 'Removed from project');
+      } catch (error) {
+        console.error('Failed to move conversation:', error);
+        toast.error('Failed to move conversation');
+      }
+    },
+    [folders, loadProjects],
+  );
+
+  const closeMoveDialog = useCallback(() => {
+    setPendingMoveItem(null);
+    setNewProjectName('');
+  }, []);
+
+  const submitNewProject = useCallback(async () => {
+    const item = pendingMoveItem;
+
+    if (!db || !item) {
+      return;
+    }
+
+    try {
+      const folder = await createFolder(db, newProjectName);
+
+      if (folder) {
+        await moveChatToFolder(db, item.id, folder.id);
+        await loadProjects();
+        toast.success(`Moved to ${folder.name}`);
+      }
+
+      closeMoveDialog();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to create project');
+    }
+  }, [pendingMoveItem, newProjectName, loadProjects, closeMoveDialog]);
 
   // Escape closes the drawer (it used to trap the user until they found the X).
   useEffect(() => {
@@ -450,7 +569,7 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                 {(['chat', 'work', 'code'] as SidebarMode[]).map((m) => (
                   <Link
                     key={m}
-                    to={`/${m}`}
+                    to={activeFolderId ? `/${m}?project=${activeFolderId}` : `/${m}`}
                     onClick={() => setSidebarMode(m)}
                     className={classNames(
                       'flex-1 rounded-lg py-1.5 text-[13px] font-semibold capitalize transition-all text-center',
@@ -501,6 +620,39 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
               )}
             </div>
 
+            <ProjectsSection
+              compact
+              folders={folders}
+              counts={folderCounts}
+              activeFolderId={activeFolderId}
+              onSelect={selectFolder}
+              onCreate={async (name) => {
+                if (!db) {
+                  return;
+                }
+
+                try {
+                  await createFolder(db, name);
+                  toast.success('Project created');
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : 'Failed to create project');
+                }
+              }}
+              onRename={async (folder, name) => {
+                if (!db) {
+                  return;
+                }
+
+                try {
+                  await renameFolder(db, folder.id, name);
+                  toast.success('Project renamed');
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : 'Failed to rename project');
+                }
+              }}
+              onDelete={setPendingDeleteFolder}
+            />
+
             {/* Recent list */}
             <div className="mt-1 flex-1 overflow-y-auto overscroll-contain px-3 pb-2">
               {projects.length === 0 ? (
@@ -523,6 +675,9 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                         onTogglePin={handleTogglePin}
                         onRenamed={loadProjects}
                         formatTime={formatTime}
+                        folders={folders}
+                        onMoveToProject={handleMoveToProject}
+                        onCreateProjectAndMove={setPendingMoveItem}
                       />
                     ))}
                   </div>
@@ -535,6 +690,88 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
               <ProfileMenu />
             </div>
           </motion.div>
+
+          <DialogRoot open={pendingMoveItem !== null}>
+            <Dialog onBackdrop={closeMoveDialog} onClose={closeMoveDialog}>
+              <div className="p-6 bg-white dark:bg-gray-950">
+                <DialogTitle className="text-gray-900 dark:text-white">New project</DialogTitle>
+                <DialogDescription className="mt-2 text-gray-600 dark:text-gray-400">
+                  <p className="mb-3">
+                    <span className="font-medium text-gray-900 dark:text-white">{pendingMoveItem?.description}</span>{' '}
+                    will be moved into it.
+                  </p>
+                  <input
+                    autoFocus
+                    value={newProjectName}
+                    placeholder="Project name"
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void submitNewProject();
+                      }
+                    }}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-1 focus:ring-gray-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+                  />
+                </DialogDescription>
+              </div>
+              <div className="flex justify-end gap-3 px-6 py-4 bg-gray-50 dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800">
+                <DialogButton type="secondary" onClick={closeMoveDialog}>
+                  Cancel
+                </DialogButton>
+                <DialogButton type="primary" onClick={() => void submitNewProject()}>
+                  Create &amp; move
+                </DialogButton>
+              </div>
+            </Dialog>
+          </DialogRoot>
+
+          <DialogRoot open={pendingDeleteFolder !== null}>
+            <Dialog onBackdrop={() => setPendingDeleteFolder(null)} onClose={() => setPendingDeleteFolder(null)}>
+              <div className="p-6 bg-white dark:bg-gray-950">
+                <DialogTitle className="text-gray-900 dark:text-white">Delete project?</DialogTitle>
+                <DialogDescription className="mt-2 text-gray-600 dark:text-gray-400">
+                  <p>
+                    <span className="font-medium text-gray-900 dark:text-white">{pendingDeleteFolder?.name}</span> will
+                    be removed. Its conversations are <span className="font-medium">not</span> deleted — they go back to
+                    the main list.
+                  </p>
+                </DialogDescription>
+              </div>
+              <div className="flex justify-end gap-3 px-6 py-4 bg-gray-50 dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800">
+                <DialogButton type="secondary" onClick={() => setPendingDeleteFolder(null)}>
+                  Cancel
+                </DialogButton>
+                <DialogButton
+                  type="danger"
+                  onClick={async () => {
+                    const folder = pendingDeleteFolder;
+                    setPendingDeleteFolder(null);
+
+                    if (!db || !folder) {
+                      return;
+                    }
+
+                    try {
+                      const detached = await deleteFolder(db, folder.id);
+                      selectFolder(undefined);
+                      await loadProjects();
+                      toast.success(
+                        detached > 0
+                          ? `Project deleted — ${detached} conversation${detached === 1 ? '' : 's'} kept`
+                          : 'Project deleted',
+                      );
+                    } catch (error) {
+                      console.error('Failed to delete project:', error);
+                      toast.error('Failed to delete project');
+                    }
+                  }}
+                >
+                  Delete project
+                </DialogButton>
+              </div>
+            </Dialog>
+          </DialogRoot>
 
           {/* Deletion is irreversible and wipes the cloud copy too, so it
               always goes through a confirmation step. */}

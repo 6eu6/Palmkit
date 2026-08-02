@@ -1,7 +1,16 @@
 import type { Message } from 'ai';
 import { authUserStore } from '~/lib/stores/auth';
 import type { Snapshot } from './types';
-import { getMessages, setMessages, setPinnedLocal, setSnapshot } from './db';
+import {
+  getAllFolders,
+  getMessages,
+  putFolderLocal,
+  setChatFolderLocal,
+  setMessages,
+  setPinnedLocal,
+  setSnapshot,
+  type Folder,
+} from './db';
 
 /**
  * Account-backed project sync. All functions are best-effort: when the user is
@@ -33,6 +42,9 @@ export interface AccountProjectSummary {
 
   /** Pinned-to-top flag, mirrored so a pin follows the user across devices. */
   pinned?: boolean | null;
+
+  /** Project this conversation belongs to, if any. */
+  folder_id?: string | null;
 }
 
 export interface AccountProject extends AccountProjectSummary {
@@ -51,6 +63,7 @@ export function pushProjectDebounced(
     snapshot?: Snapshot | null;
     mode?: ProjectMode;
     pinned?: boolean;
+    folderId?: string;
   },
   delay = 1500,
 ) {
@@ -81,6 +94,7 @@ export async function pushProjectNow(
     snapshot?: Snapshot | null;
     mode?: ProjectMode;
     pinned?: boolean;
+    folderId?: string;
   },
 ): Promise<void> {
   if (!isSignedIn() || !urlId) {
@@ -105,6 +119,7 @@ export async function pushProjectNow(
          */
         mode: payload.mode ?? null,
         pinned: payload.pinned ?? false,
+        folder_id: payload.folderId ?? null,
       }),
     });
   } catch {
@@ -206,6 +221,10 @@ export async function seedChatFromAccount(db: IDBDatabase, urlId: string): Promi
       await setPinnedLocal(db, urlId, true);
     }
 
+    if (project.folder_id) {
+      await setChatFolderLocal(db, urlId, project.folder_id);
+    }
+
     if (project.snapshot) {
       await setSnapshot(db, urlId, project.snapshot);
     }
@@ -257,6 +276,12 @@ export async function syncAllFromAccount(db: IDBDatabase): Promise<void> {
           await setPinnedLocal(db, project.url_id, true);
         }
 
+        const folderId = project.folder_id ?? summary.folder_id;
+
+        if (folderId) {
+          await setChatFolderLocal(db, project.url_id, folderId);
+        }
+
         if (project.snapshot) {
           await setSnapshot(db, project.url_id, project.snapshot);
         }
@@ -264,5 +289,97 @@ export async function syncAllFromAccount(db: IDBDatabase): Promise<void> {
         // best-effort
       }
     }
+  }
+}
+
+const FOLDERS_ENDPOINT = '/api/account/folders';
+
+interface AccountFolder {
+  id: string;
+  name: string;
+  color: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Mirror a folder to the account (create or rename). Best-effort. */
+export async function pushFolder(folder: Folder): Promise<void> {
+  if (!isSignedIn()) {
+    return;
+  }
+
+  try {
+    await fetch(FOLDERS_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: folder.id,
+        name: folder.name,
+        color: folder.color ?? null,
+        created_at: folder.createdAt,
+      }),
+    });
+  } catch {
+    // best-effort; the local store still holds it
+  }
+}
+
+export async function deleteAccountFolder(id: string): Promise<void> {
+  if (!isSignedIn() || !id) {
+    return;
+  }
+
+  try {
+    await fetch(`${FOLDERS_ENDPOINT}?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Pull the account's folders into the local store.
+ *
+ * Must run BEFORE conversations are seeded: a conversation restored with a
+ * folderId whose folder isn't there yet would be filtered into a project the
+ * sidebar cannot show.
+ */
+export async function syncFoldersFromAccount(db: IDBDatabase): Promise<void> {
+  if (!isSignedIn()) {
+    return;
+  }
+
+  try {
+    const res = await fetch(FOLDERS_ENDPOINT);
+
+    if (!res.ok) {
+      return;
+    }
+
+    const data = (await res.json()) as { folders?: AccountFolder[]; unavailable?: boolean };
+
+    if (data.unavailable || !data.folders?.length) {
+      return;
+    }
+
+    const local = new Map((await getAllFolders(db)).map((f) => [f.id, f]));
+
+    for (const remote of data.folders) {
+      const mine = local.get(remote.id);
+
+      // Last write wins, which is all a name and a colour need.
+      if (mine && Date.parse(mine.updatedAt) >= Date.parse(remote.updated_at)) {
+        continue;
+      }
+
+      await putFolderLocal(db, {
+        id: remote.id,
+        name: remote.name,
+        color: remote.color ?? undefined,
+        createdAt: remote.created_at,
+        updatedAt: remote.updated_at,
+      });
+    }
+  } catch {
+    // best-effort
   }
 }

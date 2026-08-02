@@ -31,6 +31,7 @@ interface ProjectRow {
   snapshot?: unknown;
   mode?: string | null;
   pinned?: boolean | null;
+  folder_id?: string | null;
   updated_at: string;
 }
 
@@ -57,7 +58,7 @@ function isMissingNewColumn(error: { code?: string; message?: string } | null): 
     error.code === '42703' ||
     error.code === 'PGRST204' ||
     error.code === '42809' ||
-    /column .*(mode|pinned).* does not exist/i.test(error.message ?? '') ||
+    /column .*(mode|pinned|folder_id).* does not exist/i.test(error.message ?? '') ||
     /ordered-set aggregate mode/i.test(error.message ?? '')
   );
 }
@@ -106,7 +107,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       return res as unknown as { data: ProjectRow | null; error: { code?: string; message?: string } | null };
     };
 
-    let { data, error } = await one('url_id, description, messages, snapshot, mode, pinned, updated_at');
+    let { data, error } = await one('url_id, description, messages, snapshot, mode, pinned, folder_id, updated_at');
 
     if (isMissingNewColumn(error)) {
       ({ data, error } = await one('url_id, description, messages, snapshot, updated_at'));
@@ -137,7 +138,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     return res as unknown as { data: ProjectRow[] | null; error: { code?: string; message?: string } | null };
   };
 
-  let { data, error } = await many('url_id, description, mode, pinned, updated_at');
+  let { data, error } = await many('url_id, description, mode, pinned, folder_id, updated_at');
 
   if (isMissingNewColumn(error)) {
     ({ data, error } = await many('url_id, description, updated_at'));
@@ -185,6 +186,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     snapshot?: unknown;
     mode?: string;
     pinned?: boolean;
+    folder_id?: string | null;
   };
 
   const urlId = (body.url_id ?? '').trim();

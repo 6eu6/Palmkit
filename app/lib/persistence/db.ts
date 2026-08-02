@@ -37,7 +37,7 @@ export async function openDatabase(): Promise<IDBDatabase | undefined> {
   }
 
   return new Promise((resolve) => {
-    const request = indexedDB.open('palmkitHistory', 3);
+    const request = indexedDB.open('palmkitHistory', 4);
 
     request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
       const db = (event.target as IDBOpenDBRequest).result;
@@ -92,6 +92,20 @@ export async function openDatabase(): Promise<IDBDatabase | undefined> {
           }
         }
       }
+
+      if (oldVersion < 4) {
+        /*
+         * Version 4: `folders` — the Projects feature.
+         *
+         * A folder groups conversations that belong to the same piece of work.
+         * Conversations reference it by `folderId`; the link is deliberately
+         * one-way, so deleting a folder can never cascade into deleting the
+         * conversations inside it.
+         */
+        if (!db.objectStoreNames.contains('folders')) {
+          db.createObjectStore('folders', { keyPath: 'id' });
+        }
+      }
     };
 
     request.onsuccess = (event: Event) => {
@@ -125,11 +139,12 @@ export async function setMessages(
   timestamp?: string,
   metadata?: IChatMetadata,
   mode?: 'chat' | 'work' | 'code',
-): Promise<'chat' | 'work' | 'code'> {
+): Promise<{ mode: 'chat' | 'work' | 'code'; folderId?: string }> {
   /*
-   * Resolves with the mode the record ACTUALLY has, which may differ from the
-   * `mode` argument (see the comment below) — callers that mirror the chat to
-   * the account need the stored value, not the requested one.
+   * Resolves with what the record ACTUALLY carries. `mode` may differ from the
+   * argument (see below), and `folderId` isn't an argument at all — callers
+   * that mirror the chat to the account need the stored values, and this saves
+   * them a second read.
    */
   return new Promise((resolve, reject) => {
     const transaction = db.transaction('chats', 'readwrite');
@@ -170,6 +185,7 @@ export async function setMessages(
          * conversation would quietly unpin itself on the next message.
          */
         pinned: existing?.pinned ?? false,
+        folderId: existing?.folderId,
         urlId,
         description,
         timestamp: timestamp ?? new Date().toISOString(),
@@ -177,7 +193,7 @@ export async function setMessages(
         mode: finalMode,
       });
 
-      request.onsuccess = () => resolve(finalMode);
+      request.onsuccess = () => resolve({ mode: finalMode, folderId: existing?.folderId });
       request.onerror = () => reject(request.error);
     };
 
@@ -203,6 +219,90 @@ export async function setPinnedLocal(db: IDBDatabase, id: string, pinned: boolea
       }
 
       const request = store.put({ ...existing.result, pinned });
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    };
+
+    existing.onerror = () => reject(existing.error);
+  });
+}
+
+/**
+ * A project (called a folder in storage — the account-side table already
+ * named `projects` holds CONVERSATIONS, so reusing that word here would be a
+ * permanent source of confusion).
+ */
+export interface Folder {
+  id: string;
+  name: string;
+  color?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function getAllFolders(db: IDBDatabase): Promise<Folder[]> {
+  return new Promise((resolve, reject) => {
+    if (!db.objectStoreNames.contains('folders')) {
+      resolve([]);
+      return;
+    }
+
+    const request = db.transaction('folders', 'readonly').objectStore('folders').getAll();
+    request.onsuccess = () => resolve((request.result as Folder[]) ?? []);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function putFolderLocal(db: IDBDatabase, folder: Folder): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = db.transaction('folders', 'readwrite').objectStore('folders').put(folder);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/**
+ * Delete a folder and detach — never delete — the conversations in it.
+ *
+ * Both stores are touched in ONE transaction so the two can't diverge: a
+ * folder row that disappears while its conversations still point at it would
+ * leave them invisible, filtered into a project that no longer exists.
+ */
+export async function deleteFolderLocal(db: IDBDatabase, folderId: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(['folders', 'chats'], 'readwrite');
+    tx.objectStore('folders').delete(folderId);
+
+    let detached = 0;
+    const chats = tx.objectStore('chats').getAll();
+
+    chats.onsuccess = () => {
+      for (const chat of (chats.result as ChatHistoryItem[]) ?? []) {
+        if (chat.folderId === folderId) {
+          tx.objectStore('chats').put({ ...chat, folderId: undefined });
+          detached++;
+        }
+      }
+    };
+
+    tx.oncomplete = () => resolve(detached);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/** Move a conversation into a project, or out of every project (`undefined`). */
+export async function setChatFolderLocal(db: IDBDatabase, id: string, folderId: string | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const store = db.transaction('chats', 'readwrite').objectStore('chats');
+    const existing = store.get(id);
+
+    existing.onsuccess = () => {
+      if (!existing.result) {
+        resolve();
+        return;
+      }
+
+      const request = store.put({ ...existing.result, folderId });
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     };

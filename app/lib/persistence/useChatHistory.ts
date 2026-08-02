@@ -41,7 +41,7 @@ import {
   setSnapshot,
   type IChatMetadata,
 } from './db';
-import { pushProjectDebounced, seedChatFromAccount, syncAllFromAccount } from './accountSync';
+import { pushProjectDebounced, seedChatFromAccount, syncAllFromAccount, syncFoldersFromAccount } from './accountSync';
 import type { FileMap } from '~/lib/stores/files';
 import { webcontainer } from '~/lib/webcontainer';
 import { detectProjectCommands, createCommandActionsString } from '~/utils/projectCommands';
@@ -75,6 +75,9 @@ export interface ChatHistoryItem {
    * it in Chat cannot surface it in Work or Code.
    */
   pinned?: boolean;
+
+  /** Project (folder) this conversation belongs to, if any. */
+  folderId?: string;
 }
 
 const persistenceEnabled = !import.meta.env.VITE_DISABLE_PERSISTENCE;
@@ -192,7 +195,15 @@ export function useChatHistory() {
    */
   useEffect(() => {
     if (db && accountUser) {
-      syncAllFromAccount(db).catch(() => undefined);
+      /*
+       * Folders FIRST: a conversation restored with a folderId whose folder
+       * isn't in the local store yet would be filtered into a project the
+       * sidebar has no row for, and would look like it had vanished.
+       */
+      syncFoldersFromAccount(db)
+        .catch(() => undefined)
+        .then(() => syncAllFromAccount(db))
+        .catch(() => undefined);
     }
   }, [accountUser?.id]);
 
@@ -1541,7 +1552,7 @@ ${value.content}
          * was created with, not the sidebar's current tab. Mirror THAT to the
          * account so the conversation lands in the same tab on every device.
          */
-        const storedMode = await setMessages(
+        const stored = await setMessages(
           db,
           finalChatId,
           [...archivedMessages, ...messages],
@@ -1567,7 +1578,8 @@ ${value.content}
           pushProjectDebounced(_urlId, {
             description: description.get(),
             messages: [...archivedMessages, ...messages],
-            mode: storedMode,
+            mode: stored.mode,
+            folderId: stored.folderId,
             snapshot: {
               chatIndex: messages[messages.length - 1].id,
               files: currentFiles,

@@ -7,13 +7,16 @@ import { useLongPress } from '~/lib/hooks/useLongPress';
 import { useCallback, useState } from 'react';
 import { Checkbox } from '~/components/ui/Checkbox';
 import { ChatItemMenu } from './ChatItemMenu';
+import type { Folder } from '~/lib/stores/folders';
 
 interface HistoryItemProps {
   item: ChatHistoryItem;
   onDelete?: () => void;
   onDuplicate?: (id: string) => void;
   onTogglePin?: (item: ChatHistoryItem) => void;
-  onMoveToProject?: (item: ChatHistoryItem) => void;
+  folders?: Folder[];
+  onMoveToProject?: (item: ChatHistoryItem, folderId: string | undefined) => void;
+  onCreateProjectAndMove?: (item: ChatHistoryItem) => void;
   exportChat: (id?: string) => void;
   selectionMode?: boolean;
   isSelected?: boolean;
@@ -25,7 +28,9 @@ export function HistoryItem({
   onDelete,
   onDuplicate,
   onTogglePin,
+  folders = [],
   onMoveToProject,
+  onCreateProjectAndMove,
   exportChat,
   selectionMode = false,
   isSelected = false,
@@ -67,6 +72,14 @@ export function HistoryItem({
     onToggleSelection?.(item.id);
   }, [item.id, onToggleSelection]);
 
+  /*
+   * Note on the row's layout: the ⋯ button is a SIBLING of the link, never a
+   * child of it. Nested inside, every interaction with the menu risked
+   * activating the link underneath — Radix returns focus to the trigger when a
+   * menu item is chosen, which fired the link and navigated into the very
+   * conversation the user was only trying to file away.
+   */
+
   return (
     <div
       className={classNames(
@@ -106,21 +119,23 @@ export function HistoryItem({
           />
         </form>
       ) : (
-        <Link
-          to={`/${item.mode || 'code'}/${item.urlId}`}
-          className="flex w-full relative truncate block"
-          onClick={handleItemClick}
-        >
-          {item.pinned && (
-            <span
-              className="i-ph:push-pin-fill mr-1.5 mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500"
-              aria-label="Pinned"
-            />
-          )}
-          <WithTooltip tooltip={currentDescription}>
-            <span className="truncate pr-8">{currentDescription}</span>
-          </WithTooltip>
-          <div className="absolute right-0 top-0 bottom-0 flex items-center bg-transparent">
+        <div className="flex w-full min-w-0 items-center">
+          <Link
+            to={`/${item.mode || 'code'}/${item.urlId}`}
+            className="flex min-w-0 flex-1 items-center truncate"
+            onClick={handleItemClick}
+          >
+            {item.pinned && (
+              <span
+                className="i-ph:push-pin-fill mr-1.5 h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500"
+                aria-label="Pinned"
+              />
+            )}
+            <WithTooltip tooltip={currentDescription}>
+              <span className="truncate">{currentDescription}</span>
+            </WithTooltip>
+          </Link>
+          <div className="flex shrink-0 items-center">
             {/*
               Always visible — dimmed at rest, full strength on hover or while
               its menu is open. The actions used to be hover-only, which left
@@ -133,7 +148,10 @@ export function HistoryItem({
               pinned={Boolean(item.pinned)}
               onPin={() => onTogglePin?.(item)}
               onRename={toggleEditMode}
-              onMoveToProject={() => onMoveToProject?.(item)}
+              folders={folders}
+              currentFolderId={item.folderId}
+              onMoveToProject={(folderId) => onMoveToProject?.(item, folderId)}
+              onCreateProjectAndMove={() => onCreateProjectAndMove?.(item)}
               onDelete={() => onDelete?.()}
               onDuplicate={onDuplicate ? () => onDuplicate(item.id) : undefined}
               onExport={() => exportChat(item.id)}
@@ -157,7 +175,7 @@ export function HistoryItem({
               }
             />
           </div>
-        </Link>
+        </div>
       )}
     </div>
   );

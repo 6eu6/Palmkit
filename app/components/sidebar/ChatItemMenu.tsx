@@ -1,6 +1,7 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { type ReactNode } from 'react';
 import { classNames } from '~/utils/classNames';
+import type { Folder } from '~/lib/stores/folders';
 
 export interface ChatItemMenuProps {
   /** Controlled — long-press opens the same menu the ⋯ button does. */
@@ -9,7 +10,16 @@ export interface ChatItemMenuProps {
   pinned: boolean;
   onPin: () => void;
   onRename: () => void;
-  onMoveToProject: () => void;
+
+  /** Projects to offer in the submenu. */
+  folders: Folder[];
+
+  /** Which project the conversation is in now, so it can be ticked. */
+  currentFolderId?: string;
+
+  /** `undefined` removes it from every project. */
+  onMoveToProject: (folderId: string | undefined) => void;
+  onCreateProjectAndMove: () => void;
   onDelete: () => void;
   onDuplicate?: () => void;
   onExport?: () => void;
@@ -73,7 +83,10 @@ export function ChatItemMenu({
   pinned,
   onPin,
   onRename,
+  folders,
+  currentFolderId,
   onMoveToProject,
+  onCreateProjectAndMove,
   onDelete,
   onDuplicate,
   onExport,
@@ -101,13 +114,49 @@ export function ChatItemMenu({
             onSelect={onPin}
           />
           <Item icon="i-ph:pencil-simple" label="Rename" onSelect={onRename} />
-          <Item
-            icon="i-ph:folder-simple-plus"
-            label="Move to project"
-            onSelect={onMoveToProject}
-            hint="Soon"
-            disabled
-          />
+
+          <DropdownMenu.Sub>
+            <DropdownMenu.SubTrigger
+              className={classNames(
+                'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[14px] outline-none cursor-pointer select-none',
+                'text-gray-700 transition-colors dark:text-gray-200',
+                'data-[highlighted]:bg-gray-100 dark:data-[highlighted]:bg-neutral-800',
+              )}
+            >
+              <span className="i-ph:folder-simple h-4 w-4 shrink-0" />
+              <span className="flex-1">Move to project</span>
+              <span className="i-ph:caret-right h-3.5 w-3.5 shrink-0 opacity-60" />
+            </DropdownMenu.SubTrigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.SubContent
+                sideOffset={4}
+                collisionPadding={12}
+                className={classNames(
+                  'z-[1100] max-h-[320px] min-w-[200px] overflow-y-auto rounded-xl p-1.5',
+                  'bg-white dark:bg-neutral-900',
+                  'border border-gray-200 dark:border-neutral-700',
+                  'shadow-xl shadow-black/10',
+                )}
+              >
+                <Item
+                  icon={currentFolderId ? 'i-ph:circle' : 'i-ph:check-circle-fill'}
+                  label="No project"
+                  onSelect={() => onMoveToProject(undefined)}
+                />
+                {folders.length > 0 && <DropdownMenu.Separator className="my-1 h-px bg-gray-100 dark:bg-neutral-800" />}
+                {folders.map((folder) => (
+                  <Item
+                    key={folder.id}
+                    icon={currentFolderId === folder.id ? 'i-ph:check-circle-fill' : 'i-ph:circle'}
+                    label={folder.name}
+                    onSelect={() => onMoveToProject(folder.id)}
+                  />
+                ))}
+                <DropdownMenu.Separator className="my-1 h-px bg-gray-100 dark:bg-neutral-800" />
+                <Item icon="i-ph:plus" label="New project…" onSelect={onCreateProjectAndMove} />
+              </DropdownMenu.SubContent>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Sub>
 
           {(onDuplicate || onExport) && (
             <DropdownMenu.Separator className="my-1 h-px bg-gray-100 dark:bg-neutral-800" />
