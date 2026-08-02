@@ -299,6 +299,7 @@ interface AccountFolder {
   name: string;
   color: string | null;
   memory_mode?: string | null;
+  instructions?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -318,6 +319,7 @@ export async function pushFolder(folder: Folder): Promise<void> {
         name: folder.name,
         color: folder.color ?? null,
         memory_mode: folder.memoryMode ?? 'default',
+        instructions: folder.instructions ?? null,
         created_at: folder.createdAt,
       }),
     });
@@ -378,6 +380,7 @@ export async function syncFoldersFromAccount(db: IDBDatabase): Promise<void> {
         name: remote.name,
         color: remote.color ?? undefined,
         memoryMode: (remote.memory_mode as 'default' | 'project_only') ?? 'default',
+        instructions: remote.instructions ?? undefined,
         createdAt: remote.created_at,
         updatedAt: remote.updated_at,
       });

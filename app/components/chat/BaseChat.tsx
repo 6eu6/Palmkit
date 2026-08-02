@@ -37,6 +37,8 @@ import type { ElementInfo } from '~/components/workbench/Inspector';
 import LlmErrorAlert from './LLMApiAlert';
 import { AuthModal } from '~/components/auth/AuthModal';
 import { authUserStore } from '~/lib/stores/auth';
+import { ProjectHome } from './ProjectHome';
+import { activeFolderIdStore } from '~/lib/stores/folders';
 
 const TEXTAREA_MIN_HEIGHT = 96;
 
@@ -160,6 +162,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const [progressAnnotations, setProgressAnnotations] = useState<ProgressAnnotation[]>([]);
     const expoUrl = useStore(expoUrlAtom);
     const authUser = useStore(authUserStore);
+    const activeFolderId = useStore(activeFolderIdStore);
     const showWorkbench = useStore(workbenchStore.showWorkbench);
     const [qrModalOpen, setQrModalOpen] = useState(false);
 
@@ -375,7 +378,11 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
               'lg:w-[var(--chat-min-width)] lg:flex-shrink-0': showWorkbench,
             })}
           >
-            {!chatStarted && (
+            {/* Inside a project, the project IS the intro: its name, its
+                standing brief and its conversations, sitting right above the
+                composer that starts the next one. */}
+            {!chatStarted && activeFolderId && <ProjectHome />}
+            {!chatStarted && !activeFolderId && (
               <div
                 id="intro"
                 className="mt-[34vh] sm:mt-[33vh] lg:mt-[31vh] max-w-2xl mx-auto text-center px-4 lg:px-0"

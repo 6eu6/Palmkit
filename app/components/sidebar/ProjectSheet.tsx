@@ -29,7 +29,7 @@ interface ProjectSheetProps {
 
   /** Extra line shown when the sheet was opened to file a conversation away. */
   movingLabel?: string;
-  onSubmit: (name: string, memoryMode: MemoryMode) => Promise<void>;
+  onSubmit: (name: string, memoryMode: MemoryMode, instructions: string) => Promise<void>;
 }
 
 /**
@@ -57,6 +57,7 @@ export function ProjectSheet({ open, onClose, folder, movingLabel, onSubmit }: P
   const editing = Boolean(folder);
   const [name, setName] = useState('');
   const [memoryMode, setMemoryMode] = useState<MemoryMode>('default');
+  const [instructions, setInstructions] = useState('');
   const [busy, setBusy] = useState(false);
   const keyboardInset = useKeyboardInset();
 
@@ -65,6 +66,7 @@ export function ProjectSheet({ open, onClose, folder, movingLabel, onSubmit }: P
     if (open) {
       setName(folder?.name ?? '');
       setMemoryMode(folder?.memoryMode ?? 'default');
+      setInstructions(folder?.instructions ?? '');
       setBusy(false);
     }
   }, [open, folder]);
@@ -77,7 +79,7 @@ export function ProjectSheet({ open, onClose, folder, movingLabel, onSubmit }: P
     setBusy(true);
 
     try {
-      await onSubmit(name, memoryMode);
+      await onSubmit(name, memoryMode, instructions);
     } finally {
       setBusy(false);
     }
@@ -167,7 +169,24 @@ export function ProjectSheet({ open, onClose, folder, movingLabel, onSubmit }: P
                     className="w-full rounded-2xl bg-gray-100 px-4 py-3.5 text-[16px] text-gray-900 outline-none transition placeholder:text-gray-400 focus:bg-gray-50 focus:ring-2 focus:ring-gray-900/10 dark:bg-neutral-800 dark:text-white dark:focus:bg-neutral-800 dark:focus:ring-white/15"
                   />
 
-                  <div className="mt-6">
+                  <div className="mt-5">
+                    <div className="mb-2 px-0.5 text-[13px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                      Instructions
+                    </div>
+                    <textarea
+                      value={instructions}
+                      rows={3}
+                      aria-label="Project instructions"
+                      placeholder="What is this project, and how should Palmkit behave in it?"
+                      onChange={(e) => setInstructions(e.target.value)}
+                      className="w-full resize-none rounded-2xl bg-gray-100 px-4 py-3 text-[15px] leading-snug text-gray-900 outline-none transition placeholder:text-gray-400 focus:ring-2 focus:ring-gray-900/10 dark:bg-neutral-800 dark:text-white dark:focus:ring-white/15"
+                    />
+                    <p className="mt-1.5 px-0.5 text-[12px] leading-snug text-gray-400 dark:text-gray-500">
+                      Sent with every conversation in this project, so you only write it once.
+                    </p>
+                  </div>
+
+                  <div className="mt-5">
                     <div className="mb-2 px-0.5 text-[13px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
                       Memory
                     </div>

@@ -139,12 +139,12 @@ export async function setMessages(
   timestamp?: string,
   metadata?: IChatMetadata,
   mode?: 'chat' | 'work' | 'code',
+  folderId?: string,
 ): Promise<{ mode: 'chat' | 'work' | 'code'; folderId?: string }> {
   /*
-   * Resolves with what the record ACTUALLY carries. `mode` may differ from the
-   * argument (see below), and `folderId` isn't an argument at all — callers
-   * that mirror the chat to the account need the stored values, and this saves
-   * them a second read.
+   * Resolves with what the record ACTUALLY carries — `mode` and `folderId` may
+   * both differ from the arguments (see below), and callers that mirror the
+   * chat to the account need the stored values, which saves them a second read.
    */
   return new Promise((resolve, reject) => {
     const transaction = db.transaction('chats', 'readwrite');
@@ -175,6 +175,16 @@ export async function setMessages(
        */
       const finalMode = existing?.mode || mode || 'code';
 
+      /*
+       * Same rule for the project: the argument only SEEDS a record that has
+       * none, which is how a conversation started inside a project is born
+       * belonging to it. Afterwards the stored value wins, so the "Move to
+       * project" menu stays the only thing that can refile a conversation —
+       * otherwise simply having a project selected in the sidebar would drag
+       * every open conversation into it on its next message.
+       */
+      const finalFolderId = existing ? existing.folderId : folderId;
+
       const request = store.put({
         id,
         messages,
@@ -185,7 +195,7 @@ export async function setMessages(
          * conversation would quietly unpin itself on the next message.
          */
         pinned: existing?.pinned ?? false,
-        folderId: existing?.folderId,
+        folderId: finalFolderId,
         urlId,
         description,
         timestamp: timestamp ?? new Date().toISOString(),
@@ -193,7 +203,7 @@ export async function setMessages(
         mode: finalMode,
       });
 
-      request.onsuccess = () => resolve({ mode: finalMode, folderId: existing?.folderId });
+      request.onsuccess = () => resolve({ mode: finalMode, folderId: finalFolderId });
       request.onerror = () => reject(request.error);
     };
 
@@ -242,6 +252,9 @@ export interface Folder {
    * 'project_only' the project reads and writes only its own memory.
    */
   memoryMode?: 'default' | 'project_only';
+
+  /** What this project is and how the model should behave inside it. */
+  instructions?: string;
   createdAt: string;
   updatedAt: string;
 }

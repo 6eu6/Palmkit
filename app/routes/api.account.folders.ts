@@ -40,7 +40,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const { data, error } = await supabase
     .from('folders')
-    .select('id, name, color, memory_mode, created_at, updated_at')
+    .select('id, name, color, memory_mode, instructions, created_at, updated_at')
     .eq('user_id', user.id)
     .order('updated_at', { ascending: false });
 
@@ -83,6 +83,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     name?: string;
     color?: string;
     memory_mode?: string;
+    instructions?: string | null;
     created_at?: string;
   };
 
@@ -110,7 +111,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   // memory_mode ships in 0016; retry without it on a database that lacks it.
   let { data, error } = await supabase
     .from('folders')
-    .upsert({ ...row, memory_mode: memoryMode }, { onConflict: 'id' })
+    .upsert({ ...row, memory_mode: memoryMode, instructions: body.instructions ?? null }, { onConflict: 'id' })
     .select()
     .maybeSingle();
 

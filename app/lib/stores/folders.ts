@@ -65,6 +65,7 @@ export async function createFolder(
   db: IDBDatabase,
   rawName: string,
   memoryMode: 'default' | 'project_only' = 'default',
+  instructions?: string,
 ): Promise<Folder | null> {
   const check = validateFolderName(rawName);
 
@@ -73,13 +74,39 @@ export async function createFolder(
   }
 
   const now = new Date().toISOString();
-  const folder: Folder = { id: crypto.randomUUID(), name: rawName.trim(), memoryMode, createdAt: now, updatedAt: now };
+  const folder: Folder = {
+    id: crypto.randomUUID(),
+    name: rawName.trim(),
+    memoryMode,
+    instructions: instructions?.trim() || undefined,
+    createdAt: now,
+    updatedAt: now,
+  };
 
   await putFolderLocal(db, folder);
   await loadFolders(db);
   void pushFolder(folder);
 
   return folder;
+}
+
+/** Update the project's standing brief. */
+export async function setFolderInstructions(db: IDBDatabase, id: string, instructions: string): Promise<void> {
+  const existing = foldersStore.get().find((f) => f.id === id);
+
+  if (!existing) {
+    throw new Error('Project not found.');
+  }
+
+  const updated: Folder = {
+    ...existing,
+    instructions: instructions.trim() || undefined,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await putFolderLocal(db, updated);
+  await loadFolders(db);
+  void pushFolder(updated);
 }
 
 /** Change a project's memory mode. */

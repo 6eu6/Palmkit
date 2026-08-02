@@ -11,6 +11,9 @@ export interface MemoryScope {
 
   /** True when that project keeps its memory to itself. */
   projectOnly: boolean;
+
+  /** The project's standing brief, injected on every request inside it. */
+  instructions?: string;
 }
 
 /**
@@ -38,7 +41,7 @@ export async function resolveMemoryScope(
 
   const { data, error } = await supabase
     .from('folders')
-    .select('memory_mode')
+    .select('memory_mode, instructions')
     .eq('user_id', userId)
     .eq('id', folderId)
     .maybeSingle();
@@ -53,7 +56,11 @@ export async function resolveMemoryScope(
     return { folderId, projectOnly: false };
   }
 
-  return { folderId, projectOnly: (data?.memory_mode as MemoryMode) === 'project_only' };
+  return {
+    folderId,
+    projectOnly: (data?.memory_mode as MemoryMode) === 'project_only',
+    instructions: (data?.instructions as string | null) || undefined,
+  };
 }
 
 /** Read the profile for a scope. */

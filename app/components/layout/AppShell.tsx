@@ -27,18 +27,23 @@ const EDGE_ZONE = 28;
 export function AppShell({ children }: { children: ReactNode }) {
   const width = typeof window === 'undefined' ? 320 : drawerWidth();
 
-  const x = useTransform(drawerProgress, [0, 1], [0, width]);
-  const scale = useTransform(drawerProgress, [0, 1], [1, 0.92]);
-  const radius = useTransform(drawerProgress, [0, 1], [0, 22]);
-
   /*
-   * The seam between the two layers. It deepens as the drawer opens, which is
-   * what makes the surface read as lifted ABOVE the drawer rather than as a
-   * flat panel swap.
+   * Translate ONLY.
+   *
+   * Matched frame by frame against the reference recording: the conversation
+   * keeps its full size and square corners the whole way across — it is one
+   * sheet of paper sliding sideways, not a card being shrunk into a stack.
+   * Scaling it (and rounding the corners) is what made the earlier version
+   * feel like a cheap imitation of the gesture rather than the gesture.
+   *
+   * The only depth cue is the shadow the moving sheet casts to its left.
    */
-  const shadow = useTransform(drawerProgress, [0, 1], ['0 0 0 0 rgba(0,0,0,0)', '-16px 0 40px -8px rgba(0,0,0,0.45)']);
-
-  const overlay = useTransform(drawerProgress, [0, 1], [0, 0.12]);
+  const x = useTransform(drawerProgress, [0, 1], [0, width]);
+  const shadow = useTransform(
+    drawerProgress,
+    [0, 0.02, 1],
+    ['0 0 0 0 rgba(0,0,0,0)', '-2px 0 12px -2px rgba(0,0,0,0.18)', '-8px 0 28px -4px rgba(0,0,0,0.28)'],
+  );
 
   const gesture = useRef<{ startX: number; startY: number; from: number; active: boolean; locked: boolean } | null>(
     null,
@@ -144,17 +149,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <motion.div
-      className="pk-app-shell relative flex h-full w-full flex-col"
-      style={{ x, scale, borderRadius: radius, boxShadow: shadow, transformOrigin: 'center left' }}
-    >
+    <motion.div className="pk-app-shell relative flex h-full w-full flex-col" style={{ x, boxShadow: shadow }}>
       {children}
 
-      {/* Tapping the pushed-aside surface closes the drawer. Only present
-          while it is actually pushed, so it never swallows a normal tap. */}
+      {/* Tapping the strip that is still showing brings the conversation back.
+          Transparent — the reference never dims the moving sheet; what dims is
+          the drawer underneath, while it is still covered. */}
       <motion.div
-        className="absolute inset-0 z-20 bg-black"
-        style={{ opacity: overlay, pointerEvents: useTransform(drawerProgress, (v) => (v > 0.02 ? 'auto' : 'none')) }}
+        className="absolute inset-0 z-20"
+        style={{ pointerEvents: useTransform(drawerProgress, (v) => (v > 0.02 ? 'auto' : 'none')) }}
         onClick={() => {
           animateDrawer(0);
           mobileActiveTab.set('chat');

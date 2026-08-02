@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams, Link } from '@remix-run/react';
+import { useNavigate, Link } from '@remix-run/react';
 import { motion, useTransform } from 'framer-motion';
 import { animateDrawer, drawerProgress, drawerWidth } from '~/lib/stores/drawerMotion';
 import { toast } from 'react-toastify';
@@ -10,6 +10,7 @@ import { binDates, partitionPinned } from '~/components/sidebar/date-binning';
 import { ChatItemMenu } from '~/components/sidebar/ChatItemMenu';
 import { renameChat, setChatPinned } from '~/lib/persistence/chatActions';
 import { useLongPress } from '~/lib/hooks/useLongPress';
+import { useProjectScope } from '~/lib/hooks/useProjectScope';
 import { ProjectsSection } from '~/components/sidebar/ProjectsSection';
 import { ProjectSheet, type MemoryMode } from '~/components/sidebar/ProjectSheet';
 import {
@@ -20,6 +21,7 @@ import {
   loadFolders,
   moveChatToFolder,
   renameFolder,
+  setFolderInstructions,
   setFolderMemoryMode,
   type Folder,
 } from '~/lib/stores/folders';
@@ -183,7 +185,7 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
   const mode = useStore(sidebarModeStore);
   const folders = useStore(foldersStore);
   const activeFolderId = useStore(activeFolderIdStore);
-  const [searchParams] = useSearchParams();
+  const { selectFolder } = useProjectScope();
 
   const loadProjects = useCallback(async () => {
     if (!db) {
@@ -259,10 +261,6 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
   }, [open, mode, activeFolderId, loadProjects]);
 
   useEffect(() => {
-    activeFolderIdStore.set(searchParams.get('project') ?? undefined);
-  }, [searchParams]);
-
-  useEffect(() => {
     if (open && db) {
       loadFolders(db);
     }
@@ -293,21 +291,17 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
     };
   }, [open]);
 
-  /** The URL owns the project scope, so it survives reloads and tab switches. */
-  const selectFolder = useCallback(
+  /*
+   * Opening a project on a phone should also SHOW it — the drawer is covering
+   * the very composer the project just scoped, so it slides away with the
+   * selection. Leaving it open would make the tap look like it did nothing.
+   */
+  const openFolder = useCallback(
     (folderId: string | undefined) => {
-      const params = new URLSearchParams(window.location.search);
-
-      if (folderId) {
-        params.set('project', folderId);
-      } else {
-        params.delete('project');
-      }
-
-      const qs = params.toString();
-      navigate(`${window.location.pathname}${qs ? `?${qs}` : ''}`, { replace: true, preventScrollReset: true });
+      selectFolder(folderId);
+      onClose();
     },
-    [navigate],
+    [selectFolder, onClose],
   );
 
   const folderCounts = useMemo(() => {
@@ -354,7 +348,7 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
    * project in the same step.
    */
   const submitSheet = useCallback(
-    async (name: string, memoryMode: MemoryMode) => {
+    async (name: string, memoryMode: MemoryMode, instructions: string) => {
       if (!db) {
         return;
       }
@@ -363,9 +357,10 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
         if (sheetFolder) {
           await renameFolder(db, sheetFolder.id, name);
           await setFolderMemoryMode(db, sheetFolder.id, memoryMode);
+          await setFolderInstructions(db, sheetFolder.id, instructions);
           toast.success('Project updated');
         } else {
-          const folder = await createFolder(db, name, memoryMode);
+          const folder = await createFolder(db, name, memoryMode, instructions);
 
           if (folder && pendingMoveItem) {
             await moveChatToFolder(db, pendingMoveItem.id, folder.id);
@@ -393,8 +388,10 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
      * chat's mode and making it appear in the wrong tab.
      */
     const mode = item.mode || 'code';
-    const targetUrl = item.urlId ? `/${mode}/${item.urlId}` : `/${mode}/${item.id}`;
-    navigate(targetUrl);
+
+    // Carry the project through — see HistoryItem for why.
+    const scope = item.folderId ? `?project=${item.folderId}` : '';
+    navigate(`/${mode}/${item.urlId || item.id}${scope}`);
     onClose();
   };
 
@@ -456,7 +453,13 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
   }, [projects]);
 
   const handleNewProject = () => {
-    navigate('/');
+    /*
+     * Stay in the current tab AND in the current project. `navigate('/')` sent
+     * the user back to the landing route, which silently dropped both — a new
+     * conversation started from inside a project would have been created
+     * outside it.
+     */
+    navigate(activeFolderId ? `/${mode}?project=${activeFolderId}` : `/${mode}`);
     onClose();
   };
 
@@ -494,8 +497,18 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
    * mounted on open there would be nothing under the finger to pull, and the
    * gesture could only ever be a fling that triggers a separate animation.
    */
-  const width = typeof window === 'undefined' ? 320 : drawerWidth();
-  const x = useTransform(drawerProgress, [0, 1], [-width, 0]);
+  const width = typeof window === 'undefined' ? 300 : drawerWidth();
+
+  /*
+   * The drawer barely moves — it sits UNDER the conversation and is revealed
+   * as that slides away, which is what the reference does. A small counter
+   * translate gives the parallax that stops the two layers looking glued
+   * together; sliding the panel the full width made it race the conversation.
+   */
+  const x = useTransform(drawerProgress, [0, 1], [-width * 0.18, 0]);
+
+  /* Dimmed while it is still covered, lifting to full strength as it appears. */
+  const dim = useTransform(drawerProgress, [0, 1], [0.45, 0]);
   const pointerEvents = useTransform(drawerProgress, (v) => (v > 0.02 ? 'auto' : 'none'));
 
   // Keep the panel in step when open/close comes from a button rather than a drag.
@@ -517,6 +530,9 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
               paddingBottom: 'env(safe-area-inset-bottom, 0px)',
             }}
           >
+            {/* Scrim over the drawer while the conversation still covers it. */}
+            <motion.div className="pointer-events-none absolute inset-0 z-50 bg-black" style={{ opacity: dim }} />
+
             {/* Brand + close */}
             <div className="flex items-center justify-between px-4 pt-4 pb-3">
               <div className="flex items-center gap-2">
@@ -610,7 +626,7 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
               folders={folders}
               counts={folderCounts}
               activeFolderId={activeFolderId}
-              onSelect={selectFolder}
+              onSelect={openFolder}
               onNew={() => {
                 setSheetFolder(undefined);
                 setPendingMoveItem(null);

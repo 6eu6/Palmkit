@@ -78,7 +78,19 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     : [];
 
   const factsText = formatFactsForInjection(facts);
-  const memoryBlock = buildMemoryBlock(profile, factsText);
+
+  /*
+   * The project's standing instructions ride along with the memory block,
+   * which api.chat already injects into the system prompt. That is the whole
+   * point of writing them once: every conversation in the project starts
+   * knowing the brief instead of being told again.
+   */
+  const memoryBlock = [
+    scope.instructions ? `<project_instructions>\n${scope.instructions.trim()}\n</project_instructions>` : '',
+    buildMemoryBlock(profile, factsText),
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
   return Response.json({
     profile,

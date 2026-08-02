@@ -120,8 +120,12 @@ export function HistoryItem({
         </form>
       ) : (
         <div className="flex w-full min-w-0 items-center">
+          {/* `?project=` carries the project through. Opening a conversation
+              that belongs to one keeps you inside it, so the sidebar stays
+              scoped and "New chat" starts the next conversation in the same
+              project instead of dropping you back out to everything. */}
           <Link
-            to={`/${item.mode || 'code'}/${item.urlId}`}
+            to={`/${item.mode || 'code'}/${item.urlId}${item.folderId ? `?project=${item.folderId}` : ''}`}
             className="flex min-w-0 flex-1 items-center truncate"
             onClick={handleItemClick}
           >

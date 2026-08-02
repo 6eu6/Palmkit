@@ -13,6 +13,7 @@
 import { useCallback, useRef } from 'react';
 import { useStore } from '@nanostores/react';
 import { chatId, db, getMessages } from '~/lib/persistence';
+import { activeFolderIdStore } from '~/lib/stores/folders';
 
 const EXTRACTION_INTERVAL = 3; // trigger extraction every N messages
 
@@ -31,17 +32,27 @@ export function useMemory() {
    *
    * Read from the stored record rather than the sidebar's scope: what governs
    * memory is the project the CONVERSATION is filed under, not whichever
-   * project the user happens to be browsing.
+   * project the user happens to be browsing. A conversation moved OUT of a
+   * project must stop seeing its memory even while its project page is open.
+   *
+   * The active scope is only the fallback for a conversation that has no
+   * record yet — the very first message typed into a project's composer. That
+   * message is what creates the conversation, and it is created inside the
+   * project (see setMessages), so the project's instructions and memory have
+   * to be in play for it. Without this fallback the one message where the
+   * standing brief matters most would be sent without it.
    */
   const currentFolderId = useCallback(async (): Promise<string | undefined> => {
     const id = chatId.get();
 
     if (!db || !id) {
-      return undefined;
+      return activeFolderIdStore.get();
     }
 
     try {
-      return (await getMessages(db, id))?.folderId;
+      const stored = await getMessages(db, id);
+
+      return stored ? stored.folderId : activeFolderIdStore.get();
     } catch {
       return undefined;
     }

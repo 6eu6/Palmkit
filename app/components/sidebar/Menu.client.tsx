@@ -1,6 +1,6 @@
 import { motion, type Variants } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from '@remix-run/react';
+import { Link } from '@remix-run/react';
 import { toast } from 'react-toastify';
 import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
 import { ThemeSwitch } from '~/components/ui/ThemeSwitch';
@@ -22,10 +22,12 @@ import {
   loadFolders,
   moveChatToFolder,
   renameFolder,
+  setFolderInstructions,
   setFolderMemoryMode,
   type Folder,
 } from '~/lib/stores/folders';
 import { useSearchFilter } from '~/lib/hooks/useSearchFilter';
+import { useProjectScope } from '~/lib/hooks/useProjectScope';
 import { classNames } from '~/utils/classNames';
 import { useStore } from '@nanostores/react';
 import { profileStore } from '~/lib/stores/profile';
@@ -134,8 +136,9 @@ export const Menu = () => {
   const mode = useStore(sidebarModeStore);
   const folders = useStore(foldersStore);
   const activeFolderId = useStore(activeFolderIdStore);
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+
+  /* Opening a project lands on its own composer — see useProjectScope. */
+  const { selectFolder } = useProjectScope();
   const [selectionMode, setSelectionMode] = useState(false);
   const [pendingMoveItem, setPendingMoveItem] = useState<ChatHistoryItem | null>(null);
   const [pendingDeleteFolder, setPendingDeleteFolder] = useState<Folder | null>(null);
@@ -397,35 +400,11 @@ export const Menu = () => {
     return () => clearTimeout(timer);
   }, [mode, activeFolderId, loadEntries]);
 
-  /*
-   * The URL owns the project scope, not component state — so it survives a
-   * reload, a tab switch, and opening a conversation inside the project.
-   */
-  useEffect(() => {
-    activeFolderIdStore.set(searchParams.get('project') ?? undefined);
-  }, [searchParams]);
-
   useEffect(() => {
     if (db) {
       loadFolders(db);
     }
   }, []);
-
-  const selectFolder = useCallback(
-    (folderId: string | undefined) => {
-      const params = new URLSearchParams(window.location.search);
-
-      if (folderId) {
-        params.set('project', folderId);
-      } else {
-        params.delete('project');
-      }
-
-      const qs = params.toString();
-      navigate(`${window.location.pathname}${qs ? `?${qs}` : ''}`, { replace: true, preventScrollReset: true });
-    },
-    [navigate],
-  );
 
   /** Counts are per-tab, matching what selecting the project will show. */
   const folderCounts = useMemo(() => {
@@ -472,7 +451,7 @@ export const Menu = () => {
    * project in the same step.
    */
   const submitSheet = useCallback(
-    async (name: string, memoryMode: MemoryMode) => {
+    async (name: string, memoryMode: MemoryMode, instructions: string) => {
       if (!db) {
         return;
       }
@@ -481,9 +460,10 @@ export const Menu = () => {
         if (sheetFolder) {
           await renameFolder(db, sheetFolder.id, name);
           await setFolderMemoryMode(db, sheetFolder.id, memoryMode);
+          await setFolderInstructions(db, sheetFolder.id, instructions);
           toast.success('Project updated');
         } else {
-          const folder = await createFolder(db, name, memoryMode);
+          const folder = await createFolder(db, name, memoryMode, instructions);
 
           if (folder && pendingMoveItem) {
             await moveChatToFolder(db, pendingMoveItem.id, folder.id);

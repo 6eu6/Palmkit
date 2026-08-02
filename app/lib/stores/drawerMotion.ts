@@ -17,10 +17,14 @@ const SPRING = { type: 'spring' as const, damping: 38, stiffness: 420, mass: 0.9
 /** How far the surface travels — also the drawer's width. */
 export function drawerWidth(): number {
   if (typeof window === 'undefined') {
-    return 320;
+    return 300;
   }
 
-  return Math.min(window.innerWidth * 0.78, 330);
+  /*
+   * 73% of the screen, measured off the reference recording: the conversation
+   * slides that far and the remaining strip is what you tap to come back.
+   */
+  return Math.round(window.innerWidth * 0.73);
 }
 
 export function animateDrawer(to: 0 | 1) {
