@@ -72,7 +72,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         return;
       }
 
-      const target = e.target as HTMLElement | null;
+      /*
+       * `e.target` is normally the element under the finger, but it is only
+       * guaranteed to be an EventTarget — a synthetic or retargeted event can
+       * hand us the window, and calling closest() on that throws inside a
+       * touchstart listener, killing the gesture before it starts.
+       */
+      const target = e.target instanceof Element ? e.target : null;
 
       if (target?.closest('.cm-editor, .xterm, iframe, [data-no-swipe], input, textarea, select')) {
         gesture.current = null;

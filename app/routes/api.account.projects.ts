@@ -231,14 +231,30 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   const pinned = body.pinned === true;
 
-  let { error } = await supabase.from('projects').upsert({ ...row, mode, pinned }, { onConflict: 'user_id,url_id' });
+  /*
+   * Newest column first, shedding one per attempt: folder_id ships in 0015,
+   * pinned in 0014, mode in 0011.
+   *
+   * folder_id was missing from this write entirely while the SELECT above
+   * already asked for it, so every conversation was stored with a null
+   * project. It looked correct on the device that filed it — IndexedDB held
+   * the truth — and lost its project the moment another device synced, or
+   * this one re-seeded from the account.
+   */
+  const attempts = [
+    { ...row, mode, pinned, folder_id: body.folder_id ?? null },
+    { ...row, mode, pinned },
+    { ...row, mode },
+    row,
+  ];
 
-  if (isMissingNewColumn(error)) {
-    // Retry with mode only (0011 applied, 0014 not), then with neither.
-    ({ error } = await supabase.from('projects').upsert({ ...row, mode }, { onConflict: 'user_id,url_id' }));
+  let error: { code?: string; message?: string } | null = null;
 
-    if (isMissingNewColumn(error)) {
-      ({ error } = await supabase.from('projects').upsert(row, { onConflict: 'user_id,url_id' }));
+  for (const attempt of attempts) {
+    ({ error } = await supabase.from('projects').upsert(attempt, { onConflict: 'user_id,url_id' }));
+
+    if (!isMissingNewColumn(error)) {
+      break;
     }
   }
 
