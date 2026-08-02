@@ -20,7 +20,9 @@ const createMdSchema = z.object({
   content: z
     .string()
     .min(1)
-    .describe('The full markdown content of the file. Supports all standard markdown: headings, bold, italic, lists, tables, code blocks, blockquotes, links, images.'),
+    .describe(
+      'The full markdown content of the file. Supports all standard markdown: headings, bold, italic, lists, tables, code blocks, blockquotes, links, images.',
+    ),
 });
 
 type CreateMdInput = z.infer<typeof createMdSchema>;

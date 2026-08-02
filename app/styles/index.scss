@@ -19,7 +19,11 @@ body {
   background-color: var(--palmkit-elements-bg-depth-1);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family:
+    'Inter',
+    system-ui,
+    -apple-system,
+    sans-serif;
 }
 
 /*
@@ -42,8 +46,17 @@ body {
  * Rule: if it's NOT a landing-page marketing heading, use Inter.
  * Never mix Boska into the app shell, chat, settings, or modals.
  */
-h1, h2, h3, h4, h5, h6 {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family:
+    'Inter',
+    system-ui,
+    -apple-system,
+    sans-serif;
 }
 
 /* Landing page display headings override to Boska */

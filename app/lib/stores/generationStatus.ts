@@ -1,10 +1,22 @@
 import { atom, map } from 'nanostores';
 
 export type GenerationStep =
-  'idle' | 'waiting-for-model' | 'creating-files' | 'updating-workspace' | 'starting-preview' | 'done' | 'error';
+  | 'idle'
+  | 'waiting-for-model'
+  | 'creating-files'
+  | 'updating-workspace'
+  | 'starting-preview'
+  | 'done'
+  | 'error';
 
 export type RestoreStep =
-  'idle' | 'loading-messages' | 'restoring-chat' | 'restoring-files' | 'restoring-webcontainer' | 'done' | 'error';
+  | 'idle'
+  | 'loading-messages'
+  | 'restoring-chat'
+  | 'restoring-files'
+  | 'restoring-webcontainer'
+  | 'done'
+  | 'error';
 
 export interface GenerationStatusState {
   step: GenerationStep;

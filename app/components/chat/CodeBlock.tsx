@@ -15,7 +15,7 @@ import { bundledLanguages, codeToHtml, isSpecialLang, type BundledLanguage, type
 import { classNames } from '~/utils/classNames';
 import { createScopedLogger } from '~/utils/logger';
 
-import styles from './CodeBlock.module.scss';
+import './CodeBlock.module.scss';
 
 const logger = createScopedLogger('CodeBlock');
 
@@ -36,12 +36,17 @@ function isPreviewable(language: string): boolean {
 }
 
 function buildPreviewHtml(code: string, language: string): string {
-  if (language === 'html') return code;
+  if (language === 'html') {
+    return code;
+  }
+
   if (language === 'css') {
     return `<!DOCTYPE html><html><head><style>${code}</style></head><body><div style="padding:20px;font-family:sans-serif;"><h2>CSS Preview</h2><p>Sample text with the applied styles.</p><button>Button</button><input placeholder="Input" /></div></body></html>`;
   }
+
   const isTsx = language === 'tsx';
   const babelPreset = isTsx ? 'react,typescript' : 'react';
+
   return `<!DOCTYPE html><html><head><meta charset="utf-8" /><style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}#root{padding:16px;}</style><script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script><script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script><script src="https://unpkg.com/@babel/standalone/babel.min.js"></script></head><body><div id="root"></div><script type="text/babel" data-presets="${babelPreset}">${code.replace(/<\/script>/g, '<\\/script>')}</script></body></html>`;
 }
 
@@ -61,7 +66,10 @@ export const CodeBlock = memo(
     const shouldCollapse = lineCount > COLLAPSE_THRESHOLD;
 
     const copyToClipboard = () => {
-      if (copied) return;
+      if (copied) {
+        return;
+      }
+
       navigator.clipboard.writeText(code);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -69,10 +77,12 @@ export const CodeBlock = memo(
 
     useEffect(() => {
       let effectiveLanguage = language;
+
       if (language && !isSpecialLang(language) && !(language in bundledLanguages)) {
         logger.warn(`Unsupported language '${language}', falling back to plaintext`);
         effectiveLanguage = 'plaintext';
       }
+
       const processCode = async () => {
         setHTML(await codeToHtml(code, { lang: effectiveLanguage, theme }));
       };
@@ -89,7 +99,12 @@ export const CodeBlock = memo(
     // If no preview support, render clean code block with header
     if (!canPreview) {
       return (
-        <div className={classNames('relative group text-left my-2 rounded-lg overflow-hidden border border-palmkit-elements-borderColor', className)}>
+        <div
+          className={classNames(
+            'relative group text-left my-2 rounded-lg overflow-hidden border border-palmkit-elements-borderColor',
+            className,
+          )}
+        >
           {/* Header bar */}
           <div className="flex items-center justify-between px-3 py-1.5 bg-palmkit-elements-background-depth-2 border-b border-palmkit-elements-borderColor">
             <span className="text-[10px] font-mono text-palmkit-elements-textTertiary uppercase tracking-wider">
@@ -101,7 +116,13 @@ export const CodeBlock = memo(
                 className="flex items-center gap-1 text-[11px] text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary transition-colors"
                 title="Copy code"
               >
-                <span className={copied ? 'i-ph:check inline-block w-3.5 h-3.5 text-emerald-500' : 'i-ph:copy inline-block w-3.5 h-3.5'} />
+                <span
+                  className={
+                    copied
+                      ? 'i-ph:check inline-block w-3.5 h-3.5 text-emerald-500'
+                      : 'i-ph:copy inline-block w-3.5 h-3.5'
+                  }
+                />
                 {copied ? 'Copied' : 'Copy'}
               </button>
             )}
@@ -178,7 +199,11 @@ export const CodeBlock = memo(
               className="flex items-center gap-1 text-[11px] text-palmkit-elements-textTertiary hover:text-palmkit-elements-textPrimary transition-colors"
               title="Copy code"
             >
-              <span className={copied ? 'i-ph:check inline-block w-3.5 h-3.5 text-emerald-500' : 'i-ph:copy inline-block w-3.5 h-3.5'} />
+              <span
+                className={
+                  copied ? 'i-ph:check inline-block w-3.5 h-3.5 text-emerald-500' : 'i-ph:copy inline-block w-3.5 h-3.5'
+                }
+              />
               {copied ? 'Copied' : 'Copy'}
             </button>
           )}

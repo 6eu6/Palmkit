@@ -5,7 +5,6 @@ import { toast } from 'react-toastify';
 import Popover from '~/components/ui/Popover';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { WORK_DIR } from '~/utils/constants';
-import WithTooltip from '~/components/ui/Tooltip';
 import type { Message } from 'ai';
 import type { ProviderInfo } from '~/types/model';
 import type {
@@ -37,7 +36,8 @@ interface AssistantMessageProps {
   /** Whether the assistant is currently streaming (hide conversion buttons while streaming). */
   isStreaming?: boolean;
   parts:
-    (TextUIPart | ReasoningUIPart | ToolInvocationUIPart | SourceUIPart | FileUIPart | StepStartUIPart)[] | undefined;
+    | (TextUIPart | ReasoningUIPart | ToolInvocationUIPart | SourceUIPart | FileUIPart | StepStartUIPart)[]
+    | undefined;
   addToolResult: ({ toolCallId, result }: { toolCallId: string; result: any }) => void;
 }
 

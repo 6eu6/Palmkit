@@ -404,11 +404,13 @@ export const ChatImpl = memo(
             : 'code';
 
         return {
-          // CRITICAL: messages and id MUST be included — without them,
-          // api.chat.ts receives an empty messages array and crashes with
-          // "Cannot read properties of undefined (reading 'reduce')".
-          // When experimental_prepareRequestBody is provided, the AI SDK
-          // does NOT auto-merge messages into the body — we must do it.
+          /*
+           * CRITICAL: messages and id MUST be included — without them,
+           * api.chat.ts receives an empty messages array and crashes with
+           * "Cannot read properties of undefined (reading 'reduce')".
+           * When experimental_prepareRequestBody is provided, the AI SDK
+           * does NOT auto-merge messages into the body — we must do it.
+           */
           messages: chatMessages,
           id,
 
@@ -445,6 +447,7 @@ export const ChatImpl = memo(
       },
       onFinish: (message, response) => {
         setFakeLoading(false);
+
         const usage = response.usage;
         setData(undefined);
         setGenerationStep('done');
@@ -1263,7 +1266,10 @@ export const ChatImpl = memo(
        * Toggle via: localStorage.setItem('palmkit_use_external_worker', 'true')
        */
       const lowerMsg = finalMessageContent.toLowerCase();
-      const isDocumentRequest = /\b(pdf|word|docx|xlsx|excel|spreadsheet|document|report|downloadable)\b/i.test(lowerMsg);
+      const isDocumentRequest = /\b(pdf|word|docx|xlsx|excel|spreadsheet|document|report|downloadable)\b/i.test(
+        lowerMsg,
+      );
+
       if (externalWorkerEnabled && chatMode === 'build' && !isDocumentRequest) {
         chatStore.setKey('started', true);
         chatStore.setKey('aborted', false);

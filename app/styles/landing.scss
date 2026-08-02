@@ -24,10 +24,10 @@
 [data-landing-theme='dark'] {
   --lk-bg: #16120c;
   --lk-bg-raw: 22 18 12;
-  --lk-fg: #ECE4D4;
+  --lk-fg: #ece4d4;
   --lk-fg-raw: 236 228 212;
-  --lk-accent: #D8825C;
-  --lk-accent-soft: #B06A4E;
+  --lk-accent: #d8825c;
+  --lk-accent-soft: #b06a4e;
   --lk-accent-fg: #16120c;
   --lk-glass-fill: 34 28 18;
   --lk-glass-stroke: 236 228 212;
@@ -36,13 +36,13 @@
   --lk-footer-gif: url('/footer-night.webp');
 }
 [data-landing-theme='light'] {
-  --lk-bg: #E7E0D2;
+  --lk-bg: #e7e0d2;
   --lk-bg-raw: 231 224 210;
-  --lk-fg: #221E16;
+  --lk-fg: #221e16;
   --lk-fg-raw: 34 30 22;
-  --lk-accent: #9C4A2E;
-  --lk-accent-soft: #C27A5E;
-  --lk-accent-fg: #FBF7EE;
+  --lk-accent: #9c4a2e;
+  --lk-accent-soft: #c27a5e;
+  --lk-accent-fg: #fbf7ee;
   --lk-glass-fill: 251 247 238;
   --lk-glass-stroke: 255 255 255;
   --lk-glass-highlight: 255 255 255;
@@ -65,7 +65,7 @@
   box-shadow:
     inset 0 1px 0 0 rgb(var(--lk-glass-highlight) / 0.55),
     inset 0 0 0 1px rgb(var(--lk-glass-stroke) / 0.16),
-    0 1px 1px 0 rgb(var(--lk-glass-shadow) / 0.10),
+    0 1px 1px 0 rgb(var(--lk-glass-shadow) / 0.1),
     0 8px 28px -14px rgb(var(--lk-glass-shadow) / 0.35);
   border: none;
 }
@@ -97,7 +97,7 @@
   text-shadow:
     0 0 22px rgba(255, 250, 240, 0.55),
     0 0 1px rgba(255, 250, 240, 0.6),
-    0 3px 26px rgba(20, 16, 12, 0.30);
+    0 3px 26px rgba(20, 16, 12, 0.3);
 }
 [data-landing-theme='dark'] .lk-wordmark-halo {
   text-shadow:
@@ -108,20 +108,32 @@
 
 /* ── Drift animation for hero ── */
 @keyframes lk-drift {
-  0%, 100% { transform: scale(1.06) translate3d(0, 0, 0); }
-  50% { transform: scale(1.10) translate3d(-1.2%, -1.6%, 0); }
+  0%,
+  100% {
+    transform: scale(1.06) translate3d(0, 0, 0);
+  }
+  50% {
+    transform: scale(1.1) translate3d(-1.2%, -1.6%, 0);
+  }
 }
 .lk-drift {
   animation: lk-drift 28s ease-in-out infinite;
   will-change: transform;
 }
 @media (prefers-reduced-motion: reduce) {
-  .lk-drift { animation: none !important; }
+  .lk-drift {
+    animation: none !important;
+  }
 }
 
 /* ── Soft scrollbar ── */
-.lk-soft-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
-.lk-soft-scroll::-webkit-scrollbar-track { background: transparent; }
+.lk-soft-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.lk-soft-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
 .lk-soft-scroll::-webkit-scrollbar-thumb {
   background: rgb(var(--lk-glass-shadow) / 0.25);
   border-radius: 8px;
@@ -132,7 +144,12 @@
 .lk-root {
   background: var(--lk-bg);
   color: var(--lk-fg);
-  font-family: 'Boska', 'Inter', system-ui, -apple-system, sans-serif;
+  font-family:
+    'Boska',
+    'Inter',
+    system-ui,
+    -apple-system,
+    sans-serif;
   min-height: 100dvh;
   position: relative;
   isolation: isolate;

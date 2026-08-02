@@ -57,8 +57,10 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
 }
 
 export default function AppLayout() {
-  // Consume the loader data so it's available to the layout's children
-  // (Header, Chat) via useLoaderData() in their own hooks.
+  /*
+   * Consume the loader data so it's available to the layout's children
+   * (Header, Chat) via useLoaderData() in their own hooks.
+   */
   useLoaderData<typeof loader>();
 
   return (

@@ -41,7 +41,6 @@ import type { ProviderInfo } from '~/types/model';
 import { Reasoning, type ReasoningStep } from '~/components/ai-elements/Reasoning';
 import { Shimmer } from '~/components/ai-elements/Shimmer';
 import { Sources, type SourceItem } from '~/components/ai-elements/Sources';
-import WithTooltip from '~/components/ui/Tooltip';
 
 // Lazy-load build timeline only in code mode
 const BuildTimeline = lazy(() => import('./BuildTimeline').then((m) => ({ default: m.BuildTimeline })));
@@ -49,7 +48,8 @@ const BuildTimeline = lazy(() => import('./BuildTimeline').then((m) => ({ defaul
 export interface StreamMessageProps {
   content: string;
   parts:
-    (TextUIPart | ReasoningUIPart | ToolInvocationUIPart | SourceUIPart | FileUIPart | StepStartUIPart)[] | undefined;
+    | (TextUIPart | ReasoningUIPart | ToolInvocationUIPart | SourceUIPart | FileUIPart | StepStartUIPart)[]
+    | undefined;
   annotations?: Message['annotations'];
   messageId?: string;
   append?: (message: Message) => void;
@@ -95,9 +95,11 @@ const ActionButtons = memo(({ content, isStreaming, onRetry }: ActionButtonsProp
     });
   }, [content]);
 
-  // During streaming: show spinner. After: show all buttons.
-  // But ALWAYS render the buttons too (just hide during streaming via CSS)
-  // so they're available immediately when streaming ends.
+  /*
+   * During streaming: show spinner. After: show all buttons.
+   * But ALWAYS render the buttons too (just hide during streaming via CSS)
+   * so they're available immediately when streaming ends.
+   */
   return (
     <div className="flex items-center gap-1 mt-3 -ml-1 opacity-60 hover:opacity-100 transition-opacity">
       {isStreaming && (
@@ -125,11 +127,7 @@ const ActionButtons = memo(({ content, isStreaming, onRetry }: ActionButtonsProp
             title={copied ? 'Copied!' : 'Copy response'}
             className="p-1.5 rounded-lg hover:bg-palmkit-elements-background-depth-2 text-palmkit-elements-textSecondary hover:text-palmkit-elements-textPrimary transition-colors"
           >
-            {copied ? (
-              <div className="i-ph:check text-base" />
-            ) : (
-              <div className="i-ph:copy text-base" />
-            )}
+            {copied ? <div className="i-ph:check text-base" /> : <div className="i-ph:copy text-base" />}
           </button>
 
           {/* Like */}
@@ -212,9 +210,12 @@ function StreamMessageImpl({
 
   const hasThinking = reasoningSteps.length > 0;
   const hasTools = (toolInvocations?.length ?? 0) > 0;
-  // hasContent checks BOTH the content string AND parts (inline rendering)
-  // because in v4, content may be empty while parts contain the text
-  const hasTextParts = (parts?.filter(p => p.type === 'text').length ?? 0) > 0;
+
+  /*
+   * hasContent checks BOTH the content string AND parts (inline rendering)
+   * because in v4, content may be empty while parts contain the text
+   */
+  const hasTextParts = (parts?.filter((p) => p.type === 'text').length ?? 0) > 0;
   const hasContent = Boolean((content && content.length > 0) || hasTextParts);
   const hasSources = sources.length > 0;
 
@@ -243,6 +244,7 @@ function StreamMessageImpl({
           renderBlocks.push({ type: 'text', data: textBuffer });
           textBuffer = '';
         }
+
         if (part.type === 'reasoning') {
           renderBlocks.push({ type: 'reasoning', data: part });
         } else if (part.type === 'tool-invocation') {
@@ -252,6 +254,7 @@ function StreamMessageImpl({
         }
       }
     }
+
     // Flush remaining text
     if (textBuffer) {
       renderBlocks.push({ type: 'text', data: textBuffer });
@@ -285,12 +288,12 @@ function StreamMessageImpl({
       )}
 
       {useInlineRendering ? (
-        /*
-         * INLINE RENDERING — parts in their natural order.
-         * Text chunks are rendered as markdown, tool calls as rich UI,
-         * reasoning as collapsible blocks — all interleaved.
-         */
         <>
+          {/*
+            INLINE RENDERING — parts in their natural order.
+            Text chunks are rendered as markdown, tool calls as rich UI,
+            reasoning as collapsible blocks — all interleaved.
+          */}
           {renderBlocks.map((block, i) => {
             if (block.type === 'reasoning') {
               const step: ReasoningStep = {
@@ -298,6 +301,7 @@ function StreamMessageImpl({
               };
               return <Reasoning key={`r-${i}`} isStreaming={isStreaming} steps={[step]} />;
             }
+
             if (block.type === 'text') {
               return (
                 <div key={`t-${i}`} className="ai-fade-in">
@@ -315,6 +319,7 @@ function StreamMessageImpl({
                 </div>
               );
             }
+
             if (block.type === 'tools') {
               /*
                * Render tool results INLINE — directly via ToolResultRenderer,
@@ -325,27 +330,33 @@ function StreamMessageImpl({
               const toolPart = block.data as ToolInvocationUIPart;
               const inv = toolPart.toolInvocation;
 
-              // If the tool call is still pending (no result yet), show a compact
-              // "calling tool..." indicator
+              /*
+               * If the tool call is still pending (no result yet), show a compact
+               * "calling tool..." indicator
+               */
               if (inv.state === 'call' || inv.state === 'partial-call') {
                 return (
-                  <div key={`tool-${i}`} className="my-2 flex items-center gap-2 text-xs text-palmkit-elements-textSecondary">
+                  <div
+                    key={`tool-${i}`}
+                    className="my-2 flex items-center gap-2 text-xs text-palmkit-elements-textSecondary"
+                  >
                     <div className="i-ph:spinner text-sm animate-spin" />
                     <span>Calling {inv.toolName}…</span>
                   </div>
                 );
               }
 
-              // Tool has a result — render it directly via ToolResultRenderer
-              // (shows PDF preview, docx preview, etc. inline, no MCP wrapper)
+              /*
+               * Tool has a result — render it directly via ToolResultRenderer
+               * (shows PDF preview, docx preview, etc. inline, no MCP wrapper)
+               */
               return (
                 <div key={`tool-${i}`} className="my-3">
-                  <ToolResultRenderer
-                    toolInvocation={inv}
-                  />
+                  <ToolResultRenderer toolInvocation={inv} />
                 </div>
               );
             }
+
             if (block.type === 'sources' && !isStreaming) {
               const src: SourceItem = {
                 title: (block.data as any).title || 'Source',
@@ -354,15 +365,16 @@ function StreamMessageImpl({
               };
               return <Sources key={`s-${i}`} sources={[src]} />;
             }
+
             return null;
           })}
         </>
       ) : (
-        /*
-         * FALLBACK RENDERING — no parts array (v1 compat or restored messages).
-         * Renders content, then tools, then sources in separate sections.
-         */
         <>
+          {/*
+            FALLBACK RENDERING — no parts array (v1 compat or restored messages).
+            Renders content, then tools, then sources in separate sections.
+          */}
           {/* Reasoning */}
           {hasThinking && <Reasoning isStreaming={isStreaming} steps={reasoningSteps} />}
 

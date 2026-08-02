@@ -366,9 +366,15 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
         const toolContext: ToolContext = {
           files: hasExistingFiles ? files : undefined,
           sandboxId,
+
           // Cloudflare Pages: env vars live on context.cloudflare.env, NOT process.env
-          openRouterApiKey: (context.cloudflare?.env?.OPEN_ROUTER_API_KEY ?? process.env.OPENROUTER_API_KEY ?? process.env.OPEN_ROUTER_API_KEY) as string | undefined,
-          searchApiKey: ((context.cloudflare?.env as any)?.TAVILY_API_KEY ?? (context.cloudflare?.env as any)?.SERPAPI_KEY ?? process.env.TAVILY_API_KEY ?? process.env.SERPAPI_KEY) as string | undefined,
+          openRouterApiKey: (context.cloudflare?.env?.OPEN_ROUTER_API_KEY ??
+            process.env.OPENROUTER_API_KEY ??
+            process.env.OPEN_ROUTER_API_KEY) as string | undefined,
+          searchApiKey: ((context.cloudflare?.env as any)?.TAVILY_API_KEY ??
+            (context.cloudflare?.env as any)?.SERPAPI_KEY ??
+            process.env.TAVILY_API_KEY ??
+            process.env.SERPAPI_KEY) as string | undefined,
           mode: toolMode,
         };
 
@@ -582,15 +588,22 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
            * which shows "Build failed" in the UI — confusing for users
            * who just asked a question.
            */
-          if (chatMode === 'build') {
-            const fullAssistantText =
-              currentMessages
-                .filter((m) => m.role === 'assistant')
-                .map((m) => (typeof m.content === 'string' ? m.content : ''))
-                .join('\n') +
-              '\n' +
-              text;
+          /*
+           * Everything the assistant has produced across segments so far.
+           * Declared here, not inside the build-mode block below: the
+           * auto-continue branch further down also inspects it to decide
+           * between CONTINUE_PROMPT and CLOSE_OUT_PROMPT, and a block-scoped
+           * `const` left that reference unresolved (`tsc` error TS2304).
+           */
+          const fullAssistantText =
+            currentMessages
+              .filter((m) => m.role === 'assistant')
+              .map((m) => (typeof m.content === 'string' ? m.content : ''))
+              .join('\n') +
+            '\n' +
+            text;
 
+          if (chatMode === 'build') {
             try {
               const validationResult = validateBuildOutput(fullAssistantText);
               const jobStatus = completenessToJobStatus(validationResult);

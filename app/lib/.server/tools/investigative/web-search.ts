@@ -70,7 +70,9 @@ export const webSearchTool: ToolDefinition<typeof webSearchSchema> = {
        * By throwing, the AI SDK marks the tool call as failed, and the
        * model's built-in error handling kicks in (it stops retrying).
        */
-      throw new Error('Web search is not configured. Set TAVILY_API_KEY in Cloudflare env. Free tier: https://tavily.com');
+      throw new Error(
+        'Web search is not configured. Set TAVILY_API_KEY in Cloudflare env. Free tier: https://tavily.com',
+      );
     }
 
     // Detect provider by key prefix — Tavily keys start with "tvly-".

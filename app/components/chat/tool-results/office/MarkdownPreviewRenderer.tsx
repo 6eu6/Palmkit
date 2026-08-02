@@ -9,10 +9,9 @@
  *   3. Download as .md file
  */
 
-import { memo, useState, useMemo } from 'react';
+import { memo, useState } from 'react';
 import { ToolResultHeader } from '~/components/chat/tool-results/shared/ToolResultHeader';
 import { DownloadButton } from '~/components/chat/tool-results/shared/DownloadButton';
-import { CollapsibleSection } from '~/components/chat/tool-results/shared/CollapsibleSection';
 import { Markdown } from '~/components/chat/Markdown';
 import { classNames } from '~/utils/classNames';
 
