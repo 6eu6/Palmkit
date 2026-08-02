@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams, Link } from '@remix-run/react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, useTransform } from 'framer-motion';
+import { animateDrawer, drawerProgress, drawerWidth } from '~/lib/stores/drawerMotion';
 import { toast } from 'react-toastify';
 import { db, getAll, deleteChatCompletely, getSnapshot, type ChatHistoryItem } from '~/lib/persistence';
 import { chatId } from '~/lib/persistence';
@@ -27,20 +28,6 @@ import { useStore } from '@nanostores/react';
 import { sidebarModeStore, setSidebarMode, SIDEBAR_QUICK_ACTIONS, type SidebarMode } from '~/lib/stores/sidebar';
 import { ProfileMenu } from '~/components/ui/ProfileMenu';
 
-/**
- * ProjectSwitcherDrawer
- *
- * Premium mobile project list drawer with dark developer-tool aesthetic.
- * - Animated gradient accent line at top
- * - New Project button with full gradient
- * - Date-binned project list with status badges
- * - Mobile-friendly delete (visible on press)
- * - Safe-area support
- *
- * Usage:
- *   <ProjectSwitcherDrawer open={open} onClose={onClose} />
- */
-
 type ProjectStatus = 'saved' | 'generating' | 'interrupted';
 
 interface ProjectItem extends ChatHistoryItem {
@@ -51,23 +38,6 @@ interface ProjectSwitcherDrawerProps {
   open: boolean;
   onClose: () => void;
 }
-
-/*
- * Slide in from the LEFT as a side drawer (standard mobile navigation
- * pattern). It previously rose from the bottom of the screen like an action
- * sheet, which read as broken for a hamburger-triggered history menu.
- */
-const DRAWER_VARIANTS = {
-  hidden: { x: '-100%' },
-  visible: { x: 0 },
-  exit: { x: '-100%' },
-};
-
-const OVERLAY_VARIANTS = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1 },
-  exit: { opacity: 0 },
-};
 
 /**
  * One conversation row in the mobile drawer.
@@ -517,49 +487,34 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
     return date.toLocaleDateString();
   };
 
-  return (
-    <AnimatePresence>
-      {open && (
-        <>
-          {/* Backdrop */}
-          {/* Invisible: tapping the pushed-aside conversation closes the
-              drawer, but it is not dimmed — the shell already carries its own
-              subtle scrim, and stacking a second one over a surface that has
-              moved out of the way just looks muddy. */}
-          <motion.div
-            className="fixed inset-0 z-[998]"
-            variants={OVERLAY_VARIANTS}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-            transition={{ duration: 0.2 }}
-            onClick={onClose}
-          />
+  /*
+   * The drawer stays MOUNTED and is positioned from `drawerProgress`, rather
+   * than being conditionally rendered with its own entry animation. A
+   * drag-to-open has to be able to pull a panel that already exists — if it
+   * mounted on open there would be nothing under the finger to pull, and the
+   * gesture could only ever be a fling that triggers a separate animation.
+   */
+  const width = typeof window === 'undefined' ? 320 : drawerWidth();
+  const x = useTransform(drawerProgress, [0, 1], [-width, 0]);
+  const pointerEvents = useTransform(drawerProgress, (v) => (v > 0.02 ? 'auto' : 'none'));
 
+  // Keep the panel in step when open/close comes from a button rather than a drag.
+  useEffect(() => {
+    animateDrawer(open ? 1 : 0);
+  }, [open]);
+
+  return (
+    <>
+      {
+        <>
           {/* Drawer — left side panel, themed with the same classes as the desktop sidebar */}
           <motion.div
-            className={classNames(
-              'fixed left-0 top-0 bottom-0 z-[999] flex flex-col w-[78%] max-w-[330px]',
-              'bg-white dark:bg-black border-r border-gray-200 dark:border-neutral-800',
-              'shadow-2xl',
-            )}
-            style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-            variants={DRAWER_VARIANTS}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-            transition={{ type: 'spring', damping: 32, stiffness: 320 }}
-            drag="x"
-            dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={{ left: 0.9, right: 0 }}
-            onDragEnd={(_e, info) => {
-              /*
-               * Design v2 touch spec: the panel follows the finger; a swipe
-               * past 35% width OR a fast fling (>0.5 px/ms) closes it.
-               */
-              if (info.offset.x < -110 || info.velocity.x < -500) {
-                onClose();
-              }
+            className={classNames('fixed left-0 top-0 bottom-0 z-[999] flex flex-col', 'bg-white dark:bg-black')}
+            style={{
+              x,
+              pointerEvents,
+              width,
+              paddingBottom: 'env(safe-area-inset-bottom, 0px)',
             }}
           >
             {/* Brand + close */}
@@ -792,8 +747,8 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
             </Dialog>
           </DialogRoot>
         </>
-      )}
-    </AnimatePresence>
+      }
+    </>
   );
 });
 

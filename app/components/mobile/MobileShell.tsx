@@ -152,45 +152,13 @@ export const MobileShell = memo(() => {
   }, []);
 
   /*
-   * Touch spec (Design v2): a swipe that STARTS at the left screen edge
-   * (20px hot zone) and travels right opens the projects drawer — the same
-   * gesture every mobile OS uses for its navigation drawer. Only on phones,
-   * and never while the drawer is already open.
+   * The left-edge pull that opens the projects drawer lives in AppShell now.
+   * It has to: opening is a DRAG that moves the drawer and the conversation
+   * together under the finger, and the surface being pushed is AppShell's.
+   * The threshold-based version that used to live here only flipped a boolean
+   * once the finger had travelled far enough, so both were animating at once
+   * and the panel ran ahead of the touch.
    */
-  useEffect(() => {
-    let startX = -1;
-    let startY = -1;
-
-    const onTouchStart = (e: TouchEvent) => {
-      const t = e.touches[0];
-      startX = t.clientX <= 20 && window.innerWidth < 640 ? t.clientX : -1;
-      startY = t.clientY;
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (startX < 0 || mobileProjectsOpen) {
-        return;
-      }
-
-      const t = e.touches[0];
-      const dx = t.clientX - startX;
-      const dy = Math.abs(t.clientY - startY);
-
-      if (dx > 48 && dy < 40) {
-        startX = -1;
-        setMobileProjectsOpen(true);
-        mobileActiveTab.set('projects');
-      }
-    };
-
-    window.addEventListener('touchstart', onTouchStart, { passive: true });
-    window.addEventListener('touchmove', onTouchMove, { passive: true });
-
-    return () => {
-      window.removeEventListener('touchstart', onTouchStart);
-      window.removeEventListener('touchmove', onTouchMove);
-    };
-  }, [mobileProjectsOpen]);
 
   return (
     <>

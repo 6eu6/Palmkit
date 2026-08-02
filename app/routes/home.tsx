@@ -5,6 +5,7 @@ import { BaseChat } from '~/components/chat/BaseChat';
 import { Chat } from '~/components/chat/Chat.client';
 import { Header } from '~/components/header/Header';
 import { PersistentChrome } from '~/components/layout/PersistentChrome';
+import { AppShell } from '~/components/layout/AppShell';
 import { Landing } from '~/components/landing/Landing';
 import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
 
@@ -47,10 +48,10 @@ export default function Home() {
   return (
     <div className="relative flex flex-col h-full w-full bg-palmkit-elements-background-depth-1">
       <PersistentChrome />
-      <div className="pk-app-shell relative flex h-full w-full flex-col">
+      <AppShell>
         <Header />
         <ClientOnly fallback={<BaseChat />}>{() => <Chat />}</ClientOnly>
-      </div>
+      </AppShell>
     </div>
   );
 }
