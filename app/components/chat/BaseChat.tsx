@@ -15,7 +15,6 @@ import Cookies from 'js-cookie';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import styles from './BaseChat.module.scss';
 import { ImportButtons } from '~/components/chat/chatExportAndImport/ImportButtons';
-import { ExamplePrompts } from '~/components/chat/ExamplePrompts';
 import GitCloneButton from './GitCloneButton';
 import type { ProviderInfo } from '~/types/model';
 import type { ActionAlert, SupabaseAlert, DeployAlert, LlmErrorAlertType } from '~/types/actions';
@@ -106,7 +105,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       setProvider,
       providerList,
       input = '',
-      setInput,
+      setInput: _setInput,
       handleInputChange,
 
       sendMessage,
@@ -376,6 +375,15 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
             className={classNames(styles.Chat, 'flex flex-col h-full', {
               'flex-grow lg:min-w-[var(--chat-min-width)]': !showWorkbench,
               'lg:w-[var(--chat-min-width)] lg:flex-shrink-0': showWorkbench,
+
+              /*
+               * Before the first message the greeting and the composer are the
+               * only things on screen, so they sit in the middle of it. The
+               * old fixed `mt-34vh` was a guess at where the middle was: it
+               * ignored the composer's own height and everything below it, and
+               * on a phone it left the box stranded in the upper third.
+               */
+              'justify-center': !chatStarted,
             })}
           >
             {/* Inside a project, the project IS the intro: its name, its
@@ -383,10 +391,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                 composer that starts the next one. */}
             {!chatStarted && activeFolderId && <ProjectHome />}
             {!chatStarted && !activeFolderId && (
-              <div
-                id="intro"
-                className="mt-[34vh] sm:mt-[33vh] lg:mt-[31vh] max-w-2xl mx-auto text-center px-4 lg:px-0"
-              >
+              <div id="intro" className="max-w-2xl mx-auto text-center px-4 lg:px-0">
                 <div
                   style={{
                     animation: 'fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
@@ -560,27 +565,19 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                 />
               </div>
             </StickToBottom>
-            <div className="flex flex-col justify-center">
-              {!chatStarted && (
-                <div
-                  className="flex justify-center gap-2 flex-wrap px-4 sm:px-4 mt-2"
-                  style={{ animation: 'fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards', opacity: 0 }}
-                >
-                  <GitCloneButton importChat={importChat} />
-                  {ImportButtons(importChat)}
-                </div>
-              )}
-              <div className="flex flex-col gap-3 sm:gap-4">
-                {!chatStarted && (
-                  <ExamplePrompts
-                    onSelect={(text) => {
-                      setInput?.(text);
-                      textareaRef?.current?.focus();
-                    }}
-                  />
-                )}
+            {/* Import entry points stay — they start work you cannot start
+                any other way. The canned prompt chips are gone: they were
+                suggestions nobody asked for, and they pushed the composer up
+                out of the middle of the screen to make room for themselves. */}
+            {!chatStarted && (
+              <div
+                className="flex justify-center gap-2 flex-wrap px-4 sm:px-4 mt-2"
+                style={{ animation: 'fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards', opacity: 0 }}
+              >
+                <GitCloneButton importChat={importChat} />
+                {ImportButtons(importChat)}
               </div>
-            </div>
+            )}
           </div>
           <ClientOnly>
             {() => (

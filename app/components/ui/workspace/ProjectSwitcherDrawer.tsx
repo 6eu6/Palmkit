@@ -28,7 +28,7 @@ import {
 import { classNames } from '~/utils/classNames';
 import { useStore } from '@nanostores/react';
 import { sidebarModeStore, setSidebarMode, SIDEBAR_QUICK_ACTIONS, type SidebarMode } from '~/lib/stores/sidebar';
-import { ProfileMenu } from '~/components/ui/ProfileMenu';
+import { GLASS_SURFACE, ProfileMenu } from '~/components/ui/ProfileMenu';
 
 /** The shut search pill is a circle this wide — the icon's own footprint. */
 const SEARCH_PILL_SIZE = 36;
@@ -533,7 +533,6 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
   const rowWidth = Math.max(SEARCH_PILL_SIZE, width - 32);
 
   const pillWidth = useTransform(searchProgress, [0, 1], [SEARCH_PILL_SIZE, rowWidth]);
-  const fillOpacity = useTransform(searchProgress, [0, 0.35], [0, 1]);
 
   /* The brand is clear of the pill before the pill reaches it. */
   const brandOpacity = useTransform(searchProgress, [0, 0.45], [1, 0]);
@@ -628,18 +627,12 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                 </motion.div>
 
                 <motion.div
-                  className="absolute right-0 flex h-9 items-center overflow-hidden rounded-full"
+                  className={classNames(
+                    'absolute right-0 flex h-9 items-center overflow-hidden rounded-full',
+                    GLASS_SURFACE,
+                  )}
                   style={{ width: pillWidth }}
                 >
-                  {/* The fill is its own layer riding the same progress, not a
-                      CSS colour transition. Two curves — a 200ms colour fade
-                      under a 450ms spring — is what made the brand appear to
-                      blink as the pill swept over it. */}
-                  <motion.div
-                    className="absolute inset-0 rounded-full bg-gray-100 dark:bg-neutral-900"
-                    style={{ opacity: fillOpacity }}
-                  />
-
                   {/* ml-2.5 centres the glass inside the 36px circle while the
                       field is shut, and becomes its leading icon once open. */}
                   <span className="i-ph:magnifying-glass relative ml-2.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
@@ -656,7 +649,17 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                     aria-hidden={!searching}
                     tabIndex={searching ? 0 : -1}
                     style={{ opacity: contentOpacity }}
-                    className="relative min-w-0 flex-1 bg-transparent px-2 text-[16px] text-palmkit-elements-textPrimary outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                    className={classNames(
+                      'relative min-w-0 flex-1 bg-transparent px-2 text-[16px] text-palmkit-elements-textPrimary',
+
+                      /*
+                       * iOS draws its own inset border and rounded fill on a
+                       * text field; without these it showed as a raised box
+                       * sitting inside the glass pill.
+                       */
+                      'appearance-none border-0 shadow-none outline-none [-webkit-appearance:none]',
+                      'placeholder:text-gray-400 dark:placeholder:text-gray-500',
+                    )}
                   />
 
                   <motion.button
@@ -723,15 +726,11 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
              */}
             {!trimmedQuery && (
               <>
-                {/* Actions */}
+                {/* Actions. Starting a conversation is not among them any
+                    more — that is the floating button at the foot of the
+                    panel, and the same button twice on one screen is once
+                    too many. */}
                 <div className="space-y-0.5 px-3 pt-3">
-                  <button
-                    onClick={handleNewProject}
-                    className="flex w-full items-center gap-3 rounded-xl bg-gray-50 px-3 py-2.5 text-[14px] font-medium text-gray-900 transition active:bg-gray-100 dark:bg-neutral-900 dark:text-white dark:active:bg-neutral-800"
-                  >
-                    <span className="i-ph:plus-circle text-lg text-gray-500 dark:text-gray-400" />
-                    {mode === 'code' ? 'New Session' : 'New Chat'}
-                  </button>
                   {SIDEBAR_QUICK_ACTIONS[mode].map((a) =>
                     a.href ? (
                       <a
@@ -781,7 +780,7 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
             )}
 
             {/* Recent list */}
-            <div className="mt-1 flex-1 overflow-y-auto overscroll-contain px-3 pb-2">
+            <div className="mt-1 flex-1 overflow-y-auto overscroll-contain px-3 pb-24">
               {visible.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-600">
                   <div
@@ -817,9 +816,30 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
               )}
             </div>
 
-            {/* Profile footer — opens settings / theme / account */}
-            <div className="mt-auto border-t border-gray-100 px-3 py-3 dark:border-neutral-800">
-              <ProfileMenu />
+            {/*
+             * Floating controls, over the list rather than in a footer bar.
+             *
+             * A bordered footer strip spent a fixed band of the panel on two
+             * controls and cut the list short even when there was nothing to
+             * cut it for. Floating them keeps the list running the full height
+             * and matches the frosted material the rest of the app's overlay
+             * controls are cut from. The list carries matching bottom padding
+             * so the last conversation can always be scrolled clear of them.
+             */}
+            <div
+              className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex items-center gap-2.5 px-4"
+              style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+            >
+              <div className="pointer-events-auto">
+                <ProfileMenu variant="icon" />
+              </div>
+              <button
+                onClick={handleNewProject}
+                className="pointer-events-auto flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-blue-600 px-5 text-[15px] font-semibold text-white shadow-[0_8px_22px_-6px_rgba(37,99,235,0.55)] transition active:scale-[0.97] hover:bg-blue-500"
+              >
+                <span className="i-ph:plus h-4 w-4" />
+                {mode === 'code' ? 'New Session' : 'New Chat'}
+              </button>
             </div>
           </motion.div>
 
