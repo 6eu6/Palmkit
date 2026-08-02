@@ -3,13 +3,17 @@ import { classNames } from '~/utils/classNames';
 import { type ChatHistoryItem } from '~/lib/persistence';
 import WithTooltip from '~/components/ui/Tooltip';
 import { useEditChatDescription } from '~/lib/hooks';
-import { forwardRef, type ForwardedRef, useCallback } from 'react';
+import { useLongPress } from '~/lib/hooks/useLongPress';
+import { useCallback, useState } from 'react';
 import { Checkbox } from '~/components/ui/Checkbox';
+import { ChatItemMenu } from './ChatItemMenu';
 
 interface HistoryItemProps {
   item: ChatHistoryItem;
-  onDelete?: (event: React.UIEvent) => void;
+  onDelete?: () => void;
   onDuplicate?: (id: string) => void;
+  onTogglePin?: (item: ChatHistoryItem) => void;
+  onMoveToProject?: (item: ChatHistoryItem) => void;
   exportChat: (id?: string) => void;
   selectionMode?: boolean;
   isSelected?: boolean;
@@ -20,6 +24,8 @@ export function HistoryItem({
   item,
   onDelete,
   onDuplicate,
+  onTogglePin,
+  onMoveToProject,
   exportChat,
   selectionMode = false,
   isSelected = false,
@@ -27,6 +33,7 @@ export function HistoryItem({
 }: HistoryItemProps) {
   const { id: urlId } = useParams();
   const isActiveChat = urlId === item.urlId;
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const { editing, handleChange, handleBlur, handleSubmit, handleKeyDown, currentDescription, toggleEditMode } =
     useEditChatDescription({
@@ -35,35 +42,30 @@ export function HistoryItem({
       syncWithGlobalStore: isActiveChat,
     });
 
+  const { handlers: longPress, consumedClick } = useLongPress(() => setMenuOpen(true));
+
   const handleItemClick = useCallback(
     (e: React.MouseEvent) => {
+      // Swallow the click a long-press synthesises, so it doesn't also navigate.
+      if (consumedClick()) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        return;
+      }
+
       if (selectionMode) {
         e.preventDefault();
         e.stopPropagation();
-        console.log('Item clicked in selection mode:', item.id);
         onToggleSelection?.(item.id);
       }
     },
-    [selectionMode, item.id, onToggleSelection],
+    [selectionMode, item.id, onToggleSelection, consumedClick],
   );
 
   const handleCheckboxChange = useCallback(() => {
-    console.log('Checkbox changed for item:', item.id);
     onToggleSelection?.(item.id);
   }, [item.id, onToggleSelection]);
-
-  const handleDeleteClick = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
-      event.preventDefault();
-      event.stopPropagation();
-      console.log('Delete button clicked for item:', item.id);
-
-      if (onDelete) {
-        onDelete(event as unknown as React.UIEvent);
-      }
-    },
-    [onDelete, item.id],
-  );
 
   return (
     <div
@@ -73,6 +75,7 @@ export function HistoryItem({
         { 'cursor-pointer': selectionMode },
       )}
       onClick={selectionMode ? handleItemClick : undefined}
+      {...longPress}
     >
       {selectionMode && (
         <div className="flex items-center mr-2" onClick={(e) => e.stopPropagation()}>
@@ -106,88 +109,56 @@ export function HistoryItem({
         <Link
           to={`/${item.mode || 'code'}/${item.urlId}`}
           className="flex w-full relative truncate block"
-          onClick={selectionMode ? handleItemClick : undefined}
+          onClick={handleItemClick}
         >
+          {item.pinned && (
+            <span
+              className="i-ph:push-pin-fill mr-1.5 mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500"
+              aria-label="Pinned"
+            />
+          )}
           <WithTooltip tooltip={currentDescription}>
-            <span className="truncate pr-24">{currentDescription}</span>
+            <span className="truncate pr-8">{currentDescription}</span>
           </WithTooltip>
-          <div
-            className={classNames(
-              'absolute right-0 top-0 bottom-0 flex items-center bg-transparent px-2 transition-colors',
-            )}
-          >
+          <div className="absolute right-0 top-0 bottom-0 flex items-center bg-transparent">
             {/*
-              Revealed on hover for mice, but ALWAYS visible where hover does
-              not exist. `opacity-0 group-hover:opacity-100` alone meant a
-              touch device could never surface Rename/Duplicate/Delete — the
-              row simply had no delete affordance at all.
+              Always visible — dimmed at rest, full strength on hover or while
+              its menu is open. The actions used to be hover-only, which left
+              touch devices with no way to reach them at all; keeping the ⋯
+              permanently on screen is what makes them discoverable.
             */}
-            <div className="flex items-center gap-2.5 text-gray-400 dark:text-gray-500 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity">
-              <ChatActionButton
-                toolTipContent="Export"
-                icon="i-ph:download-simple h-4 w-4"
-                onClick={(event) => {
-                  event.preventDefault();
-                  exportChat(item.id);
-                }}
-              />
-              {onDuplicate && (
-                <ChatActionButton
-                  toolTipContent="Duplicate"
-                  icon="i-ph:copy h-4 w-4"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    onDuplicate?.(item.id);
+            <ChatItemMenu
+              open={menuOpen}
+              onOpenChange={setMenuOpen}
+              pinned={Boolean(item.pinned)}
+              onPin={() => onTogglePin?.(item)}
+              onRename={toggleEditMode}
+              onMoveToProject={() => onMoveToProject?.(item)}
+              onDelete={() => onDelete?.()}
+              onDuplicate={onDuplicate ? () => onDuplicate(item.id) : undefined}
+              onExport={() => exportChat(item.id)}
+              trigger={
+                <button
+                  type="button"
+                  aria-label={`Actions for ${currentDescription}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                   }}
-                />
-              )}
-              <ChatActionButton
-                toolTipContent="Rename"
-                icon="i-ph:pencil-fill h-4 w-4"
-                onClick={(event) => {
-                  event.preventDefault();
-                  toggleEditMode();
-                }}
-              />
-              <ChatActionButton
-                toolTipContent="Delete"
-                icon="i-ph:trash h-4 w-4"
-                className="hover:text-red-500 dark:hover:text-red-400"
-                onClick={handleDeleteClick}
-              />
-            </div>
+                  className={classNames(
+                    'flex h-7 w-7 items-center justify-center rounded-md transition-opacity',
+                    'text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200',
+                    'hover:bg-gray-200/70 dark:hover:bg-neutral-700/70',
+                    menuOpen ? 'opacity-100' : 'opacity-60 group-hover:opacity-100',
+                  )}
+                >
+                  <span className="i-ph:dots-three-outline-fill h-4 w-4" />
+                </button>
+              }
+            />
           </div>
         </Link>
       )}
     </div>
   );
 }
-
-const ChatActionButton = forwardRef(
-  (
-    {
-      toolTipContent,
-      icon,
-      className,
-      onClick,
-    }: {
-      toolTipContent: string;
-      icon: string;
-      className?: string;
-      onClick: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
-      btnTitle?: string;
-    },
-    ref: ForwardedRef<HTMLButtonElement>,
-  ) => {
-    return (
-      <WithTooltip tooltip={toolTipContent} position="bottom" sideOffset={4}>
-        <button
-          ref={ref}
-          type="button"
-          className={`text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors ${icon} ${className ? className : ''}`}
-          onClick={onClick}
-        />
-      </WithTooltip>
-    );
-  },
-);

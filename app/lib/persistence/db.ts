@@ -163,6 +163,13 @@ export async function setMessages(
       const request = store.put({
         id,
         messages,
+
+        /*
+         * Carried over explicitly. `put` REPLACES the whole record, so any
+         * field this function doesn't name is silently dropped — a pinned
+         * conversation would quietly unpin itself on the next message.
+         */
+        pinned: existing?.pinned ?? false,
         urlId,
         description,
         timestamp: timestamp ?? new Date().toISOString(),
@@ -175,6 +182,32 @@ export async function setMessages(
     };
 
     existingRequest.onerror = () => reject(existingRequest.error);
+  });
+}
+
+/**
+ * Set the pinned flag on a stored chat, locally only.
+ *
+ * Used by the account-sync pull path, which must NOT push back to the account
+ * — `chatActions.setChatPinned` is the write path that mirrors.
+ */
+export async function setPinnedLocal(db: IDBDatabase, id: string, pinned: boolean): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const store = db.transaction('chats', 'readwrite').objectStore('chats');
+    const existing = store.get(id);
+
+    existing.onsuccess = () => {
+      if (!existing.result) {
+        resolve();
+        return;
+      }
+
+      const request = store.put({ ...existing.result, pinned });
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    };
+
+    existing.onerror = () => reject(existing.error);
   });
 }
 

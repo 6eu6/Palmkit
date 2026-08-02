@@ -1,13 +1,8 @@
 import { useStore } from '@nanostores/react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
-import {
-  chatId as chatIdStore,
-  db,
-  description as descriptionStore,
-  getMessages,
-  updateChatDescription,
-} from '~/lib/persistence';
+import { chatId as chatIdStore, db, description as descriptionStore, getMessages } from '~/lib/persistence';
+import { renameChat, validateChatTitle } from '~/lib/persistence/chatActions';
 
 interface EditChatDescriptionOptions {
   initialDescription?: string;
@@ -83,31 +78,29 @@ export function useEditChatDescription({
     toggleEditMode();
   }, [fetchLatestDescription, toggleEditMode]);
 
-  const isValidDescription = useCallback((desc: string): boolean => {
-    const trimmedDesc = desc.trim();
+  const isValidDescription = useCallback(
+    (desc: string): boolean => {
+      if (desc.trim() === (initialDescription ?? '').trim()) {
+        toggleEditMode();
+        return false; // No change — nothing to save.
+      }
 
-    if (trimmedDesc === initialDescription) {
-      toggleEditMode();
-      return false; // No change, skip validation
-    }
+      /*
+       * Validation lives in chatActions so the rules are identical wherever a
+       * rename can start. Notably it no longer restricts the alphabet: the old
+       * rule here was Latin-only and rejected Arabic titles outright.
+       */
+      const result = validateChatTitle(desc);
 
-    const lengthValid = trimmedDesc.length > 0 && trimmedDesc.length <= 100;
+      if (!result.ok) {
+        toast.error(result.error ?? 'Invalid name.');
+        return false;
+      }
 
-    // Allow letters, numbers, spaces, and common punctuation but exclude characters that could cause issues
-    const characterValid = /^[a-zA-Z0-9\s\-_.,!?()[\]{}'"]+$/.test(trimmedDesc);
-
-    if (!lengthValid) {
-      toast.error('Description must be between 1 and 100 characters.');
-      return false;
-    }
-
-    if (!characterValid) {
-      toast.error('Description can only contain letters, numbers, spaces, and basic punctuation.');
-      return false;
-    }
-
-    return true;
-  }, []);
+      return true;
+    },
+    [initialDescription, toggleEditMode],
+  );
 
   const handleSubmit = useCallback(
     async (event: React.FormEvent) => {
@@ -117,31 +110,36 @@ export function useEditChatDescription({
         return;
       }
 
-      try {
-        if (!db) {
-          toast.error('Chat persistence is not available');
-          return;
-        }
-
-        if (!chatId) {
-          toast.error('Chat Id is not available');
-          return;
-        }
-
-        await updateChatDescription(db, chatId, currentDescription);
-
-        if (syncWithGlobalStore) {
-          descriptionStore.set(currentDescription);
-        }
-
-        toast.success('Chat description updated successfully');
-      } catch (error) {
-        toast.error('Failed to update chat description: ' + (error as Error).message);
+      if (!db) {
+        toast.error('Chat persistence is not available');
+        return;
       }
 
+      if (!chatId) {
+        toast.error('Chat Id is not available');
+        return;
+      }
+
+      /*
+       * renameChat writes IndexedDB AND mirrors to the account. The previous
+       * path called updateChatDescription, which only touched IndexedDB — so a
+       * rename was reverted by the next sync from the account.
+       */
+      const result = await renameChat(db, chatId, currentDescription);
+
+      if (!result.ok) {
+        toast.error(result.error ?? 'Failed to rename conversation');
+        return;
+      }
+
+      if (syncWithGlobalStore) {
+        descriptionStore.set(currentDescription.trim());
+      }
+
+      toast.success('Conversation renamed');
       toggleEditMode();
     },
-    [currentDescription, db, chatId, initialDescription, customChatId],
+    [currentDescription, chatId, isValidDescription, syncWithGlobalStore, toggleEditMode],
   );
 
   const handleKeyDown = useCallback(

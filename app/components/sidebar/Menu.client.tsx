@@ -1,5 +1,5 @@
 import { motion, type Variants } from 'framer-motion';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from '@remix-run/react';
 import { toast } from 'react-toastify';
 import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
@@ -10,7 +10,8 @@ import { Button } from '~/components/ui/Button';
 import { db, deleteChatCompletely, getAll, chatId, type ChatHistoryItem, useChatHistory } from '~/lib/persistence';
 import { cubicEasingFn } from '~/utils/easings';
 import { HistoryItem } from './HistoryItem';
-import { binDates } from './date-binning';
+import { binDates, partitionPinned } from './date-binning';
+import { setChatPinned } from '~/lib/persistence/chatActions';
 import { useSearchFilter } from '~/lib/hooks/useSearchFilter';
 import { classNames } from '~/utils/classNames';
 import { useStore } from '@nanostores/react';
@@ -125,6 +126,13 @@ export const Menu = () => {
     items: list,
     searchFields: ['description'],
   });
+
+  /** Pinned section on top, then the usual date bins over what's left. */
+  const sections = useMemo(() => {
+    const { pinned, rest } = partitionPinned(filteredList);
+
+    return [...(pinned.length ? [{ category: 'Pinned', items: pinned }] : []), ...binDates(rest)];
+  }, [filteredList]);
 
   const loadEntries = useCallback(() => {
     void db;
@@ -371,6 +379,28 @@ export const Menu = () => {
    * toggle + persistent panel replace edge-hovering.
    */
 
+  /*
+   * Pinning is per-tab by construction: a conversation has exactly one mode,
+   * so it only appears in that one tab's list and the flag can only ever
+   * reorder it there.
+   */
+  const handleTogglePin = useCallback(
+    async (item: ChatHistoryItem) => {
+      if (!db) {
+        return;
+      }
+
+      try {
+        await setChatPinned(db, item.id, !item.pinned);
+        loadEntries();
+      } catch (error) {
+        console.error('Failed to change pin state:', error);
+        toast.error('Failed to pin conversation');
+      }
+    },
+    [loadEntries],
+  );
+
   const handleDuplicate = async (id: string) => {
     await duplicateCurrentChat(id);
     loadEntries(); // Reload the list after duplication
@@ -585,7 +615,7 @@ export const Menu = () => {
               </div>
             )}
             <DialogRoot open={dialogContent !== null}>
-              {binDates(filteredList).map(({ category, items }) => (
+              {sections.map(({ category, items }) => (
                 <div key={category} className="mt-2 first:mt-0 space-y-1">
                   <div className="text-xs font-medium text-gray-500 dark:text-gray-400 sticky top-0 z-1 bg-white dark:bg-gray-950 px-4 py-1">
                     {category}
@@ -596,13 +626,9 @@ export const Menu = () => {
                         key={item.id}
                         item={item}
                         exportChat={exportChat}
-                        onDelete={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          console.log('Delete triggered for item:', item);
-                          setDialogContentWithLogging({ type: 'delete', item });
-                        }}
+                        onDelete={() => setDialogContentWithLogging({ type: 'delete', item })}
                         onDuplicate={() => handleDuplicate(item.id)}
+                        onTogglePin={handleTogglePin}
                         selectionMode={selectionMode}
                         isSelected={selectedItems.includes(item.id)}
                         onToggleSelection={toggleItemSelection}

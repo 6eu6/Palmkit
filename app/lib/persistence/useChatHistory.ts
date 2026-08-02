@@ -66,6 +66,15 @@ export interface ChatHistoryItem {
    * Defaults to 'code' for backward compatibility with existing chats.
    */
   mode?: 'chat' | 'work' | 'code';
+
+  /**
+   * Pinned conversations sort above everything else in their tab's list.
+   *
+   * One flag is enough to make pinning per-tab: a conversation belongs to
+   * exactly one mode, so it only ever appears in that one tab's list. Pinning
+   * it in Chat cannot surface it in Work or Code.
+   */
+  pinned?: boolean;
 }
 
 const persistenceEnabled = !import.meta.env.VITE_DISABLE_PERSISTENCE;

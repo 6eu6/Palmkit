@@ -3,6 +3,21 @@ import type { ChatHistoryItem } from '~/lib/persistence';
 
 type Bin = { category: string; items: ChatHistoryItem[] };
 
+/**
+ * Split a list into its pinned conversations and the rest.
+ *
+ * Pinned items are lifted out of the date bins entirely and shown in their own
+ * section at the top — inside a date bin they'd still be buried under
+ * "Yesterday"/"Past 30 days", which defeats the point of pinning.
+ */
+export function partitionPinned(list: ChatHistoryItem[]) {
+  const pinned = list
+    .filter((item) => item.pinned)
+    .toSorted((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+
+  return { pinned, rest: list.filter((item) => !item.pinned) };
+}
+
 export function binDates(_list: ChatHistoryItem[]) {
   const list = _list.toSorted((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
 

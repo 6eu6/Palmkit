@@ -1,11 +1,14 @@
-import { memo, useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, Link } from '@remix-run/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
 import { db, getAll, deleteChatCompletely, getSnapshot, type ChatHistoryItem } from '~/lib/persistence';
 import { chatId } from '~/lib/persistence';
 import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
-import { binDates } from '~/components/sidebar/date-binning';
+import { binDates, partitionPinned } from '~/components/sidebar/date-binning';
+import { ChatItemMenu } from '~/components/sidebar/ChatItemMenu';
+import { renameChat, setChatPinned } from '~/lib/persistence/chatActions';
+import { useLongPress } from '~/lib/hooks/useLongPress';
 import { classNames } from '~/utils/classNames';
 import { useStore } from '@nanostores/react';
 import { sidebarModeStore, setSidebarMode, SIDEBAR_QUICK_ACTIONS, type SidebarMode } from '~/lib/stores/sidebar';
@@ -52,6 +55,130 @@ const OVERLAY_VARIANTS = {
   visible: { opacity: 1 },
   exit: { opacity: 0 },
 };
+
+/**
+ * One conversation row in the mobile drawer.
+ *
+ * Carries the same action set as the desktop sidebar: a permanent ⋯ button,
+ * and a long-press anywhere on the row opens the same menu — the two gestures
+ * a phone user expects. Renaming happens inline, in place of the title.
+ */
+function DrawerChatRow({
+  item,
+  onOpen,
+  onDelete,
+  onTogglePin,
+  onRenamed,
+  formatTime,
+}: {
+  item: ProjectItem;
+  onOpen: (item: ChatHistoryItem) => void;
+  onDelete: (item: ChatHistoryItem) => void;
+  onTogglePin: (item: ChatHistoryItem) => void;
+  onRenamed: () => void;
+  formatTime: (t: string) => string;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(item.description ?? '');
+  const { handlers: longPress, consumedClick } = useLongPress(() => setMenuOpen(true));
+
+  const submitRename = async (e: React.FormEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!db) {
+      return;
+    }
+
+    const result = await renameChat(db, item.id, draft);
+
+    if (!result.ok) {
+      toast.error(result.error ?? 'Failed to rename conversation');
+      return;
+    }
+
+    setEditing(false);
+    toast.success('Conversation renamed');
+    onRenamed();
+  };
+
+  if (editing) {
+    return (
+      <form onSubmit={submitRename} className="flex items-center gap-2 px-2.5 py-2">
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => setEditing(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setEditing(false);
+            }
+          }}
+          className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[14px] text-gray-900 outline-none focus:ring-1 focus:ring-gray-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+        />
+        <button type="submit" onMouseDown={submitRename} className="i-ph:check h-5 w-5 shrink-0 text-gray-500" />
+      </form>
+    );
+  }
+
+  return (
+    <div className="group relative flex items-center" {...longPress}>
+      <button
+        onClick={(e) => {
+          if (consumedClick()) {
+            e.preventDefault();
+            return;
+          }
+
+          onOpen(item);
+        }}
+        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl py-2 pl-2.5 pr-1 text-left transition active:bg-gray-50 dark:active:bg-neutral-900"
+      >
+        {item.pinned ? (
+          <span className="i-ph:push-pin-fill h-3 w-3 shrink-0 text-gray-400 dark:text-gray-500" />
+        ) : (
+          <span
+            className={classNames(
+              'h-1.5 w-1.5 shrink-0 rounded-full',
+              item.status === 'generating'
+                ? 'animate-pulse bg-blue-400'
+                : item.status === 'interrupted'
+                  ? 'bg-amber-400'
+                  : 'bg-gray-300 dark:bg-gray-600',
+            )}
+          />
+        )}
+        <span className="min-w-0 flex-1 truncate text-[14px] text-palmkit-elements-textPrimary">
+          {item.description || 'Untitled'}
+        </span>
+        <span className="shrink-0 text-[11px] text-palmkit-elements-textTertiary">{formatTime(item.timestamp)}</span>
+      </button>
+      <ChatItemMenu
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        pinned={Boolean(item.pinned)}
+        onPin={() => onTogglePin(item)}
+        onRename={() => {
+          setDraft(item.description ?? '');
+          setEditing(true);
+        }}
+        onMoveToProject={() => undefined}
+        onDelete={() => onDelete(item)}
+        trigger={
+          <button
+            aria-label={`Actions for ${item.description || 'conversation'}`}
+            onClick={(e) => e.stopPropagation()}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-gray-400 transition active:scale-95 active:bg-gray-100 dark:text-gray-500 dark:active:bg-neutral-800"
+          >
+            <div className="i-ph:dots-three-outline-fill text-base" />
+          </button>
+        }
+      />
+    </div>
+  );
+}
 
 export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDrawerProps) => {
   const navigate = useNavigate();
@@ -188,6 +315,30 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
       await loadProjects();
     }
   };
+
+  const handleTogglePin = useCallback(
+    async (item: ChatHistoryItem) => {
+      if (!db) {
+        return;
+      }
+
+      try {
+        await setChatPinned(db, item.id, !item.pinned);
+        await loadProjects();
+      } catch (error) {
+        console.error('Failed to change pin state:', error);
+        toast.error('Failed to pin conversation');
+      }
+    },
+    [loadProjects],
+  );
+
+  /** Pinned section on top, then the usual date bins over what's left. */
+  const sections = useMemo(() => {
+    const { pinned, rest } = partitionPinned(projects);
+
+    return [...(pinned.length ? [{ category: 'Pinned', items: pinned }] : []), ...binDates(rest)];
+  }, [projects]);
 
   const handleNewProject = () => {
     navigate('/');
@@ -358,54 +509,21 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                   <p className="text-sm">Nothing here yet</p>
                 </div>
               ) : (
-                binDates(projects).map(({ category, items }) => (
+                sections.map(({ category, items }) => (
                   <div key={category} className="mb-1">
                     <div className="px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-600">
                       {category}
                     </div>
                     {(items as ProjectItem[]).map((item) => (
-                      <div key={item.id} className="group relative flex items-center">
-                        <button
-                          onClick={() => handleOpenProject(item)}
-                          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl py-2 pl-2.5 pr-1 text-left transition active:bg-gray-50 dark:active:bg-neutral-900"
-                        >
-                          <span
-                            className={classNames(
-                              'h-1.5 w-1.5 shrink-0 rounded-full',
-                              item.status === 'generating'
-                                ? 'animate-pulse bg-blue-400'
-                                : item.status === 'interrupted'
-                                  ? 'bg-amber-400'
-                                  : 'bg-gray-300 dark:bg-gray-600',
-                            )}
-                          />
-                          <span className="min-w-0 flex-1 truncate text-[14px] text-palmkit-elements-textPrimary">
-                            {item.description || 'Untitled'}
-                          </span>
-                          <span className="shrink-0 text-[11px] text-palmkit-elements-textTertiary">
-                            {formatTime(item.timestamp)}
-                          </span>
-                        </button>
-                        {/*
-                          Always visible, and its own 40px tap target outside
-                          the open-conversation button. It used to be an
-                          absolutely-positioned overlay revealed by
-                          `group-active:opacity-100` — a hover affordance that
-                          a touch screen can never trigger, which is why the
-                          drawer looked like it had no delete option at all.
-                        */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPendingDelete(item);
-                          }}
-                          aria-label={`Delete ${item.description || 'conversation'}`}
-                          title="Delete"
-                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-gray-400 transition active:scale-95 active:bg-red-50 hover:text-red-500 dark:text-gray-500 dark:active:bg-red-900/20"
-                        >
-                          <div className="i-ph:trash text-base" />
-                        </button>
-                      </div>
+                      <DrawerChatRow
+                        key={item.id}
+                        item={item}
+                        onOpen={handleOpenProject}
+                        onDelete={setPendingDelete}
+                        onTogglePin={handleTogglePin}
+                        onRenamed={loadProjects}
+                        formatTime={formatTime}
+                      />
                     ))}
                   </div>
                 ))

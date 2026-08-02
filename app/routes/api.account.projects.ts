@@ -17,11 +17,12 @@ import { getAuthedUser } from '~/lib/auth/supabase.server';
 const BUCKET = 'project-snapshots';
 
 /**
- * `projects.mode` ships in migration 0011. A deployment whose database has not
- * run that migration yet would fail EVERY read and write here, taking project
- * sync down entirely — so each query falls back to the pre-0011 column list.
- * Once the migration is applied the fallbacks stop firing and the tab a
- * conversation belongs to starts round-tripping through the account.
+ * `projects.mode` ships in migration 0011 and `projects.pinned` in 0014. A
+ * database that has not run them yet would fail EVERY read and write here,
+ * taking project sync down entirely — so each query falls back to the older
+ * column list. Once the migrations are applied the fallbacks stop firing and
+ * both the tab a conversation belongs to and its pin state round-trip through
+ * the account.
  */
 interface ProjectRow {
   url_id: string;
@@ -29,11 +30,13 @@ interface ProjectRow {
   messages?: unknown;
   snapshot?: unknown;
   mode?: string | null;
+  pinned?: boolean | null;
   updated_at: string;
 }
 
 /*
- * A missing `mode` column does NOT report the same way on reads and writes.
+ * A missing column does NOT report the same way on reads and writes, and
+ * `mode` is a special case on top of that.
  *
  * `mode` is also the name of a built-in Postgres ordered-set aggregate. When
  * the column is absent the planner resolves the bare identifier in the select
@@ -41,10 +44,11 @@ interface ProjectRow {
  * for ordered-set aggregate mode" — not the usual "column does not exist".
  * Quoting, casting and aliasing it in the select all resolve the same way;
  * only the column actually existing turns it back into a column reference.
- * Writes, where `mode` is a JSON body key rather than an identifier, fail the
- * ordinary way with 42703 / PGRST204. Both shapes are matched here.
+ * `pinned` collides with nothing, so it fails the ordinary way (42703).
+ * Writes, where both are JSON body keys rather than identifiers, also fail
+ * the ordinary way with 42703 / PGRST204. Every shape is matched here.
  */
-function isMissingModeColumn(error: { code?: string; message?: string } | null): boolean {
+function isMissingNewColumn(error: { code?: string; message?: string } | null): boolean {
   if (!error) {
     return false;
   }
@@ -53,7 +57,7 @@ function isMissingModeColumn(error: { code?: string; message?: string } | null):
     error.code === '42703' ||
     error.code === 'PGRST204' ||
     error.code === '42809' ||
-    /column .*mode.* does not exist/i.test(error.message ?? '') ||
+    /column .*(mode|pinned).* does not exist/i.test(error.message ?? '') ||
     /ordered-set aggregate mode/i.test(error.message ?? '')
   );
 }
@@ -102,9 +106,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       return res as unknown as { data: ProjectRow | null; error: { code?: string; message?: string } | null };
     };
 
-    let { data, error } = await one('url_id, description, messages, snapshot, mode, updated_at');
+    let { data, error } = await one('url_id, description, messages, snapshot, mode, pinned, updated_at');
 
-    if (isMissingModeColumn(error)) {
+    if (isMissingNewColumn(error)) {
       ({ data, error } = await one('url_id, description, messages, snapshot, updated_at'));
     }
 
@@ -133,9 +137,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     return res as unknown as { data: ProjectRow[] | null; error: { code?: string; message?: string } | null };
   };
 
-  let { data, error } = await many('url_id, description, mode, updated_at');
+  let { data, error } = await many('url_id, description, mode, pinned, updated_at');
 
-  if (isMissingModeColumn(error)) {
+  if (isMissingNewColumn(error)) {
     ({ data, error } = await many('url_id, description, updated_at'));
   }
 
@@ -180,6 +184,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     messages?: unknown;
     snapshot?: unknown;
     mode?: string;
+    pinned?: boolean;
   };
 
   const urlId = (body.url_id ?? '').trim();
@@ -222,10 +227,17 @@ export async function action({ request, context }: ActionFunctionArgs) {
     updated_at: new Date().toISOString(),
   };
 
-  let { error } = await supabase.from('projects').upsert({ ...row, mode }, { onConflict: 'user_id,url_id' });
+  const pinned = body.pinned === true;
 
-  if (isMissingModeColumn(error)) {
-    ({ error } = await supabase.from('projects').upsert(row, { onConflict: 'user_id,url_id' }));
+  let { error } = await supabase.from('projects').upsert({ ...row, mode, pinned }, { onConflict: 'user_id,url_id' });
+
+  if (isMissingNewColumn(error)) {
+    // Retry with mode only (0011 applied, 0014 not), then with neither.
+    ({ error } = await supabase.from('projects').upsert({ ...row, mode }, { onConflict: 'user_id,url_id' }));
+
+    if (isMissingNewColumn(error)) {
+      ({ error } = await supabase.from('projects').upsert(row, { onConflict: 'user_id,url_id' }));
+    }
   }
 
   if (error) {

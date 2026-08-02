@@ -1,7 +1,7 @@
 import type { Message } from 'ai';
 import { authUserStore } from '~/lib/stores/auth';
 import type { Snapshot } from './types';
-import { getMessages, setMessages, setSnapshot } from './db';
+import { getMessages, setMessages, setPinnedLocal, setSnapshot } from './db';
 
 /**
  * Account-backed project sync. All functions are best-effort: when the user is
@@ -30,6 +30,9 @@ export interface AccountProjectSummary {
    * local IndexedDB default.
    */
   mode: ProjectMode | null;
+
+  /** Pinned-to-top flag, mirrored so a pin follows the user across devices. */
+  pinned?: boolean | null;
 }
 
 export interface AccountProject extends AccountProjectSummary {
@@ -42,7 +45,13 @@ const pushTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** Debounced upsert of a project to the account (keyed by urlId). */
 export function pushProjectDebounced(
   urlId: string,
-  payload: { description?: string; messages: Message[]; snapshot?: Snapshot | null; mode?: ProjectMode },
+  payload: {
+    description?: string;
+    messages: Message[];
+    snapshot?: Snapshot | null;
+    mode?: ProjectMode;
+    pinned?: boolean;
+  },
   delay = 1500,
 ) {
   if (!isSignedIn() || !urlId) {
@@ -66,7 +75,13 @@ export function pushProjectDebounced(
 
 export async function pushProjectNow(
   urlId: string,
-  payload: { description?: string; messages: Message[]; snapshot?: Snapshot | null; mode?: ProjectMode },
+  payload: {
+    description?: string;
+    messages: Message[];
+    snapshot?: Snapshot | null;
+    mode?: ProjectMode;
+    pinned?: boolean;
+  },
 ): Promise<void> {
   if (!isSignedIn() || !urlId) {
     return;
@@ -89,6 +104,7 @@ export async function pushProjectNow(
          * piled into the Code tab.
          */
         mode: payload.mode ?? null,
+        pinned: payload.pinned ?? false,
       }),
     });
   } catch {
@@ -186,6 +202,10 @@ export async function seedChatFromAccount(db: IDBDatabase, urlId: string): Promi
       project.mode ?? 'code',
     );
 
+    if (project.pinned) {
+      await setPinnedLocal(db, urlId, true);
+    }
+
     if (project.snapshot) {
       await setSnapshot(db, urlId, project.snapshot);
     }
@@ -232,6 +252,10 @@ export async function syncAllFromAccount(db: IDBDatabase): Promise<void> {
           undefined,
           project.mode ?? summary.mode ?? 'code',
         );
+
+        if (project.pinned ?? summary.pinned) {
+          await setPinnedLocal(db, project.url_id, true);
+        }
 
         if (project.snapshot) {
           await setSnapshot(db, project.url_id, project.snapshot);
