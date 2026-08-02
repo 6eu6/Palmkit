@@ -5,7 +5,6 @@
 import type { JSONValue, Message } from 'ai';
 import React, { type RefCallback, useEffect, useState } from 'react';
 import { ClientOnly } from 'remix-utils/client-only';
-import { Menu } from '~/components/sidebar/Menu.client';
 import { Workbench } from '~/components/workbench/Workbench.client';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { classNames } from '~/utils/classNames';
@@ -36,7 +35,6 @@ import { StreamProgress } from './stream-v2/StreamProgress';
 import type { DesignScheme } from '~/types/design-scheme';
 import type { ElementInfo } from '~/components/workbench/Inspector';
 import LlmErrorAlert from './LLMApiAlert';
-import { MobileShell } from '~/components/mobile/MobileShell';
 import { AuthModal } from '~/components/auth/AuthModal';
 import { authUserStore } from '~/lib/stores/auth';
 
@@ -360,7 +358,10 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         className={classNames(styles.BaseChat, 'relative flex h-full w-full overflow-hidden')}
         data-chat-visible={showChat}
       >
-        <ClientOnly>{() => <Menu />}</ClientOnly>
+        {/* The sidebar and the mobile drawer are rendered by the route layout
+            (PersistentChrome) instead of here: BaseChat lives inside a keyed
+            <ChatImpl>, so anything mounted here is torn down and rebuilt on
+            every Chat/Work/Code switch. */}
         {/* paddingLeft = --sidebar-width (340px when the desktop history panel
             is open, 0 otherwise) so the chat column starts AFTER the fixed
             sidebar instead of underneath it. */}
@@ -586,7 +587,6 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     return (
       <Tooltip.Provider delayDuration={200}>
         {baseChat}
-        <ClientOnly>{() => <MobileShell />}</ClientOnly>
         <ClientOnly>{() => <AuthModal />}</ClientOnly>
       </Tooltip.Provider>
     );

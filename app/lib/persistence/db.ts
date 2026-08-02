@@ -125,7 +125,12 @@ export async function setMessages(
   timestamp?: string,
   metadata?: IChatMetadata,
   mode?: 'chat' | 'work' | 'code',
-): Promise<void> {
+): Promise<'chat' | 'work' | 'code'> {
+  /*
+   * Resolves with the mode the record ACTUALLY has, which may differ from the
+   * `mode` argument (see the comment below) — callers that mirror the chat to
+   * the account need the stored value, not the requested one.
+   */
   return new Promise((resolve, reject) => {
     const transaction = db.transaction('chats', 'readwrite');
     const store = transaction.objectStore('chats');
@@ -135,12 +140,25 @@ export async function setMessages(
       return;
     }
 
-    // Preserve existing mode if not provided (for updates to existing chats)
     const existingRequest = store.get(id);
 
     existingRequest.onsuccess = () => {
       const existing = existingRequest.result;
-      const finalMode = mode || existing?.mode || 'code';
+
+      /*
+       * A conversation's mode is decided ONCE, when it is created, and is
+       * immutable afterwards. The stored value therefore always wins over the
+       * `mode` argument.
+       *
+       * Why this ordering matters: `storeMessageHistory` passes the CURRENT
+       * sidebar mode on every save. The sidebar mode changes the instant the
+       * user taps another tab — before Remix finishes navigating away — so a
+       * save that lands in that window used to re-tag the open conversation
+       * with the tab the user was leaving for, and the chat would jump tabs.
+       * `mode` now only seeds records that don't have one yet (new chats, and
+       * legacy rows written before the column existed).
+       */
+      const finalMode = existing?.mode || mode || 'code';
 
       const request = store.put({
         id,
@@ -152,7 +170,7 @@ export async function setMessages(
         mode: finalMode,
       });
 
-      request.onsuccess = () => resolve();
+      request.onsuccess = () => resolve(finalMode);
       request.onerror = () => reject(request.error);
     };
 

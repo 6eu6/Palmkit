@@ -1488,7 +1488,12 @@ ${value.content}
       }
 
       try {
-        await setMessages(
+        /*
+         * setMessages returns the mode the record actually carries: the one it
+         * was created with, not the sidebar's current tab. Mirror THAT to the
+         * account so the conversation lands in the same tab on every device.
+         */
+        const storedMode = await setMessages(
           db,
           finalChatId,
           [...archivedMessages, ...messages],
@@ -1514,6 +1519,7 @@ ${value.content}
           pushProjectDebounced(_urlId, {
             description: description.get(),
             messages: [...archivedMessages, ...messages],
+            mode: storedMode,
             snapshot: {
               chatIndex: messages[messages.length - 1].id,
               files: currentFiles,

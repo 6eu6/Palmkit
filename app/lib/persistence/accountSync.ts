@@ -17,10 +17,19 @@ function isSignedIn(): boolean {
   return Boolean(authUserStore.get());
 }
 
+export type ProjectMode = 'chat' | 'work' | 'code';
+
 export interface AccountProjectSummary {
   url_id: string;
   description: string | null;
   updated_at: string;
+
+  /**
+   * Workspace tab the conversation belongs to. Older rows (written before the
+   * column existed) come back null and are treated as 'code', matching the
+   * local IndexedDB default.
+   */
+  mode: ProjectMode | null;
 }
 
 export interface AccountProject extends AccountProjectSummary {
@@ -33,7 +42,7 @@ const pushTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** Debounced upsert of a project to the account (keyed by urlId). */
 export function pushProjectDebounced(
   urlId: string,
-  payload: { description?: string; messages: Message[]; snapshot?: Snapshot | null },
+  payload: { description?: string; messages: Message[]; snapshot?: Snapshot | null; mode?: ProjectMode },
   delay = 1500,
 ) {
   if (!isSignedIn() || !urlId) {
@@ -57,7 +66,7 @@ export function pushProjectDebounced(
 
 export async function pushProjectNow(
   urlId: string,
-  payload: { description?: string; messages: Message[]; snapshot?: Snapshot | null },
+  payload: { description?: string; messages: Message[]; snapshot?: Snapshot | null; mode?: ProjectMode },
 ): Promise<void> {
   if (!isSignedIn() || !urlId) {
     return;
@@ -72,6 +81,14 @@ export async function pushProjectNow(
         description: payload.description ?? null,
         messages: payload.messages ?? [],
         snapshot: payload.snapshot ?? null,
+
+        /*
+         * Without this the tab a conversation belongs to never left the
+         * device: every chat pulled back from the account defaulted to 'code',
+         * so a fresh browser (or a second device) showed the whole history
+         * piled into the Code tab.
+         */
+        mode: payload.mode ?? null,
       }),
     });
   } catch {
@@ -158,7 +175,16 @@ export async function seedChatFromAccount(db: IDBDatabase, urlId: string): Promi
   }
 
   try {
-    await setMessages(db, urlId, project.messages, project.url_id, project.description ?? undefined);
+    await setMessages(
+      db,
+      urlId,
+      project.messages,
+      project.url_id,
+      project.description ?? undefined,
+      undefined,
+      undefined,
+      project.mode ?? 'code',
+    );
 
     if (project.snapshot) {
       await setSnapshot(db, urlId, project.snapshot);
@@ -196,7 +222,16 @@ export async function syncAllFromAccount(db: IDBDatabase): Promise<void> {
 
     if (project && project.messages?.length) {
       try {
-        await setMessages(db, project.url_id, project.messages, project.url_id, project.description ?? undefined);
+        await setMessages(
+          db,
+          project.url_id,
+          project.messages,
+          project.url_id,
+          project.description ?? undefined,
+          undefined,
+          undefined,
+          project.mode ?? summary.mode ?? 'code',
+        );
 
         if (project.snapshot) {
           await setSnapshot(db, project.url_id, project.snapshot);

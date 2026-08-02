@@ -2,8 +2,9 @@ import { memo, useCallback, useEffect, useState } from 'react';
 import { useNavigate, Link } from '@remix-run/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
-import { db, getAll, deleteById, getSnapshot, type ChatHistoryItem } from '~/lib/persistence';
+import { db, getAll, deleteChatCompletely, getSnapshot, type ChatHistoryItem } from '~/lib/persistence';
 import { chatId } from '~/lib/persistence';
+import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
 import { binDates } from '~/components/sidebar/date-binning';
 import { classNames } from '~/utils/classNames';
 import { useStore } from '@nanostores/react';
@@ -55,6 +56,7 @@ const OVERLAY_VARIANTS = {
 export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDrawerProps) => {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [pendingDelete, setPendingDelete] = useState<ChatHistoryItem | null>(null);
   const mode = useStore(sidebarModeStore);
 
   const loadProjects = useCallback(async () => {
@@ -65,9 +67,19 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
     try {
       const dbInstance = db;
       const chats = await getAll(dbInstance);
+
+      /*
+       * Scope the list to the active tab, exactly like the desktop sidebar.
+       * Without this filter the drawer listed EVERY conversation under all
+       * three tabs, which is what made Chat/Work/Code look like they shared a
+       * single history on phones. Records written before the mode column
+       * existed default to 'code'.
+       */
+      const currentMode = sidebarModeStore.get();
+
       const withStatus: ProjectItem[] = await Promise.all(
         chats
-          .filter((item) => item.urlId && item.description)
+          .filter((item) => item.urlId && item.description && (item.mode || 'code') === currentMode)
           .map(async (item) => {
             let status: ProjectStatus = 'saved';
 
@@ -102,11 +114,16 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
     }
   }, []);
 
+  /*
+   * Reload on open AND whenever the tab changes — the drawer stays mounted
+   * while the user taps Chat/Work/Code, so without `mode` in the dependency
+   * list it would keep showing the previous tab's conversations.
+   */
   useEffect(() => {
     if (open) {
       loadProjects();
     }
-  }, [open, loadProjects]);
+  }, [open, mode, loadProjects]);
 
   // Escape closes the drawer (it used to trap the user until they found the X).
   useEffect(() => {
@@ -139,25 +156,36 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
     onClose();
   };
 
-  const handleDeleteProject = async (event: React.UIEvent, item: ChatHistoryItem) => {
-    event.stopPropagation();
+  /*
+   * Deleting goes through `deleteChatCompletely` — the same path the desktop
+   * sidebar uses. The old local-only `deleteById` left the account-synced copy
+   * in Supabase, so the chat reappeared on the next sync, and it also left the
+   * snapshot, the locked-file entries and the running sandbox behind.
+   */
+  const handleConfirmDelete = async () => {
+    const item = pendingDelete;
+    setPendingDelete(null);
 
-    if (!db) {
+    if (!db || !item) {
       return;
     }
 
-    try {
-      await deleteById(db, item.id);
+    const wasActive = chatId.get() === item.id;
 
-      if (chatId.get() === item.id) {
-        window.location.pathname = '/';
+    try {
+      await deleteChatCompletely(db, item.id);
+      toast.success('Conversation deleted');
+
+      if (wasActive) {
+        // Hard navigation so the chat/workbench stores start clean.
+        window.location.pathname = `/${item.mode || 'code'}`;
       } else {
-        loadProjects();
-        toast.success('Project deleted');
+        await loadProjects();
       }
     } catch (error) {
-      toast.error('Failed to delete project');
+      toast.error('Failed to delete conversation');
       console.error(error);
+      await loadProjects();
     }
   };
 
@@ -336,10 +364,10 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                       {category}
                     </div>
                     {(items as ProjectItem[]).map((item) => (
-                      <div key={item.id} className="group relative">
+                      <div key={item.id} className="group relative flex items-center">
                         <button
                           onClick={() => handleOpenProject(item)}
-                          className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition active:bg-gray-50 dark:active:bg-neutral-900"
+                          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl py-2 pl-2.5 pr-1 text-left transition active:bg-gray-50 dark:active:bg-neutral-900"
                         >
                           <span
                             className={classNames(
@@ -358,12 +386,24 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
                             {formatTime(item.timestamp)}
                           </span>
                         </button>
+                        {/*
+                          Always visible, and its own 40px tap target outside
+                          the open-conversation button. It used to be an
+                          absolutely-positioned overlay revealed by
+                          `group-active:opacity-100` — a hover affordance that
+                          a touch screen can never trigger, which is why the
+                          drawer looked like it had no delete option at all.
+                        */}
                         <button
-                          onClick={(e) => handleDeleteProject(e, item)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPendingDelete(item);
+                          }}
+                          aria-label={`Delete ${item.description || 'conversation'}`}
                           title="Delete"
-                          className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-gray-300 opacity-0 transition hover:text-red-500 group-active:opacity-100 dark:text-gray-600"
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-gray-400 transition active:scale-95 active:bg-red-50 hover:text-red-500 dark:text-gray-500 dark:active:bg-red-900/20"
                         >
-                          <div className="i-ph:trash text-sm" />
+                          <div className="i-ph:trash text-base" />
                         </button>
                       </div>
                     ))}
@@ -377,6 +417,32 @@ export const ProjectSwitcherDrawer = memo(({ open, onClose }: ProjectSwitcherDra
               <ProfileMenu />
             </div>
           </motion.div>
+
+          {/* Deletion is irreversible and wipes the cloud copy too, so it
+              always goes through a confirmation step. */}
+          <DialogRoot open={pendingDelete !== null}>
+            <Dialog onBackdrop={() => setPendingDelete(null)} onClose={() => setPendingDelete(null)}>
+              <div className="p-6 bg-white dark:bg-gray-950">
+                <DialogTitle className="text-gray-900 dark:text-white">Delete conversation?</DialogTitle>
+                <DialogDescription className="mt-2 text-gray-600 dark:text-gray-400">
+                  <p>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      {pendingDelete?.description || 'Untitled'}
+                    </span>{' '}
+                    will be removed from this device and from your account, along with its files. This cannot be undone.
+                  </p>
+                </DialogDescription>
+              </div>
+              <div className="flex justify-end gap-3 px-6 py-4 bg-gray-50 dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800">
+                <DialogButton type="secondary" onClick={() => setPendingDelete(null)}>
+                  Cancel
+                </DialogButton>
+                <DialogButton type="danger" onClick={handleConfirmDelete}>
+                  Delete
+                </DialogButton>
+              </div>
+            </Dialog>
+          </DialogRoot>
         </>
       )}
     </AnimatePresence>

@@ -28,7 +28,24 @@ export type SidebarMode = 'chat' | 'work' | 'code';
  * The Chat/Work/Code segmented control at the top of the sidebar drives this;
  * it swaps the quick-action set and (once chats carry a mode) filters the list.
  */
-export const sidebarModeStore = atom<SidebarMode>('code');
+function modeFromPath(): SidebarMode {
+  if (typeof window === 'undefined') {
+    return 'code';
+  }
+
+  const first = window.location.pathname.split('/')[1];
+
+  return first === 'chat' || first === 'work' || first === 'code' ? first : 'code';
+}
+
+/*
+ * Seeded from the URL rather than hardcoded to 'code'. The store is the single
+ * input to the sidebar's mode filter AND (for brand-new chats) to the mode a
+ * conversation is created with, so a first render that disagrees with the
+ * address bar would show the wrong tab's history and could stamp a new chat
+ * with the wrong tab.
+ */
+export const sidebarModeStore = atom<SidebarMode>(modeFromPath());
 
 export function setSidebarMode(mode: SidebarMode) {
   sidebarModeStore.set(mode);

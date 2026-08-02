@@ -4,6 +4,7 @@ import { ClientOnly } from 'remix-utils/client-only';
 import { BaseChat } from '~/components/chat/BaseChat';
 import { Chat } from '~/components/chat/Chat.client';
 import { Header } from '~/components/header/Header';
+import { PersistentChrome } from '~/components/layout/PersistentChrome.client';
 import { Landing } from '~/components/landing/Landing';
 import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
 
@@ -46,6 +47,7 @@ export default function Home() {
   return (
     <div className="relative flex flex-col h-full w-full bg-palmkit-elements-background-depth-1">
       <Header />
+      <PersistentChrome />
       <ClientOnly fallback={<BaseChat />}>{() => <Chat />}</ClientOnly>
     </div>
   );

@@ -1,14 +1,13 @@
 import { motion, type Variants } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, Link } from '@remix-run/react';
+import { Link } from '@remix-run/react';
 import { toast } from 'react-toastify';
 import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
 import { ThemeSwitch } from '~/components/ui/ThemeSwitch';
 import { ControlPanel } from '~/components/@settings/core/ControlPanel';
 import { HelpButton } from '~/components/ui/SettingsButton';
 import { Button } from '~/components/ui/Button';
-import { db, deleteById, getAll, getMessages, chatId, type ChatHistoryItem, useChatHistory } from '~/lib/persistence';
-import { deleteAccountProject } from '~/lib/persistence/accountSync';
+import { db, deleteChatCompletely, getAll, chatId, type ChatHistoryItem, useChatHistory } from '~/lib/persistence';
 import { cubicEasingFn } from '~/utils/easings';
 import { HistoryItem } from './HistoryItem';
 import { binDates } from './date-binning';
@@ -25,25 +24,35 @@ import {
   SIDEBAR_QUICK_ACTIONS,
   type SidebarMode,
 } from '~/lib/stores/sidebar';
-import { killCurrentRemotePreview } from '~/lib/sandbox/remotePreview';
-import { workbenchStore } from '~/lib/stores/workbench';
-import { deleteAllLockedForChat } from '~/lib/persistence/lockedFiles';
 import { ConnectorsPanel } from './ConnectorsPanel';
 
+/*
+ * Open/close animates a TRANSFORM, not `left`, and no longer cross-fades.
+ *
+ * The previous variants animated `left` from -340px to 0 while also animating
+ * `opacity` 0 → 1. Animating `left` re-runs layout on every frame, and the
+ * opacity ramp meant the panel was painted semi-transparent over the chat
+ * behind it — together they produced the flicker the user sees each time the
+ * sidebar opens or closes. `x` is compositor-only, so the panel slides in one
+ * smooth pass at full opacity.
+ *
+ * `visibility` still flips so the closed panel can't be tabbed into or steal
+ * pointer events — delayed by the slide duration so the panel stays painted
+ * while it animates out, and applied immediately when it animates in.
+ */
 const menuVariants = {
   closed: {
-    opacity: 0,
+    x: '-100%',
     visibility: 'hidden',
-    left: '-340px',
     transition: {
       duration: 0.2,
       ease: cubicEasingFn,
+      visibility: { delay: 0.2 },
     },
   },
   open: {
-    opacity: 1,
-    visibility: 'initial',
-    left: 0,
+    x: 0,
+    visibility: 'visible',
     transition: {
       duration: 0.2,
       ease: cubicEasingFn,
@@ -107,7 +116,6 @@ export const Menu = () => {
   const profile = useStore(profileStore);
   const authUser = useStore(authUserStore);
   const mode = useStore(sidebarModeStore);
-  const navigate = useNavigate();
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
 
@@ -150,89 +158,14 @@ export const Menu = () => {
       .catch((error) => toast.error(error.message));
   }, [db]);
 
-  const deleteChat = useCallback(
-    async (id: string): Promise<void> => {
-      if (!db) {
-        throw new Error('Database not available');
-      }
+  const deleteChat = useCallback(async (id: string): Promise<void> => {
+    if (!db) {
+      throw new Error('Database not available');
+    }
 
-      /*
-       * FULL CLEANUP on chat deletion — 6 layers, each best-effort so one
-       * failure doesn't block the others:
-       *
-       * 1. Cloud sandbox (E2B) — kill the running dev server so it doesn't
-       *    consume quota / count against the rate limit for 7 minutes.
-       * 2. localStorage snapshot — the chat's file-state snapshot.
-       * 3. Supabase account-synced copy — so it isn't re-pulled on next sync.
-       * 4. IndexedDB (chats + snapshots stores) — the conversation itself.
-       * 5. Workbench store — clear file tree + previews so stale files don't
-       *    bleed into the next conversation the user opens.
-       * 6. Locked files — purge all lock entries for this chat from
-       *    localStorage + in-memory map so they don't linger.
-       */
-
-      // 1. Kill the cloud sandbox if this chat owns the active one
-      try {
-        killCurrentRemotePreview();
-        console.log('Killed cloud sandbox for deleted chat:', id);
-      } catch (sandboxError) {
-        console.error('Failed to kill sandbox for chat', id, ':', sandboxError);
-      }
-
-      // 2. Delete chat snapshot from localStorage
-      try {
-        const snapshotKey = `snapshot:${id}`;
-        localStorage.removeItem(snapshotKey);
-        console.log('Removed snapshot for chat:', id);
-      } catch (snapshotError) {
-        console.error(`Error deleting snapshot for chat ${id}:`, snapshotError);
-      }
-
-      // 3. Remove the account-synced copy (best-effort) so it isn't re-pulled
-      try {
-        const item = await getMessages(db, id);
-
-        if (item?.urlId) {
-          await deleteAccountProject(item.urlId);
-        }
-      } catch (accountError) {
-        console.error('Failed to delete account project copy:', accountError);
-      }
-
-      // 4. Delete the chat + its snapshot from IndexedDB
-      await deleteById(db, id);
-      console.log('Successfully deleted chat from IndexedDB:', id);
-
-      /*
-       * 5. Clear the workbench store (files + previews) so stale files from
-       *    the deleted chat don't appear when the user starts a new one.
-       *    Only clear if the deleted chat was the active one.
-       */
-      if (chatId.get() === id) {
-        try {
-          workbenchStore.files.set({});
-          workbenchStore.previews.set([]);
-          console.log('Cleared workbench store for deleted active chat:', id);
-        } catch (workbenchError) {
-          console.error('Failed to clear workbench store:', workbenchError);
-        }
-      }
-
-      // 6. Purge all locked files for this chat from localStorage + memory
-      try {
-        const removed = deleteAllLockedForChat(id);
-
-        if (removed > 0) {
-          console.log(`Purged ${removed} locked file(s) for deleted chat:`, id);
-        }
-      } catch (lockedFilesError) {
-        console.error('Failed to purge locked files for chat', id, ':', lockedFilesError);
-      }
-
-      console.log('Chat deletion complete (all 6 layers):', id);
-    },
-    [db],
-  );
+    // Shared with the mobile drawer — see deleteChatCompletely for what it clears.
+    await deleteChatCompletely(db, id);
+  }, []);
 
   const deleteItem = useCallback(
     (event: React.UIEvent, item: ChatHistoryItem) => {
@@ -461,27 +394,25 @@ export const Menu = () => {
     setDialogContent(content);
   }, []);
 
+  /*
+   * `initial={open ? 'open' : 'closed'}` (rather than a constant "closed")
+   * keeps the panel from replaying its slide-in on mount: it starts in
+   * whatever state the store says it is already in. `animate` still drives
+   * the real open/close transitions.
+   *
+   * This alone was not enough while the sidebar lived inside the keyed
+   * <ChatImpl> subtree — a tab switch unmounted it, and a fresh mount has no
+   * DOM to keep. It is now rendered by PersistentChrome, outside that subtree,
+   * so a tab switch does not touch it at all.
+   */
   return (
     <>
       <motion.div
         ref={menuRef}
-        /*
-         * ROOT FIX for "sidebar flickers on page load and on tab switch":
-         *
-         * `initial="closed"` was forcing the sidebar to animate from
-         * opacity:0 + left:-340px → opacity:1 + left:0 on EVERY mount,
-         * including when the user navigated between /chat, /work, /code.
-         * That produced the visible "flash" every time the route changed.
-         *
-         * By setting `initial={open ? 'open' : 'closed'}`, the sidebar
-         * starts in its actual current state — no animation on mount.
-         * The framer-motion `animate` prop still drives open/close
-         * transitions when the user toggles the sidebar via the button.
-         */
         initial={open ? 'open' : 'closed'}
         animate={open ? 'open' : 'closed'}
         variants={menuVariants}
-        style={{ width: '340px' }}
+        style={{ width: '340px', left: 0 }}
         className={classNames(
           'flex selection-accent flex-col side-menu fixed top-0 h-full rounded-r-2xl',
           'bg-white dark:bg-black border-r border-palmkit-elements-borderColor',

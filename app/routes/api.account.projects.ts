@@ -16,6 +16,33 @@ import { getAuthedUser } from '~/lib/auth/supabase.server';
 
 const BUCKET = 'project-snapshots';
 
+/**
+ * `projects.mode` ships in migration 0011. A deployment whose database has not
+ * run that migration yet would fail EVERY read and write here with
+ * "column projects.mode does not exist" (PostgREST 42703 / PGRST204), taking
+ * project sync down entirely — so each query is written to fall back to the
+ * pre-0011 shape. Once the migration is applied the fallbacks stop firing and
+ * the tab a conversation belongs to starts round-tripping through the account.
+ */
+interface ProjectRow {
+  url_id: string;
+  description: string | null;
+  messages?: unknown;
+  snapshot?: unknown;
+  mode?: string | null;
+  updated_at: string;
+}
+
+function isMissingModeColumn(error: { code?: string; message?: string } | null): boolean {
+  if (!error) {
+    return false;
+  }
+
+  return (
+    error.code === '42703' || error.code === 'PGRST204' || /column .*mode.* does not exist/i.test(error.message ?? '')
+  );
+}
+
 function snapshotPath(userId: string, urlId: string): string {
   return `${userId}/${urlId.replace(/[^a-zA-Z0-9._-]/g, '_')}.json`;
 }
@@ -50,12 +77,21 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const id = new URL(request.url).searchParams.get('id');
 
   if (id) {
-    const { data, error } = await supabase
-      .from('projects')
-      .select('url_id, description, messages, snapshot, updated_at')
-      .eq('user_id', user.id)
-      .eq('url_id', id)
-      .maybeSingle();
+    const one = async (columns: string) => {
+      const res = await supabase.from('projects').select(columns).eq('user_id', user.id).eq('url_id', id).maybeSingle();
+
+      /*
+       * The column list is dynamic (see isMissingModeColumn), so the row shape
+       * can't be inferred from it.
+       */
+      return res as unknown as { data: ProjectRow | null; error: { code?: string; message?: string } | null };
+    };
+
+    let { data, error } = await one('url_id, description, messages, snapshot, mode, updated_at');
+
+    if (isMissingModeColumn(error)) {
+      ({ data, error } = await one('url_id, description, messages, snapshot, updated_at'));
+    }
 
     if (error) {
       return Response.json({ error: error.message }, { status: 500, headers });
@@ -72,11 +108,21 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     return Response.json({ project }, { headers });
   }
 
-  const { data, error } = await supabase
-    .from('projects')
-    .select('url_id, description, updated_at')
-    .eq('user_id', user.id)
-    .order('updated_at', { ascending: false });
+  const many = async (columns: string) => {
+    const res = await supabase
+      .from('projects')
+      .select(columns)
+      .eq('user_id', user.id)
+      .order('updated_at', { ascending: false });
+
+    return res as unknown as { data: ProjectRow[] | null; error: { code?: string; message?: string } | null };
+  };
+
+  let { data, error } = await many('url_id, description, mode, updated_at');
+
+  if (isMissingModeColumn(error)) {
+    ({ data, error } = await many('url_id, description, updated_at'));
+  }
 
   if (error) {
     return Response.json({ error: error.message }, { status: 500, headers });
@@ -118,6 +164,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     description?: string;
     messages?: unknown;
     snapshot?: unknown;
+    mode?: string;
   };
 
   const urlId = (body.url_id ?? '').trim();
@@ -145,17 +192,26 @@ export async function action({ request, context }: ActionFunctionArgs) {
     }
   }
 
-  const { error } = await supabase.from('projects').upsert(
-    {
-      user_id: user.id,
-      url_id: urlId,
-      description: body.description ?? null,
-      messages: body.messages ?? [],
-      snapshot: inlineSnapshot,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'user_id,url_id' },
-  );
+  /*
+   * `mode` is column-constrained to these three values, so an unknown value
+   * would fail the whole upsert. Fall back to the table default instead.
+   */
+  const mode = ['chat', 'work', 'code'].includes(body.mode ?? '') ? body.mode : 'code';
+
+  const row = {
+    user_id: user.id,
+    url_id: urlId,
+    description: body.description ?? null,
+    messages: body.messages ?? [],
+    snapshot: inlineSnapshot,
+    updated_at: new Date().toISOString(),
+  };
+
+  let { error } = await supabase.from('projects').upsert({ ...row, mode }, { onConflict: 'user_id,url_id' });
+
+  if (isMissingModeColumn(error)) {
+    ({ error } = await supabase.from('projects').upsert(row, { onConflict: 'user_id,url_id' }));
+  }
 
   if (error) {
     return Response.json({ ok: false, error: error.message }, { status: 500, headers });

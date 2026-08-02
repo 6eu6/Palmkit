@@ -116,7 +116,13 @@ export function HistoryItem({
               'absolute right-0 top-0 bottom-0 flex items-center bg-transparent px-2 transition-colors',
             )}
           >
-            <div className="flex items-center gap-2.5 text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
+            {/*
+              Revealed on hover for mice, but ALWAYS visible where hover does
+              not exist. `opacity-0 group-hover:opacity-100` alone meant a
+              touch device could never surface Rename/Duplicate/Delete — the
+              row simply had no delete affordance at all.
+            */}
+            <div className="flex items-center gap-2.5 text-gray-400 dark:text-gray-500 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity">
               <ChatActionButton
                 toolTipContent="Export"
                 icon="i-ph:download-simple h-4 w-4"
