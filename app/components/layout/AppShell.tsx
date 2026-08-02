@@ -85,6 +85,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         return;
       }
 
+      /*
+       * Take the value away from any animation still settling. Without this a
+       * finger landing mid-close is fighting a spring that keeps writing to
+       * the same value, so the panel drifts under the touch and can end up
+       * somewhere neither the gesture nor the animation intended.
+       */
+      drawerProgress.stop();
+
       gesture.current = { startX: t.clientX, startY: t.clientY, from: progress, active: true, locked: false };
       lastRef.current = { x: t.clientX, t: performance.now() };
     };

@@ -3,6 +3,7 @@ import { ClientOnly } from 'remix-utils/client-only';
 import { chatStore } from '~/lib/stores/chat';
 import { HeaderActionButtons } from './HeaderActionButtons.client';
 import { mobileActiveTab } from '~/lib/stores/mobile';
+import { animateDrawer } from '~/lib/stores/drawerMotion';
 import { toggleSidebar } from '~/lib/stores/sidebar';
 
 /*
@@ -43,8 +44,23 @@ export function Header() {
       {/* glassy hamburger — opens the projects drawer on mobile, toggles the sidebar on desktop.
           Exactly one is shown per breakpoint; the display class must NOT collide with a base
           `flex`, so the base has none and each button sets its own. */}
+      {/*
+        Opens the drawer two ways on purpose.
+
+        Setting the store is what the rest of the app reacts to, but a store
+        write is a no-op when the value is already the one being written — so
+        if anything ever leaves `mobileActiveTab` on 'projects' while the panel
+        is visually shut, this button would do literally nothing, and the only
+        way out would be reloading the page. Driving the motion value as well
+        makes the tap unconditional: whatever state the app is in, pressing
+        Menu opens the drawer. Both land on the same target, so they cannot
+        disagree.
+      */}
       <button
-        onClick={() => mobileActiveTab.set('projects')}
+        onClick={() => {
+          mobileActiveTab.set('projects');
+          animateDrawer(1);
+        }}
         className={`${glassButton} flex sm:hidden`}
         aria-label="Menu"
       >
