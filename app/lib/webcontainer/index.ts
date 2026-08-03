@@ -5,11 +5,16 @@ interface WebContainerContext {
   loaded: boolean;
 }
 
-export const webcontainerContext: WebContainerContext = import.meta.hot?.data.webcontainerContext ?? {
+/*
+ * `?.data` and not `?.data.` — under Vitest `import.meta.hot` exists but
+ * carries no `data`, and the unguarded read threw at import time, which took
+ * down any test that reached this module through the workbench.
+ */
+export const webcontainerContext: WebContainerContext = import.meta.hot?.data?.webcontainerContext ?? {
   loaded: false,
 };
 
-if (import.meta.hot) {
+if (import.meta.hot?.data) {
   import.meta.hot.data.webcontainerContext = webcontainerContext;
 }
 
@@ -30,13 +35,13 @@ export let webcontainer: Promise<WebContainer> = new Promise(() => {
  */
 if (!import.meta.env.SSR) {
   webcontainer =
-    import.meta.hot?.data.webcontainer ??
+    import.meta.hot?.data?.webcontainer ??
     Promise.resolve().then(() => {
       webcontainerContext.loaded = true;
       return createWebContainerShim();
     });
 
-  if (import.meta.hot) {
+  if (import.meta.hot?.data) {
     import.meta.hot.data.webcontainer = webcontainer;
   }
 }

@@ -639,7 +639,18 @@ export function parseQuestions(block: string): ParsedQuestion[] {
 /**
  * The questions ride in a data attribute rather than as nested markup so the
  * card owns its own layout and the sanitizer has one attribute to allow.
+ *
+ * The JSON has to be HTML-escaped, not JS-escaped. `JSON.stringify` of the
+ * string produces `data-questions="[{\"key\"…}]"`, and a backslash means
+ * nothing to an HTML parser — the attribute ended at the first inner quote
+ * and the whole element was dropped as malformed.
  */
 function createQuestionsElement(questions: ParsedQuestion[]): string {
-  return `<div class="__palmkitQuestions__" data-questions=${JSON.stringify(JSON.stringify(questions))}></div>`;
+  const json = JSON.stringify(questions)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+  return `<div class="__palmkitQuestions__" data-questions="${json}"></div>`;
 }

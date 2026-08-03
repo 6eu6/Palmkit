@@ -17,9 +17,21 @@ function render(input: string): string {
   return new StreamingMessageParser().parse('msg-1', input);
 }
 
+/* HTML-escaped, the way an attribute has to be — see createQuestionsElement. */
 function dataOf(html: string): ParsedQuestion[] {
-  const raw = html.match(/data-questions="((?:[^"\\]|\\.)*)"/)?.[1];
-  return raw ? JSON.parse(JSON.parse(`"${raw}"`)) : [];
+  const raw = html.match(/data-questions="([^"]*)"/)?.[1];
+
+  if (!raw) {
+    return [];
+  }
+
+  return JSON.parse(
+    raw
+      .replace(/&quot;/g, '"')
+      .replace(/&gt;/g, '>')
+      .replace(/&lt;/g, '<')
+      .replace(/&amp;/g, '&'),
+  );
 }
 
 const BLOCK = `<palmkit-questions>
