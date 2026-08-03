@@ -31,8 +31,20 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   }
 
   const url = new URL(request.url);
-  const chunks = Math.min(Number(url.searchParams.get('chunks')) || 200, MAX_CHUNKS);
-  const delay = Math.min(Number(url.searchParams.get('delay')) || 50, MAX_DELAY_MS);
+  /*
+   * `??` and not `||`: `Number('0') || 50` is 50, so every "no delay" run was
+   * quietly throttled to 20 chunks a second and the fastest case — the one
+   * that resembles a token stream — was never actually measured.
+   */
+  const asNumber = (name: string, fallback: number) => {
+    const raw = url.searchParams.get(name);
+    const value = raw === null ? NaN : Number(raw);
+
+    return Number.isFinite(value) && value >= 0 ? value : fallback;
+  };
+
+  const chunks = Math.min(asNumber('chunks', 200), MAX_CHUNKS);
+  const delay = Math.min(asNumber('delay', 50), MAX_DELAY_MS);
 
   /* Roughly the size of a token's worth of streamed text. */
   const filler = 'x'.repeat(48);
