@@ -272,14 +272,30 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         context.cloudflare?.ctx?.waitUntil?.(new Promise<void>((resolve) => (releasePipe = resolve)));
       }
 
-      const body = url.searchParams.get('pipe')
-        ? upstream.body!.pipeThrough(
-            new TransformStream<Uint8Array, Uint8Array>({
-              transform: (chunk, controller) => controller.enqueue(chunk),
-              flush: () => releasePipe?.(),
-            }),
-          )
-        : upstream.body;
+      /*
+       * `native=1` uses the runtime's own pass-through instead of a JS one.
+       *
+       * `waitUntil` made no difference — 0 of 4 with it, 1 of 3 without — so
+       * the isolate is not simply being reclaimed. What remains is what the
+       * transform itself is: this deployment sets `nodejs_compat`, which
+       * replaces the global stream implementation with Node's, so every
+       * `TransformStream` in the path is that one and every chunk of a 1.4 MB
+       * response crosses it.
+       *
+       * `IdentityTransformStream` is the runtime's own, and passes bytes
+       * without handing each chunk to JS. If the native one survives where the
+       * JS one truncates, the fault is the stream implementation this app
+       * opted into, and it is fixable here rather than by moving generation to
+       * another machine.
+       */
+      const identity = url.searchParams.get('native')
+        ? (new (globalThis as any).IdentityTransformStream() as TransformStream<Uint8Array, Uint8Array>)
+        : new TransformStream<Uint8Array, Uint8Array>({
+            transform: (chunk, controller) => controller.enqueue(chunk),
+            flush: () => releasePipe?.(),
+          });
+
+      const body = url.searchParams.get('pipe') ? upstream.body!.pipeThrough(identity) : upstream.body;
 
       return new Response(body, {
         status: upstream.status,
