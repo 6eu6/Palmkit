@@ -1,6 +1,11 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { createDataStream, generateId } from 'ai';
-import { isReasoningModel, MAX_RESPONSE_SEGMENTS, type FileMap } from '~/lib/common/llm/constants';
+import {
+  isReasoningModel,
+  MAX_RESPONSE_SEGMENTS,
+  NUDGE_MIN_PROMISE_CHARS,
+  type FileMap,
+} from '~/lib/common/llm/constants';
 import { CLOSE_OUT_PROMPT, CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
 import type { IProviderSetting } from '~/types/model';
@@ -518,6 +523,19 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             continue;
           }
 
+          /*
+           * A tool that cannot work costs more than its description.
+           *
+           * With no search key configured, `web_search` was still offered, and
+           * on production the model duly called it while building a landing
+           * page, got back "Web search is not configured", and spent a whole
+           * segment — another eight thousand prompt tokens — recovering from
+           * a dead end this request already knew about.
+           */
+          if (!toolContext.searchApiKey && (name === 'web_search' || name === 'deep_search')) {
+            continue;
+          }
+
           toolsForRequest[name] = toolObj;
         }
 
@@ -861,6 +879,23 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               producedNothing = validateBuildOutput(fullAssistantText).completeness === 'garbage';
             } catch {
               /* If it cannot be validated, leave the turn alone. */
+            }
+
+            /*
+             * A short answer is an answer, not an abandoned build.
+             *
+             * This fires when a build turn wrote no files, and it used to fire
+             * on any such turn. Asked to "reply with exactly: PONG", the model
+             * replied PONG — correctly — and was then pushed into writing an
+             * index.html containing the word PONG, at the cost of a second
+             * segment: another eight and a half thousand prompt tokens for a
+             * file nobody wanted.
+             *
+             * A model that means to build says so first, at length. Four
+             * characters is not a plan that lost its files.
+             */
+            if (producedNothing && turnText.trim().length < NUDGE_MIN_PROMISE_CHARS) {
+              producedNothing = false;
             }
 
             if (producedNothing) {

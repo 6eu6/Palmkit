@@ -132,3 +132,17 @@ export const IGNORE_PATTERNS = [
   '**/*lock.json',
   '**/*lock.yml',
 ];
+
+/**
+ * How much a build turn must have said before "it wrote no files" is a fault.
+ *
+ * A turn that produced no files gets one nudge asking for them. That used to
+ * apply to any such turn, so "reply with exactly: PONG" — answered correctly,
+ * in four characters — was pushed into writing an index.html containing the
+ * word PONG, at the cost of a whole extra segment and another eight and a
+ * half thousand prompt tokens.
+ *
+ * A model that means to build narrates the plan first and always clears this
+ * comfortably. A direct answer never does.
+ */
+export const NUDGE_MIN_PROMISE_CHARS = 200;
