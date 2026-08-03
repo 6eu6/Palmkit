@@ -1,4 +1,36 @@
 /**
+ * ANSWER: Cloudflare Error 1102, "Worker exceeded resource limits".
+ *
+ * That is the platform's own verdict, read off the error page a failing run
+ * returns, and it ends a long search. A build turn is not stopped by the
+ * model, the transport, the provider connection, the AI SDK or anything this
+ * route does with its stream — the Worker is killed for exceeding its
+ * per-request resource budget, which is why the response ends mid-sentence
+ * with HTTP 200, no error part and no finish event: nothing gets to run.
+ *
+ * How often it happens tracks exactly how much JavaScript touches each chunk:
+ *
+ *   relay upstream.body untouched   no JS per chunk    11 of 11 complete
+ *   identity transform              trivial             3 of 7
+ *   parse each frame                small               2 of 9
+ *   the chat route's SDK pipeline   most                ~none
+ *
+ * A body returned as it arrived is handed on by the runtime and never enters
+ * the isolate, which is the only shape that always survives. Everything else
+ * pays per chunk, over tens of seconds and thousands of chunks, and a build
+ * turn pays the most.
+ *
+ * Two things had to be ruled out to get here, and both looked convincing:
+ * `waitUntil` (nought of four with it, one of three without — not it), and
+ * `nodejs_compat` replacing the stream implementation (the runtime's own
+ * IdentityTransformStream fails too — not it). One earlier reading was an
+ * ordering artifact: relay ran first in every round and the modes after it
+ * inherited a poisoned isolate, so reversing the order and leaving gaps moved
+ * identity from one of three to two of three. The gradient survives that
+ * correction; the certainty about transforms being fatal did not.
+ *
+ * ── the original question, and the probes that answered it ──────────────
+ *
  * Does a long streamed response survive this deployment?
  *
  * Long build turns come back truncated in production and never locally: the
