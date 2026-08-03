@@ -42,11 +42,14 @@ export const generateVideoSchema = z.object({
 
   aspectRatio: z.enum(['16:9', '9:16', '1:1']).optional().describe('Landscape, portrait or square.'),
 
-  /**
-   * Audio doubles the price on some models, so it is opt-in rather than
-   * silently on. The result reports what was actually charged.
+  /*
+   * There is no audio option, deliberately.
+   *
+   * The models that produce a soundtrack produce one always — veo-3.1-lite
+   * declares `generate_audio: true` and lists no parameter to disable it — so
+   * a flag here would be a request the provider ignores while the caller
+   * believes it took effect. The result reports whether audio came with it.
    */
-  withAudio: z.boolean().optional().describe('Generate a soundtrack. Costs more; off by default.'),
 });
 
 export type GenerateVideoInput = z.infer<typeof generateVideoSchema>;

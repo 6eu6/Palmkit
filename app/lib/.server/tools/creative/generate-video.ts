@@ -63,21 +63,41 @@ function closestDuration(requested: number | undefined, supported: number[] | un
  * `..._without_audio_720p`), so the right one is picked by matching both
  * rather than by taking the first entry.
  */
-function estimateCost(d: ModelDescriptor, seconds: number, withAudio: boolean): { usd?: number; sku?: string } {
+function estimateCost(d: ModelDescriptor, seconds: number): { usd?: number; sku?: string } {
   const skus = d.cost.perSecond;
 
   if (!skus) {
     return {};
   }
 
-  const wanted = Object.entries(skus).filter(([name]) =>
-    withAudio ? name.includes('with_audio') : name.includes('without_audio'),
+  const entries = Object.entries(skus);
+
+  /*
+   * Audio is not optional on these models and is not free.
+   *
+   * veo-3.1-lite declares `generate_audio: true` and lists no passthrough
+   * parameter to turn it off, so every clip comes with a soundtrack and is
+   * billed at the with-audio rate. This used to estimate the without-audio
+   * rate whenever the caller had not asked for audio, which is the caller
+   * describing a request the provider does not accept.
+   */
+  const audio = d.media?.generatesAudio === true;
+  const matching = entries.filter(([name]) =>
+    audio ? name.includes('with_audio') || !name.includes('audio') : name.includes('without_audio'),
   );
 
-  const pool = wanted.length ? wanted : Object.entries(skus);
+  const pool = matching.length ? matching : entries;
 
-  // Cheapest matching rate — typically the 720p tier.
-  const [sku, rate] = pool.reduce((best, cur) => (cur[1] < best[1] ? cur : best));
+  /*
+   * The tier that applies, not the cheapest that exists.
+   *
+   * No resolution is requested, so the provider uses its default and bills
+   * the SKU with no resolution suffix. Taking the minimum instead picked the
+   * 720p rate and under-quoted a real job by two and a half times: $0.12
+   * promised against $0.32 charged.
+   */
+  const base = pool.filter(([name]) => !/_\d+p$|_4k$/.test(name));
+  const [sku, rate] = (base.length ? base : pool).reduce((best, cur) => (cur[1] > best[1] ? cur : best));
 
   return { usd: Number((rate * seconds).toFixed(4)), sku };
 }
@@ -99,7 +119,7 @@ export const generateVideoTool: ToolDefinition<typeof generateVideoSchema> = {
   availableIn: ['chat', 'work', 'code'],
 
   execute: async (input: GenerateVideoInput, ctx): Promise<ToolResult> => {
-    const { prompt, imageUrl, durationSeconds, aspectRatio, withAudio = false } = input;
+    const { prompt, imageUrl, durationSeconds, aspectRatio } = input;
 
     const apiKey = ctx.apiKeys?.OpenRouter;
 
@@ -138,9 +158,14 @@ export const generateVideoTool: ToolDefinition<typeof generateVideoSchema> = {
      */
     const frame = imageUrl && canStartFromImage ? await ctx.readOwnMedia?.(imageUrl) : undefined;
     const useImage = Boolean(frame);
-    const wantsAudio = withAudio && (media?.generatesAudio ?? false);
 
-    const cost = estimateCost(route.descriptor, seconds, wantsAudio);
+    /*
+     * Whether there is a soundtrack is the model's business, not the
+     * caller's: these models list no parameter to turn it off.
+     */
+    const withAudio = media?.generatesAudio ?? false;
+
+    const cost = estimateCost(route.descriptor, seconds);
 
     const body: Record<string, unknown> = { model: route.model, prompt, duration: seconds };
 
@@ -232,7 +257,7 @@ export const generateVideoTool: ToolDefinition<typeof generateVideoSchema> = {
         durationSeconds: seconds,
         aspectRatio: (body.aspect_ratio as string) ?? null,
         startedFromImage: useImage,
-        withAudio: wantsAudio,
+        withAudio,
 
         /* What was actually charged, when the provider reports it. */
         costUsd: finished.usage?.cost ?? cost.usd ?? null,

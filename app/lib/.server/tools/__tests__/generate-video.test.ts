@@ -173,27 +173,37 @@ describe('generate_video', () => {
   });
 
   /*
-   * Audio is the difference between $0.03 and $0.05 a second on this model,
-   * so it is opt-in and the estimate has to reflect which rate applies.
+   * The estimate has to name the price that will actually be charged.
+   *
+   * A real run promised $0.12 and was billed $0.32. Two mistakes at once:
+   * it assumed audio was off, when veo-3.1-lite always produces audio and
+   * lists no parameter to disable it; and it took the cheapest tier that
+   * exists (720p) when no resolution is requested, so the base tier applies.
    */
-  it('estimates from the rate that matches the request', async () => {
+  it('estimates the tier that will actually be billed', async () => {
     const ctx = mockProvider(veoLite());
-    const silent = await generateVideoTool.execute({ prompt: 'x', durationSeconds: 4 }, ctx);
+    const result = await generateVideoTool.execute({ prompt: 'x', durationSeconds: 4 }, ctx);
 
-    // 4s x $0.03 (cheapest without-audio tier)
-    expect(silent.ok && silent.estimatedCostUsd).toBeCloseTo(0.12, 4);
-
-    const ctx2 = mockProvider(veoLite());
-    const loud = await generateVideoTool.execute({ prompt: 'x', durationSeconds: 4, withAudio: true }, ctx2);
-
-    // 4s x $0.05 (cheapest with-audio tier)
-    expect(loud.ok && loud.estimatedCostUsd).toBeCloseTo(0.2, 4);
-    expect(loud.ok && loud.withAudio).toBe(true);
+    // 4s x $0.08 — with audio, base resolution. Exactly what was charged.
+    expect(result.ok && result.estimatedCostUsd).toBeCloseTo(0.32, 4);
+    expect(result.ok && result.withAudio).toBe(true);
   });
 
-  it('does not ask for audio from a model that makes none', async () => {
+  it('uses the without-audio rate on a model that makes no audio', async () => {
+    const d = veoLite();
+    d.media = { ...d.media, generatesAudio: false };
+
+    const ctx = mockProvider(d);
+    const result = await generateVideoTool.execute({ prompt: 'x', durationSeconds: 4 }, ctx);
+
+    // 4s x $0.05 — without audio, base resolution.
+    expect(result.ok && result.estimatedCostUsd).toBeCloseTo(0.2, 4);
+    expect(result.ok && result.withAudio).toBe(false);
+  });
+
+  it('reports audio from what the model does, not from what was asked', async () => {
     const ctx = mockProvider(promptOnly());
-    const result = await generateVideoTool.execute({ prompt: 'x', withAudio: true }, ctx);
+    const result = await generateVideoTool.execute({ prompt: 'x' }, ctx);
 
     expect(result.ok && result.withAudio).toBe(false);
   });
@@ -203,7 +213,7 @@ describe('generate_video', () => {
     const result = await generateVideoTool.execute({ prompt: 'x', durationSeconds: 4 }, ctx);
 
     expect(result.ok && result.costUsd).toBe(0.47);
-    expect(result.ok && result.estimatedCostUsd).toBeCloseTo(0.12, 4);
+    expect(result.ok && result.estimatedCostUsd).toBeCloseTo(0.32, 4);
   });
 
   /*

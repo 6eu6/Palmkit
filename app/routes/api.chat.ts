@@ -154,12 +154,62 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
   };
 
   /*
-   * A tool asking for a model it can actually use. `generate_image` cannot
-   * run on the model in the composer — that one writes text. The catalog is
-   * already loaded for the effort check, so routing costs nothing extra.
+   * Which model a tool gets when it needs one the composer's model is not.
+   * `generate_image` cannot run on a text model, so it asks for an image
+   * model and this answers — from the user's choice if they made one, and
+   * otherwise from the catalog.
+   *
+   * Assignments are read once. Absent means automatic, which is the default
+   * and the common case, so a user who never opened that screen pays nothing
+   * for it.
    */
-  const routeFor = async (capability: Capability) =>
-    chooseModel(await loadCatalog(), { capability, provider: selected.provider });
+  let assignmentsPromise: Promise<Map<string, string>> | undefined;
+
+  const loadAssignments = () => {
+    assignmentsPromise ??= (async () => {
+      try {
+        const { user, supabase } = await getAuthedUser(request, context);
+
+        if (!user || !supabase) {
+          return new Map<string, string>();
+        }
+
+        const { data, error } = await supabase
+          .from('model_assignments')
+          .select('capability, model')
+          .eq('user_id', user.id);
+
+        if (error) {
+          // Migration 0021 not applied — everything is automatic, which works.
+          return new Map<string, string>();
+        }
+
+        return new Map(
+          (data ?? []).map((r) => [(r as { capability: string }).capability, (r as { model: string }).model]),
+        );
+      } catch {
+        return new Map<string, string>();
+      }
+    })();
+
+    return assignmentsPromise;
+  };
+
+  const routeFor = async (capability: Capability) => {
+    const [catalog, assignments] = await Promise.all([loadCatalog(), loadAssignments()]);
+
+    /*
+     * A pinned model still has to qualify. `chooseModel` ignores a preference
+     * that cannot do the job rather than honouring it into a failure at the
+     * provider — the model was retired, or the user switched to a key that
+     * does not carry it, and falling back beats breaking.
+     */
+    return chooseModel(catalog, {
+      capability,
+      provider: selected.provider,
+      preferred: assignments.get(capability),
+    });
+  };
 
   /*
    * Generated files go to storage, so what travels back through the model is

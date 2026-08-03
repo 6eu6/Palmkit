@@ -8,6 +8,7 @@ import { useSettingsStore } from '~/lib/stores/settings';
 import { mobileActiveTab } from '~/lib/stores/mobile';
 import { SettingsGroup, SettingsRow, SettingsSheet, type SettingsNav, type SettingsPage } from './SettingsSheet';
 import { providersPage } from './pages/ProvidersPage';
+import { modelAssignmentsPage } from './pages/ModelAssignmentsPage';
 
 /**
  * Everything settings, in one sheet.
@@ -47,6 +48,13 @@ function RootPage({ nav }: { nav: SettingsNav }) {
           sub="API keys and what each model can do"
           chevron
           onClick={() => nav.push(providersPage())}
+        />
+        <SettingsRow
+          icon="i-ph:sliders-horizontal"
+          label="Model assignment"
+          sub="Which model draws, which renders video"
+          chevron
+          onClick={() => nav.push(modelAssignmentsPage())}
         />
         <SettingsRow
           icon="i-ph:plugs-connected"
