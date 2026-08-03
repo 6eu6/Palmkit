@@ -522,9 +522,13 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           toolChoice: 'auto',
           tools: toolsForRequest,
           maxSteps: maxLLMSteps,
-          onStepFinish: ({ toolCalls }) => {
+          onStepFinish: ({ toolCalls, text: partial }) => {
             if (toolCalls.length > 0) {
               usedTools = true;
+            }
+
+            if (partial) {
+              stepText += partial;
             }
 
             toolCalls.forEach((toolCall) => {
@@ -585,6 +589,20 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
          */
         let usedTools = false;
 
+        /*
+         * Everything the model wrote this turn, across every step.
+         *
+         * `result.text` is the LAST step's text, not the turn's. Measured
+         * against the same model and prompt: one step returns 14,251
+         * characters, and adding tools with maxSteps returns 1,106 across
+         * eight steps — the other thirteen thousand are still streamed to
+         * the browser, they are simply not in `result.text`. Everything on
+         * the server that asks "what did the model produce" — the validator,
+         * the job status, the nudge below — was reading the last fragment
+         * and concluding nothing had been built.
+         */
+        let stepText = '';
+
         /* At most one nudge per request; a model that ignores it twice is not going to comply. */
         let nudgedForEmptyBuild = false;
 
@@ -607,6 +625,12 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
          * arrives (text, reasoning, tool-call, tool-result, source).
          */
         while (true) {
+          /*
+           * Per segment. A continuation's previous text is already in
+           * `currentMessages`, so carrying it here too would count it twice.
+           */
+          stepText = '';
+
           const result = await streamText({
             messages: [...currentMessages],
             env: context.cloudflare?.env,
@@ -713,7 +737,10 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             }
           }
 
-          logger.debug(`Segment ${continueSegmentCount + 1} finished: reason=${finishReason}, textLen=${text.length}`);
+          logger.debug(
+            `Segment ${continueSegmentCount + 1} finished: reason=${finishReason}, ` +
+              `textLen=${text.length}, acrossSteps=${stepText.length}`,
+          );
 
           if (usage) {
             cumulativeUsage.completionTokens += usage.completionTokens || 0;
@@ -760,13 +787,19 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
            * between CONTINUE_PROMPT and CLOSE_OUT_PROMPT, and a block-scoped
            * `const` left that reference unresolved (`tsc` error TS2304).
            */
+          /*
+           * Prefer what was accumulated across steps; `text` alone is the
+           * final step and loses everything written before a tool call.
+           */
+          const turnText = stepText.length > text.length ? stepText : text;
+
           const fullAssistantText =
             currentMessages
               .filter((m) => m.role === 'assistant')
               .map((m) => (typeof m.content === 'string' ? m.content : ''))
               .join('\n') +
             '\n' +
-            text;
+            turnText;
 
           if (chatMode === 'build') {
             try {
@@ -833,7 +866,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
                 message: 'Writing the files…',
               } satisfies ProgressAnnotation);
 
-              currentMessages.push({ id: generateId(), role: 'assistant', content: text });
+              currentMessages.push({ id: generateId(), role: 'assistant', content: turnText });
               currentMessages.push({
                 id: generateId(),
                 role: 'user',
@@ -886,7 +919,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               `Token limit hit, auto-continuing segment ${continueSegmentCount + 1}/${MAX_RESPONSE_SEGMENTS}`,
             );
 
-            currentMessages.push({ id: generateId(), role: 'assistant', content: text });
+            currentMessages.push({ id: generateId(), role: 'assistant', content: turnText });
             currentMessages.push({
               id: generateId(),
               role: 'user',
