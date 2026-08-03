@@ -27,6 +27,7 @@
 
 import { z, type ZodTypeAny } from 'zod';
 import type { Tool as AiSdkTool } from 'ai';
+import type { Capability, Route } from '~/lib/.server/llm/model-router';
 
 /**
  * The three sidebar modes. `chatMode` (discuss/build) is orthogonal:
@@ -61,8 +62,21 @@ export interface ToolContext {
   /** Active sandbox ID. Only present in code mode after the sandbox starts. */
   sandboxId?: string;
 
-  /** OpenRouter API key (for image/video generation). */
-  openRouterApiKey?: string;
+  /**
+   * The user's own provider keys, by provider name.
+   *
+   * `openRouterApiKey` used to be the only one, read from the deployment's
+   * environment — so image generation was dead for every user who had their
+   * own key and no server-wide one, which is everyone on the hosted app.
+   */
+  apiKeys?: Record<string, string>;
+
+  /**
+   * Pick a model for a job the chat model cannot do itself — drawing an
+   * image, generating a video. Resolved from the catalog, so the tool does
+   * not carry a list of model names that goes stale.
+   */
+  routeModel?: (capability: Capability) => Promise<Route | undefined>;
 
   /** Tavily/SerpApi key (for web_search / deep_search). */
   searchApiKey?: string;

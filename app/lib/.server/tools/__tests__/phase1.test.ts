@@ -237,7 +237,7 @@ test('registry.listToolsForMode(chat) returns lightweight set', () => {
   assert.ok(!names.includes('scrape_page'), 'chat should NOT have scrape_page');
   assert.ok(!names.includes('read_file'), 'chat should NOT have read_file');
   assert.ok(!names.includes('grep'), 'chat should NOT have grep');
-  assert.ok(!names.includes('generate_image'), 'chat should NOT have generate_image');
+  assert.ok(names.includes('generate_image'), 'chat should have generate_image');
 });
 
 test('registry.listToolsForMode(work) returns expanded set', () => {
@@ -278,7 +278,7 @@ test('registry.listToolsForMode(code) returns dev toolset', () => {
   assert.ok(names.includes('run_shell'), 'code should have run_shell');
 
   assert.ok(!names.includes('scrape_page'), 'code should NOT have scrape_page');
-  assert.ok(!names.includes('generate_image'), 'code should NOT have generate_image');
+  assert.ok(names.includes('generate_image'), 'code should have generate_image');
 });
 
 /**
@@ -779,7 +779,16 @@ console.log('\n======= 5. CROSS-MODE INTEGRITY =======');
  * names it.
  */
 const MODE_TOOLS: Record<ToolMode, string[]> = {
-  chat: ['web_search', 'read_url', 'create_pdf', 'create_docx', 'create_xlsx', 'create_md', 'read_document'],
+  chat: [
+    'web_search',
+    'read_url',
+    'create_pdf',
+    'create_docx',
+    'create_xlsx',
+    'create_md',
+    'read_document',
+    'generate_image',
+  ],
   work: [
     'web_search',
     'read_url',
@@ -810,6 +819,7 @@ const MODE_TOOLS: Record<ToolMode, string[]> = {
     'run_shell',
     'screenshot',
     'read_sandbox_file',
+    'generate_image',
   ],
 };
 

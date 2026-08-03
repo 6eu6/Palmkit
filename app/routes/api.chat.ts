@@ -17,6 +17,7 @@ import { toolRegistry, resolveToolMode, type ToolContext } from '~/lib/.server/t
 import { validateBuildOutput, completenessToJobStatus } from '~/lib/runtime/output-validator';
 import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
 import { readCatalog } from '~/lib/.server/llm/capability-registry';
+import { chooseModel, type Capability } from '~/lib/.server/llm/model-router';
 import { readAllProviderKeys } from '~/lib/.server/llm/user-keys';
 import { DEFAULT_EFFORT, type Effort } from '~/lib/modules/llm/effort';
 import type { ModelDescriptor } from '~/lib/modules/llm/model-descriptor';
@@ -118,34 +119,46 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
    * Memoised: the stream runs in a loop for auto-continue, and re-reading the
    * catalog on every pass would spend a round trip to say the same thing.
    */
-  let descriptorPromise: Promise<ModelDescriptor | undefined> | undefined;
+  const selected = (() => {
+    const last = [...messages].reverse().find((m) => m.role === 'user');
+    return last ? extractPropertiesFromMessage(last as never) : { model: undefined, provider: undefined };
+  })();
 
-  const lookupDescriptor = () => {
-    descriptorPromise ??= (async () => {
+  let catalogPromise: Promise<Map<string, ModelDescriptor>> | undefined;
+
+  const loadCatalog = () => {
+    catalogPromise ??= (async () => {
       try {
-        const last = [...messages].reverse().find((m) => m.role === 'user');
-
-        if (!last) {
-          return undefined;
-        }
-
-        const { model, provider } = extractPropertiesFromMessage(last as never);
         const { user, supabase } = await getAuthedUser(request, context);
 
-        if (!user || !supabase || !model || !provider) {
-          return undefined;
+        if (!user || !supabase || !selected.provider) {
+          return new Map<string, ModelDescriptor>();
         }
 
-        const catalog = await readCatalog(supabase, provider);
-
-        return catalog.get(`${provider}::${model}`);
+        return await readCatalog(supabase, selected.provider);
       } catch {
-        return undefined;
+        return new Map<string, ModelDescriptor>();
       }
     })();
 
-    return descriptorPromise;
+    return catalogPromise;
   };
+
+  const lookupDescriptor = async (): Promise<ModelDescriptor | undefined> => {
+    if (!selected.model || !selected.provider) {
+      return undefined;
+    }
+
+    return (await loadCatalog()).get(`${selected.provider}::${selected.model}`);
+  };
+
+  /*
+   * A tool asking for a model it can actually use. `generate_image` cannot
+   * run on the model in the composer — that one writes text. The catalog is
+   * already loaded for the effort check, so routing costs nothing extra.
+   */
+  const routeFor = async (capability: Capability) =>
+    chooseModel(await loadCatalog(), { capability, provider: selected.provider });
 
   /*
    * ════════════════════════════════════════════════════════════════════════
@@ -387,10 +400,15 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           files: hasExistingFiles ? files : undefined,
           sandboxId,
 
-          // Cloudflare Pages: env vars live on context.cloudflare.env, NOT process.env
-          openRouterApiKey: (context.cloudflare?.env?.OPEN_ROUTER_API_KEY ??
-            process.env.OPENROUTER_API_KEY ??
-            process.env.OPEN_ROUTER_API_KEY) as string | undefined,
+          /*
+           * The user's own keys, already resolved for this request. Tools used
+           * to get a single OpenRouter key read from the deployment's
+           * environment, which on the hosted app is not set — so anything
+           * needing a provider key was dead for every user.
+           */
+          apiKeys,
+
+          routeModel: (capability) => routeFor(capability),
           searchApiKey: ((context.cloudflare?.env as any)?.TAVILY_API_KEY ??
             (context.cloudflare?.env as any)?.SERPAPI_KEY ??
             process.env.TAVILY_API_KEY ??

@@ -212,35 +212,190 @@ test('READ_AND_EXTRACT_DEFAULT_FIELDS has 5 fields', () => {
 
 console.log('\n======= 2. TOOL EXECUTION =======');
 
-test('generate_image returns error when no API key and no Z-AI', async () => {
-  // Without API key, falls through to Z-AI which may not be configured in test env
-  const ctx = makeCtx({ openRouterApiKey: undefined });
-  const result = await generateImageTool.execute({ prompt: 'a red apple' }, ctx);
+/*
+ * Three bugs shipped in generate_image at once, and each was silent: the
+ * model chose the tool correctly, wrote a good prompt, and the user got an
+ * error about a missing config file. These cover all three.
+ */
 
-  /*
-   * The result is either:
-   * - ok=false with "requires API key" error (Z-AI SDK unavailable)
-   * - ok=true with image (Z-AI SDK worked)
-   * Both are valid — we just verify it doesn't crash.
-   */
-  assert.ok(typeof result.ok === 'boolean');
+const imageRoute = async () => ({
+  model: 'google/gemini-2.5-flash-image',
+  descriptor: {} as never,
+  reason: 'test',
 });
 
-test('generate_image handles OpenRouter 401 gracefully', async () => {
-  mockFetch({
-    'openrouter.ai': {
-      status: 401,
-      body: 'Unauthorized',
-    },
-  });
-
-  const ctx = makeCtx({ openRouterApiKey: 'invalid-key' });
-  const result = await generateImageTool.execute({ prompt: 'a red apple' }, ctx);
+test('generate_image says so plainly when no key is connected', async () => {
+  const result = await generateImageTool.execute({ prompt: 'a red apple' }, makeCtx({ apiKeys: {} }));
 
   assert.equal(result.ok, false);
 
   if (!result.ok) {
-    assert.ok(result.error.includes('401') || result.error.includes('failed'));
+    assert.match(result.error, /no openrouter key/i);
+    assert.match(result.hint ?? '', /Model providers/);
+  }
+});
+
+test('generate_image reads the key from the account, not the environment', async () => {
+  let sawAuth = '';
+  mockFetch({ 'openrouter.ai': { status: 401, body: 'Unauthorized' } });
+
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (url: any, init: any) => {
+    sawAuth = new Headers(init?.headers).get('authorization') ?? '';
+    return original(url, init);
+  }) as any;
+
+  await generateImageTool.execute(
+    { prompt: 'a red apple' },
+    makeCtx({ apiKeys: { OpenRouter: 'user-key' }, routeModel: imageRoute }),
+  );
+
+  assert.equal(sawAuth, 'Bearer user-key', "must send the signed-in user's key");
+  restoreFetch();
+});
+
+/*
+ * The bug that made every call fail: /images/generations requires `model`,
+ * and the old code never sent one, so the endpoint answered 400 every time.
+ */
+test('generate_image sends the model field the endpoint requires', async () => {
+  let body: any = null;
+  mockFetch({ 'openrouter.ai': { status: 200, body: { data: [{ b64_json: 'aGk=' }] } } });
+
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (url: any, init: any) => {
+    body = JSON.parse(init.body);
+    return original(url, init);
+  }) as any;
+
+  const result = await generateImageTool.execute(
+    { prompt: 'a red apple' },
+    makeCtx({ apiKeys: { OpenRouter: 'k' }, routeModel: imageRoute }),
+  );
+
+  assert.equal(body?.model, 'google/gemini-2.5-flash-image');
+  assert.equal(result.ok, true);
+
+  if (result.ok) {
+    // 'aGk=' is not an image, so the sniffer reports what it truly is.
+    assert.match(result.dataUrl as string, /^data:application\/octet-stream;base64,/);
+    assert.equal(result.model, 'google/gemini-2.5-flash-image');
+  }
+
+  restoreFetch();
+});
+
+/*
+ * The result used to be labelled data:image/png no matter what came back.
+ * gemini-3.1-flash-lite-image returns JPEG, so a download saved JPEG bytes
+ * under a .png name. The header decides the label now.
+ */
+test('generate_image labels JPEG bytes as JPEG', async () => {
+  // Minimal JPEG: SOI, then a SOF0 declaring 1024x1024.
+  const jpeg = [0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x04, 0x00, 0x04, 0x00, 0x03, 0x01, 0x11, 0x00];
+  const b64 = Buffer.from(jpeg).toString('base64');
+
+  mockFetch({ 'openrouter.ai': { status: 200, body: { data: [{ b64_json: b64 }] } } });
+
+  const result = await generateImageTool.execute(
+    { prompt: 'a red apple' },
+    makeCtx({ apiKeys: { OpenRouter: 'k' }, routeModel: imageRoute }),
+  );
+
+  assert.equal(result.ok, true);
+
+  if (result.ok) {
+    assert.equal(result.format, 'image/jpeg');
+    assert.match(result.dataUrl as string, /^data:image\/jpeg;base64,/);
+
+    // Dimensions read from the header, not echoed from the request.
+    assert.equal(result.size, '1024x1024');
+  }
+
+  restoreFetch();
+});
+
+test('generate_image still labels PNG bytes as PNG', async () => {
+  // PNG signature + IHDR declaring 512x256.
+  const png = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.from([0, 0, 0, 13]),
+    Buffer.from('IHDR'),
+    (() => {
+      const b = Buffer.alloc(8);
+      b.writeUInt32BE(512, 0);
+      b.writeUInt32BE(256, 4);
+
+      return b;
+    })(),
+  ]);
+
+  mockFetch({ 'openrouter.ai': { status: 200, body: { data: [{ b64_json: png.toString('base64') }] } } });
+
+  const result = await generateImageTool.execute(
+    { prompt: 'a red apple' },
+    makeCtx({ apiKeys: { OpenRouter: 'k' }, routeModel: imageRoute }),
+  );
+
+  assert.equal(result.ok, true);
+
+  if (result.ok) {
+    assert.equal(result.format, 'image/png');
+    assert.equal(result.size, '512x256');
+  }
+
+  restoreFetch();
+});
+
+/*
+ * Without `size` the provider chooses its own aspect ratio — 1408x768 rather
+ * than the square that was requested. It is honoured, so it must be sent.
+ */
+test('generate_image forwards the requested size', async () => {
+  let body: any = null;
+  mockFetch({ 'openrouter.ai': { status: 200, body: { data: [{ b64_json: 'aGk=' }] } } });
+
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (url: any, init: any) => {
+    body = JSON.parse(init.body);
+    return original(url, init);
+  }) as any;
+
+  await generateImageTool.execute(
+    { prompt: 'a red apple', size: '1344x768' },
+    makeCtx({ apiKeys: { OpenRouter: 'k' }, routeModel: imageRoute }),
+  );
+
+  assert.equal(body?.size, '1344x768');
+  restoreFetch();
+});
+
+test('generate_image reports a routing failure instead of calling blindly', async () => {
+  const result = await generateImageTool.execute(
+    { prompt: 'a red apple' },
+    makeCtx({ apiKeys: { OpenRouter: 'k' }, routeModel: async () => undefined }),
+  );
+
+  assert.equal(result.ok, false);
+
+  if (!result.ok) {
+    assert.match(result.error, /no image-generating model/i);
+  }
+});
+
+test('generate_image explains a rejected key', async () => {
+  mockFetch({ 'openrouter.ai': { status: 401, body: 'Unauthorized' } });
+
+  const result = await generateImageTool.execute(
+    { prompt: 'a red apple' },
+    makeCtx({ apiKeys: { OpenRouter: 'invalid' }, routeModel: imageRoute }),
+  );
+
+  assert.equal(result.ok, false);
+
+  if (!result.ok) {
+    assert.match(result.error, /401/);
+    assert.match(result.hint ?? '', /Replace it/);
   }
 
   restoreFetch();
@@ -613,17 +768,27 @@ test('read_and_extract keyPoints are sentences', async () => {
 
 console.log('\n======= 3. MODE FILTERING =======');
 
-test('Phase 3 tools available in work mode only', () => {
-  const phase3Tools = ['generate_image', 'analyze_data', 'deep_search', 'read_and_extract'];
+/*
+ * `generate_image` reaches every mode; the research and analysis tools do
+ * not. "Draw me a logo" is something people ask wherever they are, and a
+ * work-mode-only image tool meant that request had no tool at all in /chat —
+ * so the model apologised instead of drawing. Deep research and CSV analysis
+ * are different: they answer a question you opened /work to ask.
+ */
+test('generate_image is available in every mode', () => {
+  for (const mode of ['chat', 'work', 'code'] as const) {
+    const names = toolRegistry.listToolsForMode(mode).map((t) => t.name);
+    assert.ok(names.includes('generate_image'), `generate_image should be in ${mode} mode`);
+  }
+});
 
-  for (const name of phase3Tools) {
-    const workTools = toolRegistry.listToolsForMode('work').map((t) => t.name);
-    const chatTools = toolRegistry.listToolsForMode('chat').map((t) => t.name);
-    const codeTools = toolRegistry.listToolsForMode('code').map((t) => t.name);
+test('the research and analysis tools stay in work mode', () => {
+  const inMode = (m: 'chat' | 'work' | 'code') => toolRegistry.listToolsForMode(m).map((t) => t.name);
 
-    assert.ok(workTools.includes(name), `${name} should be in work mode`);
-    assert.ok(!chatTools.includes(name), `${name} should NOT be in chat mode`);
-    assert.ok(!codeTools.includes(name), `${name} should NOT be in code mode`);
+  for (const name of ['analyze_data', 'deep_search', 'read_and_extract']) {
+    assert.ok(inMode('work').includes(name), `${name} should be in work mode`);
+    assert.ok(!inMode('chat').includes(name), `${name} should NOT be in chat mode`);
+    assert.ok(!inMode('code').includes(name), `${name} should NOT be in code mode`);
   }
 });
 
@@ -705,10 +870,10 @@ test('all Phase 3 tool names are snake_case', () => {
   }
 });
 
-test('all Phase 3 tools available only in work mode', () => {
-  const phase3Tools = [generateImageTool, analyzeDataTool, deepSearchTool, readAndExtractTool];
+test('each Phase 3 tool declares the modes it is meant for', () => {
+  assert.deepEqual([...generateImageTool.availableIn], ['chat', 'work', 'code']);
 
-  for (const t of phase3Tools) {
+  for (const t of [analyzeDataTool, deepSearchTool, readAndExtractTool]) {
     assert.deepEqual([...t.availableIn], ['work'], `${t.name} should be work-only`);
   }
 });

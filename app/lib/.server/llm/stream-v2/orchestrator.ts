@@ -474,7 +474,16 @@ function buildTools(
   const toolContext: ToolContext = {
     files: hasExistingFiles ? params.files : undefined,
     sandboxId: params.sandboxId,
-    openRouterApiKey: (process.env.OPENROUTER_API_KEY ?? process.env.OPEN_ROUTER_API_KEY) as string | undefined,
+
+    /*
+     * Environment keys only. This path has no signed-in user to read an
+     * account key from, so a tool needing one degrades to a clear error
+     * rather than a broken call.
+     */
+    apiKeys:
+      (process.env.OPENROUTER_API_KEY ?? process.env.OPEN_ROUTER_API_KEY)
+        ? { OpenRouter: (process.env.OPENROUTER_API_KEY ?? process.env.OPEN_ROUTER_API_KEY) as string }
+        : undefined,
     searchApiKey: (process.env.TAVILY_API_KEY ?? process.env.SERPAPI_KEY) as string | undefined,
     mode: config.mode,
     requestId: params.requestId,

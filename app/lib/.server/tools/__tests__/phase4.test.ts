@@ -817,7 +817,7 @@ test('code mode has the six sandbox tools and the two universal ones', () => {
    * asserted once, in phase1; here the question is only whether the tools
    * this file is about are reachable.
    */
-  for (const name of ['scrape_page', 'make_chart', 'build_table', 'analyze_data', 'generate_image']) {
+  for (const name of ['scrape_page', 'make_chart', 'build_table', 'analyze_data', 'deep_search']) {
     assert.ok(!names.includes(name), `${name} is work-only and should not be in code mode`);
   }
 });
