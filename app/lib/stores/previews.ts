@@ -1,4 +1,3 @@
-import type { WebContainer } from '@webcontainer/api';
 import { atom } from 'nanostores';
 
 // Extend Window interface to include our custom property
@@ -19,7 +18,6 @@ const PREVIEW_CHANNEL = 'preview-updates';
 
 export class PreviewsStore {
   #availablePreviews = new Map<number, PreviewInfo>();
-  #webcontainer: Promise<WebContainer>;
   #broadcastChannel?: BroadcastChannel;
   #lastUpdate = new Map<string, number>();
   #watchedFiles = new Set<string>();
@@ -29,8 +27,7 @@ export class PreviewsStore {
 
   previews = atom<PreviewInfo[]>([]);
 
-  constructor(webcontainerPromise: Promise<WebContainer>) {
-    this.#webcontainer = webcontainerPromise;
+  constructor() {
     this.#broadcastChannel = this.#maybeCreateChannel(PREVIEW_CHANNEL);
     this.#storageChannel = this.#maybeCreateChannel('storage-sync-channel');
 
@@ -71,8 +68,6 @@ export class PreviewsStore {
         this._broadcastStorageSync();
       };
     }
-
-    this.#init();
   }
 
   #maybeCreateChannel(name: string): BroadcastChannel | undefined {
@@ -166,52 +161,40 @@ export class PreviewsStore {
     }
   }
 
-  async #init() {
-    const webcontainer = await this.#webcontainer;
+  /*
+   * Nothing to initialise any more.
+   *
+   * This used to await the WebContainer and listen for `server-ready` and
+   * `port`. Neither has fired for a long time: the runtime was replaced by a
+   * shim whose `on` returns a no-op unsubscriber. Previews are published by
+   * the sandbox proxy instead — see remotePreview.ts, which sets
+   * workbenchStore.previews directly when the dev server is reachable.
+   */
 
-    // Listen for server ready events
-    webcontainer.on('server-ready', (port, url) => {
-      console.log('[Preview] Server ready on port:', port, url);
-      this.broadcastUpdate(url);
-
-      // Initial storage sync when preview is ready
-      this._broadcastStorageSync();
-    });
-
-    // Listen for port events
-    webcontainer.on('port', (port, type, url) => {
-      let previewInfo = this.#availablePreviews.get(port);
-
-      if (type === 'close' && previewInfo) {
-        this.#availablePreviews.delete(port);
-        this.previews.set(this.previews.get().filter((preview) => preview.port !== port));
-
-        return;
-      }
-
-      const previews = this.previews.get();
-
-      if (!previewInfo) {
-        previewInfo = { port, ready: type === 'open', baseUrl: url };
-        this.#availablePreviews.set(port, previewInfo);
-        previews.push(previewInfo);
-      }
-
-      previewInfo.ready = type === 'open';
-      previewInfo.baseUrl = url;
-
-      this.previews.set([...previews]);
-
-      if (type === 'open') {
-        this.broadcastUpdate(url);
-      }
-    });
-  }
-
-  // Helper to extract preview ID from URL
+  /**
+   * A stable id for a preview, used to address it across browser tabs.
+   *
+   * This used to pull the subdomain out of a `*.local-credentialless.
+   * webcontainer-api.io` URL, so it returned null for every preview the app
+   * actually serves — and every caller here is guarded by `if (previewId)`,
+   * which means cross-tab refresh and storage sync have quietly done nothing.
+   *
+   * The preview is now served same-origin by the sandbox proxy, so the path
+   * identifies it. Falls back to the host for anything else.
+   */
   getPreviewId(url: string): string | null {
-    const match = url.match(/^https?:\/\/([^.]+)\.local-credentialless\.webcontainer-api\.io/);
-    return match ? match[1] : null;
+    if (!url) {
+      return null;
+    }
+
+    try {
+      const parsed = new URL(url, typeof window === 'undefined' ? 'http://localhost' : window.location.origin);
+      const path = parsed.pathname.replace(/^\/+|\/+$/g, '');
+
+      return path || parsed.host || null;
+    } catch {
+      return null;
+    }
   }
 
   // Broadcast state change to all tabs
@@ -302,11 +285,7 @@ let previewsStore: PreviewsStore | null = null;
 
 export function usePreviewStore() {
   if (!previewsStore) {
-    /*
-     * Initialize with a Promise that resolves to WebContainer
-     * This should match how you're initializing WebContainer elsewhere
-     */
-    previewsStore = new PreviewsStore(Promise.resolve({} as WebContainer));
+    previewsStore = new PreviewsStore();
   }
 
   return previewsStore;

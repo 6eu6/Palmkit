@@ -1,23 +1,31 @@
-import type { WebContainer, WebContainerProcess } from '@webcontainer/api';
 import { atom, type WritableAtom } from 'nanostores';
 import type { ITerminal } from '~/types/terminal';
-import { newPalmkitShellProcess, newShellProcess } from '~/utils/shell';
-import { coloredText } from '~/utils/terminal';
+import { newPalmkitShellProcess } from '~/utils/shell';
 
+/**
+ * The terminal panel.
+ *
+ * It used to hold a WebContainer and spawn a shell into every terminal the
+ * user opened. There has been no WebContainer for a while — a shim satisfied
+ * the interface and its `spawn` threw — so both attach paths ended by writing
+ * a red error into the panel.
+ *
+ * What is left is the part that still means something: the toggle, and one
+ * shell object for the action runner to talk to. Attaching a terminal now says
+ * plainly that there is nowhere to run commands, rather than dressing it as a
+ * failure to spawn.
+ */
 export class TerminalStore {
-  #webcontainer: Promise<WebContainer>;
-  #terminals: Array<{ terminal: ITerminal; process: WebContainerProcess }> = [];
   #palmkitTerminal = newPalmkitShellProcess();
 
   showTerminal: WritableAtom<boolean> = import.meta.hot?.data?.showTerminal ?? atom(true);
 
-  constructor(webcontainerPromise: Promise<WebContainer>) {
-    this.#webcontainer = webcontainerPromise;
-
+  constructor() {
     if (import.meta.hot?.data) {
       import.meta.hot.data.showTerminal = this.showTerminal;
     }
   }
+
   get palmkitTerminal() {
     return this.#palmkitTerminal;
   }
@@ -25,44 +33,29 @@ export class TerminalStore {
   toggleTerminal(value?: boolean) {
     this.showTerminal.set(value !== undefined ? value : !this.showTerminal.get());
   }
+
   async attachPalmkitTerminal(terminal: ITerminal) {
-    try {
-      const wc = await this.#webcontainer;
-      await this.#palmkitTerminal.init(wc, terminal);
-    } catch (error: any) {
-      terminal.write(coloredText.red('Failed to spawn Palmkit shell\n\n') + error.message);
-      return;
-    }
+    await this.#palmkitTerminal.init(terminal);
   }
 
+  /**
+   * A second terminal the user opened themselves.
+   *
+   * Nothing can be spawned into it, so it says so instead of appearing to work.
+   */
   async attachTerminal(terminal: ITerminal) {
-    try {
-      const shellProcess = await newShellProcess(await this.#webcontainer, terminal);
-      this.#terminals.push({ terminal, process: shellProcess });
-    } catch (error: any) {
-      terminal.write(coloredText.red('Failed to spawn shell\n\n') + error.message);
-      return;
-    }
+    terminal.write('No sandbox is attached to this project, so there is no shell to open yet.\n');
   }
 
-  onTerminalResize(cols: number, rows: number) {
-    for (const { process } of this.#terminals) {
-      process.resize({ cols, rows });
-    }
+  /*
+   * Kept so the resize and detach callers do not need to know there is
+   * nothing behind them. There is no process to resize and none to kill.
+   */
+  onTerminalResize(_cols: number, _rows: number) {
+    return undefined;
   }
 
-  async detachTerminal(terminal: ITerminal) {
-    const terminalIndex = this.#terminals.findIndex((t) => t.terminal === terminal);
-
-    if (terminalIndex !== -1) {
-      const { process } = this.#terminals[terminalIndex];
-
-      try {
-        process.kill();
-      } catch (error) {
-        console.warn('Failed to kill terminal process:', error);
-      }
-      this.#terminals.splice(terminalIndex, 1);
-    }
+  async detachTerminal(_terminal: ITerminal) {
+    return undefined;
   }
 }
