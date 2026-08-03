@@ -32,6 +32,40 @@ function normalizeLegacyTags(input: string): string {
 const PALMKIT_QUICK_ACTIONS_OPEN = '<palmkit-quick-actions>';
 const PALMKIT_QUICK_ACTIONS_CLOSE = '</palmkit-quick-actions>';
 
+/**
+ * A block of questions the model asks when it genuinely cannot proceed.
+ *
+ * Not a wizard and not a form the user has to clear before anything happens —
+ * a model that knows enough is expected to start building and never emit this
+ * at all. It exists so that "which of the two do you mean?" is a question
+ * rather than a guess that wastes a whole build.
+ *
+ *   <palmkit-questions>
+ *     <palmkit-question ask="Who is this for?" key="audience" multiple="true">
+ *       <palmkit-option>Restaurants</palmkit-option>
+ *       <palmkit-option hint="table booking, menus">Cafés</palmkit-option>
+ *     </palmkit-question>
+ *     <palmkit-question ask="Anything else I should know?" key="notes" />
+ *   </palmkit-questions>
+ *
+ * Every question carries a free-text box whether or not it offers options,
+ * because the answer the model did not think of is the one worth having.
+ */
+const PALMKIT_QUESTIONS_OPEN = '<palmkit-questions>';
+const PALMKIT_QUESTIONS_CLOSE = '</palmkit-questions>';
+
+export interface ParsedQuestionOption {
+  label: string;
+  hint?: string;
+}
+
+export interface ParsedQuestion {
+  key: string;
+  ask: string;
+  multiple: boolean;
+  options: ParsedQuestionOption[];
+}
+
 const logger = createScopedLogger('MessageParser');
 
 export interface ArtifactCallbackData extends PalmkitArtifactData {
@@ -151,6 +185,30 @@ export class StreamingMessageParser {
           i = actionsBlockEnd + PALMKIT_QUICK_ACTIONS_CLOSE.length;
           continue;
         }
+      }
+
+      if (input.startsWith(PALMKIT_QUESTIONS_OPEN, i)) {
+        const end = input.indexOf(PALMKIT_QUESTIONS_CLOSE, i);
+
+        /*
+         * Nothing is emitted until the block is closed. A half-streamed
+         * question would render as a card with one option and then rerender
+         * with three, which reads as the model changing its mind.
+         */
+        if (end === -1) {
+          earlyBreak = true;
+          break;
+        }
+
+        const questions = parseQuestions(input.slice(i + PALMKIT_QUESTIONS_OPEN.length, end));
+
+        if (questions.length > 0) {
+          output += createQuestionsElement(questions);
+        }
+
+        i = end + PALMKIT_QUESTIONS_CLOSE.length;
+
+        continue;
       }
 
       if (state.insideArtifact) {
@@ -517,4 +575,71 @@ function createQuickActionElement(props: Record<string, string>, label: string) 
 
 function createQuickActionGroup(buttons: string[]) {
   return `<div class=\"__palmkitQuickAction__\" data-palmkit-quick-action=\"true\">${buttons.join('')}</div>`;
+}
+
+/*
+ * The negative lookahead matters: without it `<palmkit-question` also matches
+ * the first sixteen characters of the `<palmkit-questions>` wrapper, and the
+ * whole block is swallowed as one malformed question.
+ */
+const QUESTION_RE = /<palmkit-question(?![-a-z])([^>]*?)(?:\/>|>([\s\S]*?)<\/palmkit-question>)/g;
+const OPTION_RE = /<palmkit-option(?![-a-z])([^>]*)>([\s\S]*?)<\/palmkit-option>/g;
+
+function attributeOf(tag: string, name: string): string | undefined {
+  return tag.match(new RegExp(`${name}="([^"]*)"`, 'i'))?.[1];
+}
+
+/**
+ * The questions in a block, ignoring anything malformed.
+ *
+ * A question with neither text nor a usable key is dropped rather than
+ * rendered empty: a card asking nothing is worse than no card.
+ */
+export function parseQuestions(block: string): ParsedQuestion[] {
+  const questions: ParsedQuestion[] = [];
+  let match: RegExpExecArray | null;
+
+  QUESTION_RE.lastIndex = 0;
+
+  while ((match = QUESTION_RE.exec(block)) !== null) {
+    const [, attrs, body = ''] = match;
+    const ask = (attributeOf(attrs, 'ask') ?? '').trim();
+
+    if (!ask) {
+      continue;
+    }
+
+    const options: ParsedQuestionOption[] = [];
+    let option: RegExpExecArray | null;
+
+    OPTION_RE.lastIndex = 0;
+
+    while ((option = OPTION_RE.exec(body)) !== null) {
+      const label = option[2].trim();
+
+      if (!label) {
+        continue;
+      }
+
+      const hint = attributeOf(option[1], 'hint')?.trim();
+      options.push(hint ? { label, hint } : { label });
+    }
+
+    questions.push({
+      key: (attributeOf(attrs, 'key') ?? `q${questions.length + 1}`).trim(),
+      ask,
+      multiple: attributeOf(attrs, 'multiple') === 'true',
+      options,
+    });
+  }
+
+  return questions;
+}
+
+/**
+ * The questions ride in a data attribute rather than as nested markup so the
+ * card owns its own layout and the sanitizer has one attribute to allow.
+ */
+function createQuestionsElement(questions: ParsedQuestion[]): string {
+  return `<div class="__palmkitQuestions__" data-questions=${JSON.stringify(JSON.stringify(questions))}></div>`;
 }

@@ -7,6 +7,8 @@ import { CodeBlock } from './CodeBlock';
 import type { Message } from 'ai';
 import styles from './Markdown.module.scss';
 import ThoughtBox from './ThoughtBox';
+import { QuestionCard } from './QuestionCard';
+import type { ParsedQuestion } from '~/lib/runtime/message-parser';
 import type { ProviderInfo } from '~/types/model';
 
 const logger = createScopedLogger('MarkdownComponent');
@@ -88,6 +90,18 @@ export const Markdown = memo(
 
           if (className?.includes('__palmkitQuickAction__') || dataProps?.dataPalmkitQuickAction) {
             return <div className="flex items-center gap-2 flex-wrap mt-3.5">{children}</div>;
+          }
+
+          if (className?.includes('__palmkitQuestions__')) {
+            let questions: ParsedQuestion[] = [];
+
+            try {
+              questions = JSON.parse(String(dataProps?.dataQuestions ?? '[]'));
+            } catch (error) {
+              logger.error('Could not read the questions block', error);
+            }
+
+            return <QuestionCard questions={questions} append={append} model={model} provider={provider?.name} />;
           }
 
           return (
@@ -211,7 +225,14 @@ export const Markdown = memo(
           return <button {...props}>{children}</button>;
         },
       } satisfies Components;
-    }, []);
+
+      /*
+       * These were memoised against an empty dependency list, so the click
+       * handlers kept whichever `append` existed on the first render. Quick
+       * actions got away with it; a question card that cannot send its answer
+       * leaves the turn stranded, so the deps are declared.
+       */
+    }, [append, setChatMode, model, provider]);
 
     return (
       <ReactMarkdown

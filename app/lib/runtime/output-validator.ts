@@ -21,6 +21,18 @@ const logger = createScopedLogger('OutputValidator');
 
 export const PALMKIT_DONE_MARKER = '__PALMKIT_DONE__';
 
+/**
+ * Did the turn stop to ask the user something?
+ *
+ * Such a turn writes no files on purpose, so every check below would call it
+ * garbage and the UI would say the build failed. It did not fail — it is
+ * waiting for an answer, which is the one case where producing nothing is the
+ * correct outcome.
+ */
+export function asksTheUser(text: string): boolean {
+  return /<palmkit-questions>[\s\S]*?<\/palmkit-questions>/.test(text);
+}
+
 export type BuildCompleteness =
   | 'complete' // marker present + tags balanced + no placeholders → show preview
   | 'incomplete' // stream cut mid-artifact → retry once

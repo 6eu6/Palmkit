@@ -87,7 +87,14 @@ const rehypeSanitizeOptions: RehypeSanitizeOptions = {
     div: [
       ...(defaultSchema.attributes?.div ?? []),
       'data*',
-      ['className', '__palmkitArtifact__', '__palmkitThought__', '__palmkitQuickAction', '__palmkitSelectedElement__'],
+      [
+        'className',
+        '__palmkitArtifact__',
+        '__palmkitThought__',
+        '__palmkitQuickAction',
+        '__palmkitSelectedElement__',
+        '__palmkitQuestions__',
+      ],
 
       // ['className', '__palmkitThought__']
     ],

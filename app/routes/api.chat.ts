@@ -14,7 +14,7 @@ import type { DesignScheme } from '~/types/design-scheme';
 import { MCPService } from '~/lib/services/mcpService';
 import { StreamRecoveryManager } from '~/lib/.server/llm/stream-recovery';
 import { toolRegistry, resolveToolMode, type ToolContext } from '~/lib/.server/tools/registry';
-import { validateBuildOutput, completenessToJobStatus } from '~/lib/runtime/output-validator';
+import { validateBuildOutput, completenessToJobStatus, asksTheUser } from '~/lib/runtime/output-validator';
 import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
 import { readCatalog } from '~/lib/.server/llm/capability-registry';
 import { chooseModel, type Capability } from '~/lib/.server/llm/model-router';
@@ -801,7 +801,14 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             '\n' +
             turnText;
 
-          if (chatMode === 'build') {
+          /*
+           * A turn that asked the user a question wrote no files on purpose.
+           * Validating it reports "garbage" and the UI says the build failed,
+           * which is exactly backwards: it is waiting, not broken.
+           */
+          const askedTheUser = asksTheUser(turnText);
+
+          if (chatMode === 'build' && !askedTheUser) {
             try {
               const validationResult = validateBuildOutput(fullAssistantText);
               const jobStatus = completenessToJobStatus(validationResult);
@@ -843,7 +850,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
            * The cost of being wrong here is one extra round trip. The cost of
            * not trying is the whole request.
            */
-          if (chatMode === 'build' && finishReason === 'stop' && !usedTools && !nudgedForEmptyBuild) {
+          if (chatMode === 'build' && finishReason === 'stop' && !usedTools && !nudgedForEmptyBuild && !askedTheUser) {
             let producedNothing = false;
 
             try {
