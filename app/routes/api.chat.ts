@@ -337,6 +337,31 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     const totalMessageContent = messages.reduce((acc, message) => acc + message.content, '');
     logger.debug(`Total message length: ${totalMessageContent.split(' ').length}, words`);
 
+    /*
+     * Tell the runtime this request is not over when the Response is returned.
+     *
+     * `createDataStream` calls `execute` and keeps a floating promise: the
+     * Response goes back immediately while that detached async function is
+     * still writing into the stream. Node does not care. Cloudflare Workers
+     * cancel work that outlives the response unless it is registered with
+     * `waitUntil`, and when the isolate is reclaimed the writing simply stops
+     * — no exception to catch, no error part to send, just a response that
+     * ends partway through a file with HTTP 200.
+     *
+     * That is what long builds have been doing in production and never
+     * locally: the same request three times gave one complete answer and two
+     * cut off, at 8 to 45 seconds and 9 to 24 kilobytes with no pattern.
+     * /api/stream-check does its writing inside the stream's own `start()`,
+     * which the runtime keeps alive, and it survives 3,000 chunks over 150
+     * seconds — the difference between the two routes is this promise.
+     */
+    let finished!: () => void;
+    const streamFinished = new Promise<void>((resolve) => {
+      finished = resolve;
+    });
+
+    context.cloudflare?.ctx?.waitUntil?.(streamFinished);
+
     const dataStream = createDataStream({
       async execute(dataStream) {
         const filePaths = getFilePaths(files || {});
@@ -1069,6 +1094,16 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     });
 
     /*
+     * The stream is what the runtime must stay alive for, so release it when
+     * the last byte has actually gone out rather than when `execute` returns —
+     * the merged segments drain after that.
+     */
+    const releaseOnClose = new TransformStream<string | Uint8Array, string | Uint8Array>({
+      transform: (chunk, controller) => controller.enqueue(chunk),
+      flush: () => finished(),
+    });
+
+    /*
      * ════════════════════════════════════════════════════════════════════════
      * NO TRANSFORM STREAM — pass the AI SDK's native protocol through
      * untouched. This is the #1 fix:
@@ -1107,7 +1142,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
      */
     const encoder = new TextEncoder();
 
-    const cleanStream = dataStream.pipeThrough(
+    const cleanStream = dataStream.pipeThrough(releaseOnClose).pipeThrough(
       new TransformStream<string | Uint8Array, Uint8Array>({
         transform: (chunk, controller) => {
           // Keep the recovery timer alive — data is flowing.
