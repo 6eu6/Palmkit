@@ -4,8 +4,6 @@ import { ensureSignedIn } from '~/lib/stores/auth';
 import { classNames } from '~/utils/classNames';
 import { PROVIDER_LIST } from '~/utils/constants';
 import { ModelSelector } from '~/components/chat/ModelSelector';
-import { APIKeyManager } from './APIKeyManager';
-import { LOCAL_PROVIDERS } from '~/lib/stores/settings';
 import FilePreview from './FilePreview';
 import { ScreenshotStateManager } from './ScreenshotStateManager';
 
@@ -175,23 +173,18 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                 apiKeys={props.apiKeys}
                 modelLoading={props.isModelLoading}
               />
-              {(props.providerList || []).length > 0 &&
-                props.provider &&
-                !LOCAL_PROVIDERS.includes(props.provider.name) && (
-                  <APIKeyManager
-                    provider={props.provider}
-                    apiKey={props.apiKeys[props.provider.name] || ''}
-                    setApiKey={(key) => {
-                      props.onApiKeysChange(props.provider.name, key);
-                    }}
-                  />
-                )}
-
-              {/* "Models per task" used to live here. It was five hardcoded
-                  roles — brain/builder/tester/vision/media — filtered by a
-                  regex that guessed capabilities from model names, crammed
-                  into the composer. Model assignment belongs in settings, on
-                  top of the capability registry, not beside the message box. */}
+              {/*
+               * Two things used to sit here and no longer do.
+               *
+               * The API key field: a password box beside the message box, whose
+               * value lived in a browser cookie. Keys are now entered once in
+               * Settings → Model providers, encrypted at rest, and never shown
+               * again — the composer has no business holding a credential.
+               *
+               * "Models per task": five hardcoded roles filtered by a regex
+               * that guessed capabilities from model names. Model assignment
+               * belongs in settings, on top of the capability registry.
+               */}
             </div>
           </div>
         )}

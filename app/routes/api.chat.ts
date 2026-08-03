@@ -17,9 +17,9 @@ import { toolRegistry, resolveToolMode, type ToolContext } from '~/lib/.server/t
 import { validateBuildOutput, completenessToJobStatus } from '~/lib/runtime/output-validator';
 import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
 import { readCatalog } from '~/lib/.server/llm/capability-registry';
+import { readProviderKey } from '~/lib/.server/llm/user-keys';
 import { DEFAULT_EFFORT, type Effort } from '~/lib/modules/llm/effort';
 import type { ModelDescriptor } from '~/lib/modules/llm/model-descriptor';
-import { decryptSecret } from '~/lib/auth/crypto.server';
 
 export async function action(args: ActionFunctionArgs) {
   return chatAction(args);
@@ -216,25 +216,12 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
       const { user, supabase } = await getAuthedUser(request, context);
 
       if (user && supabase) {
-        const { data } = await supabase
-          .from('user_api_keys')
-          .select('provider, encrypted_key')
-          .eq('user_id', user.id)
-          .maybeSingle();
+        /* Whichever provider the user has made active. */
+        const stored = await readProviderKey(supabase, user.id, getEnv(context).API_KEY_ENCRYPTION_KEY);
 
-        if (data?.encrypted_key) {
-          const masterKey = getEnv(context).API_KEY_ENCRYPTION_KEY;
-
-          if (masterKey) {
-            try {
-              const decrypted = await decryptSecret(data.encrypted_key, masterKey);
-              const providerName = data.provider || 'OpenRouter';
-              apiKeys[providerName] = decrypted;
-              logger.info(`Loaded encrypted API key from DB for provider: ${providerName}`);
-            } catch (decryptErr) {
-              logger.warn(`Failed to decrypt stored API key: ${(decryptErr as Error).message}`);
-            }
-          }
+        if (stored) {
+          apiKeys[stored.provider] = stored.key;
+          logger.info(`Loaded encrypted API key from DB for provider: ${stored.provider}`);
         }
       }
     } catch (authErr) {

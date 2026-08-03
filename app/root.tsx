@@ -11,7 +11,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { ClientOnly } from 'remix-utils/client-only';
 import { cssTransition, ToastContainer } from 'react-toastify';
 import { getAuthedUser, getEnv } from './lib/auth/supabase.server';
-import { decryptSecret } from './lib/auth/crypto.server';
+import { readProviderKey } from './lib/.server/llm/user-keys';
 import { authEnabledStore, authUserStore, type AuthUser } from './lib/stores/auth';
 import { profileStore } from './lib/stores/profile';
 
@@ -100,19 +100,25 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       })();
 
       if (!hasValidApiKeyCookie && result.supabase && env.API_KEY_ENCRYPTION_KEY) {
-        const { data } = await result.supabase
-          .from('user_api_keys')
-          .select('provider, encrypted_key')
-          .eq('user_id', result.user.id)
-          .maybeSingle();
+        /*
+         * The ACTIVE provider only. `maybeSingle()` used to be safe because a
+         * user could hold exactly one key; with keys per provider it throws
+         * the moment a second one exists.
+         *
+         * NOTE: this still puts the plaintext key in a browser cookie, which
+         * is the last place one leaves the server. It stays for now because
+         * the model list is fetched client-side and needs it; removing it
+         * means moving that fetch server-side, which is its own change.
+         */
+        const stored = await readProviderKey(result.supabase, result.user.id, env.API_KEY_ENCRYPTION_KEY);
+        const data = stored ? { provider: stored.provider, encrypted_key: 'x' } : null;
 
-        if (data?.encrypted_key) {
+        if (data) {
           try {
-            const apiKey = await decryptSecret(data.encrypted_key, env.API_KEY_ENCRYPTION_KEY);
-            const cookieValue = encodeURIComponent(JSON.stringify({ [data.provider]: apiKey }));
+            const cookieValue = encodeURIComponent(JSON.stringify({ [stored!.provider]: stored!.key }));
             headers.append('Set-Cookie', `apiKeys=${cookieValue}; Path=/; Max-Age=2592000; SameSite=Lax`);
           } catch {
-            // ignore decrypt failures
+            // ignore failures
           }
         }
       }

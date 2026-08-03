@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@remix-run/cloudflare';
 import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
-import { decryptSecret } from '~/lib/auth/crypto.server';
+import { readProviderKey } from '~/lib/.server/llm/user-keys';
 import { readCatalog, resolveDescriptors } from '~/lib/.server/llm/capability-registry';
 import { LLMManager } from '~/lib/modules/llm/manager';
 
@@ -14,33 +14,6 @@ import { LLMManager } from '~/lib/modules/llm/manager';
  * lists models, while probing spends money and takes seconds, so it only runs
  * when a user explicitly connects or refreshes a provider.
  */
-
-/** The user's key never leaves the server — it is read here and used here. */
-async function readUserKey(
-  supabase: NonNullable<Awaited<ReturnType<typeof getAuthedUser>>['supabase']>,
-  userId: string,
-  masterKey: string | undefined,
-): Promise<{ provider: string; key: string } | undefined> {
-  if (!masterKey) {
-    return undefined;
-  }
-
-  const { data } = await supabase
-    .from('user_api_keys')
-    .select('provider, encrypted_key')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (!data?.encrypted_key) {
-    return undefined;
-  }
-
-  try {
-    return { provider: data.provider, key: await decryptSecret(data.encrypted_key, masterKey) };
-  } catch {
-    return undefined;
-  }
-}
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const { user, supabase, headers } = await getAuthedUser(request, context);
@@ -75,14 +48,19 @@ export async function action({ request, context }: ActionFunctionArgs) {
   }
 
   const env = getEnv(context);
-  const stored = await readUserKey(supabase, user.id, env.API_KEY_ENCRYPTION_KEY);
+
+  /*
+   * The key for THIS provider, not merely the active one — resolving
+   * Anthropic's models with an OpenRouter key would fail confusingly.
+   */
+  const stored = await readProviderKey(supabase, user.id, env.API_KEY_ENCRYPTION_KEY, provider);
 
   /*
    * Probing needs the user's own key — we are calling the provider as them.
    * Without one we still resolve from metadata and the catalog, which covers
    * OpenRouter entirely and most well-known models everywhere else.
    */
-  const apiKey = stored?.provider === provider ? stored.key : undefined;
+  const apiKey = stored?.key;
 
   let models = body.models ?? [];
 

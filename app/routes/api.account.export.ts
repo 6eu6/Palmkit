@@ -1,11 +1,10 @@
 import type { LoaderFunctionArgs } from '@remix-run/cloudflare';
-import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
-import { decryptSecret } from '~/lib/auth/crypto.server';
+import { getAuthedUser } from '~/lib/auth/supabase.server';
 
 /**
  * GDPR data export: returns a JSON document with everything we store about the
- * signed-in user — profile, projects (chats + snapshots), and their decrypted
- * API key (it's their own data, returned only to them over HTTPS).
+ * signed-in user — profile, projects (chats + snapshots), and which providers
+ * they have keys for. The keys themselves stay on the server.
  */
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const { user, supabase, headers } = await getAuthedUser(request, context);
@@ -14,16 +13,14 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     return Response.json({ error: 'unauthorized' }, { status: 401, headers });
   }
 
-  const [{ data: profile }, { data: projects }, { data: keyRow }] = await Promise.all([
+  const [{ data: profile }, { data: projects }, { data: keyRows }] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
     supabase
       .from('projects')
       .select('url_id, description, messages, snapshot, created_at, updated_at')
       .eq('user_id', user.id),
-    supabase.from('user_api_keys').select('provider, encrypted_key, updated_at').eq('user_id', user.id).maybeSingle(),
+    supabase.from('user_api_keys').select('provider, updated_at').eq('user_id', user.id),
   ]);
-
-  let apiKey: { provider: string; key: string | null; updated_at: string } | null = null;
 
   // Snapshots are offloaded to Storage; pull each one so the export is complete.
   const projectsWithSnapshots = await Promise.all(
@@ -46,26 +43,22 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     }),
   );
 
-  if (keyRow) {
-    const masterKey = getEnv(context).API_KEY_ENCRYPTION_KEY;
-    let decrypted: string | null = null;
-
-    if (masterKey) {
-      try {
-        decrypted = await decryptSecret(keyRow.encrypted_key, masterKey);
-      } catch {
-        decrypted = null;
-      }
-    }
-
-    apiKey = { provider: keyRow.provider, key: decrypted, updated_at: keyRow.updated_at };
-  }
+  /*
+   * Providers and dates, never the keys themselves.
+   *
+   * This export used to decrypt every key into the downloaded file — a
+   * plaintext credential in whatever folder the browser saves to, forwarded
+   * to whoever the user shares their export with. Nobody needs their own key
+   * back out of Palmkit; they already have it from the provider, and if they
+   * do not, the provider will issue another.
+   */
+  const apiKeys = (keyRows ?? []).map((row) => ({ provider: row.provider, updated_at: row.updated_at }));
 
   const payload = {
     exportedAt: new Date().toISOString(),
     account: { id: user.id, email: user.email },
     profile: profile ?? null,
-    apiKey,
+    apiKeys,
     projects: projectsWithSnapshots,
   };
 

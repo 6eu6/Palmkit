@@ -54,28 +54,42 @@ export const POPULAR_PROVIDERS: ProviderDef[] = [
   { id: 'Mistral', name: 'Mistral', blurb: 'European models', keyUrl: 'https://console.mistral.ai/api-keys' },
 ];
 
-interface StoredKey {
-  stored: boolean;
-  provider?: string;
+interface ProviderKey {
+  provider: string;
+  isActive: boolean;
+  hint?: string;
+  updatedAt?: string;
 }
 
-async function fetchStoredKey(): Promise<StoredKey> {
+interface StoredKeys {
+  stored: boolean;
+  provider?: string;
+  keys: ProviderKey[];
+}
+
+async function fetchStoredKeys(): Promise<StoredKeys> {
   try {
     const res = await fetch('/api/account/api-key', { credentials: 'same-origin' });
 
     if (!res.ok) {
-      return { stored: false };
+      return { stored: false, keys: [] };
     }
 
-    return (await res.json()) as StoredKey;
+    const body = (await res.json()) as Partial<StoredKeys>;
+
+    return { stored: Boolean(body.stored), provider: body.provider, keys: body.keys ?? [] };
   } catch {
-    return { stored: false };
+    return { stored: false, keys: [] };
   }
+}
+
+function providerDef(id: string): ProviderDef {
+  return POPULAR_PROVIDERS.find((p) => p.id === id) ?? { id, name: id, blurb: '', keyUrl: '' };
 }
 
 /* ── Step 1 — pick a provider ─────────────────────────────────────────────── */
 
-function ProviderGrid({ onPick }: { onPick: (p: ProviderDef) => void }) {
+function ProviderGrid({ connected, onPick }: { connected?: Set<string>; onPick: (p: ProviderDef) => void }) {
   return (
     <div className="grid grid-cols-2 gap-2.5">
       {POPULAR_PROVIDERS.map((p) => (
@@ -88,8 +102,13 @@ function ProviderGrid({ onPick }: { onPick: (p: ProviderDef) => void }) {
             'hover:border-[var(--pk-accent)]',
           )}
         >
-          <span className="text-[15px] font-semibold text-palmkit-elements-textPrimary">{p.name}</span>
-          <span className="text-[12px] leading-snug text-palmkit-elements-textTertiary">{p.blurb}</span>
+          <span className="flex w-full items-center gap-1.5 text-[15px] font-semibold text-palmkit-elements-textPrimary">
+            {p.name}
+            {connected?.has(p.id) && <span className="i-ph:check-circle-fill h-3.5 w-3.5 text-green-500" />}
+          </span>
+          <span className="text-[12px] leading-snug text-palmkit-elements-textTertiary">
+            {connected?.has(p.id) ? 'Connected — replace key' : p.blurb}
+          </span>
         </button>
       ))}
     </div>
@@ -332,13 +351,14 @@ export function providersPage(): { id: string; title: string; render: (nav: Sett
 }
 
 function ProvidersPage({ nav }: { nav: SettingsNav }) {
-  const [stored, setStored] = useState<StoredKey | null>(null);
+  const [stored, setStored] = useState<StoredKeys | null>(null);
   const [step, setStep] = useState<'list' | 'pick' | 'key' | 'capabilities'>('list');
   const [chosen, setChosen] = useState<ProviderDef | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
   const descriptors = useStore(descriptorsStore);
 
   const reload = async () => {
-    const s = await fetchStoredKey();
+    const s = await fetchStoredKeys();
     setStored(s);
 
     /*
@@ -347,14 +367,62 @@ function ProvidersPage({ nav }: { nav: SettingsNav }) {
      */
     setStep(s.stored ? 'list' : 'pick');
 
-    if (s.stored && s.provider) {
-      void loadDescriptors(s.provider);
+    for (const k of s.keys) {
+      void loadDescriptors(k.provider);
     }
   };
 
   useEffect(() => {
     void reload();
   }, []);
+
+  const activate = async (provider: string) => {
+    setBusy(provider);
+
+    try {
+      const res = await fetch('/api/account/api-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ provider, activate: true }),
+      });
+
+      const body = (await res.json()) as { ok?: boolean; error?: string };
+
+      if (!body.ok) {
+        toast.error(body.error ?? 'Could not switch provider');
+        return;
+      }
+
+      await reload();
+      toast.success(`Now using ${providerDef(provider).name}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const forget = async (provider: string) => {
+    setBusy(provider);
+
+    try {
+      const res = await fetch(`/api/account/api-key?provider=${encodeURIComponent(provider)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      });
+
+      const body = (await res.json()) as { ok?: boolean; error?: string };
+
+      if (!body.ok) {
+        toast.error(body.error ?? 'Could not remove the key');
+        return;
+      }
+
+      await reload();
+      toast.success(`${providerDef(provider).name} removed`);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   if (!stored) {
     return (
@@ -365,12 +433,15 @@ function ProvidersPage({ nav }: { nav: SettingsNav }) {
   }
 
   if (step === 'pick') {
+    const connected = new Set(stored.keys.map((k) => k.provider));
+
     return (
       <div>
         <p className="mb-4 text-[14px] leading-relaxed text-palmkit-elements-textSecondary">
           Choose where your models come from. OpenRouter is the simplest — one key reaches every vendor.
         </p>
         <ProviderGrid
+          connected={connected}
           onPick={(p) => {
             setChosen(p);
             setStep('key');
@@ -392,11 +463,8 @@ function ProvidersPage({ nav }: { nav: SettingsNav }) {
     return (
       <KeyStep
         provider={chosen}
-        onBack={() => setStep('pick')}
-        onSaved={() => {
-          setStored({ stored: true, provider: chosen.id });
-          setStep('capabilities');
-        }}
+        onBack={() => setStep(stored.stored ? 'list' : 'pick')}
+        onSaved={() => setStep('capabilities')}
       />
     );
   }
@@ -405,49 +473,79 @@ function ProvidersPage({ nav }: { nav: SettingsNav }) {
     return <CapabilityStep provider={chosen} onDone={() => void reload()} />;
   }
 
-  const activeProvider = POPULAR_PROVIDERS.find((p) => p.id === stored.provider) ?? {
-    id: stored.provider ?? 'Unknown',
-    name: stored.provider ?? 'Unknown',
-    blurb: '',
-    keyUrl: '',
-  };
-  const mine = Object.values(descriptors).filter((d) => d.provider === activeProvider.id);
-
   return (
     <div>
-      <SettingsGroup title="Connected">
-        <SettingsRow
-          first
-          icon="i-ph:key"
-          label={activeProvider.name}
-          sub={mine.length ? `${mine.length} models` : 'Key saved'}
-          right={<span className="i-ph:check-circle-fill h-5 w-5 text-green-500" />}
-        />
-        <SettingsRow
-          icon="i-ph:arrows-clockwise"
-          label="Refresh capabilities"
-          sub="Re-read what these models can do"
-          onClick={async () => {
-            const n = await refreshProviderCapabilities(activeProvider.id);
-            toast[n > 0 ? 'success' : 'error'](n > 0 ? `Read ${n} models` : 'Could not read the model list');
-          }}
-        />
-        <SettingsRow
-          icon="i-ph:pencil-simple"
-          label="Replace key"
-          sub="The stored key is never shown again"
-          onClick={() => {
-            setChosen(activeProvider);
-            setStep('key');
-          }}
-        />
+      <SettingsGroup title={stored.keys.length > 1 ? 'Providers' : 'Connected'}>
+        {stored.keys.map((k, i) => {
+          const def = providerDef(k.provider);
+          const models = Object.values(descriptors).filter((d) => d.provider === k.provider).length;
+
+          return (
+            <SettingsRow
+              key={k.provider}
+              first={i === 0}
+              icon={k.isActive ? 'i-ph:check-circle-fill' : 'i-ph:circle'}
+              label={def.name}
+              sub={[k.hint ? `…${k.hint}` : 'Key saved', models ? `${models} models` : null]
+                .filter(Boolean)
+                .join(' · ')}
+              onClick={k.isActive ? undefined : () => void activate(k.provider)}
+              right={
+                busy === k.provider ? (
+                  <span className="i-svg-spinners:90-ring-with-bg h-4 w-4 text-palmkit-elements-textTertiary" />
+                ) : k.isActive ? (
+                  <span className="text-[13px] font-medium text-green-500">In use</span>
+                ) : (
+                  <span className="text-[13px] text-palmkit-elements-textTertiary">Tap to use</span>
+                )
+              }
+            />
+          );
+        })}
       </SettingsGroup>
+
+      {/* Actions apply to whichever provider is in use — the one whose key a
+          request would actually be made with. */}
+      {stored.provider && (
+        <SettingsGroup title={`${providerDef(stored.provider).name} · in use`}>
+          <SettingsRow
+            first
+            icon="i-ph:arrows-clockwise"
+            label="Refresh capabilities"
+            sub="Re-read what these models can do"
+            onClick={async () => {
+              const n = await refreshProviderCapabilities(stored.provider!);
+              toast[n > 0 ? 'success' : 'error'](n > 0 ? `Read ${n} models` : 'Could not read the model list');
+            }}
+          />
+          <SettingsRow
+            icon="i-ph:pencil-simple"
+            label="Replace key"
+            sub="The stored key is never shown again"
+            onClick={() => {
+              setChosen(providerDef(stored.provider!));
+              setStep('key');
+            }}
+          />
+          <SettingsRow
+            icon="i-ph:trash"
+            label="Remove this provider"
+            danger
+            onClick={() => void forget(stored.provider!)}
+          />
+        </SettingsGroup>
+      )}
 
       <SettingsGroup>
-        <SettingsRow first icon="i-ph:plus" label="Use a different provider" chevron onClick={() => setStep('pick')} />
+        <SettingsRow first icon="i-ph:plus" label="Add another provider" chevron onClick={() => setStep('pick')} />
       </SettingsGroup>
 
-      {mine.length > 0 && <CapabilitySummary summary={summarise(mine)} />}
+      {stored.provider &&
+        (() => {
+          const mine = Object.values(descriptors).filter((d) => d.provider === stored.provider);
+
+          return mine.length > 0 ? <CapabilitySummary summary={summarise(mine)} /> : null;
+        })()}
 
       <button
         onClick={nav.pop}
