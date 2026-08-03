@@ -15,6 +15,8 @@
  */
 
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { readFileSchema } from '~/lib/.server/tools/schemas/read-file';
 import { listFilesSchema } from '~/lib/.server/tools/schemas/list-files';
 import { grepSchema } from '~/lib/.server/tools/schemas/grep';
@@ -30,28 +32,22 @@ import { runShellTool } from '~/lib/.server/tools/code/run-shell';
 import { screenshotTool } from '~/lib/.server/tools/code/screenshot';
 import { readSandboxFileTool } from '~/lib/.server/tools/code/read-sandbox-file';
 
-// ─── Test runner ───────────────────────────────────────────────────
-let passed = 0;
-let failed = 0;
-const failures: string[] = [];
-
-async function test(name: string, fn: () => void | Promise<void>): Promise<void> {
-  try {
-    const result = fn();
-
-    if (result instanceof Promise) {
-      await result;
-    }
-
-    passed++;
-    console.log(`  \u2713 ${name}`);
-  } catch (err: any) {
-    failed++;
-    failures.push(`${name}: ${err.message}`);
-    console.log(`  \u2717 ${name}`);
-    console.log(`    ${err.message}`);
-  }
-}
+/*
+ * ─── Test runner ───────────────────────────────────────────────────
+ *
+ * This file used to carry its own: a `test()` that caught every error,
+ * counted it, and printed a tally. Written to be run by hand with
+ * `npx tsx`. But it is named *.test.ts, so vitest collected it, found no
+ * `describe` or `it` in it, and reported the whole file as a failure —
+ * which is how a thousand real assertions came to be both permanently red
+ * and never actually enforced. A broken expectation printed an X and the
+ * run still went green.
+ *
+ * `test` is vitest's `it` now. Same assertions, run one at a time in
+ * declaration order (which the old floating promises did not do), and a
+ * failure is a failure.
+ */
+import { it as test } from 'vitest';
 
 // ─── Mock helpers ──────────────────────────────────────────────────
 const originalFetch = globalThis.fetch;
@@ -129,47 +125,47 @@ function makeFileMap(): Record<string, any> {
 
 console.log('\n======= 1. SCHEMA VALIDATION =======');
 
-await test('read_file schema accepts path', () => {
+test('read_file schema accepts path', () => {
   const r = readFileSchema.safeParse({ path: 'src/App.tsx' });
   assert.ok(r.success);
 });
 
-await test('read_file schema accepts path with leading ./', () => {
+test('read_file schema accepts path with leading ./', () => {
   const r = readFileSchema.safeParse({ path: './src/App.tsx' });
   assert.ok(r.success);
 });
 
-await test('read_file schema rejects empty path', () => {
+test('read_file schema rejects empty path', () => {
   const r = readFileSchema.safeParse({ path: '' });
   assert.ok(!r.success);
 });
 
-await test('read_file schema rejects path > 500 chars', () => {
+test('read_file schema rejects path > 500 chars', () => {
   const r = readFileSchema.safeParse({ path: 'a'.repeat(501) });
   assert.ok(!r.success);
 });
 
-await test('list_files schema accepts empty input', () => {
+test('list_files schema accepts empty input', () => {
   const r = listFilesSchema.safeParse({});
   assert.ok(r.success);
 });
 
-await test('list_files schema accepts filter', () => {
+test('list_files schema accepts filter', () => {
   const r = listFilesSchema.safeParse({ filter: '*.tsx' });
   assert.ok(r.success);
 });
 
-await test('grep schema accepts pattern', () => {
+test('grep schema accepts pattern', () => {
   const r = grepSchema.safeParse({ pattern: 'function' });
   assert.ok(r.success);
 });
 
-await test('grep schema rejects empty pattern', () => {
+test('grep schema rejects empty pattern', () => {
   const r = grepSchema.safeParse({ pattern: '' });
   assert.ok(!r.success);
 });
 
-await test('grep schema accepts all options', () => {
+test('grep schema accepts all options', () => {
   const r = grepSchema.safeParse({
     pattern: 'import',
     fileGlob: '*.tsx',
@@ -179,42 +175,42 @@ await test('grep schema accepts all options', () => {
   assert.ok(r.success);
 });
 
-await test('grep schema rejects maxResults > 200', () => {
+test('grep schema rejects maxResults > 200', () => {
   const r = grepSchema.safeParse({ pattern: 'x', maxResults: 250 });
   assert.ok(!r.success);
 });
 
-await test('run_shell schema accepts command', () => {
+test('run_shell schema accepts command', () => {
   const r = runShellSchema.safeParse({ command: 'npm install' });
   assert.ok(r.success);
 });
 
-await test('run_shell schema rejects empty command', () => {
+test('run_shell schema rejects empty command', () => {
   const r = runShellSchema.safeParse({ command: '' });
   assert.ok(!r.success);
 });
 
-await test('run_shell schema rejects command > 2000 chars', () => {
+test('run_shell schema rejects command > 2000 chars', () => {
   const r = runShellSchema.safeParse({ command: 'a'.repeat(2001) });
   assert.ok(!r.success);
 });
 
-await test('run_shell schema accepts timeoutMs', () => {
+test('run_shell schema accepts timeoutMs', () => {
   const r = runShellSchema.safeParse({ command: 'x', timeoutMs: 60000 });
   assert.ok(r.success);
 });
 
-await test('run_shell schema rejects timeoutMs > 120000', () => {
+test('run_shell schema rejects timeoutMs > 120000', () => {
   const r = runShellSchema.safeParse({ command: 'x', timeoutMs: 200000 });
   assert.ok(!r.success);
 });
 
-await test('screenshot schema accepts empty input (defaults)', () => {
+test('screenshot schema accepts empty input (defaults)', () => {
   const r = screenshotSchema.safeParse({});
   assert.ok(r.success);
 });
 
-await test('screenshot schema accepts url + dimensions', () => {
+test('screenshot schema accepts url + dimensions', () => {
   const r = screenshotSchema.safeParse({
     url: 'http://localhost:5173/about',
     width: 1920,
@@ -224,22 +220,22 @@ await test('screenshot schema accepts url + dimensions', () => {
   assert.ok(r.success);
 });
 
-await test('screenshot schema rejects width > 1920', () => {
+test('screenshot schema rejects width > 1920', () => {
   const r = screenshotSchema.safeParse({ width: 2000 });
   assert.ok(!r.success);
 });
 
-await test('read_sandbox_file schema accepts path', () => {
+test('read_sandbox_file schema accepts path', () => {
   const r = readSandboxFileSchema.safeParse({ path: 'dist/index.html' });
   assert.ok(r.success);
 });
 
-await test('read_sandbox_file schema rejects empty path', () => {
+test('read_sandbox_file schema rejects empty path', () => {
   const r = readSandboxFileSchema.safeParse({ path: '' });
   assert.ok(!r.success);
 });
 
-await test('read_sandbox_file schema accepts maxLength', () => {
+test('read_sandbox_file schema accepts maxLength', () => {
   const r = readSandboxFileSchema.safeParse({ path: 'x', maxLength: 20000 });
   assert.ok(r.success);
 });
@@ -252,7 +248,7 @@ await test('read_sandbox_file schema accepts maxLength', () => {
 
 console.log('\n======= 2. TOOL EXECUTION (file-map) =======');
 
-await test('read_file reads existing file', async () => {
+test('read_file reads existing file', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
   const result = await readFileTool.execute({ path: 'src/App.tsx' }, ctx);
 
@@ -267,7 +263,7 @@ await test('read_file reads existing file', async () => {
   }
 });
 
-await test('read_file normalizes leading ./', async () => {
+test('read_file normalizes leading ./', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
   const result = await readFileTool.execute({ path: './src/App.tsx' }, ctx);
 
@@ -278,7 +274,7 @@ await test('read_file normalizes leading ./', async () => {
   }
 });
 
-await test('read_file normalizes leading /', async () => {
+test('read_file normalizes leading /', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
   const result = await readFileTool.execute({ path: '/src/App.tsx' }, ctx);
 
@@ -289,7 +285,7 @@ await test('read_file normalizes leading /', async () => {
   }
 });
 
-await test('read_file returns error for missing file with available files', async () => {
+test('read_file returns error for missing file with available files', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
   const result = await readFileTool.execute({ path: 'nonexistent.ts' }, ctx);
 
@@ -301,7 +297,7 @@ await test('read_file returns error for missing file with available files', asyn
   }
 });
 
-await test('read_file returns error when no files in context', async () => {
+test('read_file returns error when no files in context', async () => {
   const ctx = makeCtx({ files: undefined });
   const result = await readFileTool.execute({ path: 'any.ts' }, ctx);
 
@@ -312,7 +308,7 @@ await test('read_file returns error when no files in context', async () => {
   }
 });
 
-await test('read_file returns error for folder entries', async () => {
+test('read_file returns error for folder entries', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
   const result = await readFileTool.execute({ path: 'src/components' }, ctx);
 
@@ -323,7 +319,7 @@ await test('read_file returns error for folder entries', async () => {
   }
 });
 
-await test('list_files returns all files', async () => {
+test('list_files returns all files', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
   const result = await listFilesTool.execute({}, ctx);
 
@@ -340,7 +336,7 @@ await test('list_files returns all files', async () => {
   }
 });
 
-await test('list_files respects filter *.tsx', async () => {
+test('list_files respects filter *.tsx', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
   const result = await listFilesTool.execute({ filter: '*.tsx' }, ctx);
 
@@ -356,7 +352,7 @@ await test('list_files respects filter *.tsx', async () => {
   }
 });
 
-await test('list_files respects filter src/**', async () => {
+test('list_files respects filter src/**', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
   const result = await listFilesTool.execute({ filter: 'src/**' }, ctx);
 
@@ -372,7 +368,7 @@ await test('list_files respects filter src/**', async () => {
   }
 });
 
-await test('list_files returns byExtension summary', async () => {
+test('list_files returns byExtension summary', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
   const result = await listFilesTool.execute({}, ctx);
 
@@ -387,7 +383,7 @@ await test('list_files returns byExtension summary', async () => {
   }
 });
 
-await test('list_files returns error when no files', async () => {
+test('list_files returns error when no files', async () => {
   const ctx = makeCtx({ files: undefined });
   const result = await listFilesTool.execute({}, ctx);
 
@@ -398,7 +394,7 @@ await test('list_files returns error when no files', async () => {
   }
 });
 
-await test('grep finds pattern across files', async () => {
+test('grep finds pattern across files', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
   const result = await grepTool.execute({ pattern: 'import' }, ctx);
 
@@ -412,7 +408,7 @@ await test('grep finds pattern across files', async () => {
   }
 });
 
-await test('grep respects fileGlob filter', async () => {
+test('grep respects fileGlob filter', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
   const result = await grepTool.execute({ pattern: 'import', fileGlob: '*.tsx' }, ctx);
 
@@ -427,7 +423,7 @@ await test('grep respects fileGlob filter', async () => {
   }
 });
 
-await test('grep finds TODO comments', async () => {
+test('grep finds TODO comments', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
   const result = await grepTool.execute({ pattern: 'TODO' }, ctx);
 
@@ -440,7 +436,7 @@ await test('grep finds TODO comments', async () => {
   }
 });
 
-await test('grep handles invalid regex gracefully', async () => {
+test('grep handles invalid regex gracefully', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
 
   // "function(" is invalid regex (unbalanced paren)
@@ -451,7 +447,7 @@ await test('grep handles invalid regex gracefully', async () => {
   // Should fall back to literal match, not crash
 });
 
-await test('grep respects caseSensitive option', async () => {
+test('grep respects caseSensitive option', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
 
   // "react" lowercase — should not match "React" in case-sensitive mode
@@ -467,7 +463,7 @@ await test('grep respects caseSensitive option', async () => {
   }
 });
 
-await test('grep respects maxResults cap', async () => {
+test('grep respects maxResults cap', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
   const result = await grepTool.execute({ pattern: 'e', maxResults: 3 }, ctx);
 
@@ -479,7 +475,7 @@ await test('grep respects maxResults cap', async () => {
   }
 });
 
-await test('grep returns truncated flag when capped', async () => {
+test('grep returns truncated flag when capped', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
 
   // 'e' appears in nearly every line — should hit the cap
@@ -496,7 +492,7 @@ await test('grep returns truncated flag when capped', async () => {
   }
 });
 
-await test('grep returns error when no files', async () => {
+test('grep returns error when no files', async () => {
   const ctx = makeCtx({ files: undefined });
   const result = await grepTool.execute({ pattern: 'test' }, ctx);
 
@@ -511,7 +507,7 @@ await test('grep returns error when no files', async () => {
 
 console.log('\n======= 3. TOOL EXECUTION (sandbox) =======');
 
-await test('run_shell returns error when no sandbox', async () => {
+test('run_shell returns error when no sandbox', async () => {
   const ctx = makeCtx({ sandboxId: undefined });
   const result = await runShellTool.execute({ command: 'npm install' }, ctx);
 
@@ -522,7 +518,7 @@ await test('run_shell returns error when no sandbox', async () => {
   }
 });
 
-await test('run_shell executes command successfully', async () => {
+test('run_shell executes command successfully', async () => {
   mockFetch({
     'palmkit.app/api/sb': {
       body: { exitCode: 0, stdout: 'added 1 package', stderr: '' },
@@ -545,7 +541,7 @@ await test('run_shell executes command successfully', async () => {
   restoreFetch();
 });
 
-await test('run_shell returns failure for non-zero exit', async () => {
+test('run_shell returns failure for non-zero exit', async () => {
   mockFetch({
     'palmkit.app/api/sb': {
       body: { exitCode: 1, stdout: '', stderr: 'Error: module not found' },
@@ -567,7 +563,7 @@ await test('run_shell returns failure for non-zero exit', async () => {
   restoreFetch();
 });
 
-await test('run_shell truncates large stdout', async () => {
+test('run_shell truncates large stdout', async () => {
   const largeStdout = 'x'.repeat(10000);
   mockFetch({
     'palmkit.app/api/sb': {
@@ -590,7 +586,7 @@ await test('run_shell truncates large stdout', async () => {
   restoreFetch();
 });
 
-await test('run_shell handles HTTP error from sandbox API', async () => {
+test('run_shell handles HTTP error from sandbox API', async () => {
   mockFetch({
     'palmkit.app/api/sb': {
       status: 404,
@@ -610,7 +606,7 @@ await test('run_shell handles HTTP error from sandbox API', async () => {
   restoreFetch();
 });
 
-await test('screenshot returns error when no sandbox', async () => {
+test('screenshot returns error when no sandbox', async () => {
   const ctx = makeCtx({ sandboxId: undefined });
   const result = await screenshotTool.execute({}, ctx);
 
@@ -621,7 +617,7 @@ await test('screenshot returns error when no sandbox', async () => {
   }
 });
 
-await test('screenshot returns metadata (not base64)', async () => {
+test('screenshot returns metadata (not base64)', async () => {
   mockFetch({
     'palmkit.app/api/sb': {
       body: {
@@ -656,7 +652,7 @@ await test('screenshot returns metadata (not base64)', async () => {
   restoreFetch();
 });
 
-await test('screenshot respects custom url + dimensions', async () => {
+test('screenshot respects custom url + dimensions', async () => {
   mockFetch({
     'palmkit.app/api/sb': {
       body: {
@@ -692,7 +688,7 @@ await test('screenshot respects custom url + dimensions', async () => {
   restoreFetch();
 });
 
-await test('read_sandbox_file returns error when no sandbox', async () => {
+test('read_sandbox_file returns error when no sandbox', async () => {
   const ctx = makeCtx({ sandboxId: undefined });
   const result = await readSandboxFileTool.execute({ path: 'dist/index.html' }, ctx);
 
@@ -703,7 +699,7 @@ await test('read_sandbox_file returns error when no sandbox', async () => {
   }
 });
 
-await test('read_sandbox_file reads file content', async () => {
+test('read_sandbox_file reads file content', async () => {
   mockFetch({
     'palmkit.app/api/sb': {
       body: {
@@ -729,7 +725,7 @@ await test('read_sandbox_file reads file content', async () => {
   restoreFetch();
 });
 
-await test('read_sandbox_file truncates large files', async () => {
+test('read_sandbox_file truncates large files', async () => {
   const largeContent = 'a'.repeat(20000);
   mockFetch({
     'palmkit.app/api/sb': {
@@ -756,7 +752,7 @@ await test('read_sandbox_file truncates large files', async () => {
   restoreFetch();
 });
 
-await test('read_sandbox_file handles 404 from sandbox', async () => {
+test('read_sandbox_file handles 404 from sandbox', async () => {
   mockFetch({
     'palmkit.app/api/sb': {
       status: 404,
@@ -784,7 +780,7 @@ await test('read_sandbox_file handles 404 from sandbox', async () => {
 
 console.log('\n======= 4. MODE FILTERING =======');
 
-await test('Phase 4 tools available in code mode only', () => {
+test('Phase 4 tools available in code mode only', () => {
   const phase4Tools = ['read_file', 'list_files', 'grep', 'run_shell', 'screenshot', 'read_sandbox_file'];
 
   for (const name of phase4Tools) {
@@ -798,23 +794,32 @@ await test('Phase 4 tools available in code mode only', () => {
   }
 });
 
-await test('code mode has all 8 tools (6 Phase 4 + 2 universal)', () => {
-  const codeTools = toolRegistry.listToolsForMode('code');
-  const names = codeTools.map((t) => t.name).sort();
+test('code mode has the six sandbox tools and the two universal ones', () => {
+  const names = toolRegistry.listToolsForMode('code').map((t) => t.name);
 
-  // 6 Phase 4 + web_search + read_url (universal)
-  const expected = [
+  for (const name of [
     'grep',
     'list_files',
     'read_file',
     'read_sandbox_file',
-    'read_url',
     'run_shell',
     'screenshot',
     'web_search',
-  ].sort();
+    'read_url',
+  ]) {
+    assert.ok(names.includes(name), `${name} should be in code mode`);
+  }
 
-  assert.deepEqual(names, expected);
+  /*
+   * This was a deepEqual against exactly those eight, which made it fail the
+   * day the document tools were widened to every mode — a deliberate change,
+   * reported as a code-mode regression. The exact set for every mode is
+   * asserted once, in phase1; here the question is only whether the tools
+   * this file is about are reachable.
+   */
+  for (const name of ['scrape_page', 'make_chart', 'build_table', 'analyze_data', 'generate_image']) {
+    assert.ok(!names.includes(name), `${name} is work-only and should not be in code mode`);
+  }
 });
 
 /*
@@ -825,47 +830,47 @@ await test('code mode has all 8 tools (6 Phase 4 + 2 universal)', () => {
 
 console.log('\n======= 5. INTENT DETECTION =======');
 
-await test('read_file description mentions project file', () => {
+test('read_file description mentions project file', () => {
   const desc = readFileTool.description.toLowerCase();
   assert.ok(desc.includes('project') || desc.includes('file'));
   assert.ok(desc.includes('content'));
 });
 
-await test('read_file description distinguishes from read_sandbox_file', () => {
+test('read_file description distinguishes from read_sandbox_file', () => {
   const desc = readFileTool.description.toLowerCase();
   assert.ok(desc.includes('read_sandbox_file') || desc.includes('sandbox'), 'should mention read_sandbox_file');
 });
 
-await test('list_files description mentions structure', () => {
+test('list_files description mentions structure', () => {
   const desc = listFilesTool.description.toLowerCase();
   assert.ok(desc.includes('structure') || desc.includes('list'));
 });
 
-await test('grep description mentions search pattern', () => {
+test('grep description mentions search pattern', () => {
   const desc = grepTool.description.toLowerCase();
   assert.ok(desc.includes('search'));
   assert.ok(desc.includes('pattern'));
 });
 
-await test('run_shell description mentions shell command', () => {
+test('run_shell description mentions shell command', () => {
   const desc = runShellTool.description.toLowerCase();
   assert.ok(desc.includes('shell') || desc.includes('command'));
   assert.ok(desc.includes('npm') || desc.includes('verify'));
 });
 
-await test('screenshot description mentions visual verify', () => {
+test('screenshot description mentions visual verify', () => {
   const desc = screenshotTool.description.toLowerCase();
   assert.ok(desc.includes('screenshot') || desc.includes('visual'));
   assert.ok(desc.includes('verify') || desc.includes('render'));
 });
 
-await test('read_sandbox_file description distinguishes from read_file', () => {
+test('read_sandbox_file description distinguishes from read_file', () => {
   const desc = readSandboxFileTool.description.toLowerCase();
   assert.ok(desc.includes('read_file'), 'should mention read_file');
   assert.ok(desc.includes('actual') || desc.includes('post-build'));
 });
 
-await test('every Phase 4 tool has description > 100 chars', () => {
+test('every Phase 4 tool has description > 100 chars', () => {
   const phase4Tools = [readFileTool, listFilesTool, grepTool, runShellTool, screenshotTool, readSandboxFileTool];
 
   for (const t of phase4Tools) {
@@ -881,7 +886,7 @@ await test('every Phase 4 tool has description > 100 chars', () => {
 
 console.log('\n======= 6. CROSS-TOOL INTEGRITY =======');
 
-await test('all Phase 4 tool names are snake_case', () => {
+test('all Phase 4 tool names are snake_case', () => {
   const phase4Tools = [readFileTool, listFilesTool, grepTool, runShellTool, screenshotTool, readSandboxFileTool];
 
   for (const t of phase4Tools) {
@@ -889,7 +894,7 @@ await test('all Phase 4 tool names are snake_case', () => {
   }
 });
 
-await test('all Phase 4 tools available only in code mode', () => {
+test('all Phase 4 tools available only in code mode', () => {
   const phase4Tools = [readFileTool, listFilesTool, grepTool, runShellTool, screenshotTool, readSandboxFileTool];
 
   for (const t of phase4Tools) {
@@ -897,24 +902,19 @@ await test('all Phase 4 tools available only in code mode', () => {
   }
 });
 
-await test('all tool names remain unique', () => {
+test('all tool names remain unique', () => {
   const all = toolRegistry.listAllTools();
   const names = all.map((t) => t.name);
   const unique = new Set(names);
   assert.equal(names.length, unique.size, 'duplicates found');
 });
 
-await test('registry has 19 total tools (all native)', () => {
-  const all = toolRegistry.listAllTools();
+test('the six Phase 4 tools are registered, once each', () => {
+  const names = toolRegistry.listAllTools().map((t) => t.name);
 
-  /*
-   * Phase 1: 3 investigative
-   * Phase 2: 4 office + 2 analytics = 6
-   * Phase 3: 1 creative + 1 analytics + 2 investigative = 4
-   * Phase 4: 6 code-mode
-   * Total: 19 (all native, no legacy)
-   */
-  assert.equal(all.length, 19, `Expected 19, got ${all.length}`);
+  for (const name of ['read_file', 'list_files', 'grep', 'run_shell', 'screenshot', 'read_sandbox_file']) {
+    assert.equal(names.filter((n) => n === name).length, 1, `${name} should be registered exactly once`);
+  }
 });
 
 /*
@@ -925,60 +925,47 @@ await test('registry has 19 total tools (all native)', () => {
 
 console.log('\n======= 7. LEGACY REMOVAL VERIFICATION =======');
 
-await test('ALL modes have native tools only (no legacy)', () => {
-  // Verify each mode has the expected native tools
-  const chatTools = toolRegistry
-    .listToolsForMode('chat')
-    .map((t) => t.name)
-    .sort();
-  const workTools = toolRegistry
-    .listToolsForMode('work')
-    .map((t) => t.name)
-    .sort();
-  const codeTools = toolRegistry
-    .listToolsForMode('code')
-    .map((t) => t.name)
-    .sort();
+test('every registered tool declares at least one real mode', () => {
+  for (const t of toolRegistry.listAllTools()) {
+    assert.ok(t.availableIn.length > 0, `${t.name} declares no modes and is unreachable`);
 
-  // Chat: 2 universal tools
-  assert.deepEqual(chatTools, ['read_url', 'web_search']);
-
-  // Work: 13 native tools (5 investigative + 4 office + 3 analytics + 1 creative)
-  assert.equal(workTools.length, 13);
-
-  // Code: 8 tools (6 Phase 4 + 2 universal)
-  assert.equal(codeTools.length, 8);
+    for (const m of t.availableIn) {
+      assert.ok(['chat', 'work', 'code'].includes(m), `${t.name} declares unknown mode ${m}`);
+    }
+  }
 });
 
-await test('legacy built-in-tools.ts and work-mode-tools.ts have been DELETED', () => {
-  /*
-   * Phase 5 cleanup: the legacy files were deleted.
-   * This test verifies the deletion is complete — if someone re-creates
-   * the files, this test will fail (reminding them to use the new
-   * ToolDefinition pattern instead).
-   *
-   * We can't directly check file existence from a test runner, but we CAN
-   * verify that the registry exposes all 19 tools natively (no legacy
-   * adapters needed).
-   */
-  const all = toolRegistry.listAllTools();
-  assert.equal(all.length, 19, `Expected 19 native tools, got ${all.length}`);
+/*
+ * The legacy files are gone, and this checks that they are gone.
+ *
+ * It used to say it could not — "we can't directly check file existence from
+ * a test runner" — and counted tools instead, which is why re-creating either
+ * file would have passed and adding an unrelated tool failed. Vitest runs in
+ * Node; it can read the filesystem.
+ */
+test('the legacy tool files stay deleted', () => {
+  const root = path.resolve(process.cwd(), 'app/lib/.server/llm');
 
-  // All 4 Phase 3 tools should be present (they replaced legacy adapters)
+  for (const name of ['built-in-tools.ts', 'work-mode-tools.ts']) {
+    assert.ok(
+      !fs.existsSync(path.join(root, name)),
+      `${name} is back. Tools belong in the registry as ToolDefinitions, not in a legacy adapter file.`,
+    );
+  }
+});
+
+test('the tools those files used to provide are native now', () => {
   const workTools = toolRegistry.listToolsForMode('work').map((t) => t.name);
-  assert.ok(workTools.includes('generate_image'));
-  assert.ok(workTools.includes('analyze_data'));
-  assert.ok(workTools.includes('deep_search'));
-  assert.ok(workTools.includes('read_and_extract'));
 
-  // All 6 Phase 4 code tools should be present (they replaced legacy adapters)
+  for (const name of ['generate_image', 'analyze_data', 'deep_search', 'read_and_extract']) {
+    assert.ok(workTools.includes(name), `${name} should be in work mode`);
+  }
+
   const codeTools = toolRegistry.listToolsForMode('code').map((t) => t.name);
-  assert.ok(codeTools.includes('read_file'));
-  assert.ok(codeTools.includes('list_files'));
-  assert.ok(codeTools.includes('grep'));
-  assert.ok(codeTools.includes('run_shell'));
-  assert.ok(codeTools.includes('screenshot'));
-  assert.ok(codeTools.includes('read_sandbox_file'));
+
+  for (const name of ['read_file', 'list_files', 'grep', 'run_shell', 'screenshot', 'read_sandbox_file']) {
+    assert.ok(codeTools.includes(name), `${name} should be in code mode`);
+  }
 });
 
 /*
@@ -989,7 +976,7 @@ await test('legacy built-in-tools.ts and work-mode-tools.ts have been DELETED', 
 
 console.log('\n======= 8. EDGE CASES =======');
 
-await test('read_file handles file at root (package.json)', async () => {
+test('read_file handles file at root (package.json)', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
   const result = await readFileTool.execute({ path: 'package.json' }, ctx);
 
@@ -1000,7 +987,7 @@ await test('read_file handles file at root (package.json)', async () => {
   }
 });
 
-await test('list_files handles empty file map', async () => {
+test('list_files handles empty file map', async () => {
   const ctx = makeCtx({ files: {} });
   const result = await listFilesTool.execute({}, ctx);
 
@@ -1011,7 +998,7 @@ await test('list_files handles empty file map', async () => {
   }
 });
 
-await test('list_files filter returns empty when no matches', async () => {
+test('list_files filter returns empty when no matches', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
   const result = await listFilesTool.execute({ filter: '*.py' }, ctx);
 
@@ -1022,7 +1009,7 @@ await test('list_files filter returns empty when no matches', async () => {
   }
 });
 
-await test('grep returns empty results for non-matching pattern', async () => {
+test('grep returns empty results for non-matching pattern', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
   const result = await grepTool.execute({ pattern: 'xyz_nonexistent_pattern_12345' }, ctx);
 
@@ -1034,7 +1021,7 @@ await test('grep returns empty results for non-matching pattern', async () => {
   }
 });
 
-await test('grep skips folder entries in file map', async () => {
+test('grep skips folder entries in file map', async () => {
   const ctx = makeCtx({ files: makeFileMap() });
 
   // 'src/components' is a folder — should not be searched
@@ -1050,7 +1037,7 @@ await test('grep skips folder entries in file map', async () => {
   }
 });
 
-await test('run_shell handles network timeout', async () => {
+test('run_shell handles network timeout', async () => {
   // Mock a fetch that throws AbortTimeoutError
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => {
@@ -1071,7 +1058,7 @@ await test('run_shell handles network timeout', async () => {
   globalThis.fetch = originalFetch;
 });
 
-await test('screenshot returns 404 hint when sandbox not found', async () => {
+test('screenshot returns 404 hint when sandbox not found', async () => {
   mockFetch({
     'palmkit.app/api/sb': {
       status: 404,
@@ -1092,7 +1079,7 @@ await test('screenshot returns 404 hint when sandbox not found', async () => {
   restoreFetch();
 });
 
-await test('read_sandbox_file handles empty content', async () => {
+test('read_sandbox_file handles empty content', async () => {
   mockFetch({
     'palmkit.app/api/sb': {
       body: { path: 'empty.txt', content: '', size: 0 },
@@ -1112,23 +1099,3 @@ await test('read_sandbox_file handles empty content', async () => {
 
   restoreFetch();
 });
-
-/*
- * ════════════════════════════════════════════════════════════════════
- * SUMMARY
- * ════════════════════════════════════════════════════════════════════
- */
-
-console.log('\n=======================================');
-console.log(`  PASSED: ${passed}`);
-console.log(`  FAILED: ${failed}`);
-
-if (failures.length > 0) {
-  console.log('\n  Failures:');
-
-  for (const f of failures) {
-    console.log(`    X ${f}`);
-  }
-}
-
-console.log('=======================================\n');

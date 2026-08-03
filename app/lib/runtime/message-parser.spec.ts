@@ -23,11 +23,22 @@ describe('StreamingMessageParser', () => {
     expect(parser.parse('test_id', 'Hello <strong>world</strong>!')).toBe('Hello <strong>world</strong>!');
   });
 
+  /*
+   * A '<' might be the start of `<palmkitArtifact`, so the parser holds back
+   * everything from it until enough characters arrive to rule that out. Which
+   * partial tags are ambiguous therefore follows the tag's name — and the name
+   * changed. These cases were inherited from `<boltArtifact`, where `<b` was
+   * the ambiguous one and `<p` was not; with `<palmkitArtifact` it is exactly
+   * the other way round, and both expectations had been left pointing at the
+   * old name.
+   */
   describe('no artifacts', () => {
     it.each<[string | string[], ExpectedResult | string]>([
       ['Foo bar', 'Foo bar'],
       ['Foo bar <', 'Foo bar '],
-      ['Foo bar <p', 'Foo bar <p'],
+
+      // '<p' could still become '<palmkitArtifact', so it is held back.
+      ['Foo bar <p', 'Foo bar '],
       [['Foo bar <', 's', 'p', 'an>some text</span>'], 'Foo bar <span>some text</span>'],
     ])('should correctly parse chunks and strip out palmkit artifacts (%#)', (input, expected) => {
       runTest(input, expected);
@@ -36,7 +47,8 @@ describe('StreamingMessageParser', () => {
 
   describe('invalid or incomplete artifacts', () => {
     it.each<[string | string[], ExpectedResult | string]>([
-      ['Foo bar <b', 'Foo bar '],
+      // '<b' cannot become '<palmkitArtifact', so it is emitted immediately.
+      ['Foo bar <b', 'Foo bar <b'],
       ['Foo bar <ba', 'Foo bar <ba'],
       ['Foo bar <pal', 'Foo bar '],
       ['Foo bar <palm', 'Foo bar '],

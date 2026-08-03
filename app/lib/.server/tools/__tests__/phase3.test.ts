@@ -26,28 +26,22 @@ import { analyzeDataTool } from '~/lib/.server/tools/analytics/analyze-data';
 import { deepSearchTool } from '~/lib/.server/tools/investigative/deep-search';
 import { readAndExtractTool } from '~/lib/.server/tools/investigative/read-and-extract';
 
-// ─── Test runner ───────────────────────────────────────────────────
-let passed = 0;
-let failed = 0;
-const failures: string[] = [];
-
-async function test(name: string, fn: () => void | Promise<void>): Promise<void> {
-  try {
-    const result = fn();
-
-    if (result instanceof Promise) {
-      await result;
-    }
-
-    passed++;
-    console.log(`  \u2713 ${name}`);
-  } catch (err: any) {
-    failed++;
-    failures.push(`${name}: ${err.message}`);
-    console.log(`  \u2717 ${name}`);
-    console.log(`    ${err.message}`);
-  }
-}
+/*
+ * ─── Test runner ───────────────────────────────────────────────────
+ *
+ * This file used to carry its own: a `test()` that caught every error,
+ * counted it, and printed a tally. Written to be run by hand with
+ * `npx tsx`. But it is named *.test.ts, so vitest collected it, found no
+ * `describe` or `it` in it, and reported the whole file as a failure —
+ * which is how a thousand real assertions came to be both permanently red
+ * and never actually enforced. A broken expectation printed an X and the
+ * run still went green.
+ *
+ * `test` is vitest's `it` now. Same assertions, run one at a time in
+ * declaration order (which the old floating promises did not do), and a
+ * failure is a failure.
+ */
+import { it as test } from 'vitest';
 
 // ─── Mock helpers ──────────────────────────────────────────────────
 const originalFetch = globalThis.fetch;
@@ -103,22 +97,22 @@ function makeCtx(overrides: Partial<ToolContext> = {}): ToolContext {
 
 console.log('\n======= 1. SCHEMA VALIDATION =======');
 
-await test('generate_image schema accepts minimal prompt', () => {
+test('generate_image schema accepts minimal prompt', () => {
   const r = generateImageSchema.safeParse({ prompt: 'a red apple' });
   assert.ok(r.success);
 });
 
-await test('generate_image schema rejects prompt < 3 chars', () => {
+test('generate_image schema rejects prompt < 3 chars', () => {
   const r = generateImageSchema.safeParse({ prompt: 'ab' });
   assert.ok(!r.success);
 });
 
-await test('generate_image schema rejects prompt > 2000 chars', () => {
+test('generate_image schema rejects prompt > 2000 chars', () => {
   const r = generateImageSchema.safeParse({ prompt: 'a'.repeat(2001) });
   assert.ok(!r.success);
 });
 
-await test('generate_image schema accepts size variations', () => {
+test('generate_image schema accepts size variations', () => {
   const sizes = ['1024x1024', '768x1344', '1344x768', '1440x720'];
 
   for (const s of sizes) {
@@ -127,84 +121,84 @@ await test('generate_image schema accepts size variations', () => {
   }
 });
 
-await test('generate_image schema rejects invalid size', () => {
+test('generate_image schema rejects invalid size', () => {
   const r = generateImageSchema.safeParse({ prompt: 'test', size: '500x500' as any });
   assert.ok(!r.success);
 });
 
-await test('generate_image schema accepts transparent flag', () => {
+test('generate_image schema accepts transparent flag', () => {
   const r = generateImageSchema.safeParse({ prompt: 'logo', transparent: true });
   assert.ok(r.success);
 });
 
-await test('analyze_data schema accepts CSV string', () => {
+test('analyze_data schema accepts CSV string', () => {
   const r = analyzeDataSchema.safeParse({ data: 'name,age\nAlice,30' });
   assert.ok(r.success);
 });
 
-await test('analyze_data schema accepts JSON string', () => {
+test('analyze_data schema accepts JSON string', () => {
   const r = analyzeDataSchema.safeParse({ data: '[{"a":1}]' });
   assert.ok(r.success);
 });
 
-await test('analyze_data schema rejects empty data', () => {
+test('analyze_data schema rejects empty data', () => {
   const r = analyzeDataSchema.safeParse({ data: '' });
   assert.ok(!r.success);
 });
 
-await test('analyze_data schema accepts format + delimiter', () => {
+test('analyze_data schema accepts format + delimiter', () => {
   const r = analyzeDataSchema.safeParse({ data: 'a;b', format: 'csv', delimiter: ';' });
   assert.ok(r.success);
 });
 
-await test('analyze_data schema rejects invalid format', () => {
+test('analyze_data schema rejects invalid format', () => {
   const r = analyzeDataSchema.safeParse({ data: 'x', format: 'xml' as any });
   assert.ok(!r.success);
 });
 
-await test('deep_search schema accepts minimal topic', () => {
+test('deep_search schema accepts minimal topic', () => {
   const r = deepSearchSchema.safeParse({ topic: 'React hooks' });
   assert.ok(r.success);
 });
 
-await test('deep_search schema rejects empty topic', () => {
+test('deep_search schema rejects empty topic', () => {
   const r = deepSearchSchema.safeParse({ topic: '' });
   assert.ok(!r.success);
 });
 
-await test('deep_search schema accepts depth variations', () => {
+test('deep_search schema accepts depth variations', () => {
   for (const d of ['quick', 'standard', 'thorough'] as const) {
     const r = deepSearchSchema.safeParse({ topic: 'test', depth: d });
     assert.ok(r.success, `depth ${d} should be valid`);
   }
 });
 
-await test('deep_search schema rejects invalid depth', () => {
+test('deep_search schema rejects invalid depth', () => {
   const r = deepSearchSchema.safeParse({ topic: 'test', depth: 'invalid' as any });
   assert.ok(!r.success);
 });
 
-await test('read_and_extract schema accepts URL', () => {
+test('read_and_extract schema accepts URL', () => {
   const r = readAndExtractSchema.safeParse({ url: 'https://example.com' });
   assert.ok(r.success);
 });
 
-await test('read_and_extract schema rejects invalid URL', () => {
+test('read_and_extract schema rejects invalid URL', () => {
   const r = readAndExtractSchema.safeParse({ url: 'not-a-url' });
   assert.ok(!r.success);
 });
 
-await test('read_and_extract schema accepts extract array', () => {
+test('read_and_extract schema accepts extract array', () => {
   const r = readAndExtractSchema.safeParse({ url: 'https://example.com', extract: ['title', 'content'] });
   assert.ok(r.success);
 });
 
-await test('read_and_extract schema rejects invalid extract field', () => {
+test('read_and_extract schema rejects invalid extract field', () => {
   const r = readAndExtractSchema.safeParse({ url: 'https://example.com', extract: ['invalid' as any] });
   assert.ok(!r.success);
 });
 
-await test('READ_AND_EXTRACT_DEFAULT_FIELDS has 5 fields', () => {
+test('READ_AND_EXTRACT_DEFAULT_FIELDS has 5 fields', () => {
   assert.equal(READ_AND_EXTRACT_DEFAULT_FIELDS.length, 5);
   assert.ok(READ_AND_EXTRACT_DEFAULT_FIELDS.includes('title'));
   assert.ok(READ_AND_EXTRACT_DEFAULT_FIELDS.includes('keyPoints'));
@@ -218,7 +212,7 @@ await test('READ_AND_EXTRACT_DEFAULT_FIELDS has 5 fields', () => {
 
 console.log('\n======= 2. TOOL EXECUTION =======');
 
-await test('generate_image returns error when no API key and no Z-AI', async () => {
+test('generate_image returns error when no API key and no Z-AI', async () => {
   // Without API key, falls through to Z-AI which may not be configured in test env
   const ctx = makeCtx({ openRouterApiKey: undefined });
   const result = await generateImageTool.execute({ prompt: 'a red apple' }, ctx);
@@ -232,7 +226,7 @@ await test('generate_image returns error when no API key and no Z-AI', async () 
   assert.ok(typeof result.ok === 'boolean');
 });
 
-await test('generate_image handles OpenRouter 401 gracefully', async () => {
+test('generate_image handles OpenRouter 401 gracefully', async () => {
   mockFetch({
     'openrouter.ai': {
       status: 401,
@@ -252,7 +246,7 @@ await test('generate_image handles OpenRouter 401 gracefully', async () => {
   restoreFetch();
 });
 
-await test('analyze_data parses simple CSV', async () => {
+test('analyze_data parses simple CSV', async () => {
   const csv = 'name,age\nAlice,30\nBob,25\nCarol,35';
   const result = await analyzeDataTool.execute({ data: csv }, makeCtx());
 
@@ -272,7 +266,7 @@ await test('analyze_data parses simple CSV', async () => {
   }
 });
 
-await test('analyze_data parses JSON array', async () => {
+test('analyze_data parses JSON array', async () => {
   const json = '[{"name":"Alice","age":30},{"name":"Bob","age":25}]';
   const result = await analyzeDataTool.execute({ data: json }, makeCtx());
 
@@ -286,7 +280,7 @@ await test('analyze_data parses JSON array', async () => {
   }
 });
 
-await test('analyze_data computes standard deviation', async () => {
+test('analyze_data computes standard deviation', async () => {
   // values: 10, 20, 30, 40, 50 → mean=30, variance=200, stddev≈14.14
   const csv = 'val\n10\n20\n30\n40\n50';
   const result = await analyzeDataTool.execute({ data: csv }, makeCtx());
@@ -299,7 +293,7 @@ await test('analyze_data computes standard deviation', async () => {
   }
 });
 
-await test('analyze_data detects outliers', async () => {
+test('analyze_data detects outliers', async () => {
   // values: 1, 2, 3, 4, 5, 200 → mean≈35.83, stddev≈73.4, 200 is > 2 stddevs from mean (z≈2.23)
   const csv = 'val\n1\n2\n3\n4\n5\n200';
   const result = await analyzeDataTool.execute({ data: csv }, makeCtx());
@@ -315,7 +309,7 @@ await test('analyze_data detects outliers', async () => {
   }
 });
 
-await test('analyze_data detects constant column', async () => {
+test('analyze_data detects constant column', async () => {
   const csv = 'status\nactive\nactive\nactive';
   const result = await analyzeDataTool.execute({ data: csv }, makeCtx());
 
@@ -327,7 +321,7 @@ await test('analyze_data detects constant column', async () => {
   }
 });
 
-await test('analyze_data detects ID column (all unique text)', async () => {
+test('analyze_data detects ID column (all unique text)', async () => {
   /*
    * Use TEXT IDs (not numbers) so the column is detected as 'text' type,
    * then the `unique === values.length && values.length > 5` check fires.
@@ -348,7 +342,7 @@ await test('analyze_data detects ID column (all unique text)', async () => {
   }
 });
 
-await test('analyze_data handles CSV with quoted fields', async () => {
+test('analyze_data handles CSV with quoted fields', async () => {
   const csv = 'name,note\n"Alice, Jr.","hello"\n"Bob","world, test"';
   const result = await analyzeDataTool.execute({ data: csv }, makeCtx());
 
@@ -363,7 +357,7 @@ await test('analyze_data handles CSV with quoted fields', async () => {
   }
 });
 
-await test('analyze_data auto-detects semicolon delimiter', async () => {
+test('analyze_data auto-detects semicolon delimiter', async () => {
   const csv = 'name;age\nAlice;30\nBob;25';
   const result = await analyzeDataTool.execute({ data: csv }, makeCtx());
 
@@ -376,7 +370,7 @@ await test('analyze_data auto-detects semicolon delimiter', async () => {
   }
 });
 
-await test('analyze_data handles mixed-type column', async () => {
+test('analyze_data handles mixed-type column', async () => {
   const csv = 'val\n1\n2\nthree\n4\nfive';
   const result = await analyzeDataTool.execute({ data: csv }, makeCtx());
 
@@ -390,7 +384,7 @@ await test('analyze_data handles mixed-type column', async () => {
   }
 });
 
-await test('analyze_data rejects malformed JSON', async () => {
+test('analyze_data rejects malformed JSON', async () => {
   const result = await analyzeDataTool.execute({ data: '{invalid json' }, makeCtx());
   assert.equal(result.ok, false);
 
@@ -399,12 +393,12 @@ await test('analyze_data rejects malformed JSON', async () => {
   }
 });
 
-await test('analyze_data rejects CSV with only header', async () => {
+test('analyze_data rejects CSV with only header', async () => {
   const result = await analyzeDataTool.execute({ data: 'name,age' }, makeCtx());
   assert.equal(result.ok, false);
 });
 
-await test('deep_search generates query variations', async () => {
+test('deep_search generates query variations', async () => {
   // Without search API key, uses DuckDuckGo fallback
   mockFetch({
     'duckduckgo.com': {
@@ -428,7 +422,7 @@ await test('deep_search generates query variations', async () => {
   restoreFetch();
 });
 
-await test('deep_search respects depth parameter', async () => {
+test('deep_search respects depth parameter', async () => {
   mockFetch({
     'duckduckgo.com': {
       headers: { 'content-type': 'text/html' },
@@ -455,7 +449,7 @@ await test('deep_search respects depth parameter', async () => {
   restoreFetch();
 });
 
-await test('read_and_extract returns structured data', async () => {
+test('read_and_extract returns structured data', async () => {
   const html = `
     <html><head>
       <title>Test Page</title>
@@ -502,7 +496,7 @@ await test('read_and_extract returns structured data', async () => {
   restoreFetch();
 });
 
-await test('read_and_extract respects extract filter', async () => {
+test('read_and_extract respects extract filter', async () => {
   const html = `<html><head><title>T</title></head><body><p>content</p></body></html>`;
 
   mockFetch({
@@ -533,7 +527,7 @@ await test('read_and_extract respects extract filter', async () => {
   restoreFetch();
 });
 
-await test('read_and_extract returns error for non-HTML', async () => {
+test('read_and_extract returns error for non-HTML', async () => {
   mockFetch({
     'api.example.com': {
       headers: { 'content-type': 'application/json' },
@@ -552,7 +546,7 @@ await test('read_and_extract returns error for non-HTML', async () => {
   restoreFetch();
 });
 
-await test('read_and_extract returns error for 404', async () => {
+test('read_and_extract returns error for 404', async () => {
   mockFetch({
     'notfound.example.com': {
       status: 404,
@@ -568,7 +562,7 @@ await test('read_and_extract returns error for 404', async () => {
   restoreFetch();
 });
 
-await test('read_and_extract keyPoints are sentences', async () => {
+test('read_and_extract keyPoints are sentences', async () => {
   const html = `
     <html><head><title>React Hooks Guide</title></head><body><main>
       <p>React hooks are functions that let you use state and lifecycle features in functional components.</p>
@@ -619,7 +613,7 @@ await test('read_and_extract keyPoints are sentences', async () => {
 
 console.log('\n======= 3. MODE FILTERING =======');
 
-await test('Phase 3 tools available in work mode only', () => {
+test('Phase 3 tools available in work mode only', () => {
   const phase3Tools = ['generate_image', 'analyze_data', 'deep_search', 'read_and_extract'];
 
   for (const name of phase3Tools) {
@@ -641,53 +635,53 @@ await test('Phase 3 tools available in work mode only', () => {
 
 console.log('\n======= 4. INTENT DETECTION =======');
 
-await test('generate_image description mentions image and prompt', () => {
+test('generate_image description mentions image and prompt', () => {
   const desc = generateImageTool.description.toLowerCase();
   assert.ok(desc.includes('image'), 'should mention image');
   assert.ok(desc.includes('prompt') || desc.includes('description'), 'should mention prompt/description');
   assert.ok(desc.includes('logos') || desc.includes('illustration'), 'should mention use cases');
 });
 
-await test('generate_image description distinguishes from make_chart', () => {
+test('generate_image description distinguishes from make_chart', () => {
   const desc = generateImageTool.description.toLowerCase();
   assert.ok(desc.includes('make_chart') || desc.includes('charts'), 'should mention make_chart anti-pattern');
 });
 
-await test('analyze_data description mentions statistical insights', () => {
+test('analyze_data description mentions statistical insights', () => {
   const desc = analyzeDataTool.description.toLowerCase();
   assert.ok(desc.includes('statistical') || desc.includes('stats') || desc.includes('analysis'));
   assert.ok(desc.includes('csv') || desc.includes('json'));
 });
 
-await test('analyze_data description distinguishes from make_chart and build_table', () => {
+test('analyze_data description distinguishes from make_chart and build_table', () => {
   const desc = analyzeDataTool.description.toLowerCase();
   assert.ok(desc.includes('make_chart') || desc.includes('build_table'));
 });
 
-await test('deep_search description mentions research', () => {
+test('deep_search description mentions research', () => {
   const desc = deepSearchTool.description.toLowerCase();
   assert.ok(desc.includes('research') || desc.includes('comprehensive'));
   assert.ok(desc.includes('multi-query') || desc.includes('multiple'));
 });
 
-await test('deep_search description distinguishes from web_search', () => {
+test('deep_search description distinguishes from web_search', () => {
   const desc = deepSearchTool.description.toLowerCase();
   assert.ok(desc.includes('web_search'), 'should mention web_search as alternative');
 });
 
-await test('read_and_extract description mentions extract', () => {
+test('read_and_extract description mentions extract', () => {
   const desc = readAndExtractTool.description.toLowerCase();
   assert.ok(desc.includes('extract'));
   assert.ok(desc.includes('key points') || desc.includes('keypoints'));
 });
 
-await test('read_and_extract description distinguishes from read_url and scrape_page', () => {
+test('read_and_extract description distinguishes from read_url and scrape_page', () => {
   const desc = readAndExtractTool.description.toLowerCase();
   assert.ok(desc.includes('read_url'), 'should mention read_url');
   assert.ok(desc.includes('scrape_page'), 'should mention scrape_page');
 });
 
-await test('every Phase 3 tool has description > 100 chars', () => {
+test('every Phase 3 tool has description > 100 chars', () => {
   const phase3Tools = [generateImageTool, analyzeDataTool, deepSearchTool, readAndExtractTool];
 
   for (const t of phase3Tools) {
@@ -703,7 +697,7 @@ await test('every Phase 3 tool has description > 100 chars', () => {
 
 console.log('\n======= 5. CROSS-TOOL INTEGRITY =======');
 
-await test('all Phase 3 tool names are snake_case', () => {
+test('all Phase 3 tool names are snake_case', () => {
   const phase3Tools = [generateImageTool, analyzeDataTool, deepSearchTool, readAndExtractTool];
 
   for (const t of phase3Tools) {
@@ -711,7 +705,7 @@ await test('all Phase 3 tool names are snake_case', () => {
   }
 });
 
-await test('all Phase 3 tools available only in work mode', () => {
+test('all Phase 3 tools available only in work mode', () => {
   const phase3Tools = [generateImageTool, analyzeDataTool, deepSearchTool, readAndExtractTool];
 
   for (const t of phase3Tools) {
@@ -719,49 +713,38 @@ await test('all Phase 3 tools available only in work mode', () => {
   }
 });
 
-await test('all tool names remain unique', () => {
+test('all tool names remain unique', () => {
   const all = toolRegistry.listAllTools();
   const names = all.map((t) => t.name);
   const unique = new Set(names);
   assert.equal(names.length, unique.size, 'duplicates found');
 });
 
-await test('registry has 19 total tools (13 work native + 6 code legacy)', () => {
-  const all = toolRegistry.listAllTools();
+/*
+ * The whole registry is asserted by name, once, in phase1 — ALL_TOOL_NAMES
+ * and MODE_TOOLS. Three of these four files each carried their own running
+ * total of it as well ("19 total", "13 work", "8 code"), and every one of
+ * them went stale the day `create_md` was added, all saying the same
+ * uninformative thing: a number moved. One exact set beats four counts, so
+ * what stays here is what is actually about Phase 3.
+ */
 
-  /*
-   * Phase 1: 3 investigative
-   * Phase 2: 4 office + 2 analytics = 6
-   * Phase 3: 1 creative + 1 analytics + 2 investigative = 4
-   * Total native work: 13
-   * Code legacy: 6 (read_file, list_files, grep, run_shell, screenshot, read_sandbox_file)
-   * Total: 19
-   */
-  assert.equal(all.length, 19, `Expected 19, got ${all.length}`);
+const PHASE_3_TOOLS = ['generate_image', 'analyze_data', 'deep_search', 'read_and_extract'];
+
+test('the Phase 3 tools are registered, once each', () => {
+  const names = toolRegistry.listAllTools().map((t) => t.name);
+
+  for (const name of PHASE_3_TOOLS) {
+    assert.equal(names.filter((n) => n === name).length, 1, `${name} should be registered exactly once`);
+  }
 });
 
-await test('work mode has 13 tools (all native, no legacy)', () => {
-  const workTools = toolRegistry.listToolsForMode('work');
-  assert.equal(workTools.length, 13, `Expected 13 work tools, got ${workTools.length}`);
+test('the Phase 3 tools are in work mode', () => {
+  const names = toolRegistry.listToolsForMode('work').map((t) => t.name);
 
-  // Verify all expected tools are present
-  const names = workTools.map((t) => t.name).sort();
-  const expected = [
-    'analyze_data',
-    'build_table',
-    'create_docx',
-    'create_pdf',
-    'create_xlsx',
-    'deep_search',
-    'generate_image',
-    'make_chart',
-    'read_and_extract',
-    'read_document',
-    'read_url',
-    'scrape_page',
-    'web_search',
-  ].sort();
-  assert.deepEqual(names, expected);
+  for (const name of PHASE_3_TOOLS) {
+    assert.ok(names.includes(name), `${name} should be in work mode`);
+  }
 });
 
 /*
@@ -772,7 +755,7 @@ await test('work mode has 13 tools (all native, no legacy)', () => {
 
 console.log('\n======= 6. EDGE CASES =======');
 
-await test('analyze_data handles single-row CSV', async () => {
+test('analyze_data handles single-row CSV', async () => {
   const csv = 'name,age\nAlice,30';
   const result = await analyzeDataTool.execute({ data: csv }, makeCtx());
 
@@ -783,7 +766,7 @@ await test('analyze_data handles single-row CSV', async () => {
   }
 });
 
-await test('analyze_data handles tab-separated', async () => {
+test('analyze_data handles tab-separated', async () => {
   const tsv = 'name\tage\nAlice\t30\nBob\t25';
   const result = await analyzeDataTool.execute({ data: tsv }, makeCtx());
 
@@ -796,7 +779,7 @@ await test('analyze_data handles tab-separated', async () => {
   }
 });
 
-await test('analyze_data handles missing values', async () => {
+test('analyze_data handles missing values', async () => {
   const csv = 'name,age\nAlice,30\nBob,\nCarol,35';
   const result = await analyzeDataTool.execute({ data: csv }, makeCtx());
 
@@ -809,7 +792,7 @@ await test('analyze_data handles missing values', async () => {
   }
 });
 
-await test('analyze_data handles large numeric range', async () => {
+test('analyze_data handles large numeric range', async () => {
   const csv = 'val\n0\n1000000\n500000';
   const result = await analyzeDataTool.execute({ data: csv }, makeCtx());
 
@@ -822,7 +805,7 @@ await test('analyze_data handles large numeric range', async () => {
   }
 });
 
-await test('deep_search returns findings even with empty results', async () => {
+test('deep_search returns findings even with empty results', async () => {
   mockFetch({
     'duckduckgo.com': {
       headers: { 'content-type': 'text/html' },
@@ -842,7 +825,7 @@ await test('deep_search returns findings even with empty results', async () => {
   restoreFetch();
 });
 
-await test('read_and_extract handles page with no main container', async () => {
+test('read_and_extract handles page with no main container', async () => {
   const html = `<html><head><title>Plain</title></head><body><p>Just text.</p></body></html>`;
 
   mockFetch({
@@ -871,7 +854,7 @@ await test('read_and_extract handles page with no main container', async () => {
   restoreFetch();
 });
 
-await test('read_and_extract skips layout tables (1-row)', async () => {
+test('read_and_extract skips layout tables (1-row)', async () => {
   const html = `<html><body>
     <table><tr><td>layout</td></tr></table>
     <table><tr><th>A</th></tr><tr><td>1</td></tr><tr><td>2</td></tr></table>
@@ -912,69 +895,25 @@ await test('read_and_extract skips layout tables (1-row)', async () => {
 
 console.log('\n======= 7. LEGACY REPLACEMENT VERIFICATION =======');
 
-await test('work mode has NO legacy adapters', () => {
-  /*
-   * All 4 Phase 3 tools replaced their legacy counterparts.
-   * The legacy work-mode tools (generate_image, analyze_data, deep_search,
-   * read_and_extract) were wrapped via adaptLegacyTool in Phase 1/2.
-   * Now they're native — the legacy adapters should be gone.
-   */
-  const workTools = toolRegistry.listToolsForMode('work');
-  const workToolNames = workTools.map((t) => t.name);
-
-  // All 4 tools should still be present (just native now)
-  assert.ok(workToolNames.includes('generate_image'));
-  assert.ok(workToolNames.includes('analyze_data'));
-  assert.ok(workToolNames.includes('deep_search'));
-  assert.ok(workToolNames.includes('read_and_extract'));
-
-  /*
-   * We can't directly check if they're "legacy" or "native" from the
-   * public API, but we CAN check that the count is correct:
-   * - 13 work tools total (no duplicates from legacy+native overlap)
-   */
-  assert.equal(workToolNames.length, 13);
-});
-
-await test('code mode STILL has 6 legacy adapters (Phase 4 todo)', () => {
-  const codeTools = toolRegistry.listToolsForMode('code');
-  const codeToolNames = codeTools.map((t) => t.name);
-
-  // These 6 code-mode tools are still legacy adapters
-  const expectedCodeTools = [
-    'read_file',
-    'list_files',
-    'grep',
-    'run_shell',
-    'screenshot',
-    'read_sandbox_file',
-    'web_search',
-    'read_url',
-  ];
-
-  for (const name of expectedCodeTools) {
-    assert.ok(codeToolNames.includes(name), `${name} should be in code mode`);
-  }
-
-  assert.equal(codeToolNames.length, 8, `Expected 8 code tools, got ${codeToolNames.length}`);
-});
-
 /*
- * ════════════════════════════════════════════════════════════════════
- * SUMMARY
- * ════════════════════════════════════════════════════════════════════
+ * Each Phase 3 tool replaced a legacy adapter of the same name. The public
+ * API cannot tell you which one you are holding, so the original test proved
+ * it indirectly, by counting: if both had survived the total would be higher.
+ * A count that also moves when an unrelated tool is added proves nothing, so
+ * check the thing itself — a name registered twice is the overlap.
  */
+test('no tool name is registered twice', () => {
+  const names = toolRegistry.listAllTools().map((t) => t.name);
+  assert.deepEqual(names, [...new Set(names)], 'a duplicate name means a legacy adapter survived its replacement');
+});
 
-console.log('\n=======================================');
-console.log(`  PASSED: ${passed}`);
-console.log(`  FAILED: ${failed}`);
+test('code mode has its six sandbox tools', () => {
+  const names = toolRegistry.listToolsForMode('code').map((t) => t.name);
 
-if (failures.length > 0) {
-  console.log('\n  Failures:');
-
-  for (const f of failures) {
-    console.log(`    X ${f}`);
+  for (const name of ['read_file', 'list_files', 'grep', 'run_shell', 'screenshot', 'read_sandbox_file']) {
+    assert.ok(names.includes(name), `${name} should be in code mode`);
   }
-}
 
-console.log('=======================================\n');
+  // Search reaches every mode; the sandbox tools reach only this one.
+  assert.ok(names.includes('web_search') && names.includes('read_url'));
+});

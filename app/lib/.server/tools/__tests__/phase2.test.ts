@@ -29,28 +29,22 @@ import { readDocumentTool } from '~/lib/.server/tools/office/read-document';
 import { makeChartTool } from '~/lib/.server/tools/analytics/make-chart';
 import { buildTableTool } from '~/lib/.server/tools/analytics/build-table';
 
-// ─── Test runner ───────────────────────────────────────────────────
-let passed = 0;
-let failed = 0;
-const failures: string[] = [];
-
-async function test(name: string, fn: () => void | Promise<void>): Promise<void> {
-  try {
-    const result = fn();
-
-    if (result instanceof Promise) {
-      await result;
-    }
-
-    passed++;
-    console.log(`  \u2713 ${name}`);
-  } catch (err: any) {
-    failed++;
-    failures.push(`${name}: ${err.message}`);
-    console.log(`  \u2717 ${name}`);
-    console.log(`    ${err.message}`);
-  }
-}
+/*
+ * ─── Test runner ───────────────────────────────────────────────────
+ *
+ * This file used to carry its own: a `test()` that caught every error,
+ * counted it, and printed a tally. Written to be run by hand with
+ * `npx tsx`. But it is named *.test.ts, so vitest collected it, found no
+ * `describe` or `it` in it, and reported the whole file as a failure —
+ * which is how a thousand real assertions came to be both permanently red
+ * and never actually enforced. A broken expectation printed an X and the
+ * run still went green.
+ *
+ * `test` is vitest's `it` now. Same assertions, run one at a time in
+ * declaration order (which the old floating promises did not do), and a
+ * failure is a failure.
+ */
+import { it as test } from 'vitest';
 
 function makeCtx(overrides: Partial<ToolContext> = {}): ToolContext {
   return { mode: 'work', ...overrides };
@@ -64,22 +58,22 @@ function makeCtx(overrides: Partial<ToolContext> = {}): ToolContext {
 
 console.log('\n======= 1. SCHEMA VALIDATION =======');
 
-await test('create_pdf schema accepts minimal input', () => {
+test('create_pdf schema accepts minimal input', () => {
   const r = createPdfSchema.safeParse({ title: 'My Report', content: '# Hello' });
   assert.ok(r.success);
 });
 
-await test('create_pdf schema rejects empty title', () => {
+test('create_pdf schema rejects empty title', () => {
   const r = createPdfSchema.safeParse({ title: '', content: 'x' });
   assert.ok(!r.success);
 });
 
-await test('create_pdf schema rejects empty content', () => {
+test('create_pdf schema rejects empty content', () => {
   const r = createPdfSchema.safeParse({ title: 'T', content: '' });
   assert.ok(!r.success);
 });
 
-await test('create_pdf schema accepts optional author + subject', () => {
+test('create_pdf schema accepts optional author + subject', () => {
   const r = createPdfSchema.safeParse({
     title: 'T',
     content: 'C',
@@ -89,34 +83,34 @@ await test('create_pdf schema accepts optional author + subject', () => {
   assert.ok(r.success);
 });
 
-await test('create_pdf schema rejects title > 200 chars', () => {
+test('create_pdf schema rejects title > 200 chars', () => {
   const r = createPdfSchema.safeParse({ title: 'a'.repeat(201), content: 'c' });
   assert.ok(!r.success);
 });
 
-await test('create_docx schema accepts minimal input', () => {
+test('create_docx schema accepts minimal input', () => {
   const r = createDocxSchema.safeParse({ title: 'Doc', content: '# H1' });
   assert.ok(r.success);
 });
 
-await test('create_docx schema accepts headings=numbered', () => {
+test('create_docx schema accepts headings=numbered', () => {
   const r = createDocxSchema.safeParse({ title: 'Doc', content: 'x', headings: 'numbered' });
   assert.ok(r.success);
 });
 
-await test('create_docx schema rejects invalid headings value', () => {
+test('create_docx schema rejects invalid headings value', () => {
   const r = createDocxSchema.safeParse({ title: 'Doc', content: 'x', headings: 'invalid' as any });
   assert.ok(!r.success);
 });
 
-await test('create_xlsx schema accepts single sheet', () => {
+test('create_xlsx schema accepts single sheet', () => {
   const r = createXlsxSchema.safeParse({
     sheets: [{ name: 'Sheet1', headers: ['A', 'B'], rows: [['x', 1]] }],
   });
   assert.ok(r.success);
 });
 
-await test('create_xlsx schema accepts multiple sheets', () => {
+test('create_xlsx schema accepts multiple sheets', () => {
   const r = createXlsxSchema.safeParse({
     sheets: [
       { name: 'A', headers: ['x'], rows: [[1]] },
@@ -126,7 +120,7 @@ await test('create_xlsx schema accepts multiple sheets', () => {
   assert.ok(r.success);
 });
 
-await test('create_xlsx schema rejects > 10 sheets', () => {
+test('create_xlsx schema rejects > 10 sheets', () => {
   const sheets = Array.from({ length: 11 }, (_, i) => ({
     name: `S${i}`,
     headers: ['x'],
@@ -136,21 +130,21 @@ await test('create_xlsx schema rejects > 10 sheets', () => {
   assert.ok(!r.success);
 });
 
-await test('create_xlsx schema rejects sheet name > 31 chars', () => {
+test('create_xlsx schema rejects sheet name > 31 chars', () => {
   const r = createXlsxSchema.safeParse({
     sheets: [{ name: 'a'.repeat(32), headers: ['x'], rows: [[1]] }],
   });
   assert.ok(!r.success);
 });
 
-await test('create_xlsx schema accepts null cells', () => {
+test('create_xlsx schema accepts null cells', () => {
   const r = createXlsxSchema.safeParse({
     sheets: [{ name: 'S', headers: ['x', 'y'], rows: [[1, null]] }],
   });
   assert.ok(r.success);
 });
 
-await test('read_document schema accepts minimal input', () => {
+test('read_document schema accepts minimal input', () => {
   const r = readDocumentSchema.safeParse({
     filename: 'test.txt',
     contentBase64: 'aGVsbG8=',
@@ -158,17 +152,17 @@ await test('read_document schema accepts minimal input', () => {
   assert.ok(r.success);
 });
 
-await test('read_document schema rejects empty filename', () => {
+test('read_document schema rejects empty filename', () => {
   const r = readDocumentSchema.safeParse({ filename: '', contentBase64: 'x' });
   assert.ok(!r.success);
 });
 
-await test('read_document schema rejects empty contentBase64', () => {
+test('read_document schema rejects empty contentBase64', () => {
   const r = readDocumentSchema.safeParse({ filename: 'x.txt', contentBase64: '' });
   assert.ok(!r.success);
 });
 
-await test('make_chart schema accepts bar chart', () => {
+test('make_chart schema accepts bar chart', () => {
   const r = makeChartSchema.safeParse({
     type: 'bar',
     title: 'Sales',
@@ -178,7 +172,7 @@ await test('make_chart schema accepts bar chart', () => {
   assert.ok(r.success);
 });
 
-await test('make_chart schema rejects invalid type', () => {
+test('make_chart schema rejects invalid type', () => {
   const r = makeChartSchema.safeParse({
     type: 'invalid' as any,
     title: 'X',
@@ -188,7 +182,7 @@ await test('make_chart schema rejects invalid type', () => {
   assert.ok(!r.success);
 });
 
-await test('make_chart schema rejects empty labels', () => {
+test('make_chart schema rejects empty labels', () => {
   const r = makeChartSchema.safeParse({
     type: 'bar',
     title: 'X',
@@ -198,7 +192,7 @@ await test('make_chart schema rejects empty labels', () => {
   assert.ok(!r.success);
 });
 
-await test('make_chart schema accepts multiple datasets', () => {
+test('make_chart schema accepts multiple datasets', () => {
   const r = makeChartSchema.safeParse({
     type: 'line',
     title: 'X',
@@ -211,7 +205,7 @@ await test('make_chart schema accepts multiple datasets', () => {
   assert.ok(r.success);
 });
 
-await test('build_table schema accepts minimal input', () => {
+test('build_table schema accepts minimal input', () => {
   const r = buildTableSchema.safeParse({
     headers: ['A', 'B'],
     rows: [['x', 'y']],
@@ -219,7 +213,7 @@ await test('build_table schema accepts minimal input', () => {
   assert.ok(r.success);
 });
 
-await test('build_table schema accepts format=html', () => {
+test('build_table schema accepts format=html', () => {
   const r = buildTableSchema.safeParse({
     headers: ['A'],
     rows: [['x']],
@@ -228,7 +222,7 @@ await test('build_table schema accepts format=html', () => {
   assert.ok(r.success);
 });
 
-await test('build_table schema rejects > 20 headers', () => {
+test('build_table schema rejects > 20 headers', () => {
   const r = buildTableSchema.safeParse({
     headers: Array.from({ length: 21 }, (_, i) => `col${i}`),
     rows: [['x']],
@@ -244,7 +238,7 @@ await test('build_table schema rejects > 20 headers', () => {
 
 console.log('\n======= 2. TOOL EXECUTION =======');
 
-await test('create_pdf generates valid HTML with title', async () => {
+test('create_pdf generates valid HTML with title', async () => {
   const result = await createPdfTool.execute(
     {
       title: 'Quarterly Report',
@@ -268,7 +262,7 @@ await test('create_pdf generates valid HTML with title', async () => {
   }
 });
 
-await test('create_pdf handles page breaks', async () => {
+test('create_pdf handles page breaks', async () => {
   const result = await createPdfTool.execute(
     {
       title: 'T',
@@ -284,7 +278,7 @@ await test('create_pdf handles page breaks', async () => {
   }
 });
 
-await test('create_pdf handles tables in markdown', async () => {
+test('create_pdf handles tables in markdown', async () => {
   const result = await createPdfTool.execute(
     {
       title: 'T',
@@ -303,7 +297,7 @@ await test('create_pdf handles tables in markdown', async () => {
   }
 });
 
-await test('create_docx generates Word-compatible HTML', async () => {
+test('create_docx generates Word-compatible HTML', async () => {
   const result = await createDocxTool.execute(
     {
       title: 'Memo',
@@ -325,7 +319,7 @@ await test('create_docx generates Word-compatible HTML', async () => {
   }
 });
 
-await test('create_docx supports numbered headings', async () => {
+test('create_docx supports numbered headings', async () => {
   const result = await createDocxTool.execute(
     {
       title: 'T',
@@ -345,7 +339,7 @@ await test('create_docx supports numbered headings', async () => {
   }
 });
 
-await test('create_xlsx generates CSV from structured data', async () => {
+test('create_xlsx generates CSV from structured data', async () => {
   const result = await createXlsxTool.execute(
     {
       filename: 'sales',
@@ -378,7 +372,7 @@ await test('create_xlsx generates CSV from structured data', async () => {
   }
 });
 
-await test('create_xlsx handles multiple sheets', async () => {
+test('create_xlsx handles multiple sheets', async () => {
   const result = await createXlsxTool.execute(
     {
       sheets: [
@@ -399,7 +393,7 @@ await test('create_xlsx handles multiple sheets', async () => {
   }
 });
 
-await test('create_xlsx properly escapes commas in CSV', async () => {
+test('create_xlsx properly escapes commas in CSV', async () => {
   const result = await createXlsxTool.execute(
     {
       sheets: [
@@ -420,7 +414,7 @@ await test('create_xlsx properly escapes commas in CSV', async () => {
   }
 });
 
-await test('create_xlsx rejects mismatched row width', async () => {
+test('create_xlsx rejects mismatched row width', async () => {
   const result = await createXlsxTool.execute(
     {
       sheets: [
@@ -441,7 +435,7 @@ await test('create_xlsx rejects mismatched row width', async () => {
   }
 });
 
-await test('read_document reads plain text', async () => {
+test('read_document reads plain text', async () => {
   // "Hello, World!" in base64
   const b64 = Buffer.from('Hello, World!').toString('base64');
   const result = await readDocumentTool.execute(
@@ -462,7 +456,7 @@ await test('read_document reads plain text', async () => {
   }
 });
 
-await test('read_document reads markdown', async () => {
+test('read_document reads markdown', async () => {
   const md = '# Title\n\nSome **bold** text.';
   const b64 = Buffer.from(md).toString('base64');
   const result = await readDocumentTool.execute(
@@ -480,7 +474,7 @@ await test('read_document reads markdown', async () => {
   }
 });
 
-await test('read_document returns pdfExtractionRequired for PDF', async () => {
+test('read_document returns pdfExtractionRequired for PDF', async () => {
   /*
    * %PDF-1.4 magic bytes — server returns ok=true with pdfExtractionRequired flag
    * The client renderer then offers an "Extract text" button using pdfjs-dist
@@ -506,7 +500,7 @@ await test('read_document returns pdfExtractionRequired for PDF', async () => {
   }
 });
 
-await test('read_document handles JSON files', async () => {
+test('read_document handles JSON files', async () => {
   const json = JSON.stringify({ name: 'test', value: 42 }, null, 2);
   const b64 = Buffer.from(json).toString('base64');
   const result = await readDocumentTool.execute(
@@ -525,7 +519,7 @@ await test('read_document handles JSON files', async () => {
   }
 });
 
-await test('make_chart generates bar chart config', async () => {
+test('make_chart generates bar chart config', async () => {
   const result = await makeChartTool.execute(
     {
       type: 'bar',
@@ -556,7 +550,7 @@ await test('make_chart generates bar chart config', async () => {
   }
 });
 
-await test('make_chart auto-assigns colors when omitted', async () => {
+test('make_chart auto-assigns colors when omitted', async () => {
   const result = await makeChartTool.execute(
     {
       type: 'bar',
@@ -575,7 +569,7 @@ await test('make_chart auto-assigns colors when omitted', async () => {
   }
 });
 
-await test('make_chart assigns per-slice colors for pie', async () => {
+test('make_chart assigns per-slice colors for pie', async () => {
   const result = await makeChartTool.execute(
     {
       type: 'pie',
@@ -595,7 +589,7 @@ await test('make_chart assigns per-slice colors for pie', async () => {
   }
 });
 
-await test('make_chart rejects mismatched data length', async () => {
+test('make_chart rejects mismatched data length', async () => {
   const result = await makeChartTool.execute(
     {
       type: 'bar',
@@ -613,7 +607,7 @@ await test('make_chart rejects mismatched data length', async () => {
   }
 });
 
-await test('make_chart rejects multi-dataset pie', async () => {
+test('make_chart rejects multi-dataset pie', async () => {
   const result = await makeChartTool.execute(
     {
       type: 'pie',
@@ -634,7 +628,7 @@ await test('make_chart rejects multi-dataset pie', async () => {
   }
 });
 
-await test('build_table generates markdown table', async () => {
+test('build_table generates markdown table', async () => {
   const result = await buildTableTool.execute(
     {
       headers: ['Name', 'Age'],
@@ -661,7 +655,7 @@ await test('build_table generates markdown table', async () => {
   }
 });
 
-await test('build_table generates HTML format', async () => {
+test('build_table generates HTML format', async () => {
   const result = await buildTableTool.execute(
     {
       headers: ['A'],
@@ -682,7 +676,7 @@ await test('build_table generates HTML format', async () => {
   }
 });
 
-await test('build_table generates CSV format', async () => {
+test('build_table generates CSV format', async () => {
   const result = await buildTableTool.execute(
     {
       headers: ['A', 'B'],
@@ -705,7 +699,7 @@ await test('build_table generates CSV format', async () => {
   }
 });
 
-await test('build_table handles null cells', async () => {
+test('build_table handles null cells', async () => {
   const result = await buildTableTool.execute(
     {
       headers: ['A', 'B'],
@@ -722,7 +716,7 @@ await test('build_table handles null cells', async () => {
   }
 });
 
-await test('build_table rejects mismatched row width', async () => {
+test('build_table rejects mismatched row width', async () => {
   const result = await buildTableTool.execute(
     {
       headers: ['a', 'b', 'c'],
@@ -746,21 +740,40 @@ await test('build_table rejects mismatched row width', async () => {
 
 console.log('\n======= 3. MODE FILTERING =======');
 
-await test('Phase 2 tools available in work mode only', () => {
-  const phase2Tools = ['create_pdf', 'create_docx', 'create_xlsx', 'read_document', 'make_chart', 'build_table'];
+/*
+ * Documents everywhere, analysis in /work.
+ *
+ * These six shipped work-mode-only and this test said so. Producing a file
+ * turned out to be something people ask for wherever they happen to be — "make
+ * that a PDF" in the middle of a chat, an .xlsx out of a script in /code — so
+ * the four document tools were widened to every mode on purpose. The two
+ * analytics tools were not: charting and table-building answer a question you
+ * are already in /work to ask.
+ */
+const DOCUMENT_TOOLS = ['create_pdf', 'create_docx', 'create_xlsx', 'read_document'];
+const ANALYTICS_TOOLS = ['make_chart', 'build_table'];
 
-  for (const name of phase2Tools) {
-    const workTools = toolRegistry.listToolsForMode('work').map((t) => t.name);
-    const chatTools = toolRegistry.listToolsForMode('chat').map((t) => t.name);
-    const codeTools = toolRegistry.listToolsForMode('code').map((t) => t.name);
+test('document tools are available in every mode', () => {
+  for (const mode of ['chat', 'work', 'code'] as const) {
+    const names = toolRegistry.listToolsForMode(mode).map((t) => t.name);
 
-    assert.ok(workTools.includes(name), `${name} should be in work mode`);
-    assert.ok(!chatTools.includes(name), `${name} should NOT be in chat mode`);
-    assert.ok(!codeTools.includes(name), `${name} should NOT be in code mode`);
+    for (const name of DOCUMENT_TOOLS) {
+      assert.ok(names.includes(name), `${name} should be in ${mode} mode`);
+    }
   }
 });
 
-await test('Phase 2 native tools replaced legacy adapters', () => {
+test('analytics tools stay in work mode', () => {
+  const inMode = (m: 'chat' | 'work' | 'code') => toolRegistry.listToolsForMode(m).map((t) => t.name);
+
+  for (const name of ANALYTICS_TOOLS) {
+    assert.ok(inMode('work').includes(name), `${name} should be in work mode`);
+    assert.ok(!inMode('chat').includes(name), `${name} should NOT be in chat mode`);
+    assert.ok(!inMode('code').includes(name), `${name} should NOT be in code mode`);
+  }
+});
+
+test('Phase 2 native tools replaced legacy adapters', () => {
   const workTools = toolRegistry.listToolsForMode('work').map((t) => t.name);
 
   // create_document → create_pdf + create_docx
@@ -781,48 +794,48 @@ await test('Phase 2 native tools replaced legacy adapters', () => {
 
 console.log('\n======= 4. INTENT DETECTION =======');
 
-await test('create_pdf description mentions PDF and report', () => {
+test('create_pdf description mentions PDF and report', () => {
   const desc = createPdfTool.description.toLowerCase();
   assert.ok(desc.includes('pdf'), 'should mention PDF');
   assert.ok(desc.includes('report') || desc.includes('document'), 'should mention report/document');
 });
 
-await test('create_pdf description distinguishes from create_xlsx and create_docx', () => {
+test('create_pdf description distinguishes from create_xlsx and create_docx', () => {
   const desc = createPdfTool.description.toLowerCase();
   assert.ok(desc.includes('create_xlsx') || desc.includes('spreadsheets'), 'should mention xlsx/spreadsheets');
   assert.ok(desc.includes('create_docx') || desc.includes('word'), 'should mention docx/word');
 });
 
-await test('create_docx description mentions Word', () => {
+test('create_docx description mentions Word', () => {
   const desc = createDocxTool.description.toLowerCase();
   assert.ok(desc.includes('word') || desc.includes('.docx'), 'should mention Word/.docx');
   assert.ok(desc.includes('editable'), 'should mention editable');
 });
 
-await test('create_xlsx description mentions spreadsheet', () => {
+test('create_xlsx description mentions spreadsheet', () => {
   const desc = createXlsxTool.description.toLowerCase();
   assert.ok(desc.includes('spreadsheet') || desc.includes('excel'), 'should mention spreadsheet/excel');
 });
 
-await test('read_document description mentions extract', () => {
+test('read_document description mentions extract', () => {
   const desc = readDocumentTool.description.toLowerCase();
   assert.ok(desc.includes('extract'), 'should mention extract');
   assert.ok(desc.includes('pdf') || desc.includes('docx') || desc.includes('txt'), 'should mention file types');
 });
 
-await test('make_chart description mentions visualize', () => {
+test('make_chart description mentions visualize', () => {
   const desc = makeChartTool.description.toLowerCase();
   assert.ok(desc.includes('visualize') || desc.includes('chart'), 'should mention visualize/chart');
   assert.ok(desc.includes('bar') && desc.includes('line'), 'should mention chart types');
 });
 
-await test('build_table description mentions table format', () => {
+test('build_table description mentions table format', () => {
   const desc = buildTableTool.description.toLowerCase();
   assert.ok(desc.includes('table'), 'should mention table');
   assert.ok(desc.includes('markdown'), 'should mention markdown');
 });
 
-await test('every Phase 2 tool has description > 100 chars', () => {
+test('every Phase 2 tool has description > 100 chars', () => {
   const phase2Tools = [createPdfTool, createDocxTool, createXlsxTool, readDocumentTool, makeChartTool, buildTableTool];
 
   for (const t of phase2Tools) {
@@ -838,7 +851,7 @@ await test('every Phase 2 tool has description > 100 chars', () => {
 
 console.log('\n======= 5. CROSS-TOOL INTEGRITY =======');
 
-await test('all Phase 2 tool names are snake_case', () => {
+test('all Phase 2 tool names are snake_case', () => {
   const phase2Tools = [createPdfTool, createDocxTool, createXlsxTool, readDocumentTool, makeChartTool, buildTableTool];
 
   for (const t of phase2Tools) {
@@ -846,22 +859,25 @@ await test('all Phase 2 tool names are snake_case', () => {
   }
 });
 
-await test('all Phase 2 tools have unique names', () => {
+test('all Phase 2 tools have unique names', () => {
   const all = toolRegistry.listAllTools();
   const names = all.map((t) => t.name);
   const unique = new Set(names);
   assert.equal(names.length, unique.size, 'Duplicate tool names detected');
 });
 
-await test('all Phase 2 tools available only in work mode', () => {
-  const phase2Tools = [createPdfTool, createDocxTool, createXlsxTool, readDocumentTool, makeChartTool, buildTableTool];
+test('each Phase 2 tool declares the modes it is meant for', () => {
+  const expected: [{ name: string; availableIn: ReadonlyArray<string> }, string[]][] = [
+    [createPdfTool, ['chat', 'work', 'code']],
+    [createDocxTool, ['chat', 'work', 'code']],
+    [createXlsxTool, ['chat', 'work', 'code']],
+    [readDocumentTool, ['chat', 'work', 'code']],
+    [makeChartTool, ['work']],
+    [buildTableTool, ['work']],
+  ];
 
-  for (const t of phase2Tools) {
-    assert.deepEqual(
-      [...t.availableIn],
-      ['work'],
-      `${t.name} should be work-mode only, got ${JSON.stringify([...t.availableIn])}`,
-    );
+  for (const [tool, modes] of expected) {
+    assert.deepEqual([...tool.availableIn], modes, `${tool.name} declares ${JSON.stringify([...tool.availableIn])}`);
   }
 });
 
@@ -873,7 +889,7 @@ await test('all Phase 2 tools available only in work mode', () => {
 
 console.log('\n======= 6. EDGE CASES =======');
 
-await test('create_pdf handles special characters in title', async () => {
+test('create_pdf handles special characters in title', async () => {
   const result = await createPdfTool.execute(
     {
       title: 'Report: "Q3 <2024>" & Beyond',
@@ -891,7 +907,7 @@ await test('create_pdf handles special characters in title', async () => {
   }
 });
 
-await test('create_pdf handles code blocks', async () => {
+test('create_pdf handles code blocks', async () => {
   const result = await createPdfTool.execute(
     {
       title: 'T',
@@ -910,7 +926,7 @@ await test('create_pdf handles code blocks', async () => {
   }
 });
 
-await test('create_xlsx handles empty rows array', async () => {
+test('create_xlsx handles empty rows array', async () => {
   const result = await createXlsxTool.execute(
     {
       sheets: [{ name: 'S', headers: ['a'], rows: [] }],
@@ -925,7 +941,7 @@ await test('create_xlsx handles empty rows array', async () => {
   }
 });
 
-await test('create_xlsx handles boolean values', async () => {
+test('create_xlsx handles boolean values', async () => {
   const result = await createXlsxTool.execute(
     {
       sheets: [
@@ -947,7 +963,7 @@ await test('create_xlsx handles boolean values', async () => {
   }
 });
 
-await test('make_chart handles single data point', async () => {
+test('make_chart handles single data point', async () => {
   const result = await makeChartTool.execute(
     {
       type: 'bar',
@@ -965,7 +981,7 @@ await test('make_chart handles single data point', async () => {
   }
 });
 
-await test('build_table handles boolean cells as checkmarks', async () => {
+test('build_table handles boolean cells as checkmarks', async () => {
   const result = await buildTableTool.execute(
     {
       headers: ['done'],
@@ -983,7 +999,7 @@ await test('build_table handles boolean cells as checkmarks', async () => {
   }
 });
 
-await test('read_document handles empty file', async () => {
+test('read_document handles empty file', async () => {
   const b64 = Buffer.from('').toString('base64');
   const result = await readDocumentTool.execute(
     {
@@ -1000,7 +1016,7 @@ await test('read_document handles empty file', async () => {
   }
 });
 
-await test('read_document respects maxLength', async () => {
+test('read_document respects maxLength', async () => {
   const longText = 'x'.repeat(30000);
   const b64 = Buffer.from(longText).toString('base64');
   const result = await readDocumentTool.execute(
@@ -1020,23 +1036,3 @@ await test('read_document respects maxLength', async () => {
     assert.ok(r.content.length < 6000); // ~5000 + truncation marker
   }
 });
-
-/*
- * ════════════════════════════════════════════════════════════════════
- * SUMMARY
- * ════════════════════════════════════════════════════════════════════
- */
-
-console.log('\n=======================================');
-console.log(`  PASSED: ${passed}`);
-console.log(`  FAILED: ${failed}`);
-
-if (failures.length > 0) {
-  console.log('\n  Failures:');
-
-  for (const f of failures) {
-    console.log(`    X ${f}`);
-  }
-}
-
-console.log('=======================================\n');
