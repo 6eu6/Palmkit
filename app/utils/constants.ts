@@ -6,7 +6,31 @@ export const WORK_DIR = `/home/${WORK_DIR_NAME}`;
 export const MODIFICATIONS_TAG_NAME = 'palmkit_file_modifications';
 export const MODEL_REGEX = /^\[Model: (.*?)\]\n\n/;
 export const PROVIDER_REGEX = /\[Provider: (.*?)\]\n\n/;
-export const DEFAULT_MODEL = 'z-ai/glm-4.7';
+
+/**
+ * The model a new user builds with.
+ *
+ * This was z-ai/glm-4.7, and that model cannot build here. Measured against
+ * four projects — a static landing page, a React and Vite board, an Express
+ * API with tests, and a Fastify and SQLite full stack — it produced ZERO
+ * files on every one, taking between 198 and 398 seconds to do it. The same
+ * four, same code, same prompts, on this model: all four built, in 29 to 55
+ * seconds, and two of them ran their own tests afterwards.
+ *
+ * The cause is specific and reproducible. With tool definitions in the
+ * request, glm-4.7 spends its budget reasoning instead of writing:
+ *
+ *     without tools   12,338 characters of output,  4,415 of reasoning
+ *     with tools       1,496 characters of output, 18,840 of reasoning
+ *
+ * Code mode always passes tools, so it always degraded. Not the SDK, not
+ * the OpenRouter adapter — upgrading it from 0.0.5 to 0.7.5 changed
+ * nothing — and not maxSteps or the reasoning parameter, each ruled out
+ * separately against the same prompt.
+ *
+ * Anyone who has already chosen a model keeps it; this is only the default.
+ */
+export const DEFAULT_MODEL = 'openai/gpt-5.6-luna';
 export const PROMPT_COOKIE_KEY = 'cachedPrompt';
 export const TOOL_EXECUTION_APPROVAL = {
   APPROVE: 'Yes, approved.',
