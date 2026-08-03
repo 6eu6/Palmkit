@@ -349,16 +349,44 @@ test('registry.getToolsForMode returns AI SDK tool objects with execute', () => 
   }
 });
 
+/*
+ * The registry binds the ToolContext into each tool's execute, so the AI SDK
+ * can call it with only its own arguments.
+ *
+ * This used to be checked by executing web_search for real and asserting the
+ * result had an `ok` field — which reached the network with a fake key, took
+ * half a second, and failed whenever the connection hiccupped. It also did
+ * not check the thing it claimed: any result shape passed, bound context or
+ * not. Intercepting the request proves the key from ctx actually arrived.
+ */
 test('registry.getToolsForMode binds ctx via closure', async () => {
-  const ctx = makeCtx({ mode: 'work', searchApiKey: 'test-key-12345' });
-  const tools = toolRegistry.getToolsForMode('work', ctx);
-  const webSearch = tools.web_search;
+  let sawKey: string | undefined;
+
+  mockFetch({ 'tavily.com': { body: { results: [] } } });
+
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (url: any, init: any) => {
+    try {
+      sawKey = JSON.parse(init?.body ?? '{}').api_key;
+    } catch {
+      sawKey = undefined;
+    }
+
+    return original(url, init);
+  }) as any;
+
+  /* The `tvly-` prefix is how the tool picks Tavily over SerpApi. */
+  const ctx = makeCtx({ mode: 'work', searchApiKey: 'tvly-test-key-12345' });
+  const webSearch = toolRegistry.getToolsForMode('work', ctx).web_search;
 
   assert.ok(typeof webSearch.execute === 'function');
 
   const result = await webSearch.execute({ query: 'test' }, { toolCallId: 'test' } as any);
-  assert.ok(result);
-  assert.ok((result as any).ok === false || (result as any).ok === true);
+
+  assert.equal(sawKey, 'tvly-test-key-12345', 'the key from ctx must reach the request');
+  assert.equal((result as any).ok, true);
+
+  restoreFetch();
 });
 
 /*

@@ -66,6 +66,38 @@ export interface ModelCost {
   promptPerM?: number;
   completionPerM?: number;
   cachedPromptPerM?: number;
+
+  /**
+   * Video is not sold by the token. It is sold by the second, and the rate
+   * changes with resolution and whether audio comes with it, so there is no
+   * single number and no way to compare it against a per-token price.
+   */
+  perSecond?: Record<string, number>;
+}
+
+/**
+ * What a media model accepts beyond a prompt.
+ *
+ * Video models describe themselves with a different vocabulary entirely —
+ * durations, aspect ratios, whether you may pin the first or last frame —
+ * and none of it fits the token-shaped fields above. Absent for text models.
+ */
+export interface MediaOptions {
+  /** Seconds of output the model will produce, e.g. [4, 6, 8]. */
+  durations?: number[];
+
+  aspectRatios?: string[];
+  resolutions?: string[];
+  sizes?: string[];
+
+  /**
+   * Which frames may be supplied as images. `first_frame` is what makes
+   * image-to-video possible: hand it a picture and it animates from there.
+   */
+  frameImages?: string[];
+
+  /** The model produces a soundtrack alongside the picture. */
+  generatesAudio?: boolean;
 }
 
 export interface ModelDescriptor {
@@ -79,6 +111,9 @@ export interface ModelDescriptor {
   tools: ToolSupport;
   limits: ModelLimits;
   cost: ModelCost;
+
+  /** Present only for models that produce video or images. */
+  media?: MediaOptions;
 
   /** Where the bulk of this came from, and how much to trust it. */
   source: CapabilitySource;
@@ -103,6 +138,7 @@ export interface DescriptorFragment {
   tools?: Partial<ToolSupport>;
   limits?: ModelLimits;
   cost?: ModelCost;
+  media?: MediaOptions;
   source: CapabilitySource;
 }
 
@@ -162,8 +198,16 @@ export function mergeFragments(provider: string, model: string, fragments: Descr
 
     for (const [k, v] of Object.entries(f.cost ?? {})) {
       if (v !== undefined) {
-        (out.cost as Record<string, number>)[k] = v as number;
+        (out.cost as Record<string, unknown>)[k] = v;
       }
+    }
+
+    /*
+     * Only media models carry this, so it stays absent rather than becoming
+     * an empty object on every text model in the catalog.
+     */
+    if (f.media) {
+      out.media = { ...(out.media ?? {}), ...f.media };
     }
   }
 

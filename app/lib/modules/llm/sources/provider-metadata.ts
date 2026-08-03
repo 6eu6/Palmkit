@@ -99,6 +99,83 @@ export async function fetchOpenRouterMetadata(): Promise<Map<string, DescriptorF
   return out;
 }
 
+/**
+ * Video models, which `/models` does not list.
+ *
+ * This is why the capability summary reported "Generate video: 0" while
+ * OpenRouter had twenty video models the whole time. They live behind
+ * `/videos/models` and describe themselves in a different vocabulary: no
+ * `architecture`, no `pricing`, no context length — durations, aspect ratios,
+ * which frames you may pin, and a price per second of output.
+ *
+ * Reading only one endpoint and calling the result a catalog is exactly the
+ * kind of confident wrongness the descriptor exists to prevent.
+ */
+interface OpenRouterVideoModel {
+  id: string;
+  name?: string;
+  supported_durations?: number[];
+  supported_aspect_ratios?: string[];
+  supported_resolutions?: string[];
+  supported_sizes?: string[];
+  supported_frame_images?: string[];
+  generate_audio?: boolean;
+  pricing_skus?: Record<string, string>;
+}
+
+export async function fetchOpenRouterVideoMetadata(): Promise<Map<string, DescriptorFragment>> {
+  const out = new Map<string, DescriptorFragment>();
+
+  const res = await fetch('https://openrouter.ai/api/v1/videos/models');
+
+  if (!res.ok) {
+    return out;
+  }
+
+  const body = (await res.json()) as { data?: OpenRouterVideoModel[] };
+
+  for (const m of body.data ?? []) {
+    const perSecond: Record<string, number> = {};
+
+    for (const [sku, value] of Object.entries(m.pricing_skus ?? {})) {
+      const n = Number.parseFloat(value);
+
+      if (Number.isFinite(n)) {
+        perSecond[sku] = n;
+      }
+    }
+
+    out.set(m.id, {
+      displayName: m.name,
+
+      /*
+       * A prompt, and optionally a frame to start from. `supported_frame_images`
+       * containing `first_frame` is the machine-readable form of "this model
+       * can animate a picture you give it".
+       */
+      input: { text: true, image: (m.supported_frame_images?.length ?? 0) > 0 },
+      output: { text: false, video: true, audio: m.generate_audio === true },
+
+      /* Video models do not chat, reason on request, or call tools. */
+      reasoning: { supported: false, controllable: false },
+      tools: { functionCalling: false, structuredOutput: false, parallel: false },
+
+      cost: Object.keys(perSecond).length > 0 ? { perSecond } : {},
+      media: {
+        durations: m.supported_durations,
+        aspectRatios: m.supported_aspect_ratios,
+        resolutions: m.supported_resolutions,
+        sizes: m.supported_sizes,
+        frameImages: m.supported_frame_images,
+        generatesAudio: m.generate_audio,
+      },
+      source: 'provider-api',
+    });
+  }
+
+  return out;
+}
+
 interface GoogleModel {
   name: string;
   displayName?: string;

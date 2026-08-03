@@ -6,7 +6,11 @@ import {
   SOURCE_RANK,
 } from '~/lib/modules/llm/model-descriptor';
 import { catalogLookup } from '~/lib/modules/llm/sources/catalog';
-import { fetchGoogleMetadata, fetchOpenRouterMetadata } from '~/lib/modules/llm/sources/provider-metadata';
+import {
+  fetchGoogleMetadata,
+  fetchOpenRouterMetadata,
+  fetchOpenRouterVideoMetadata,
+} from '~/lib/modules/llm/sources/provider-metadata';
 import { classifyModelCapabilities } from '~/lib/modules/llm/capabilities';
 import { probeModel } from './capability-probe';
 import { createScopedLogger } from '~/utils/logger';
@@ -144,12 +148,34 @@ export interface ResolveResult {
 export async function resolveDescriptors(opts: ResolveOptions): Promise<ResolveResult> {
   const { supabase, provider, models, apiKey, baseUrl, allowProbe = false } = opts;
 
+  /*
+   * Video models are not in the list the caller passes.
+   *
+   * That list comes from the provider's chat model endpoint, and OpenRouter's
+   * twenty video models are not in it — they live behind /videos/models. So
+   * the catalog reported zero video models while twenty were available, and
+   * every feature built on "can this make a video" was answering no. They are
+   * fetched here and folded into the same resolution, because from the
+   * catalog's point of view they are simply models with a different output.
+   */
+  let videoMetadata = new Map<string, DescriptorFragment>();
+
+  if (provider === 'OpenRouter') {
+    try {
+      videoMetadata = await fetchOpenRouterVideoMetadata();
+    } catch (err) {
+      logger.warn(`Video model list unavailable: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  const allModels = [...new Set([...models, ...videoMetadata.keys()])];
+
   const stored = await readCatalog(supabase, provider);
   const resolved: ModelDescriptor[] = [];
   const fresh: ModelDescriptor[] = [];
   const stale: string[] = [];
 
-  for (const model of models) {
+  for (const model of allModels) {
     const hit = stored.get(`${provider}::${model}`);
 
     if (isFresh(hit) && hit) {
@@ -189,7 +215,7 @@ export async function resolveDescriptors(opts: ResolveOptions): Promise<ResolveR
       fragments.push(fromCatalog);
     }
 
-    const fromProvider = metadata.get(model);
+    const fromProvider = metadata.get(model) ?? videoMetadata.get(model);
 
     if (fromProvider) {
       fragments.push(fromProvider);
