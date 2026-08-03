@@ -774,6 +774,27 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
              */
             heartbeat = setInterval(() => checkpoint('awaiting', { chars: stepText.length }), 2000);
 
+            /*
+             * Which of the three does not settle?
+             *
+             * The turn stops at the moment the model finishes — a direct call
+             * to the provider with the same prompt returns finish_reason=stop
+             * and [DONE] at 26.3s, and the response body ends at 26.6s — and
+             * yet the await below never completes. `Promise.all` says nothing
+             * about which of its inputs is outstanding, so each one reports
+             * for itself.
+             */
+            for (const [name, promise] of [
+              ['finishReason', result.finishReason],
+              ['text', result.text],
+              ['usage', result.usage],
+            ] as const) {
+              (promise as Promise<unknown>).then(
+                () => checkpoint('settled', { promise: name }),
+                (err: any) => checkpoint('rejected', { promise: name, detail: String(err?.message ?? err) }),
+              );
+            }
+
             [finishReason, text, usage] = await Promise.race([
               Promise.all([
                 result.finishReason as Promise<string>,
