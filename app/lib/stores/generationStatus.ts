@@ -9,14 +9,7 @@ export type GenerationStep =
   | 'done'
   | 'error';
 
-export type RestoreStep =
-  | 'idle'
-  | 'loading-messages'
-  | 'restoring-chat'
-  | 'restoring-files'
-  | 'restoring-webcontainer'
-  | 'done'
-  | 'error';
+export type RestoreStep = 'idle' | 'loading-messages' | 'restoring-chat' | 'restoring-files' | 'done' | 'error';
 
 export interface GenerationStatusState {
   step: GenerationStep;
@@ -171,7 +164,6 @@ export const RESTORE_STEP_LABELS: Record<RestoreStep, string> = {
   'loading-messages': 'Loading chat messages...',
   'restoring-chat': 'Restoring chat...',
   'restoring-files': 'Restoring files...',
-  'restoring-webcontainer': 'Restoring WebContainer...',
   done: '',
   error: 'Restore failed',
 };

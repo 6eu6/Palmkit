@@ -1,8 +1,8 @@
+import { WORK_DIR } from '~/utils/constants';
 import { atom, map, type MapStore, type ReadableAtom, type WritableAtom } from 'nanostores';
 import type { EditorDocument, ScrollPosition } from '~/components/editor/codemirror/CodeMirrorEditor';
 import { ActionRunner } from '~/lib/runtime/action-runner';
 import type { ActionCallbackData, ArtifactCallbackData } from '~/lib/runtime/message-parser';
-import { webcontainer } from '~/lib/webcontainer';
 import type { ITerminal } from '~/types/terminal';
 import { unreachable } from '~/utils/unreachable';
 import { EditorStore } from './editor';
@@ -37,7 +37,7 @@ export type WorkbenchViewType = 'code' | 'diff' | 'preview';
 
 export class WorkbenchStore {
   #previewsStore = new PreviewsStore();
-  #filesStore = new FilesStore(webcontainer);
+  #filesStore = new FilesStore();
   #editorStore = new EditorStore(this.#filesStore);
   #terminalStore = new TerminalStore();
 
@@ -509,7 +509,6 @@ export class WorkbenchStore {
       closed: false,
       type,
       runner: new ActionRunner(
-        webcontainer,
         () => this.palmkitTerminal,
         (alert) => {
           if (this.#reloadedMessages.has(messageId)) {
@@ -604,78 +603,37 @@ export class WorkbenchStore {
 
     if (data.action.type === 'file') {
       /*
-       * BUG FIX (2026-06-29): The previous code did `const wc = await webcontainer;`
-       * with NO timeout. On page refresh, WebContainer re-boots and may take
-       * 15s+ or never boot (headless browsers, restricted environments).
-       * This blocked ALL file actions and left the Artifact stuck on
-       * "Restoring Project..." forever.
-       *
-       * Now: race the WebContainer promise against a 10s timeout. If the
-       * timeout wins, skip the editor-selection logic and proceed directly
-       * to the action runner (which has its own timeout for the actual
-       * file write).
+       * This used to race a WebContainer boot against a ten-second timeout,
+       * then read `wc.workdir` from whichever won. There was nothing to boot:
+       * the shim resolved immediately and its `workdir` was the constant
+       * below, so the timeout never fired and the fallback branch below it
+       * was unreachable. The path is the constant, and the wait is gone.
        */
-      let wc: any = null;
+      const fullPath = path.join(WORK_DIR, data.action.filePath);
 
-      try {
-        wc = await Promise.race([
-          webcontainer,
-          new Promise<null>((resolve) =>
-            setTimeout(() => {
-              console.warn('[workbench._runAction] WebContainer not ready within 10s — skipping editor selection');
-              resolve(null);
-            }, 10_000),
-          ),
-        ]);
-      } catch (e) {
-        console.warn('[workbench._runAction] WebContainer promise rejected:', e);
+      if (this.selectedFile.value !== fullPath) {
+        this.setSelectedFile(fullPath);
       }
 
-      if (wc) {
-        const fullPath = path.join(wc.workdir, data.action.filePath);
+      if (this.currentView.value !== 'code') {
+        this.currentView.set('code');
+      }
 
-        /*
-         * For scoped locks, we would need to implement diff checking here
-         * to determine if the AI is modifying existing code or just adding new code
-         * This is a more complex feature that would be implemented in a future update
-         */
+      const doc = this.#editorStore.documents.get()[fullPath];
 
-        if (this.selectedFile.value !== fullPath) {
-          this.setSelectedFile(fullPath);
-        }
-
-        if (this.currentView.value !== 'code') {
-          this.currentView.set('code');
-        }
-
-        const doc = this.#editorStore.documents.get()[fullPath];
-
-        if (!doc) {
-          await artifact.runner.runAction(data, isStreaming);
-        }
-
-        this.#editorStore.updateFile(fullPath, data.action.content);
-
-        if (!isStreaming && data.action.content) {
-          await this.saveFile(fullPath);
-        }
-
-        if (!isStreaming) {
-          await artifact.runner.runAction(data);
-          this.resetAllFileModifications();
-        }
-      } else {
-        /*
-         * WebContainer didn't boot in time — just run the action directly.
-         * The action runner's #runFileAction has its own timeout and will
-         * register the file via onFileWritten (which is what the preview
-         * actually reads from).
-         */
+      if (!doc) {
         await artifact.runner.runAction(data, isStreaming);
+      }
 
-        if (!isStreaming) {
-          await artifact.runner.runAction(data);
-        }
+      this.#editorStore.updateFile(fullPath, data.action.content);
+
+      if (!isStreaming && data.action.content) {
+        await this.saveFile(fullPath);
+      }
+
+      if (!isStreaming) {
+        await artifact.runner.runAction(data);
+        this.resetAllFileModifications();
       }
     } else {
       await artifact.runner.runAction(data);

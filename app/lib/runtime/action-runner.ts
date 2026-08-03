@@ -1,5 +1,5 @@
-import type { WebContainer } from '@webcontainer/api';
 import { path as nodePath } from '~/utils/path';
+import { WORK_DIR } from '~/utils/constants';
 import { atom, map, type MapStore } from 'nanostores';
 import type {
   ActionAlert,
@@ -14,110 +14,36 @@ import { unreachable } from '~/utils/unreachable';
 import { applyEdit } from '~/lib/runtime/apply-edit';
 import type { ActionCallbackData } from './message-parser';
 import type { PalmkitShell } from '~/utils/shell';
-import { isMemoryConstrainedDevice, isRemoteSandboxAvailable } from '~/lib/sandbox/remoteSandbox';
-import { webcontainerContext } from '~/lib/webcontainer';
+import { isRemoteSandboxAvailable } from '~/lib/sandbox/remoteSandbox';
 
 const logger = createScopedLogger('ActionRunner');
 
 /**
- * Max time to wait for WebContainer to finish booting before falling back to
- * the cloud sandbox on desktop. 15s is generous — on a warm page load WebContainer
- * boots in 2-5s; if it hasn't loaded by 15s the browser likely lacks the
- * SharedArrayBuffer / COOP-COEP requirements (headless browsers, some
- * embedded webviews, locked-down corporate browsers).
- */
-const WEBCONTAINER_BOOT_TIMEOUT_MS = 15_000;
-
-/**
- * On memory-constrained devices (mobile Safari) OR when the in-browser
- * WebContainer cannot boot (headless browsers, browsers without
- * SharedArrayBuffer, COOP/COEP misconfig), shell execution (install / dev
- * server / build) is offloaded to the cloud sandbox (E2B) so the preview
- * actually shows up instead of "No preview available".
+ * Where a command runs — and whether it can run at all.
  *
- * File actions still run locally (best-effort) so the file tree populates.
+ * This used to be a decision between two runtimes: the in-browser
+ * WebContainer by default, with the E2B cloud sandbox as a fallback when
+ * WebContainer could not boot. It waited up to fifteen seconds for that boot,
+ * polling a `webcontainerContext.loaded` flag.
  *
- * Awaits the E2B availability check (don't rely on a maybe-unpopulated cache)
- * to avoid a race where WebContainer starts its own dev server before we know
- * E2B is available.
+ * There has been no WebContainer for a long time. The shim that replaced it
+ * sets `loaded = true` the moment it resolves, so on any desktop browser the
+ * first branch matched immediately, the function returned "run locally", and
+ * the sandbox was never reached. Nothing ran locally either — the shim's
+ * `spawn` throws. So on desktop, commands went nowhere at all, which is why a
+ * project needing `npm install` never produced a preview.
+ *
+ * There is one place a command can run now, so the only question left is
+ * whether it is reachable.
  */
 async function shouldOffloadExecution(): Promise<boolean> {
-  const constrained = isMemoryConstrainedDevice();
-
-  // Fast path: memory-constrained device → always offload to cloud if E2B is up.
-  if (constrained) {
-    const available = await isRemoteSandboxAvailable();
-    logger.info(`[offload] constrained=${constrained}, e2b=${available}`);
-
-    if (!available) {
-      logger.warn(`[offload] E2B not available — forcing local execution on constrained device. Preview may be slow.`);
-      return false;
-    }
-
-    return true;
-  }
-
-  /*
-   * Desktop path: WebContainer is the default, but it can fail to boot in
-   * environments that lack SharedArrayBuffer (headless browsers, locked-down
-   * webviews, broken COOP/COEP). Detect that and fall back to E2B so the
-   * preview still works instead of hanging on "No preview available".
-   */
-  if (webcontainerContext.loaded) {
-    logger.debug(`[offload] WebContainer already loaded — running locally`);
-    return false;
-  }
-
-  // WebContainer not loaded yet — wait briefly, then decide.
-  const loaded = await waitForWebContainerBoot(WEBCONTAINER_BOOT_TIMEOUT_MS);
-
-  if (loaded) {
-    logger.debug(`[offload] WebContainer booted within timeout — running locally`);
-    return false;
-  }
-
-  logger.warn(
-    `[offload] WebContainer did not boot within ${WEBCONTAINER_BOOT_TIMEOUT_MS / 1000}s — checking E2B fallback`,
-  );
-
   const available = await isRemoteSandboxAvailable();
 
-  if (available) {
-    logger.info(`[offload] falling back to E2B cloud sandbox (WebContainer unavailable)`);
-    return true;
+  if (!available) {
+    logger.warn('[offload] no cloud sandbox is available — shell, start and build actions cannot run.');
   }
 
-  logger.warn(
-    `[offload] WebContainer unavailable AND E2B not configured — no preview will work. Set E2B_API_KEY in Cloudflare env.`,
-  );
-
-  return false;
-}
-
-/**
- * Resolves true if WebContainer finishes booting within `timeoutMs`, false
- * otherwise. Uses the shared `webcontainerContext.loaded` flag (set by the
- * boot promise in webcontainer/index.ts). Polls lightly — boot is an
- * all-or-nothing event, not a gradual stream.
- */
-function waitForWebContainerBoot(timeoutMs: number): Promise<boolean> {
-  if (webcontainerContext.loaded) {
-    return Promise.resolve(true);
-  }
-
-  return new Promise((resolve) => {
-    const deadline = Date.now() + timeoutMs;
-    const interval = 250;
-    const timer = setInterval(() => {
-      if (webcontainerContext.loaded) {
-        clearInterval(timer);
-        resolve(true);
-      } else if (Date.now() >= deadline) {
-        clearInterval(timer);
-        resolve(false);
-      }
-    }, interval);
-  });
+  return available;
 }
 
 export type ActionStatus = 'pending' | 'running' | 'complete' | 'aborted' | 'failed';
@@ -175,7 +101,6 @@ class ActionCommandError extends Error {
 }
 
 export class ActionRunner {
-  #webcontainer: Promise<WebContainer>;
   #currentExecutionPromise: Promise<void> = Promise.resolve();
   #shellTerminal: () => PalmkitShell;
   runnerId = atom<string>(`${Date.now()}`);
@@ -197,7 +122,6 @@ export class ActionRunner {
   buildOutput?: { path: string; exitCode: number; output: string };
 
   constructor(
-    webcontainerPromise: Promise<WebContainer>,
     getShellTerminal: () => PalmkitShell,
     onAlert?: (alert: ActionAlert) => void,
     onSupabaseAlert?: (alert: SupabaseAlert) => void,
@@ -205,7 +129,6 @@ export class ActionRunner {
     onFileWritten?: (filePath: string, content: string, isBinary?: boolean) => void,
     readFile?: (filePath: string) => string | undefined,
   ) {
-    this.#webcontainer = webcontainerPromise;
     this.#shellTerminal = getShellTerminal;
     this.onAlert = onAlert;
     this.onSupabaseAlert = onSupabaseAlert;
@@ -459,66 +382,14 @@ export class ActionRunner {
     }
 
     /*
-     * BUG FIX (2026-06-29): WebContainer boot can stall indefinitely on page
-     * reload (especially after refresh-during-build). The previous code did
-     * `await this.#webcontainer` with NO timeout, so file actions hung
-     * forever and the Artifact stayed on "Restoring Project...".
+     * Nothing is written to a disk here.
      *
-     * Now: race the WebContainer promise against a 10s timeout. If the
-     * timeout wins, skip the WC write — the file is still registered with
-     * the workbench via onFileWritten below, which is what the preview
-     * actually reads from.
+     * This used to race a WebContainer boot against a ten-second timeout and
+     * then write through `fs`. The shim behind that API wrote into the
+     * workbench store — which is where `onFileWritten` below puts it anyway —
+     * so the write was a slower second route to the same place, and the
+     * ten-second wait was for a boot that had already resolved.
      */
-    const FILE_ACTION_TIMEOUT_MS = 10_000;
-    let webcontainer: WebContainer | null = null;
-
-    try {
-      webcontainer = await Promise.race([
-        this.#webcontainer.then((wc) => wc),
-        new Promise<null>((resolve) =>
-          setTimeout(() => {
-            logger.warn(
-              `[runFileAction] WebContainer not ready within ${FILE_ACTION_TIMEOUT_MS / 1000}s — proceeding without it (file: ${action.filePath})`,
-            );
-            resolve(null);
-          }, FILE_ACTION_TIMEOUT_MS),
-        ),
-      ]);
-    } catch (e) {
-      logger.warn(`[runFileAction] WebContainer promise rejected, proceeding without it:`, e);
-    }
-
-    if (webcontainer) {
-      const relativePath = nodePath.relative(webcontainer.workdir, action.filePath);
-
-      let folder = nodePath.dirname(relativePath);
-
-      // remove trailing slashes
-      folder = folder.replace(/\/+$/g, '');
-
-      if (folder !== '.') {
-        try {
-          await webcontainer.fs.mkdir(folder, { recursive: true });
-          logger.debug('Created folder', folder);
-        } catch (error) {
-          logger.error('Failed to create folder\n\n', error);
-        }
-      }
-
-      try {
-        await webcontainer.fs.writeFile(relativePath, action.content);
-        logger.debug(`File written ${relativePath}`);
-      } catch {
-        /*
-         * On memory-constrained devices the WebContainer often can't write files
-         * (insufficient memory / boot failure).  We still need to register the
-         * file in the workbench so the remote-preview trigger can see it and
-         * push it to the E2B cloud sandbox.
-         */
-        logger.warn(`WebContainer writeFile failed (${relativePath}), registering anyway for remote sandbox`);
-      }
-    }
-
     /*
      * Proactively register the file with the workbench so it appears in the
      * file tree/preview immediately, without depending on the FS watcher
@@ -599,46 +470,7 @@ export class ActionRunner {
 
     const bytes = new Uint8Array(await res.arrayBuffer());
 
-    /* Same ceiling as a file write: the container can stall on reload. */
-    const WEBCONTAINER_TIMEOUT_MS = 10_000;
-
-    let webcontainer: WebContainer | null = null;
-
-    try {
-      webcontainer = await Promise.race([
-        this.#webcontainer.then((wc) => wc),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), WEBCONTAINER_TIMEOUT_MS)),
-      ]);
-    } catch (e) {
-      logger.warn('[runAssetAction] WebContainer unavailable, registering anyway:', e);
-    }
-
-    if (webcontainer) {
-      const relativePath = nodePath.relative(webcontainer.workdir, action.filePath);
-      const folder = nodePath.dirname(relativePath).replace(/\/+$/g, '');
-
-      if (folder !== '.') {
-        try {
-          await webcontainer.fs.mkdir(folder, { recursive: true });
-        } catch (error) {
-          logger.error('Failed to create folder for asset\n\n', error);
-        }
-      }
-
-      try {
-        await webcontainer.fs.writeFile(relativePath, bytes);
-        logger.debug(`Asset written ${relativePath} (${bytes.length} bytes)`);
-      } catch {
-        logger.warn(`WebContainer writeFile failed for asset (${relativePath}), registering anyway`);
-      }
-    }
-
-    /*
-     * Registered as base64, which is how the workbench stores binary files —
-     * the same shape a file dragged in from disk takes, so the file tree,
-     * the export and the remote sandbox all handle it without knowing where
-     * it came from.
-     */
+    /* Straight into the workbench, the same way a file action lands. */
     let binary = '';
 
     for (let i = 0; i < bytes.length; i++) {
@@ -654,13 +486,24 @@ export class ActionRunner {
     this.actions.setKey(id, { ...actions[id], ...newState });
   }
 
+  /**
+   * Does the project have this path?
+   *
+   * The shell-command checks below used to answer this with `fs.readFile` on
+   * the WebContainer. The workbench is where the files are, and a relative
+   * path in a command is relative to the project root.
+   */
+  #exists(candidate: string): boolean {
+    const full = candidate.startsWith('/') ? candidate : nodePath.join(WORK_DIR, candidate);
+
+    return this.readFile?.(full) !== undefined;
+  }
+
   async getFileHistory(filePath: string): Promise<FileHistory | null> {
     try {
-      const webcontainer = await this.#webcontainer;
-      const historyPath = this.#getHistoryPath(filePath);
-      const content = await webcontainer.fs.readFile(historyPath, 'utf-8');
+      const content = this.readFile?.(this.#getHistoryPath(filePath));
 
-      return JSON.parse(content);
+      return content ? JSON.parse(content) : null;
     } catch (error) {
       logger.error('Failed to get file history:', error);
       return null;
@@ -668,7 +511,6 @@ export class ActionRunner {
   }
 
   async saveFileHistory(filePath: string, history: FileHistory) {
-    // const webcontainer = await this.#webcontainer;
     const historyPath = this.#getHistoryPath(filePath);
 
     await this.#runFileAction({
@@ -683,109 +525,34 @@ export class ActionRunner {
     return nodePath.join('.history', filePath);
   }
 
-  async #runBuildAction(action: ActionState) {
+  /**
+   * Build the project — which needs a process, and there is none in a browser.
+   *
+   * This used to `spawn('npm', ['run', 'build'])` on the WebContainer, pipe
+   * the output into a terminal, then hunt through dist, build, out, public and
+   * the rest for whatever it produced. All of it ran against a shim whose
+   * `spawn` throws, so the first line was as far as it ever got.
+   *
+   * Build actions are handed to the cloud sandbox before they reach here — see
+   * shouldOffloadExecution. This is what is left for when there is no sandbox
+   * to hand them to, and saying so plainly beats an exception about a missing
+   * runtime.
+   */
+  async #runBuildAction(action: ActionState): Promise<never> {
     if (action.type !== 'build') {
       unreachable('Expected build action');
     }
 
-    // Trigger build started alert
-    this.onDeployAlert?.({
-      type: 'info',
-      title: 'Building Application',
-      description: 'Building your application...',
-      stage: 'building',
-      buildStatus: 'running',
-      deployStatus: 'pending',
-      source: 'netlify',
+    this.handleDeployAction('building', 'failed', {
+      error: 'No sandbox is attached to this project.',
     });
 
-    const webcontainer = await this.#webcontainer;
-
-    // Create a new terminal specifically for the build
-    const buildProcess = await webcontainer.spawn('npm', ['run', 'build']);
-
-    let output = '';
-    const outputPromise = buildProcess.output.pipeTo(
-      new WritableStream({
-        write(data) {
-          output += data;
-        },
-      }),
+    throw new ActionCommandError(
+      'Cannot build without a sandbox',
+      'No cloud sandbox is attached to this project, so `npm run build` has nowhere to run.',
     );
-
-    const exitCode = await buildProcess.exit;
-    await outputPromise.catch(() => {
-      // Ignore output piping errors; we still have whatever was captured
-    });
-
-    let buildDir = '';
-
-    if (exitCode !== 0) {
-      const buildResult = {
-        path: buildDir,
-        exitCode,
-        output,
-      };
-
-      this.buildOutput = buildResult;
-
-      // Trigger build failed alert
-      this.onDeployAlert?.({
-        type: 'error',
-        title: 'Build Failed',
-        description: 'Your application build failed',
-        content: output || 'No build output available',
-        stage: 'building',
-        buildStatus: 'failed',
-        deployStatus: 'pending',
-        source: 'netlify',
-      });
-
-      throw new ActionCommandError('Build Failed', output || 'No Output Available');
-    }
-
-    // Trigger build success alert
-    this.onDeployAlert?.({
-      type: 'success',
-      title: 'Build Completed',
-      description: 'Your application was built successfully',
-      stage: 'deploying',
-      buildStatus: 'complete',
-      deployStatus: 'running',
-      source: 'netlify',
-    });
-
-    // Check for common build directories
-    const commonBuildDirs = ['dist', 'build', 'out', 'output', '.next', 'public'];
-
-    // Try to find the first existing build directory
-    for (const dir of commonBuildDirs) {
-      const dirPath = nodePath.join(webcontainer.workdir, dir);
-
-      try {
-        await webcontainer.fs.readdir(dirPath);
-        buildDir = dirPath;
-        break;
-      } catch {
-        continue;
-      }
-    }
-
-    // If no build directory was found, use the default (dist)
-    if (!buildDir) {
-      buildDir = nodePath.join(webcontainer.workdir, 'dist');
-    }
-
-    const buildResult = {
-      path: buildDir,
-      exitCode,
-      output,
-    };
-
-    this.buildOutput = buildResult;
-
-    return buildResult;
   }
+
   async handleSupabaseAction(action: SupabaseAction) {
     const { operation, content, filePath } = action;
     logger.debug('[Supabase Action]:', { operation, filePath, content });
@@ -898,23 +665,8 @@ export class ActionRunner {
       if (rmMatch) {
         const filePaths = rmMatch[1].split(/\s+/);
 
-        // Check if any of the files exist using WebContainer
         try {
-          const webcontainer = await this.#webcontainer;
-          const existingFiles = [];
-
-          for (const filePath of filePaths) {
-            if (filePath.startsWith('-')) {
-              continue;
-            } // Skip flags
-
-            try {
-              await webcontainer.fs.readFile(filePath);
-              existingFiles.push(filePath);
-            } catch {
-              // File doesn't exist, skip it
-            }
-          }
+          const existingFiles = filePaths.filter((p) => !p.startsWith('-') && this.#exists(p));
 
           if (existingFiles.length === 0) {
             // No files exist, modify command to use -f flag to avoid error
@@ -944,10 +696,7 @@ export class ActionRunner {
       if (cdMatch) {
         const targetDir = cdMatch[1].trim();
 
-        try {
-          const webcontainer = await this.#webcontainer;
-          await webcontainer.fs.readdir(targetDir);
-        } catch {
+        if (!this.#exists(targetDir)) {
           return {
             shouldModify: true,
             modifiedCommand: `mkdir -p ${targetDir} && cd ${targetDir}`,
@@ -964,10 +713,7 @@ export class ActionRunner {
       if (parts.length >= 3) {
         const sourceFile = parts[1];
 
-        try {
-          const webcontainer = await this.#webcontainer;
-          await webcontainer.fs.readFile(sourceFile);
-        } catch {
+        if (!this.#exists(sourceFile)) {
           return {
             shouldModify: false,
             warning: `Source file '${sourceFile}' does not exist`,
@@ -1026,7 +772,7 @@ export class ActionRunner {
         pattern: /command not found/,
         title: 'Command Not Found',
         getMessage: () =>
-          `The command '${firstWord}' is not available in WebContainer.\n\nSuggestion: Check available commands or use a package manager to install it.`,
+          `The command '${firstWord}' is not available in the sandbox.\n\nSuggestion: Check available commands or use a package manager to install it.`,
       },
       {
         pattern: /Is a directory/,

@@ -1,9 +1,5 @@
-import type { PathWatcherEvent, WebContainer } from '@webcontainer/api';
-import { getEncoding } from 'istextorbinary';
 import { map, type MapStore } from 'nanostores';
 import { Buffer } from 'node:buffer';
-import { path } from '~/utils/path';
-import { bufferWatchEvents } from '~/utils/buffer';
 import { WORK_DIR } from '~/utils/constants';
 import { computeFileModifications } from '~/utils/diff';
 import { createScopedLogger } from '~/utils/logger';
@@ -44,9 +40,20 @@ type Dirent = File | Folder;
 
 export type FileMap = Record<string, Dirent | undefined>;
 
-export class FilesStore {
-  #webcontainer: Promise<WebContainer>;
+/**
+ * Refuse a path that is not inside the project.
+ *
+ * This replaces a check that read `path.relative(webcontainer.workdir, p)` and
+ * threw when the result was empty — which meant "the path IS the project root".
+ * Same meaning, without asking a filesystem that no longer exists.
+ */
+function assertInsideProject(filePath: string, verb: string): void {
+  if (!filePath.startsWith(`${WORK_DIR}/`) || filePath === WORK_DIR) {
+    throw new Error(`EINVAL: invalid path, ${verb} '${filePath}'`);
+  }
+}
 
+export class FilesStore {
   /**
    * Tracks the number of files without folders.
    */
@@ -73,9 +80,7 @@ export class FilesStore {
     return this.#size;
   }
 
-  constructor(webcontainerPromise: Promise<WebContainer>) {
-    this.#webcontainer = webcontainerPromise;
-
+  constructor() {
     // Load deleted paths from localStorage if available
     try {
       if (typeof localStorage !== 'undefined') {
@@ -548,22 +553,14 @@ export class FilesStore {
   }
 
   async saveFile(filePath: string, content: string) {
-    const webcontainer = await this.#webcontainer;
-
     try {
-      const relativePath = path.relative(webcontainer.workdir, filePath);
-
-      if (!relativePath) {
-        throw new Error(`EINVAL: invalid file path, write '${relativePath}'`);
-      }
+      assertInsideProject(filePath, 'write');
 
       const oldContent = this.getFile(filePath)?.content;
 
       if (!oldContent && oldContent !== '') {
         unreachable('Expected content to be defined');
       }
-
-      await webcontainer.fs.writeFile(relativePath, content);
 
       if (!this.#modifiedFiles.has(filePath)) {
         this.#modifiedFiles.set(filePath, oldContent);
@@ -628,20 +625,17 @@ export class FilesStore {
   }
 
   async #init() {
-    const webcontainer = await this.#webcontainer;
-
     // Clean up any files that were previously deleted
     this.#cleanupDeletedFiles();
 
-    // Set up file watcher
-    webcontainer.internal.watchPaths(
-      {
-        include: [`${WORK_DIR}/**`],
-        exclude: ['**/node_modules', '.git', '**/package-lock.json'],
-        includeContent: true,
-      },
-      bufferWatchEvents(100, this.#processEventBuffer.bind(this)),
-    );
+    /*
+     * There is no filesystem watcher any more, and there was nothing behind
+     * the old one either: `webcontainer.internal.watchPaths` was a no-op on
+     * the shim, so `#processEventBuffer` never ran. Every write in this store
+     * updates `this.files` itself, which is what the editor, the preview and
+     * the deploys read — the watcher was a second, slower route to the same
+     * place, and it stopped arriving long ago.
+     */
 
     // Get the current chat ID
     const currentChatId = getCurrentChatId();
@@ -731,67 +725,6 @@ export class FilesStore {
     }
   }
 
-  #processEventBuffer(events: Array<[events: PathWatcherEvent[]]>) {
-    const watchEvents = events.flat(2);
-
-    for (const { type, path, buffer } of watchEvents) {
-      // remove any trailing slashes
-      const sanitizedPath = path.replace(/\/+$/g, '');
-
-      switch (type) {
-        case 'add_dir': {
-          // we intentionally add a trailing slash so we can distinguish files from folders in the file tree
-          this.files.setKey(sanitizedPath, { type: 'folder' });
-          break;
-        }
-        case 'remove_dir': {
-          this.files.setKey(sanitizedPath, undefined);
-
-          for (const [direntPath] of Object.entries(this.files)) {
-            if (direntPath.startsWith(sanitizedPath)) {
-              this.files.setKey(direntPath, undefined);
-            }
-          }
-
-          break;
-        }
-        case 'add_file':
-        case 'change': {
-          if (type === 'add_file') {
-            this.#size++;
-          }
-
-          let content = '';
-
-          /**
-           * @note This check is purely for the editor. The way we detect this is not
-           * bullet-proof and it's a best guess so there might be false-positives.
-           * The reason we do this is because we don't want to display binary files
-           * in the editor nor allow to edit them.
-           */
-          const isBinary = isBinaryFile(buffer);
-
-          if (!isBinary) {
-            content = this.#decodeFileContent(buffer);
-          }
-
-          this.files.setKey(sanitizedPath, { type: 'file', content, isBinary });
-
-          break;
-        }
-        case 'remove_file': {
-          this.#size--;
-          this.files.setKey(sanitizedPath, undefined);
-          break;
-        }
-        case 'update_directory': {
-          // we don't care about these events
-          break;
-        }
-      }
-    }
-  }
-
   #decodeFileContent(buffer?: Uint8Array) {
     if (!buffer || buffer.byteLength === 0) {
       return '';
@@ -806,26 +739,12 @@ export class FilesStore {
   }
 
   async createFile(filePath: string, content: string | Uint8Array = '') {
-    const webcontainer = await this.#webcontainer;
-
     try {
-      const relativePath = path.relative(webcontainer.workdir, filePath);
-
-      if (!relativePath) {
-        throw new Error(`EINVAL: invalid file path, create '${relativePath}'`);
-      }
-
-      const dirPath = path.dirname(relativePath);
-
-      if (dirPath !== '.') {
-        await webcontainer.fs.mkdir(dirPath, { recursive: true });
-      }
+      assertInsideProject(filePath, 'create');
 
       const isBinary = content instanceof Uint8Array;
 
       if (isBinary) {
-        await webcontainer.fs.writeFile(relativePath, Buffer.from(content));
-
         const base64Content = Buffer.from(content).toString('base64');
         this.files.setKey(filePath, {
           type: 'file',
@@ -836,9 +755,6 @@ export class FilesStore {
 
         this.#modifiedFiles.set(filePath, base64Content);
       } else {
-        const contentToWrite = (content as string).length === 0 ? ' ' : content;
-        await webcontainer.fs.writeFile(relativePath, contentToWrite);
-
         this.files.setKey(filePath, {
           type: 'file',
           content: content as string,
@@ -859,16 +775,8 @@ export class FilesStore {
   }
 
   async createFolder(folderPath: string) {
-    const webcontainer = await this.#webcontainer;
-
     try {
-      const relativePath = path.relative(webcontainer.workdir, folderPath);
-
-      if (!relativePath) {
-        throw new Error(`EINVAL: invalid folder path, create '${relativePath}'`);
-      }
-
-      await webcontainer.fs.mkdir(relativePath, { recursive: true });
+      assertInsideProject(folderPath, 'create');
 
       this.files.setKey(folderPath, { type: 'folder' });
 
@@ -882,16 +790,8 @@ export class FilesStore {
   }
 
   async deleteFile(filePath: string) {
-    const webcontainer = await this.#webcontainer;
-
     try {
-      const relativePath = path.relative(webcontainer.workdir, filePath);
-
-      if (!relativePath) {
-        throw new Error(`EINVAL: invalid file path, delete '${relativePath}'`);
-      }
-
-      await webcontainer.fs.rm(relativePath);
+      assertInsideProject(filePath, 'delete');
 
       this.#deletedPaths.add(filePath);
 
@@ -914,16 +814,8 @@ export class FilesStore {
   }
 
   async deleteFolder(folderPath: string) {
-    const webcontainer = await this.#webcontainer;
-
     try {
-      const relativePath = path.relative(webcontainer.workdir, folderPath);
-
-      if (!relativePath) {
-        throw new Error(`EINVAL: invalid folder path, delete '${relativePath}'`);
-      }
-
-      await webcontainer.fs.rm(relativePath, { recursive: true });
+      assertInsideProject(folderPath, 'delete');
 
       this.#deletedPaths.add(folderPath);
 
@@ -968,22 +860,4 @@ export class FilesStore {
       logger.error('Failed to persist deleted paths to localStorage', error);
     }
   }
-}
-
-function isBinaryFile(buffer: Uint8Array | undefined) {
-  if (buffer === undefined) {
-    return false;
-  }
-
-  return getEncoding(convertToBuffer(buffer), { chunkLength: 100 }) === 'binary';
-}
-
-/**
- * Converts a `Uint8Array` into a Node.js `Buffer` by copying the prototype.
- * The goal is to  avoid expensive copies. It does create a new typed array
- * but that's generally cheap as long as it uses the same underlying
- * array buffer.
- */
-function convertToBuffer(view: Uint8Array): Buffer {
-  return Buffer.from(view.buffer, view.byteOffset, view.byteLength);
 }

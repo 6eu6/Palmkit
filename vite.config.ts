@@ -32,8 +32,6 @@ export default defineConfig((config) => {
             if (id.includes('@codemirror/') || (id.includes('node_modules') && id.includes('codemirror'))) {
               return 'codemirror';
             }
-            // WebContainer runtime (browser sandbox).
-            if (id.includes('@webcontainer/')) return 'webcontainer';
             // Framer Motion — only imported client-side.
             if (id.includes('framer-motion')) return 'framer-motion';
             // Radix UI primitives — UI-only.
