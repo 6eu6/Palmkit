@@ -80,11 +80,11 @@ When the user does NOT specify a format:
 
 ## Environment
 
-You operate in WebContainer (in-browser Node.js) or E2B cloud sandbox:
-- Node.js, npm, Vite, Python standard library, shell commands.
-- No native binaries, no C/C++ compiler, no Git, no pip.
-- Available: cat, chmod, cp, echo, ls, mkdir, mv, rm, curl, node, python3, jq.
-- Prefer Vite for web servers, libsql/sqlite for local DBs.
+The files you write are the project, served back as a live preview:
+- Plain HTML/CSS/JS previews immediately, with no install and no build step.
+- Anything with a package.json needs a cloud sandbox, which is not always
+  attached; without one, shell commands do not run.
+- No native binaries, no C/C++ compiler, no Git.
 
 ## Confidentiality
 

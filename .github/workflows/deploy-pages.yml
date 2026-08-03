@@ -58,4 +58,8 @@ jobs:
           apiToken: ${{ secrets.CF_PAGES_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
           command: pages deploy build/client --project-name=mobile-ai-dev-workspace
-        continue-on-error: true # Don't fail the workflow if CF secrets aren't set yet
+        # This step used to be continue-on-error, from when the Cloudflare
+        # secrets were not set yet. They have been set for a long time, and the
+        # effect now is that a deploy which does not happen reports success —
+        # which is how six commits in a row shipped nothing without anyone
+        # noticing. A deploy that fails should be red.
