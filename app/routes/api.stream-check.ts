@@ -101,6 +101,55 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
    * end, the provider connection is what dies.
    */
   /*
+   * How much work is this request allowed to do?
+   *
+   * Relaying the provider's stream untouched succeeds every time. Parsing the
+   * same frames as they go past — no AI SDK, no createDataStream, the same
+   * bytes over the same connection — truncates, and sometimes fails outright
+   * with a 503. So what stops a build is the work, not the stream, and the
+   * useful question is no longer "what breaks" but "what is the budget".
+   *
+   * This burns a measured amount of CPU spread across a stream and reports how
+   * much it managed before it was cut off. Whatever number survives here is
+   * the number the chat route has to live within.
+   */
+  if (url.searchParams.get('mode') === 'cpu') {
+    const budgetMs = Math.min(asNumber('ms', 100), 120_000);
+    const slices = Math.min(Math.max(asNumber('slices', 50), 1), 2000);
+    const perSlice = budgetMs / slices;
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        const encoder = new TextEncoder();
+        let burned = 0;
+
+        for (let i = 0; i < slices; i++) {
+          const until = Date.now() + perSlice;
+
+          /* A busy loop is the point: this must not yield to I/O. */
+          while (Date.now() < until) {
+            /* spin */
+          }
+
+          burned += perSlice;
+          controller.enqueue(encoder.encode(`${i}: burned≈${Math.round(burned)}ms\n`));
+
+          /* Yield once per slice so the response actually flushes. */
+          await new Promise((resolve) => setTimeout(resolve, 1));
+        }
+
+        controller.enqueue(encoder.encode(`END burned≈${Math.round(burned)}ms over ${slices} slices\n`));
+        controller.close();
+      },
+    });
+
+    return new Response(stream, {
+      status: 200,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+    });
+  }
+
+  /*
    * An external streaming subrequest, relayed. Nothing else.
    *
    * Everything else is cleared on evidence. A byte stream survives. A relayed
