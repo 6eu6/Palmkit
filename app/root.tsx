@@ -111,11 +111,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
          * means moving that fetch server-side, which is its own change.
          */
         const stored = await readProviderKey(result.supabase, result.user.id, env.API_KEY_ENCRYPTION_KEY);
-        const data = stored ? { provider: stored.provider, encrypted_key: 'x' } : null;
 
-        if (data) {
+        if (stored) {
           try {
-            const cookieValue = encodeURIComponent(JSON.stringify({ [stored!.provider]: stored!.key }));
+            const cookieValue = encodeURIComponent(JSON.stringify({ [stored.provider]: stored.key }));
             headers.append('Set-Cookie', `apiKeys=${cookieValue}; Path=/; Max-Age=2592000; SameSite=Lax`);
           } catch {
             // ignore failures
