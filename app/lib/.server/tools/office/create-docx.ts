@@ -40,7 +40,9 @@ export const createDocxTool: ToolDefinition<typeof createDocxSchema> = {
     'Do NOT use this for spreadsheets (use create_xlsx) or print-ready PDFs (use create_pdf).',
 
   inputSchema: createDocxSchema,
-  availableIn: ['chat', 'work', 'code'],
+
+  /* Not in code mode — see create-md.ts. Project files are file actions. */
+  availableIn: ['chat', 'work'],
 
   execute: async (input: CreateDocxInput): Promise<ToolResult> => {
     const { title, content, author, headings = 'plain' } = input;

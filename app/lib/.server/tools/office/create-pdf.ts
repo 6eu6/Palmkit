@@ -36,7 +36,9 @@ export const createPdfTool: ToolDefinition<typeof createPdfSchema> = {
     'Do NOT use this for spreadsheets (use create_xlsx) or editable Word docs (use create_docx).',
 
   inputSchema: createPdfSchema,
-  availableIn: ['chat', 'work', 'code'],
+
+  /* Not in code mode — see create-md.ts. Project files are file actions. */
+  availableIn: ['chat', 'work'],
 
   execute: async (input: CreatePdfInput): Promise<ToolResult> => {
     const { title, content, author, subject } = input;

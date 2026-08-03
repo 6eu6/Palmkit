@@ -182,7 +182,7 @@ export class ActionRunner {
   onAlert?: (alert: ActionAlert) => void;
   onSupabaseAlert?: (alert: SupabaseAlert) => void;
   onDeployAlert?: (alert: DeployAlert) => void;
-  onFileWritten?: (filePath: string, content: string) => void;
+  onFileWritten?: (filePath: string, content: string, isBinary?: boolean) => void;
   buildOutput?: { path: string; exitCode: number; output: string };
 
   constructor(
@@ -191,7 +191,7 @@ export class ActionRunner {
     onAlert?: (alert: ActionAlert) => void,
     onSupabaseAlert?: (alert: SupabaseAlert) => void,
     onDeployAlert?: (alert: DeployAlert) => void,
-    onFileWritten?: (filePath: string, content: string) => void,
+    onFileWritten?: (filePath: string, content: string, isBinary?: boolean) => void,
   ) {
     this.#webcontainer = webcontainerPromise;
     this.#shellTerminal = getShellTerminal;
@@ -285,6 +285,10 @@ export class ActionRunner {
         }
         case 'file': {
           await this.#runFileAction(action);
+          break;
+        }
+        case 'asset': {
+          await this.#runAssetAction(action);
           break;
         }
         case 'supabase': {
@@ -507,6 +511,82 @@ export class ActionRunner {
      * the E2B remote preview path has files to push.
      */
     this.onFileWritten?.(action.filePath, action.content);
+  }
+
+  /**
+   * Write a generated image or video into the project as a real file.
+   *
+   * A `file` action carries its content in the stream, which cannot work for
+   * a JPEG: the bytes would have to be base64 in the response, and the
+   * response goes back into the model's context. So the action carries a
+   * link and the bytes are fetched here, in the browser, where they are
+   * needed and nowhere else.
+   *
+   * This is what makes a generated asset survive. Before it, the only way to
+   * use one was to reference the storage URL directly from the page — a link
+   * that expires in seven days, is absent from an export, and turns the site
+   * into broken images a week later.
+   */
+  async #runAssetAction(action: ActionState) {
+    if (action.type !== 'asset') {
+      unreachable('Expected asset action');
+    }
+
+    const res = await fetch(action.src);
+
+    if (!res.ok) {
+      throw new ActionCommandError(`Could not fetch the asset (HTTP ${res.status})`, action.src);
+    }
+
+    const bytes = new Uint8Array(await res.arrayBuffer());
+
+    /* Same ceiling as a file write: the container can stall on reload. */
+    const WEBCONTAINER_TIMEOUT_MS = 10_000;
+
+    let webcontainer: WebContainer | null = null;
+
+    try {
+      webcontainer = await Promise.race([
+        this.#webcontainer.then((wc) => wc),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), WEBCONTAINER_TIMEOUT_MS)),
+      ]);
+    } catch (e) {
+      logger.warn('[runAssetAction] WebContainer unavailable, registering anyway:', e);
+    }
+
+    if (webcontainer) {
+      const relativePath = nodePath.relative(webcontainer.workdir, action.filePath);
+      const folder = nodePath.dirname(relativePath).replace(/\/+$/g, '');
+
+      if (folder !== '.') {
+        try {
+          await webcontainer.fs.mkdir(folder, { recursive: true });
+        } catch (error) {
+          logger.error('Failed to create folder for asset\n\n', error);
+        }
+      }
+
+      try {
+        await webcontainer.fs.writeFile(relativePath, bytes);
+        logger.debug(`Asset written ${relativePath} (${bytes.length} bytes)`);
+      } catch {
+        logger.warn(`WebContainer writeFile failed for asset (${relativePath}), registering anyway`);
+      }
+    }
+
+    /*
+     * Registered as base64, which is how the workbench stores binary files —
+     * the same shape a file dragged in from disk takes, so the file tree,
+     * the export and the remote sandbox all handle it without knowing where
+     * it came from.
+     */
+    let binary = '';
+
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+
+    this.onFileWritten?.(action.filePath, btoa(binary), true);
   }
 
   #updateAction(id: string, newState: ActionStateUpdate) {

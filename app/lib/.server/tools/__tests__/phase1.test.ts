@@ -839,11 +839,6 @@ const MODE_TOOLS: Record<ToolMode, string[]> = {
   code: [
     'web_search',
     'read_url',
-    'create_pdf',
-    'create_docx',
-    'create_xlsx',
-    'create_md',
-    'read_document',
     'read_file',
     'list_files',
     'grep',
@@ -852,6 +847,7 @@ const MODE_TOOLS: Record<ToolMode, string[]> = {
     'read_sandbox_file',
     'generate_image',
     'generate_video',
+    'read_document',
   ],
 };
 

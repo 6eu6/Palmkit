@@ -1,6 +1,6 @@
 import type { Change } from 'diff';
 
-export type ActionType = 'file' | 'shell' | 'supabase';
+export type ActionType = 'file' | 'shell' | 'supabase' | 'asset';
 
 export interface BaseAction {
   content: string;
@@ -23,6 +23,26 @@ export interface BuildAction extends BaseAction {
   type: 'build';
 }
 
+/**
+ * A generated image or video, written into the project as a real file.
+ *
+ * `file` actions carry their content in the stream, which works for text and
+ * cannot work for a JPEG: the bytes would have to be base64 in the response,
+ * which is both enormous and goes back into the model's context.
+ *
+ * So this action carries a `src` — the storage link the generation tool
+ * returned — and the browser fetches those bytes and writes them to the path.
+ * The page then references `/assets/hero.jpg`, which survives the link
+ * expiring, appears in an export, and works offline in the preview.
+ */
+export interface AssetAction extends BaseAction {
+  type: 'asset';
+  filePath: string;
+
+  /** Where to fetch the bytes from. */
+  src: string;
+}
+
 export interface SupabaseAction extends BaseAction {
   type: 'supabase';
   operation: 'migration' | 'query';
@@ -30,7 +50,7 @@ export interface SupabaseAction extends BaseAction {
   projectId?: string;
 }
 
-export type PalmkitAction = FileAction | ShellAction | StartAction | BuildAction | SupabaseAction;
+export type PalmkitAction = FileAction | ShellAction | StartAction | BuildAction | SupabaseAction | AssetAction;
 
 export type PalmkitActionData = PalmkitAction | BaseAction;
 

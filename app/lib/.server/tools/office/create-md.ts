@@ -37,7 +37,19 @@ export const createMdTool: ToolDefinition<typeof createMdSchema> = {
     'Do NOT use this for PDFs (use create_pdf) or Word docs (use create_docx) or spreadsheets (use create_xlsx).',
 
   inputSchema: createMdSchema,
-  availableIn: ['chat', 'work', 'code'],
+
+  /*
+   * Not in code mode, deliberately.
+   *
+   * These produce a document the user downloads. In a project the way to
+   * make a file is <palmkitAction type="file">, and a tool called
+   * `create_md` reads exactly like "create a file" to a model that is
+   * trying to build one. Asked for a restaurant landing page, the model
+   * called create_md with filename "index.html" four times in a row: a
+   * markdown document containing HTML, never written to the project, so
+   * nothing appeared and it tried again.
+   */
+  availableIn: ['chat', 'work'],
 
   execute: async (input: CreateMdInput): Promise<ToolResult> => {
     const { filename, content } = input;

@@ -532,9 +532,9 @@ export class WorkbenchStore {
 
           this.deployAlert.set(alert);
         },
-        (filePath, content) => {
+        (filePath, content, isBinary) => {
           // Mirror writes into the file store immediately (watcher-independent).
-          this.#filesStore.registerFile(filePath, content);
+          this.#filesStore.registerFile(filePath, content, isBinary);
         },
       ),
     });

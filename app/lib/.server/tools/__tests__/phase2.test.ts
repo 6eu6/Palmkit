@@ -741,26 +741,41 @@ test('build_table rejects mismatched row width', async () => {
 console.log('\n======= 3. MODE FILTERING =======');
 
 /*
- * Documents everywhere, analysis in /work.
+ * Making a document is a chat and /work job. Reading one is not.
  *
- * These six shipped work-mode-only and this test said so. Producing a file
- * turned out to be something people ask for wherever they happen to be — "make
- * that a PDF" in the middle of a chat, an .xlsx out of a script in /code — so
- * the four document tools were widened to every mode on purpose. The two
- * analytics tools were not: charting and table-building answer a question you
- * are already in /work to ask.
+ * These shipped work-mode-only, were widened to every mode because "make
+ * that a PDF" is something people ask wherever they are, and then had to
+ * come back out of /code. A tool called `create_md` reads like "create a
+ * file" to a model building a project, and it is not one: it returns a
+ * document to download. Asked for a restaurant landing page, the model
+ * called create_md with filename "index.html" four times in a row, nothing
+ * reached the project, and it kept trying. Project files are file actions.
+ *
+ * `read_document` stays everywhere — a user dropping a spec into /code is
+ * exactly when reading one is useful.
  */
-const DOCUMENT_TOOLS = ['create_pdf', 'create_docx', 'create_xlsx', 'read_document'];
+const DOCUMENT_TOOLS = ['create_pdf', 'create_docx', 'create_xlsx', 'create_md'];
 const ANALYTICS_TOOLS = ['make_chart', 'build_table'];
 
-test('document tools are available in every mode', () => {
-  for (const mode of ['chat', 'work', 'code'] as const) {
+test('documents can be created from chat and work, but not in a project', () => {
+  for (const mode of ['chat', 'work'] as const) {
     const names = toolRegistry.listToolsForMode(mode).map((t) => t.name);
 
     for (const name of DOCUMENT_TOOLS) {
       assert.ok(names.includes(name), `${name} should be in ${mode} mode`);
     }
   }
+
+  const code = toolRegistry.listToolsForMode('code').map((t) => t.name);
+
+  for (const name of DOCUMENT_TOOLS) {
+    assert.ok(!code.includes(name), `${name} must NOT be in code mode — it competes with the file action`);
+  }
+});
+
+test('reading a document is still possible while building', () => {
+  const code = toolRegistry.listToolsForMode('code').map((t) => t.name);
+  assert.ok(code.includes('read_document'));
 });
 
 test('analytics tools stay in work mode', () => {
@@ -868,9 +883,9 @@ test('all Phase 2 tools have unique names', () => {
 
 test('each Phase 2 tool declares the modes it is meant for', () => {
   const expected: [{ name: string; availableIn: ReadonlyArray<string> }, string[]][] = [
-    [createPdfTool, ['chat', 'work', 'code']],
-    [createDocxTool, ['chat', 'work', 'code']],
-    [createXlsxTool, ['chat', 'work', 'code']],
+    [createPdfTool, ['chat', 'work']],
+    [createDocxTool, ['chat', 'work']],
+    [createXlsxTool, ['chat', 'work']],
     [readDocumentTool, ['chat', 'work', 'code']],
     [makeChartTool, ['work']],
     [buildTableTool, ['work']],

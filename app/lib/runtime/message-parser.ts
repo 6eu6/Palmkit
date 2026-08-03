@@ -5,6 +5,7 @@ import type {
   FileAction,
   ShellAction,
   SupabaseAction,
+  AssetAction,
 } from '~/types/actions';
 import type { PalmkitArtifactData } from '~/types/artifact';
 import { createScopedLogger } from '~/utils/logger';
@@ -458,11 +459,29 @@ export class StreamingMessageParser {
       }
 
       (actionAttributes as FileAction).filePath = filePath;
+    } else if (actionType === 'asset') {
+      /*
+       * An asset carries a link rather than its content: the bytes are a JPEG
+       * or an MP4, which cannot travel in the stream as text and must not go
+       * back into the model's context. Both attributes are required — without
+       * a path there is nowhere to put it, and without a src there is nothing
+       * to put there.
+       */
+      const filePath = this.#extractAttribute(actionTag, 'filePath');
+      const src = this.#extractAttribute(actionTag, 'src');
+
+      if (!filePath || !src) {
+        logger.warn(`Asset action needs filePath and src (got ${filePath ?? 'none'} / ${src ? 'a src' : 'no src'})`);
+        throw new Error('Asset action requires filePath and src');
+      }
+
+      (actionAttributes as AssetAction).filePath = filePath;
+      (actionAttributes as AssetAction).src = src;
     } else if (!['shell', 'start'].includes(actionType)) {
       logger.warn(`Unknown action type '${actionType}'`);
     }
 
-    return actionAttributes as FileAction | ShellAction;
+    return actionAttributes as FileAction | ShellAction | AssetAction;
   }
 
   #extractAttribute(tag: string, attributeName: string): string | undefined {
