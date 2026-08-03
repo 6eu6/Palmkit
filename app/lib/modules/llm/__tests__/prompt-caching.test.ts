@@ -24,9 +24,7 @@ describe('marking the cacheable prefix', () => {
   it('marks the system prompt for a provider that needs telling', () => {
     const out = withPromptCaching(body('anthropic/claude-sonnet-4.5')) as any;
 
-    expect(out.messages[0].content).toEqual([
-      { type: 'text', text: LONG, cache_control: { type: 'ephemeral' } },
-    ]);
+    expect(out.messages[0].content).toEqual([{ type: 'text', text: LONG, cache_control: { type: 'ephemeral' } }]);
   });
 
   it('marks Google too', () => {
