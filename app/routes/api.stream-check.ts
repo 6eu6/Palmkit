@@ -12,6 +12,14 @@
  * the cause is the runtime, not what the chat route does with it.
  *
  *   /api/stream-check?chunks=400&delay=50   → 400 chunks over 20 seconds
+ *   /api/stream-check?proxy=1                → pipe an upstream stream through
+ *
+ * The proxy mode exists because generating locally is not what the chat route
+ * does. That route holds an open connection to the model provider and pipes
+ * its stream out, and a Worker that is relaying a subrequest is a different
+ * situation from one producing its own bytes. Two fixes aimed at the local
+ * case — encoding the chunks, registering the work with waitUntil — did not
+ * stop the truncation, so this isolates the remaining difference.
  *
  * The last line is `END <n>`, so a truncated response is one that does not
  * have it. Signed-in only: it costs nothing to serve but there is no reason
@@ -46,6 +54,21 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const chunks = Math.min(asNumber('chunks', 200), MAX_CHUNKS);
   const delay = Math.min(asNumber('delay', 50), MAX_DELAY_MS);
+
+  /*
+   * Relay a long upstream stream instead of making one up. Same shape as the
+   * chat route: an open subrequest whose body is piped into the response.
+   */
+  if (url.searchParams.get('proxy')) {
+    const upstream = await fetch(new URL(`/api/stream-check?chunks=${chunks}&delay=${delay}`, request.url), {
+      headers: { cookie: request.headers.get('cookie') ?? '' },
+    });
+
+    return new Response(upstream.body, {
+      status: 200,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+    });
+  }
 
   /* Roughly the size of a token's worth of streamed text. */
   const filler = 'x'.repeat(48);
