@@ -27,12 +27,26 @@ export class StreamRecoveryManager {
     this._resetTimeout();
   }
 
+  /**
+   * Data is flowing — push the deadline back.
+   *
+   * Called once per streamed chunk, which is once per token: a page-sized
+   * answer is a few thousand calls. Rescheduling the timer on every one of
+   * them meant a few thousand clearTimeout/setTimeout pairs per request, all
+   * to answer a question ("has anything arrived in the last two minutes?")
+   * that cannot change more than once a second.
+   *
+   * So this only records the time. The timer is left alone, and decides for
+   * itself when it fires: if data arrived since it was set, it reschedules
+   * for the remaining time instead of declaring a timeout. Cheap to feed,
+   * and the deadline is still measured from the last chunk rather than from
+   * whenever the timer happened to be rebuilt.
+   */
   updateActivity() {
     this._lastActivity = Date.now();
-    this._resetTimeout();
   }
 
-  private _resetTimeout() {
+  private _resetTimeout(delay = this._options.timeout) {
     if (this._timeoutHandle) {
       clearTimeout(this._timeoutHandle);
     }
@@ -42,11 +56,25 @@ export class StreamRecoveryManager {
     }
 
     this._timeoutHandle = setTimeout(() => {
-      if (this._isActive) {
-        logger.warn('Stream timeout detected');
-        this._handleTimeout();
+      if (!this._isActive) {
+        return;
       }
-    }, this._options.timeout);
+
+      /*
+       * The timer is a floor, not a verdict. Silence is what indicates a
+       * hang, so ask how long it has actually been since a chunk arrived.
+       */
+      const idle = Date.now() - this._lastActivity;
+      const timeout = this._options.timeout ?? 30000;
+
+      if (idle < timeout) {
+        this._resetTimeout(timeout - idle);
+        return;
+      }
+
+      logger.warn('Stream timeout detected');
+      this._handleTimeout();
+    }, delay);
   }
 
   private _handleTimeout() {
