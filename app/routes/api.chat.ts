@@ -671,12 +671,39 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
          * naturally and the frontend renders each part type as it
          * arrives (text, reasoning, tool-call, tool-result, source).
          */
+        /*
+         * Where the turn got to, written into the stream itself.
+         *
+         * Builds come back truncated in production and never locally, with no
+         * error part and no finish event, and three explanations have been
+         * measured and ruled out: the chunks were not encoded to bytes, the
+         * work outlived the response without waitUntil, and the route relays a
+         * subrequest rather than generating its own bytes. The transport is
+         * fine either way — 1,500 chunks over 75 seconds arrive complete,
+         * generated or relayed, on this same worker.
+         *
+         * So the next thing to know is not another guess but which await
+         * stopped returning. A cut-off response still carries everything
+         * written before the cut, so the last checkpoint in it is the answer.
+         * `type: 'checkpoint'` is ignored by the UI.
+         */
+        let checkpointSeq = 0;
+        const checkpoint = (where: string, detail?: Record<string, unknown>) => {
+          try {
+            dataStream.writeData({ type: 'checkpoint', seq: checkpointSeq++, where, ...detail } as never);
+          } catch {
+            /* The stream may already be gone — that is the case being studied. */
+          }
+        };
+
         while (true) {
           /*
            * Per segment. A continuation's previous text is already in
            * `currentMessages`, so carrying it here too would count it twice.
            */
           stepText = '';
+
+          checkpoint('segment-start', { segment: continueSegmentCount + 1 });
 
           const result = await streamText({
             messages: [...currentMessages],
@@ -697,7 +724,9 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             descriptor: await lookupDescriptor(),
           });
 
+          checkpoint('streamtext-returned');
           result.mergeIntoDataStream(dataStream);
+          checkpoint('merged');
 
           let finishReason: string;
           let text: string;
@@ -783,6 +812,8 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               break;
             }
           }
+
+          checkpoint('awaited', { finishReason, textLen: text.length, stepTextLen: stepText.length });
 
           logger.debug(
             `Segment ${continueSegmentCount + 1} finished: reason=${finishReason}, ` +
