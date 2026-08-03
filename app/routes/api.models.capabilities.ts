@@ -106,7 +106,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return Response.json({ descriptors: [], note: 'no models to resolve' }, { headers });
   }
 
-  const descriptors = await resolveDescriptors({
+  const { descriptors, cacheError } = await resolveDescriptors({
     supabase,
     provider,
     models,
@@ -115,7 +115,20 @@ export async function action({ request, context }: ActionFunctionArgs) {
     allowProbe: Boolean(body.probe && apiKey),
   });
 
-  return Response.json({ descriptors }, { headers });
+  return Response.json(
+    {
+      descriptors,
+      cached: !cacheError,
+
+      /*
+       * Surfaced, not swallowed: resolving works without the shared catalog,
+       * but every user then pays the round trip that one of them should have
+       * paid once. The caller needs to know it is running degraded.
+       */
+      ...(cacheError ? { cacheError } : {}),
+    },
+    { headers },
+  );
 }
 
 /**

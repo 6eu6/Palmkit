@@ -72,9 +72,9 @@ export async function readCatalog(supabase: SupabaseClient, provider?: string): 
   return out;
 }
 
-async function writeCatalog(supabase: SupabaseClient, descriptors: ModelDescriptor[]): Promise<void> {
+async function writeCatalog(supabase: SupabaseClient, descriptors: ModelDescriptor[]): Promise<string | undefined> {
   if (!descriptors.length) {
-    return;
+    return undefined;
   }
 
   const rows = descriptors.map((d) => ({
@@ -91,7 +91,16 @@ async function writeCatalog(supabase: SupabaseClient, descriptors: ModelDescript
 
   if (error) {
     logger.warn(`Catalog write failed: ${error.message}`);
+
+    /*
+     * Returned rather than swallowed. A silent write failure is
+     * indistinguishable from a missing table, and both look like "it worked
+     * but cached nothing" — the caller has to be able to say which.
+     */
+    return error.message;
   }
+
+  return undefined;
 }
 
 function isFresh(d: ModelDescriptor | undefined): boolean {
@@ -125,7 +134,14 @@ export interface ResolveOptions {
  * over reaches the metadata endpoints, and only what those cannot answer is
  * probed — and probing happens at most once per model for the whole install.
  */
-export async function resolveDescriptors(opts: ResolveOptions): Promise<ModelDescriptor[]> {
+export interface ResolveResult {
+  descriptors: ModelDescriptor[];
+
+  /** Present when the shared catalog could not be written. */
+  cacheError?: string;
+}
+
+export async function resolveDescriptors(opts: ResolveOptions): Promise<ResolveResult> {
   const { supabase, provider, models, apiKey, baseUrl, allowProbe = false } = opts;
 
   const stored = await readCatalog(supabase, provider);
@@ -146,7 +162,7 @@ export async function resolveDescriptors(opts: ResolveOptions): Promise<ModelDes
   resolved.push(...fresh);
 
   if (!stale.length) {
-    return resolved;
+    return { descriptors: resolved };
   }
 
   // ── Layer 1: what the provider says about itself ──────────────────────────
@@ -210,7 +226,7 @@ export async function resolveDescriptors(opts: ResolveOptions): Promise<ModelDes
     }
   }
 
-  await writeCatalog(supabase, written);
+  const cacheError = await writeCatalog(supabase, written);
 
-  return resolved;
+  return { descriptors: resolved, cacheError };
 }
