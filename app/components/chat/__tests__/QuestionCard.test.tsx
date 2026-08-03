@@ -171,6 +171,39 @@ describe('the question card, end to end', () => {
     expect((append.mock.calls[0][0] as any).content[0].text).toContain('Home, Pricing');
   });
 
+  /*
+   * The bug this pair exists to stop coming back.
+   *
+   * A streamed message carries an AI SDK `parts` array, and the chat renders
+   * `part.text` — the model's raw output. Only the non-streaming `content`
+   * path gets the streaming parser's version. So on the live site the block
+   * reached markdown untouched, was not an allowed element, and the
+   * sanitizer removed it silently: the model asked, and the user saw an
+   * empty reply. Markdown now converts the block itself.
+   */
+  it('renders a block that never went through the streaming parser', () => {
+    render(
+      <Markdown html append={vi.fn()}>
+        {BLOCK}
+      </Markdown>,
+    );
+
+    expect(screen.getByText('Who books through it?')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Staff, at the counter' })).toBeTruthy();
+  });
+
+  it('does not convert a block twice', () => {
+    const once = new StreamingMessageParser().parse('msg-1', BLOCK);
+
+    render(
+      <Markdown html append={vi.fn()}>
+        {once}
+      </Markdown>,
+    );
+
+    expect(screen.getAllByRole('button', { name: 'Staff, at the counter' })).toHaveLength(1);
+  });
+
   it('renders a question that offers no options at all', () => {
     const { container } = renderTurn(
       '<palmkit-questions><palmkit-question ask="What is the API URL?" key="u" /></palmkit-questions>',

@@ -645,6 +645,32 @@ export function parseQuestions(block: string): ParsedQuestion[] {
  * nothing to an HTML parser — the attribute ended at the first inner quote
  * and the whole element was dropped as malformed.
  */
+/**
+ * Turn every complete questions block in a piece of text into its element.
+ *
+ * The streaming parser above does this too, but its output is not always what
+ * reaches the screen. When a message carries an AI SDK `parts` array — which
+ * every streamed message does — the chat renders `part.text`, the raw model
+ * output, and only the non-streaming `content` path gets the parsed version.
+ * So the block arrived at the markdown pipeline untouched, was not in the
+ * allowed-element list, and the sanitizer dropped it without a word: the
+ * model asked its question and the user saw an empty reply.
+ *
+ * Running it here as a plain string rewrite makes the rendering independent
+ * of which path the text came down. It is idempotent — a block the streaming
+ * parser already converted is a div by then, and matches nothing.
+ */
+export function renderQuestionBlocks(text: string): string {
+  if (!text.includes(PALMKIT_QUESTIONS_OPEN)) {
+    return text;
+  }
+
+  return text.replace(/<palmkit-questions>([\s\S]*?)<\/palmkit-questions>/g, (whole, body: string) => {
+    const questions = parseQuestions(body);
+    return questions.length > 0 ? createQuestionsElement(questions) : '';
+  });
+}
+
 function createQuestionsElement(questions: ParsedQuestion[]): string {
   const json = JSON.stringify(questions)
     .replace(/&/g, '&amp;')

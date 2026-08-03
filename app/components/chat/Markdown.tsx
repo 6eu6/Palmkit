@@ -8,7 +8,7 @@ import type { Message } from 'ai';
 import styles from './Markdown.module.scss';
 import ThoughtBox from './ThoughtBox';
 import { QuestionCard } from './QuestionCard';
-import type { ParsedQuestion } from '~/lib/runtime/message-parser';
+import { renderQuestionBlocks, type ParsedQuestion } from '~/lib/runtime/message-parser';
 import type { ProviderInfo } from '~/types/model';
 
 const logger = createScopedLogger('MarkdownComponent');
@@ -242,7 +242,7 @@ export const Markdown = memo(
         remarkPlugins={remarkPlugins(limitedMarkdown)}
         rehypePlugins={rehypePlugins(html)}
       >
-        {stripCodeFenceFromArtifact(children)}
+        {renderQuestionBlocks(stripCodeFenceFromArtifact(children))}
       </ReactMarkdown>
     );
   },
