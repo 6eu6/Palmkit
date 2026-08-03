@@ -19,7 +19,21 @@ import { readProviderKey } from '~/lib/.server/llm/user-keys';
  * model released tomorrow appears the moment the catalog refreshes.
  */
 
-const CAPABILITIES: Capability[] = ['image', 'video', 'vision', 'reasoning', 'text'];
+/**
+ * Only what actually routes.
+ *
+ * `chooseModel` can answer for vision, reasoning and text as well, and the
+ * table accepts them — but nothing asks. The tools that call the router are
+ * generate_image and generate_video, and the model that writes replies is the
+ * one in the composer, not a setting.
+ *
+ * Listing the others made the screen say "Writing: cohere/north-mini-code:free"
+ * with an Auto badge, which reads as though it governed replies. It governed
+ * nothing. A row that does not take effect is worse than a missing one: the
+ * user changes it, nothing happens, and they stop trusting the screen. When a
+ * tool starts routing on vision, it goes here and the screen follows.
+ */
+const CAPABILITIES: Capability[] = ['image', 'video'];
 
 interface AssignmentRow {
   capability: string;

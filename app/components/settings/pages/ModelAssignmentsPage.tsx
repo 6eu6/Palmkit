@@ -49,19 +49,10 @@ interface Payload {
   capabilities: CapabilityState[];
 }
 
-/**
- * How each capability reads to someone who has not read the code.
- *
- * "Reasoning" is not a job the router does on its own — the effort control in
- * the composer already steers the selected model — so it is described as what
- * it is: the model a deep-thinking job would fall back to.
- */
+/** How each capability reads to someone who has not read the code. */
 const LABELS: Record<string, { title: string; sub: string; icon: string }> = {
-  text: { title: 'Writing', sub: 'Replies, summaries, code', icon: 'i-ph:chat-teardrop-text' },
   image: { title: 'Images', sub: 'When you ask for a picture', icon: 'i-ph:image' },
   video: { title: 'Video', sub: 'When you ask for a clip', icon: 'i-ph:film-slate' },
-  vision: { title: 'Reading images', sub: 'When you send a picture', icon: 'i-ph:eye' },
-  reasoning: { title: 'Deep thinking', sub: 'Long, hard problems', icon: 'i-ph:brain' },
 };
 
 /** A price a person can read, in whatever unit the thing is actually sold. */
@@ -280,8 +271,9 @@ function ModelAssignmentsPage({ nav }: { nav: SettingsNav }) {
   return (
     <div>
       <p className="mb-4 text-[14px] leading-relaxed text-palmkit-elements-textSecondary">
-        The model you pick in the chat box writes the replies. It cannot draw a picture or render a video, so those go
-        to a different model. Left automatic, that is the cheapest one that can actually do the job.
+        The model you pick in the chat box writes every reply — that one is chosen there, not here. It cannot draw a
+        picture or render a video, so those two jobs go elsewhere. Left automatic, they go to the cheapest model that
+        can actually do them.
       </p>
 
       <SettingsGroup>
