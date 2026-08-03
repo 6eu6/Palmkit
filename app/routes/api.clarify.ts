@@ -1,7 +1,8 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { streamText } from '~/lib/.server/llm/stream-text';
 import type { ProviderInfo } from '~/types/model';
-import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/cookies';
+import { getProviderSettingsFromCookie } from '~/lib/api/cookies';
+import { apiKeysForRequest } from '~/lib/.server/llm/user-keys';
 import { createScopedLogger } from '~/utils/logger';
 
 export async function action(args: ActionFunctionArgs) {
@@ -43,7 +44,13 @@ async function clarifyAction({ context, request }: ActionFunctionArgs) {
   }
 
   const cookieHeader = request.headers.get('Cookie');
-  const apiKeys = getApiKeysFromCookie(cookieHeader);
+
+  /*
+   * Keys come from the signed-in account, never from the browser. The
+   * `apiKeys` cookie this used to read carried a decrypted credential into
+   * every page and every request; nothing writes it any more.
+   */
+  const apiKeys = await apiKeysForRequest(request, context);
   const providerSettings = getProviderSettingsFromCookie(cookieHeader);
 
   const systemPrompt = `You are Palmkit's clarification engine. A user typed a SHORT, vague build prompt. Your job: identify what's genuinely unspecified and ask 2-4 focused questions whose answers will make the build succeed on the first try.

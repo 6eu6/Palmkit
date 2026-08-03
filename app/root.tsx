@@ -11,7 +11,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { ClientOnly } from 'remix-utils/client-only';
 import { cssTransition, ToastContainer } from 'react-toastify';
 import { getAuthedUser, getEnv } from './lib/auth/supabase.server';
-import { readProviderKey } from './lib/.server/llm/user-keys';
+import { adoptCookieKeys, readApiKeysCookie } from './lib/.server/llm/cookie-key-migration';
 import { authEnabledStore, authUserStore, type AuthUser } from './lib/stores/auth';
 import { profileStore } from './lib/stores/profile';
 
@@ -76,50 +76,27 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       };
 
       /*
-       * If the user has a stored API key and the browser doesn't already have
-       * a valid (non-empty) one, hydrate the `apiKeys` cookie from the account
-       * (decrypted) so they don't re-enter it.
+       * Take the `apiKeys` cookie out of circulation.
        *
-       * We check for at least one non-empty key value — a cookie like
-       * `{"OpenRouter":""}` should NOT block the Supabase sync.
+       * This loader used to do the opposite: decrypt the account's key and
+       * write it into a browser cookie so the client could send it back on
+       * every request. Nothing reads it any more — the model list and the
+       * chat route both resolve keys from the database on the server — so it
+       * is now a plaintext credential sitting in browsers for no reason.
+       *
+       * Anyone who typed a key into the old composer field may have it only
+       * here, so it is moved into the account first and then the cookie is
+       * expired. One-off: after it runs the cookie is gone, and a user who
+       * never had one never enters this branch.
        */
-      const hasValidApiKeyCookie = (() => {
-        const cookieStr = request.headers.get('Cookie') || '';
-        const match = cookieStr.match(/(?:^|;\s*)apiKeys=([^;]*)/);
+      const cookieKeys = readApiKeysCookie(request.headers.get('Cookie'));
 
-        if (!match) {
-          return false;
+      if (Object.keys(cookieKeys).length > 0) {
+        if (result.supabase && env.API_KEY_ENCRYPTION_KEY) {
+          await adoptCookieKeys(result.supabase, result.user.id, env.API_KEY_ENCRYPTION_KEY, cookieKeys);
         }
 
-        try {
-          const parsed: Record<string, string> = JSON.parse(decodeURIComponent(match[1]));
-          return Object.values(parsed).some((v) => typeof v === 'string' && v.length > 0);
-        } catch {
-          return false;
-        }
-      })();
-
-      if (!hasValidApiKeyCookie && result.supabase && env.API_KEY_ENCRYPTION_KEY) {
-        /*
-         * The ACTIVE provider only. `maybeSingle()` used to be safe because a
-         * user could hold exactly one key; with keys per provider it throws
-         * the moment a second one exists.
-         *
-         * NOTE: this still puts the plaintext key in a browser cookie, which
-         * is the last place one leaves the server. It stays for now because
-         * the model list is fetched client-side and needs it; removing it
-         * means moving that fetch server-side, which is its own change.
-         */
-        const stored = await readProviderKey(result.supabase, result.user.id, env.API_KEY_ENCRYPTION_KEY);
-
-        if (stored) {
-          try {
-            const cookieValue = encodeURIComponent(JSON.stringify({ [stored.provider]: stored.key }));
-            headers.append('Set-Cookie', `apiKeys=${cookieValue}; Path=/; Max-Age=2592000; SameSite=Lax`);
-          } catch {
-            // ignore failures
-          }
-        }
+        headers.append('Set-Cookie', 'apiKeys=; Path=/; Max-Age=0; SameSite=Lax');
       }
     }
   }

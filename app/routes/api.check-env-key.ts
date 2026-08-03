@@ -1,6 +1,6 @@
 import type { LoaderFunction } from '@remix-run/cloudflare';
 import { LLMManager } from '~/lib/modules/llm/manager';
-import { getApiKeysFromCookie } from '~/lib/api/cookies';
+import { apiKeysForRequest } from '~/lib/.server/llm/user-keys';
 
 export const loader: LoaderFunction = async ({ context, request }) => {
   const url = new URL(request.url);
@@ -19,16 +19,16 @@ export const loader: LoaderFunction = async ({ context, request }) => {
 
   const envVarName = providerInstance.config.apiTokenKey;
 
-  // Get API keys from cookie
-  const cookieHeader = request.headers.get('Cookie');
-  const apiKeys = getApiKeysFromCookie(cookieHeader);
+  const apiKeys = await apiKeysForRequest(request, context);
 
   /*
-   * Check API key in order of precedence:
-   * 1. Client-side API keys (from cookies)
-   * 2. Server environment variables (from Cloudflare env)
-   * 3. Process environment variables (from .env.local)
-   * 4. LLMManager environment variables
+   * Whether a key exists, in order of precedence:
+   *   1. The signed-in user's own key, from their account
+   *   2. Server environment (Cloudflare env)
+   *   3. Process environment (.env.local)
+   *   4. LLMManager environment
+   *
+   * Only ever a boolean leaves here — the key itself does not.
    */
   const isSet = !!(
     apiKeys?.[provider] ||

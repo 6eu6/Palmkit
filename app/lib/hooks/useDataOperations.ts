@@ -719,17 +719,42 @@ export function useDataOperations({
         // Step 3: Validate data
         showProgress('Validating API keys data', 60);
 
-        // Get current API keys from cookies for potential undo
-        const apiKeysStr = document.cookie.split(';').find((row) => row.trim().startsWith('apiKeys='));
-        const currentApiKeys = apiKeysStr ? JSON.parse(decodeURIComponent(apiKeysStr.split('=')[1])) : {};
-        setLastOperation({ type: 'import-api-keys', data: { previous: currentApiKeys } });
-
-        // Step 4: Import API keys
-        showProgress('Applying API keys', 80);
-
         const newKeys = ImportExportService.importAPIKeys(importedData);
-        const apiKeysJson = JSON.stringify(newKeys);
-        document.cookie = `apiKeys=${apiKeysJson}; path=/; max-age=31536000`;
+
+        /*
+         * Step 4: store them in the account, encrypted.
+         *
+         * This used to write the whole set into an `apiKeys` cookie with a
+         * one-year lifetime and tell the user so in the success toast. Each
+         * key now goes through /api/account/api-key, which encrypts it before
+         * it touches the database and never hands it back. Nothing is kept
+         * for undo, because there is no longer a plaintext copy to restore —
+         * that is the point.
+         */
+        showProgress('Saving API keys', 80);
+
+        const saved: string[] = [];
+        const rejected: string[] = [];
+
+        for (const [provider, apiKey] of Object.entries(newKeys)) {
+          if (!apiKey) {
+            continue;
+          }
+
+          try {
+            const res = await fetch('/api/account/api-key', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({ apiKey, provider }),
+            });
+
+            const body = (await res.json()) as { ok?: boolean };
+            (body.ok ? saved : rejected).push(provider);
+          } catch {
+            rejected.push(provider);
+          }
+        }
 
         // Step 5: Complete
         showProgress('Completing import', 100);
@@ -737,15 +762,15 @@ export function useDataOperations({
         // Dismiss progress toast before showing success toast
         toast.dismiss('progress-toast');
 
-        // Count how many keys were imported
-        const keyCount = Object.keys(newKeys).length;
-        const newKeyCount = Object.keys(newKeys).filter(
-          (key) => !currentApiKeys[key] || currentApiKeys[key] !== newKeys[key],
-        ).length;
+        if (saved.length === 0) {
+          throw new Error(
+            rejected.length > 0 ? `Could not save: ${rejected.join(', ')}` : 'The file contained no usable keys',
+          );
+        }
 
         toast.success(
-          `${keyCount} API keys imported successfully (${newKeyCount} new/updated)\n` +
-            'Note: Keys are stored in browser cookies. For server-side usage, add them to your .env.local file.',
+          `${saved.length} API key${saved.length === 1 ? '' : 's'} saved to your account, encrypted` +
+            (rejected.length > 0 ? ` (${rejected.length} could not be saved)` : ''),
           { position: 'bottom-right', autoClose: 5000 },
         );
 
@@ -969,83 +994,13 @@ export function useDataOperations({
     }
   }, [showProgress]);
 
-  /**
-   * Export API keys to a JSON file
+  /*
+   * `handleExportAPIKeys` used to live here, backed by GET
+   * /api/export-api-keys. It collected every provider key it could find —
+   * including the ones in the deployment's own environment, which belong to
+   * the operator and not to whoever is signed in — and downloaded them as a
+   * plaintext JSON file. Nothing in the UI called it. Both are gone.
    */
-  const handleExportAPIKeys = useCallback(async () => {
-    setIsExporting(true);
-    setProgressPercent(0);
-
-    // Dismiss any existing toast first
-    toast.dismiss('progress-toast');
-
-    toast.loading('Exporting API keys...', {
-      position: 'bottom-right',
-      autoClose: 3000,
-      toastId: 'progress-toast',
-    });
-
-    try {
-      // Step 1: Get API keys from all sources
-      showProgress('Retrieving API keys', 25);
-
-      // Create a fetch request to get API keys from server
-      const response = await fetch('/api/export-api-keys');
-
-      if (!response.ok) {
-        throw new Error('Failed to retrieve API keys from server');
-      }
-
-      const apiKeys = await response.json();
-
-      // Step 2: Create blob
-      showProgress('Creating file', 50);
-
-      const blob = new Blob([JSON.stringify(apiKeys, null, 2)], {
-        type: 'application/json',
-      });
-
-      // Step 3: Download file
-      showProgress('Downloading file', 75);
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'palmkit-api-keys.json';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      // Step 4: Complete
-      showProgress('Completing export', 100);
-
-      // Dismiss progress toast before showing success toast
-      toast.dismiss('progress-toast');
-
-      toast.success('API keys exported successfully', {
-        position: 'bottom-right',
-        autoClose: 3000,
-      });
-
-      // Save operation for potential undo
-      setLastOperation({ type: 'export-api-keys', data: apiKeys });
-    } catch (error) {
-      console.error('Error exporting API keys:', error);
-
-      // Dismiss progress toast before showing error toast
-      toast.dismiss('progress-toast');
-
-      toast.error(`Failed to export API keys: ${error instanceof Error ? error.message : 'Unknown error'}`, {
-        position: 'bottom-right',
-        autoClose: 3000,
-      });
-    } finally {
-      setIsExporting(false);
-      setProgressPercent(0);
-      setProgressMessage('');
-    }
-  }, [showProgress]);
 
   /**
    * Undo the last operation if possible
@@ -1169,24 +1124,21 @@ export function useDataOperations({
           break;
         }
 
+        /*
+         * Importing keys is no longer undoable, and cannot be.
+         *
+         * Undo used to work by keeping the previous keys in memory and
+         * writing them back into the cookie. Keys are encrypted in the
+         * account now and never come back out, so there is nothing to
+         * restore — which is the whole reason they are safe there. Removing
+         * or replacing a key is one tap in Settings → Model providers.
+         */
         case 'import-api-keys': {
-          // Restore previous API keys
-          const previousAPIKeys = lastOperation.data.previous;
-          const newKeys = ImportExportService.importAPIKeys(previousAPIKeys);
-          const apiKeysJson = JSON.stringify(newKeys);
-          document.cookie = `apiKeys=${apiKeysJson}; path=/; max-age=31536000`;
-
-          // Dismiss progress toast before showing success toast
           toast.dismiss('progress-toast');
-
-          toast.success('Operation undone successfully', {
+          toast.info('Imported keys are stored encrypted. Manage them in Settings → Model providers.', {
             position: 'bottom-right',
-            autoClose: 3000,
+            autoClose: 4000,
           });
-
-          if (onReloadSettings) {
-            onReloadSettings();
-          }
 
           break;
         }
@@ -1234,7 +1186,6 @@ export function useDataOperations({
     handleResetSettings,
     handleResetChats,
     handleDownloadTemplate,
-    handleExportAPIKeys,
     handleUndo,
   };
 }

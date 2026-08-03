@@ -10,8 +10,7 @@ import { workbenchStore } from '~/lib/stores/workbench';
 import { classNames } from '~/utils/classNames';
 import { PROVIDER_LIST } from '~/utils/constants';
 import { Messages } from './Messages.client';
-import { getApiKeysFromCookies } from './APIKeyManager';
-import Cookies from 'js-cookie';
+import { providerKeysVersion } from '~/lib/stores/model-capabilities';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import styles from './BaseChat.module.scss';
 import { ImportButtons } from '~/components/chat/chatExportAndImport/ImportButtons';
@@ -145,7 +144,6 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     ref,
   ) => {
     const TEXTAREA_MAX_HEIGHT = chatStarted ? 400 : 200;
-    const [apiKeys, setApiKeys] = useState<Record<string, string>>(getApiKeysFromCookies());
     const [modelList, setModelList] = useState<ModelInfo[]>([]);
 
     /*
@@ -162,6 +160,9 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const expoUrl = useStore(expoUrlAtom);
     const authUser = useStore(authUserStore);
     const activeFolderId = useStore(activeFolderIdStore);
+
+    /* Adding or switching a provider key in settings re-reads the model list. */
+    const keysVersion = useStore(providerKeysVersion);
     const showWorkbench = useStore(workbenchStore.showWorkbench);
     const [qrModalOpen, setQrModalOpen] = useState(false);
 
@@ -218,16 +219,10 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
 
     useEffect(() => {
       if (typeof window !== 'undefined') {
-        let parsedApiKeys: Record<string, string> | undefined = {};
-
-        try {
-          parsedApiKeys = getApiKeysFromCookies();
-          setApiKeys(parsedApiKeys);
-        } catch (error) {
-          console.error('Error loading API keys from cookies:', error);
-          Cookies.remove('apiKeys');
-        }
-
+        /*
+         * No keys are read here any more. `/api/models` resolves them from
+         * the signed-in account on the server, so the browser never holds one.
+         */
         setIsModelLoading('all');
         fetch('/api/models')
           .then((response) => response.json())
@@ -242,31 +237,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
             setIsModelLoading(undefined);
           });
       }
-    }, [providerList, provider]);
-
-    const onApiKeysChange = async (providerName: string, apiKey: string) => {
-      const newApiKeys = { ...apiKeys, [providerName]: apiKey };
-      setApiKeys(newApiKeys);
-      Cookies.set('apiKeys', JSON.stringify(newApiKeys));
-
-      setIsModelLoading(providerName);
-
-      let providerModels: ModelInfo[] = [];
-
-      try {
-        const response = await fetch(`/api/models/${encodeURIComponent(providerName)}`);
-        const data = await response.json();
-        providerModels = (data as { modelList: ModelInfo[] }).modelList;
-      } catch (error) {
-        console.error('Error loading dynamic models for:', providerName, error);
-      }
-
-      setModelList((prevModels) => {
-        const otherModels = prevModels.filter((model) => model.provider !== providerName);
-        return [...otherModels, ...providerModels];
-      });
-      setIsModelLoading(undefined);
-    };
+    }, [providerList, provider, keysVersion]);
 
     const startListening = () => {
       if (recognition) {
@@ -531,9 +502,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   model={model}
                   setModel={setModel}
                   modelList={modelList}
-                  apiKeys={apiKeys}
                   isModelLoading={isModelLoading}
-                  onApiKeysChange={onApiKeysChange}
                   uploadedFiles={uploadedFiles}
                   setUploadedFiles={setUploadedFiles}
                   imageDataList={imageDataList}

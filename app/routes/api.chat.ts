@@ -17,7 +17,7 @@ import { toolRegistry, resolveToolMode, type ToolContext } from '~/lib/.server/t
 import { validateBuildOutput, completenessToJobStatus } from '~/lib/runtime/output-validator';
 import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
 import { readCatalog } from '~/lib/.server/llm/capability-registry';
-import { readProviderKey } from '~/lib/.server/llm/user-keys';
+import { readAllProviderKeys } from '~/lib/.server/llm/user-keys';
 import { DEFAULT_EFFORT, type Effort } from '~/lib/modules/llm/effort';
 import type { ModelDescriptor } from '~/lib/modules/llm/model-descriptor';
 
@@ -186,14 +186,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
         : 'code';
 
   const cookieHeader = request.headers.get('Cookie');
-  let apiKeys: Record<string, string> = {};
   let providerSettings: Record<string, IProviderSetting> = {};
-
-  try {
-    apiKeys = JSON.parse(parseCookies(cookieHeader || '').apiKeys || '{}');
-  } catch {
-    logger.warn('Malformed apiKeys cookie — treating as empty');
-  }
 
   try {
     providerSettings = JSON.parse(parseCookies(cookieHeader || '').providers || '{}');
@@ -202,36 +195,29 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
   }
 
   /*
-   * FALLBACK: read encrypted API key from Supabase user_api_keys table.
-   * If the user is logged in but has no `apiKeys` cookie (e.g. they stored
-   * their key via the account settings UI which persists to DB only), we
-   * decrypt it here so api.chat works for authenticated users.
+   * Keys come from the account, and only from the account.
    *
-   * This fixes the "Invalid or missing API key" bug for users who stored
-   * their key via the encrypted DB storage path instead of the legacy
-   * cookie-based path.
+   * The `apiKeys` cookie used to be read here first and the database was the
+   * fallback — which had two costs. A decrypted key sat in a browser cookie
+   * readable by any script on the page, and because the cookie won, switching
+   * the active provider in settings changed nothing until the cookie happened
+   * to be replaced. Both go away together.
    */
-  if (Object.keys(apiKeys).length === 0) {
-    try {
-      const { user, supabase } = await getAuthedUser(request, context);
+  let apiKeys: Record<string, string> = {};
 
-      if (user && supabase) {
-        /* Whichever provider the user has made active. */
-        const stored = await readProviderKey(supabase, user.id, getEnv(context).API_KEY_ENCRYPTION_KEY);
+  try {
+    const { user, supabase } = await getAuthedUser(request, context);
 
-        if (stored) {
-          apiKeys[stored.provider] = stored.key;
-          logger.info(`Loaded encrypted API key from DB for provider: ${stored.provider}`);
-        }
-      }
-    } catch (authErr) {
-      /*
-       * Not logged in or Supabase misconfigured — continue with whatever
-       * cookies we have. The streamText call will fail with a clear error
-       * if no API key is available.
-       */
-      logger.debug(`Auth/API key DB lookup skipped: ${(authErr as Error).message}`);
+    if (user && supabase) {
+      apiKeys = await readAllProviderKeys(supabase, user.id, getEnv(context).API_KEY_ENCRYPTION_KEY);
     }
+  } catch (authErr) {
+    /*
+     * Signed out, or Supabase misconfigured. Providers still resolve keys
+     * from the server environment; if there is none, streamText fails with a
+     * clear message.
+     */
+    logger.debug(`API key lookup skipped: ${(authErr as Error).message}`);
   }
 
   const cumulativeUsage = {

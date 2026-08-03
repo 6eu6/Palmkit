@@ -302,22 +302,10 @@ export const ChatImpl = memo(
     const [animationScope, animate] = useAnimate();
 
     /*
-     * B) Provider/settings restore: Load API keys synchronously from cookies
-     * to avoid "No providers enabled" flash after refresh.
+     * Keys used to be read from a cookie here and posted with every message.
+     * `/api/chat` reads them from the signed-in account instead, so there is
+     * nothing to restore and nothing to send.
      */
-    const [apiKeys] = useState<Record<string, string>>(() => {
-      try {
-        const storedApiKeys = Cookies.get('apiKeys');
-
-        if (storedApiKeys) {
-          return JSON.parse(storedApiKeys);
-        }
-      } catch {
-        // ignore parse errors
-      }
-
-      return {};
-    });
 
     // Determine chat mode from URL — /chat and /work = discuss, /code and / = build
     const location = useLocation();
@@ -363,7 +351,6 @@ export const ChatImpl = memo(
     } = useChat({
       api: '/api/chat',
       body: {
-        apiKeys,
         files,
         promptId,
         contextOptimization: contextOptimizationEnabled,
@@ -422,7 +409,6 @@ export const ChatImpl = memo(
           id,
 
           // Original body fields (must be re-included since prepareRequestBody replaces entirely)
-          apiKeys,
           files,
           promptId,
           contextOptimization: contextOptimizationEnabled,

@@ -15,6 +15,21 @@ export const descriptorsStore = map<Record<string, ModelDescriptor>>({});
 
 export const descriptorsLoading = atom(false);
 
+/**
+ * Bumped whenever the account's provider keys change.
+ *
+ * The composer's model list comes from `/api/models`, which resolves keys on
+ * the server from the signed-in account — so adding a key in settings changes
+ * what that endpoint would return, but nothing tells the composer to ask
+ * again. It used to notice because the key passed through the browser on its
+ * way to being stored. This is what replaces that: a signal, not a secret.
+ */
+export const providerKeysVersion = atom(0);
+
+export function providerKeysChanged(): void {
+  providerKeysVersion.set(providerKeysVersion.get() + 1);
+}
+
 export function descriptorKey(provider: string, model: string): string {
   return `${provider}::${model}`;
 }

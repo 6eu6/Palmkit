@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { decryptSecret } from '~/lib/auth/crypto.server';
+import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
 import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('user-keys');
@@ -111,6 +112,87 @@ export async function readProviderKey(
   } catch (err) {
     logger.warn(`Could not read provider key: ${err instanceof Error ? err.message : String(err)}`);
     return undefined;
+  }
+}
+
+/**
+ * Every key the user has, decrypted, keyed by provider. Server only.
+ *
+ * What the model list and the chat route both want: a user with an OpenRouter
+ * key and an Anthropic key should see models from both, and be able to send a
+ * message to either, without first switching. `readProviderKey` answers the
+ * narrower question — which one is active — and stays for callers that need
+ * exactly that.
+ */
+export async function readAllProviderKeys(
+  supabase: SupabaseClient,
+  userId: string,
+  masterKey: string | undefined,
+): Promise<Record<string, string>> {
+  if (!masterKey) {
+    return {};
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('user_api_keys')
+      .select('provider, encrypted_key')
+      .eq('user_id', userId);
+
+    if (error) {
+      logger.warn(`Could not read provider keys: ${error.message}`);
+      return {};
+    }
+
+    const out: Record<string, string> = {};
+
+    await Promise.all(
+      (data ?? []).map(async (row) => {
+        const r = row as Row;
+
+        if (!r.encrypted_key) {
+          return;
+        }
+
+        try {
+          out[r.provider] = await decryptSecret(r.encrypted_key, masterKey);
+        } catch {
+          /*
+           * One key encrypted under a rotated master key should not take the
+           * others down with it — the user still has working providers.
+           */
+          logger.warn(`Could not decrypt the ${r.provider} key`);
+        }
+      }),
+    );
+
+    return out;
+  } catch (err) {
+    logger.warn(`Could not read provider keys: ${err instanceof Error ? err.message : String(err)}`);
+    return {};
+  }
+}
+
+/**
+ * The signed-in user's keys for a request, or `{}` if there is no user.
+ *
+ * The shape every route wanted from the old `getApiKeysFromCookie`, which is
+ * why that function is gone: routes should not have to know that keys live in
+ * a table, are encrypted, or that a signed-out visitor is normal. Never
+ * throws — a provider still resolves from the server environment, so a
+ * signed-out request is degraded, not broken.
+ */
+export async function apiKeysForRequest(request: Request, context: unknown): Promise<Record<string, string>> {
+  try {
+    const { user, supabase } = await getAuthedUser(request, context as never);
+
+    if (!user || !supabase) {
+      return {};
+    }
+
+    return await readAllProviderKeys(supabase, user.id, getEnv(context as never).API_KEY_ENCRYPTION_KEY);
+  } catch {
+    return {};
   }
 }
 

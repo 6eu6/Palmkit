@@ -3,7 +3,12 @@ import { useStore } from '@nanostores/react';
 import { toast } from 'react-toastify';
 import { classNames } from '~/utils/classNames';
 import { SettingsGroup, SettingsRow, type SettingsNav } from '~/components/settings/SettingsSheet';
-import { descriptorsStore, loadDescriptors, refreshProviderCapabilities } from '~/lib/stores/model-capabilities';
+import {
+  descriptorsStore,
+  loadDescriptors,
+  providerKeysChanged,
+  refreshProviderCapabilities,
+} from '~/lib/stores/model-capabilities';
 import type { ModelDescriptor } from '~/lib/modules/llm/model-descriptor';
 
 /**
@@ -360,6 +365,12 @@ function ProvidersPage({ nav }: { nav: SettingsNav }) {
   const reload = async () => {
     const s = await fetchStoredKeys();
     setStored(s);
+
+    /*
+     * The composer's model list is fetched from the server, which reads these
+     * keys. It has no other way to know they changed.
+     */
+    providerKeysChanged();
 
     /*
      * A user with no key at all goes straight into the flow — showing them an

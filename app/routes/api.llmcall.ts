@@ -6,7 +6,8 @@ import { PROVIDER_LIST } from '~/utils/constants';
 import { MAX_TOKENS, PROVIDER_COMPLETION_LIMITS, isReasoningModel } from '~/lib/common/llm/constants';
 import { LLMManager } from '~/lib/modules/llm/manager';
 import type { ModelInfo } from '~/lib/modules/llm/types';
-import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/cookies';
+import { getProviderSettingsFromCookie } from '~/lib/api/cookies';
+import { apiKeysForRequest } from '~/lib/.server/llm/user-keys';
 import { createScopedLogger } from '~/utils/logger';
 
 export async function action(args: ActionFunctionArgs) {
@@ -91,7 +92,13 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
   }
 
   const cookieHeader = request.headers.get('Cookie');
-  const apiKeys = getApiKeysFromCookie(cookieHeader);
+
+  /*
+   * Keys come from the signed-in account, never from the browser. The
+   * `apiKeys` cookie this used to read carried a decrypted credential into
+   * every page and every request; nothing writes it any more.
+   */
+  const apiKeys = await apiKeysForRequest(request, context);
   const providerSettings = getProviderSettingsFromCookie(cookieHeader);
 
   if (streamOutput) {
