@@ -114,31 +114,57 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
    * the number the chat route has to live within.
    */
   if (url.searchParams.get('mode') === 'cpu') {
-    const budgetMs = Math.min(asNumber('ms', 100), 120_000);
+    /*
+     * Work is counted, not timed.
+     *
+     * The first version of this aimed at a number of milliseconds with a busy
+     * loop around `Date.now()`, and reported burning thirty seconds inside a
+     * request that took a tenth of one. Workers freezes the clock during
+     * synchronous execution — it only moves at I/O — so a loop that waits for
+     * it to advance measures nothing at all, and the figure it printed was
+     * just the arithmetic that added it up.
+     *
+     * So this does a fixed, countable amount of real work instead: parsing a
+     * frame the size of the ones the provider actually sends, `per` times in
+     * each of `slices` slices. The answer is the largest total that comes back
+     * whole, in units that can be compared against a real turn — a build
+     * parses about 5,000 of these frames.
+     */
     const slices = Math.min(Math.max(asNumber('slices', 50), 1), 2000);
-    const perSlice = budgetMs / slices;
+    const per = Math.min(asNumber('per', 100), 200_000);
+
+    /* The shape of one OpenRouter delta, near enough for the cost of parsing it. */
+    const frame = JSON.stringify({
+      id: 'gen-1234567890-AbCdEfGhIjKlMnOp',
+      provider: 'OpenAI',
+      model: 'openai/gpt-5.6-luna',
+      object: 'chat.completion.chunk',
+      created: 1785796368,
+      choices: [{ index: 0, delta: { role: 'assistant', content: ' const' }, finish_reason: null }],
+    });
 
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
-        let burned = 0;
+        let parsed = 0;
+        let sink = 0;
 
         for (let i = 0; i < slices; i++) {
-          const until = Date.now() + perSlice;
+          for (let n = 0; n < per; n++) {
+            const json = JSON.parse(frame);
 
-          /* A busy loop is the point: this must not yield to I/O. */
-          while (Date.now() < until) {
-            /* spin */
+            /* Touch the result so nothing can optimise the parse away. */
+            sink += json.choices[0].delta.content.length;
+            parsed++;
           }
 
-          burned += perSlice;
-          controller.enqueue(encoder.encode(`${i}: burned≈${Math.round(burned)}ms\n`));
+          controller.enqueue(encoder.encode(`${i}: parsed=${parsed}\n`));
 
           /* Yield once per slice so the response actually flushes. */
           await new Promise((resolve) => setTimeout(resolve, 1));
         }
 
-        controller.enqueue(encoder.encode(`END burned≈${Math.round(burned)}ms over ${slices} slices\n`));
+        controller.enqueue(encoder.encode(`END parsed=${parsed} sink=${sink}\n`));
         controller.close();
       },
     });
