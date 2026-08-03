@@ -145,7 +145,69 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       }),
     });
 
-    return new Response(upstream.body, {
+    /*
+     * `parse=1` does the work the AI SDK does, without the AI SDK.
+     *
+     * Relaying the provider untouched succeeds every time: 1.3 MB, 33 seconds,
+     * finish_reason=stop. But 1.3 MB of SSE carries only 16,000 characters of
+     * content — about eighty bytes per character — and the chat route does not
+     * relay those bytes, it JSON-parses every frame and re-serialises the
+     * result. That is the one thing left that no successful probe does.
+     *
+     * So this parses each frame and re-emits it the way the route would. Same
+     * connection, same bytes, same duration; only the work in the middle
+     * differs. If the relay finishes and this one dies, the cause is the
+     * amount of work, not the stream.
+     */
+    if (!url.searchParams.get('parse')) {
+      return new Response(upstream.body, {
+        status: upstream.status,
+        headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store' },
+      });
+    }
+
+    let carry = '';
+    let content = 0;
+    let frames = 0;
+
+    const parsing = new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        carry += new TextDecoder().decode(chunk, { stream: true });
+
+        const lines = carry.split('\n');
+        carry = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) {
+            continue;
+          }
+
+          const body = line.slice(6).trim();
+
+          if (body === '[DONE]') {
+            continue;
+          }
+
+          try {
+            const json = JSON.parse(body);
+            const delta = json.choices?.[0]?.delta?.content;
+            frames++;
+
+            if (delta) {
+              content += delta.length;
+              controller.enqueue(new TextEncoder().encode(formatDataStreamPart('text', delta)));
+            }
+          } catch {
+            /* keep-alive comments and split frames */
+          }
+        }
+      },
+      flush(controller) {
+        controller.enqueue(new TextEncoder().encode(`END frames=${frames} chars=${content}\n`));
+      },
+    });
+
+    return new Response(upstream.body!.pipeThrough(parsing), {
       status: upstream.status,
       headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store' },
     });
