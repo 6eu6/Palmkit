@@ -731,6 +731,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           let finishReason: string;
           let text: string;
           let usage: any;
+          let heartbeat: ReturnType<typeof setInterval> | undefined;
 
           try {
             /*
@@ -756,6 +757,23 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               setTimeout(() => reject(new Error('SEGMENT_AWAIT_TIMEOUT')), SEGMENT_AWAIT_TIMEOUT_MS),
             );
 
+            /*
+             * Is the request still alive while this await is pending?
+             *
+             * The checkpoints say the turn reaches `merged` and never reaches
+             * `awaited`, and the body then ends cleanly — mid-sentence, no
+             * error part, no finish event. Those two facts do not fit
+             * together: `createDataStream` only closes its controller once
+             * `execute` has settled, so a pending await here should hold the
+             * response open.
+             *
+             * A tick every two seconds tells them apart. If the ticks keep
+             * arriving after the text stops, the request is alive and waiting
+             * on a promise the provider never settles. If the body ends while
+             * ticks are still due, something outside this function closed it.
+             */
+            heartbeat = setInterval(() => checkpoint('awaiting', { chars: stepText.length }), 2000);
+
             [finishReason, text, usage] = await Promise.race([
               Promise.all([
                 result.finishReason as Promise<string>,
@@ -765,9 +783,22 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               timeoutPromise,
             ]);
           } catch (resultError: any) {
+            /*
+             * Before anything touches `resultError`. A rejection with no
+             * message — or with nothing at all — used to throw a TypeError on
+             * the line below, from inside the catch, which escapes `execute`
+             * and loses the real reason.
+             */
+            checkpoint('await-threw', {
+              name: String(resultError?.name ?? typeof resultError),
+              detail: String(resultError?.message ?? resultError ?? 'no error value'),
+            });
+
             const isTimeout = resultError?.message === 'SEGMENT_AWAIT_TIMEOUT';
             logger.error(
-              `Stream result ${isTimeout ? 'timeout' : 'error'} in segment ${continueSegmentCount + 1}: ${resultError.message}`,
+              `Stream result ${isTimeout ? 'timeout' : 'error'} in segment ${continueSegmentCount + 1}: ${
+                resultError?.message ?? resultError
+              }`,
             );
 
             let salvagedText = '';
@@ -803,7 +834,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
                   order: progressCounter++,
                   message: isTimeout
                     ? 'Build incomplete — stream was interrupted. Please try again.'
-                    : `Stream error: ${resultError.message || 'Unknown error'}`,
+                    : `Stream error: ${resultError?.message || 'Unknown error'}`,
                 } satisfies ProgressAnnotation);
               } catch {
                 /* dataStream may already be closed */
@@ -811,6 +842,8 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               streamRecovery?.stop();
               break;
             }
+          } finally {
+            clearInterval(heartbeat);
           }
 
           checkpoint('awaited', { finishReason, textLen: text.length, stepTextLen: stepText.length });
