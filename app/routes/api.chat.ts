@@ -1078,8 +1078,15 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
       onError: (error: any) => {
         streamRecovery?.stop();
 
-        const errorMessage = error.message || 'Unknown error';
-        const lowerMessage = errorMessage.toLowerCase();
+        /*
+         * `error.message` on something without one throws, and this runs
+         * inside the SDK's own catch handler — where a throw does not become
+         * an error part, it takes out the promise the data stream is waiting
+         * on. The one place that must not fail is the place that reports
+         * failure.
+         */
+        const errorMessage = error?.message ?? (typeof error === 'string' ? error : 'Unknown error');
+        const lowerMessage = String(errorMessage).toLowerCase();
 
         logger.error('chat stream onError:', errorMessage, error?.cause || '');
 
