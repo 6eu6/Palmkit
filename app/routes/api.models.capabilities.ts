@@ -39,6 +39,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     provider?: string;
     models?: string[];
     probe?: boolean;
+    force?: boolean;
   };
 
   const provider = (body.provider ?? '').trim();
@@ -91,6 +92,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     apiKey,
     baseUrl: PROBE_BASE_URLS[provider],
     allowProbe: Boolean(body.probe && apiKey),
+    force: Boolean(body.force),
   });
 
   return Response.json(

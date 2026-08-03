@@ -64,6 +64,23 @@ function qualifies(d: ModelDescriptor, c: Capability): boolean {
  * model we know the least about.
  */
 function price(d: ModelDescriptor): number {
+  /*
+   * Video is sold by the second and has no per-token price at all, so reading
+   * only the token fields makes every video model equally priced at infinity
+   * and the choice falls to whatever order the catalog happened to return.
+   * The cheapest rate the model offers stands in for it — enough to rank
+   * them against each other, which is all this is for.
+   */
+  const perSecond = d.cost.perSecond;
+
+  if (perSecond) {
+    const rates = Object.values(perSecond).filter((n) => typeof n === 'number' && n >= 0);
+
+    if (rates.length) {
+      return Math.min(...rates);
+    }
+  }
+
   const p = d.cost.completionPerM ?? d.cost.promptPerM;
 
   /*
@@ -75,6 +92,11 @@ function price(d: ModelDescriptor): number {
    * also what a missing price does, because they mean the same thing.
    */
   return typeof p === 'number' && p >= 0 ? p : Number.POSITIVE_INFINITY;
+}
+
+/** The unit the price is quoted in, so a reason string can say which. */
+function priceUnit(d: ModelDescriptor): string {
+  return d.cost.perSecond ? '/sec' : '/M';
 }
 
 /**
@@ -129,7 +151,7 @@ export function chooseModel(catalog: Map<string, ModelDescriptor>, req: RouteReq
     model: best.model,
     descriptor: best,
     reason: Number.isFinite(p)
-      ? `cheapest ${req.capability} model at $${p}/M`
+      ? `cheapest ${req.capability} model at $${p}${priceUnit(best)}`
       : `only ${req.capability} model available`,
   };
 }

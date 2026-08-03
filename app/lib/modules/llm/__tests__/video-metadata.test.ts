@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchOpenRouterVideoMetadata } from '~/lib/modules/llm/sources/provider-metadata';
+import { fetchOpenRouterVideoMetadata, perSecondRates } from '~/lib/modules/llm/sources/provider-metadata';
 import { mergeFragments } from '~/lib/modules/llm/model-descriptor';
 
 /**
@@ -127,5 +127,57 @@ describe('fetchOpenRouterVideoMetadata', () => {
     expect(merged.output.text).toBe(false);
     expect(merged.source).toBe('provider-api');
     expect(merged.media?.frameImages).toContain('first_frame');
+  });
+});
+
+/**
+ * The rate card is not in one unit.
+ *
+ * Every case below is a real `pricing_skus` object from the live catalogue.
+ * Read naively — minimum of the values, called dollars per second — they
+ * disagree with reality by up to five orders of magnitude, and the router
+ * picks whichever model is most wrong.
+ */
+describe('perSecondRates', () => {
+  it('takes dollars per second as they are', () => {
+    expect(perSecondRates({ duration_seconds_720p: '0.0988', duration_seconds_1080p: '0.1278' })).toEqual({
+      duration_seconds_720p: 0.0988,
+      duration_seconds_1080p: 0.1278,
+    });
+  });
+
+  it('converts cents per second to dollars', () => {
+    // runway/gen-4.5: 12 cents a second is $0.12, not $12.
+    expect(perSecondRates({ cents_per_second_output: '12' })).toEqual({ cents_per_second_output: 0.12 });
+  });
+
+  /*
+   * bytedance/seedance-1-5-pro prices by video token. Read as a per-second
+   * rate it is $0.0000012 — cheapest video model in the catalog by five
+   * orders of magnitude, and the one routing actually chose. The same job
+   * cost $0.21 against veo-3.1-lite's $0.12.
+   */
+  it('refuses to read a per-token price as a per-second price', () => {
+    expect(perSecondRates({ video_tokens: '0.0000024', video_tokens_without_audio: '0.0000012' })).toEqual({});
+  });
+
+  it('ignores prices that are not per second at all', () => {
+    expect(
+      perSecondRates({
+        reference_images: '0.04',
+        cents_per_image_input: '1',
+        minimum_cents_per_generation: '56',
+        cents_per_video_output_second_720p: '14',
+      }),
+    ).toEqual({ cents_per_video_output_second_720p: 0.14 });
+  });
+
+  it('handles a missing rate card', () => {
+    expect(perSecondRates(undefined)).toEqual({});
+    expect(perSecondRates({})).toEqual({});
+  });
+
+  it('drops values that are not numbers', () => {
+    expect(perSecondRates({ duration_seconds: 'n/a', duration_seconds_720p: '-1' })).toEqual({});
   });
 });

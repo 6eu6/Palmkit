@@ -50,6 +50,7 @@ import { analyzeDataTool } from './analytics/analyze-data';
 
 // ─── Creative tools (Phase 3 — native) ────────────────────────────────
 import { generateImageTool } from './creative/generate-image';
+import { generateVideoTool } from './creative/generate-video';
 
 // ─── Code-mode tools (Phase 4 — native) ───────────────────────────────
 import { readFileTool } from './code/read-file';
@@ -113,6 +114,7 @@ const NATIVE_TOOLS: AnyToolDefinition[] = [
 
   // Creative (Phase 3)
   generateImageTool as unknown as AnyToolDefinition,
+  generateVideoTool as unknown as AnyToolDefinition,
 
   // Code (Phase 4)
   readFileTool as unknown as AnyToolDefinition,

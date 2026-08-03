@@ -123,6 +123,52 @@ interface OpenRouterVideoModel {
   pricing_skus?: Record<string, string>;
 }
 
+/**
+ * Per-second rates in dollars, from a rate card that is not in one unit.
+ *
+ * `pricing_skus` looks homogeneous and is not. Across the twenty video models
+ * it carries at least four different things:
+ *
+ *   duration_seconds_720p            0.0988   dollars per second
+ *   cents_per_video_output_second    8        CENTS per second
+ *   video_tokens                     0.0000012 dollars per TOKEN, not second
+ *   reference_images                 0.04     per image, not per second
+ *   minimum_cents_per_generation     56       a floor, not a rate
+ *
+ * Taking the minimum of the values and calling it a per-second price — which
+ * is what a first reading suggests — makes `seedance-1-5-pro` the cheapest
+ * video model in the catalog at $0.0000012 per second. It is not; the same
+ * job cost $0.21 against veo-3.1-lite's $0.12. A token price read as a
+ * second price is off by five orders of magnitude and wins every routing
+ * decision it appears in.
+ *
+ * So a SKU counts only if it names a second, cents are converted, and
+ * anything priced by the token or the image is left out entirely. A model
+ * with no genuine per-second rate ends up with no per-second price, which is
+ * the truthful answer and sorts it last rather than first.
+ */
+export function perSecondRates(skus: Record<string, string> | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+
+  for (const [name, raw] of Object.entries(skus ?? {})) {
+    const key = name.toLowerCase();
+
+    if (!key.includes('second') || key.includes('token') || key.includes('minimum')) {
+      continue;
+    }
+
+    const value = Number.parseFloat(raw);
+
+    if (!Number.isFinite(value) || value < 0) {
+      continue;
+    }
+
+    out[name] = key.includes('cent') ? value / 100 : value;
+  }
+
+  return out;
+}
+
 export async function fetchOpenRouterVideoMetadata(): Promise<Map<string, DescriptorFragment>> {
   const out = new Map<string, DescriptorFragment>();
 
@@ -135,15 +181,7 @@ export async function fetchOpenRouterVideoMetadata(): Promise<Map<string, Descri
   const body = (await res.json()) as { data?: OpenRouterVideoModel[] };
 
   for (const m of body.data ?? []) {
-    const perSecond: Record<string, number> = {};
-
-    for (const [sku, value] of Object.entries(m.pricing_skus ?? {})) {
-      const n = Number.parseFloat(value);
-
-      if (Number.isFinite(n)) {
-        perSecond[sku] = n;
-      }
-    }
+    const perSecond = perSecondRates(m.pricing_skus);
 
     out.set(m.id, {
       displayName: m.name,

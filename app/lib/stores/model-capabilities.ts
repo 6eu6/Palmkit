@@ -65,10 +65,14 @@ export async function loadDescriptors(provider?: string): Promise<void> {
 }
 
 /**
- * Establish capabilities for a provider, probing what nothing else explains.
+ * Re-establish a provider's capabilities from scratch, probing what nothing
+ * else explains.
  *
- * Costs a fraction of a cent and a few seconds, so it is called when a user
- * connects or refreshes a provider — never on page load.
+ * Costs a fraction of a cent and a few seconds, so it runs when a user
+ * connects or refreshes a provider — never on page load. Forced: this is the
+ * button someone presses when what they see is wrong, and answering it from
+ * the same stored rows that are wrong would make it a button that does
+ * nothing.
  */
 export async function refreshProviderCapabilities(provider: string, models?: string[]): Promise<number> {
   descriptorsLoading.set(true);
@@ -78,7 +82,7 @@ export async function refreshProviderCapabilities(provider: string, models?: str
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ provider, models, probe: true }),
+      body: JSON.stringify({ provider, models, probe: true, force: true }),
     });
 
     if (!res.ok) {

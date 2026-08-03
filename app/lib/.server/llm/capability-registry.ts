@@ -128,6 +128,18 @@ export interface ResolveOptions {
 
   /** Probing costs money and time; callers opt in. */
   allowProbe?: boolean;
+
+  /**
+   * Re-establish everything, ignoring what is already stored.
+   *
+   * Needed when the way a fact is *read* changes rather than the fact itself.
+   * The per-second rate card turned out to mix dollars, cents and per-token
+   * prices; correcting the parser fixed nothing for anyone already holding a
+   * catalog row, because those rows stay trusted for a fortnight. Without a
+   * way to say "read it again", a parsing fix takes two weeks to reach the
+   * users it was written for.
+   */
+  force?: boolean;
 }
 
 /**
@@ -146,7 +158,7 @@ export interface ResolveResult {
 }
 
 export async function resolveDescriptors(opts: ResolveOptions): Promise<ResolveResult> {
-  const { supabase, provider, models, apiKey, baseUrl, allowProbe = false } = opts;
+  const { supabase, provider, models, apiKey, baseUrl, allowProbe = false, force = false } = opts;
 
   /*
    * Video models are not in the list the caller passes.
@@ -178,7 +190,7 @@ export async function resolveDescriptors(opts: ResolveOptions): Promise<ResolveR
   for (const model of allModels) {
     const hit = stored.get(`${provider}::${model}`);
 
-    if (isFresh(hit) && hit) {
+    if (!force && isFresh(hit) && hit) {
       fresh.push(hit);
     } else {
       stale.push(model);

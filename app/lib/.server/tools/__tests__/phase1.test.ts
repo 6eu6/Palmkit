@@ -312,6 +312,7 @@ const ALL_TOOL_NAMES = [
 
   // creative
   'generate_image',
+  'generate_video',
 
   // code
   'read_file',
@@ -816,6 +817,7 @@ const MODE_TOOLS: Record<ToolMode, string[]> = {
     'create_md',
     'read_document',
     'generate_image',
+    'generate_video',
   ],
   work: [
     'web_search',
@@ -832,6 +834,7 @@ const MODE_TOOLS: Record<ToolMode, string[]> = {
     'build_table',
     'analyze_data',
     'generate_image',
+    'generate_video',
   ],
   code: [
     'web_search',
@@ -848,6 +851,7 @@ const MODE_TOOLS: Record<ToolMode, string[]> = {
     'screenshot',
     'read_sandbox_file',
     'generate_image',
+    'generate_video',
   ],
 };
 
