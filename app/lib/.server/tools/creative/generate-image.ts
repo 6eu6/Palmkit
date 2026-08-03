@@ -17,13 +17,77 @@
  *   3. The fallback imported a Node SDK that needs a `.z-ai-config` file on
  *      disk. Cloudflare Workers has no disk. It failed with "Configuration
  *      file not found", which is what users actually saw.
+ *   4. Once it did run, six of the seven sizes it offered were refused by
+ *      every model the router can reach — a request for a 1440x720 hero came
+ *      back as 'Gemini does not support aspect_ratio "2:1"'. See the schema
+ *      file for the measurements; the sizes are resolved here.
  */
-import { generateImageSchema, type GenerateImageInput } from '~/lib/.server/tools/schemas/generate-image';
+import {
+  generateImageSchema,
+  resolveAspectRatio,
+  type AspectRatio,
+  type GenerateImageInput,
+} from '~/lib/.server/tools/schemas/generate-image';
 import { fetchWithTimeout } from '~/lib/.server/tools/schemas/_network';
 import type { ToolDefinition, ToolResult } from '~/lib/.server/tools/types';
 
 /** Image generation is slow; 45s is the observed ceiling, not a guess. */
 const TIMEOUT_MS = 60_000;
+
+/**
+ * A shape, in the pixel sizes each provider family will accept for it.
+ *
+ * Measured against OpenRouter, not copied from documentation. Gemini reads
+ * `size` as an aspect ratio plus a resolution tier taken from the largest
+ * dimension, and flash-lite refuses anything over 1024 on either axis; OpenAI
+ * matches the string against a fixed list. So the same shape needs different
+ * numbers, and there is no size that satisfies both except the square.
+ *
+ * The lists are tried in order and the order is chosen per model below, so a
+ * known family costs one call. An unknown one costs at most one extra.
+ *
+ * Verified against the live API, one call per shape, no retries needed:
+ *
+ *   gemini-3.1-flash-lite-image   1:1 → 1024x1024   16:9 → 1376x768
+ *                                 9:16 → 768x1376   4:3  → 1200x896
+ *                                 3:4  → 896x1200
+ *   gpt-5-image-mini              1:1 → 1024x1024   16:9 → 1536x1024
+ *                                 9:16 → 1024x1536  4:3  → 1536x1024
+ *                                 3:4  → 1024x1536
+ *
+ * OpenAI has no 16:9 or 4:3 at all — its only shapes are square, 3:2 and 2:3 —
+ * so a wide request there lands on the widest it has rather than failing.
+ */
+const SIZES_BY_RATIO: Record<AspectRatio, { google: string; openai: string }> = {
+  '1:1': { google: '1024x1024', openai: '1024x1024' },
+  '16:9': { google: '1024x576', openai: '1536x1024' },
+  '9:16': { google: '576x1024', openai: '1024x1536' },
+  '4:3': { google: '1024x768', openai: '1536x1024' },
+  '3:4': { google: '768x1024', openai: '1024x1536' },
+};
+
+/**
+ * The sizes to try, best guess first, then `null` — meaning send no size at
+ * all and take the provider's own default rather than fail.
+ */
+function sizeCandidates(model: string, ratio: AspectRatio): (string | null)[] {
+  const { google, openai } = SIZES_BY_RATIO[ratio];
+  const first = model.startsWith('openai/') ? openai : google;
+  const second = first === google ? openai : google;
+
+  return [...new Set<string | null>([first, second]), null];
+}
+
+/**
+ * Is this a complaint about the size, or a real failure?
+ *
+ * Only the first is worth retrying with different numbers. A rejected key or
+ * an empty wallet will say the same thing however the picture is shaped, and
+ * retrying those just spends time.
+ */
+function isSizeComplaint(status: number, body: string): boolean {
+  return status === 400 && /aspect[_ ]?ratio|\bsize\b|dimension|resolution|invalid argument/i.test(body);
+}
 
 /**
  * What the bytes actually are, and how big.
@@ -89,9 +153,11 @@ export const generateImageTool: ToolDefinition<typeof generateImageSchema> = {
     'Generate an image from a text description. ' +
     'Use this to create logos, illustrations, hero images, icons, or any visual asset. ' +
     'Provide a DETAILED prompt including subject, style, colors, and composition. ' +
-    'Returns a data URL (base64 PNG) that appears directly in the chat and can be downloaded. ' +
+    'Returns a `url` for the finished image, which appears in the chat and can be downloaded — ' +
+    'and which you can save into the project with an asset action. ' +
     'For best results, describe the desired output: "minimalist logo of a tree, green and white, vector style" ' +
     'is better than "tree logo". ' +
+    'Ask for the shape you need with aspectRatio ("1:1", "16:9", "9:16", "4:3", "3:4") — not pixel dimensions. ' +
     'The image model is selected automatically — do NOT ask the user which model to use. ' +
     'Do NOT use this for charts (use make_chart) or for video (use generate_video).',
 
@@ -99,7 +165,8 @@ export const generateImageTool: ToolDefinition<typeof generateImageSchema> = {
   availableIn: ['chat', 'work', 'code'],
 
   execute: async (input: GenerateImageInput, ctx): Promise<ToolResult> => {
-    const { prompt, size = '1024x1024', transparent = false } = input;
+    const { prompt, transparent = false } = input;
+    const ratio = resolveAspectRatio(input);
     const fullPrompt = transparent ? `${prompt}, transparent background, no background, PNG` : prompt;
 
     const apiKey = ctx.apiKeys?.OpenRouter;
@@ -123,36 +190,59 @@ export const generateImageTool: ToolDefinition<typeof generateImageSchema> = {
     }
 
     try {
-      const resp = await fetchWithTimeout('https://openrouter.ai/api/v1/images/generations', {
-        method: 'POST',
-        timeoutMs: TIMEOUT_MS,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-          'HTTP-Referer': 'https://palmkit.app',
-          'X-Title': 'Palmkit',
-        },
+      const candidates = sizeCandidates(route.model, ratio);
+      let resp: Response | undefined;
+      let errText = '';
+      let usedSize: string | null = null;
 
-        /*
-         * `model` is required — omitting it is what made every call fail —
-         * and `size` is honoured: without it the provider picks its own
-         * aspect ratio (1408x768 rather than the square that was asked for).
-         */
-        body: JSON.stringify({ model: route.model, prompt: fullPrompt, n: 1, size }),
-      });
+      for (const candidate of candidates) {
+        usedSize = candidate;
+        resp = await fetchWithTimeout('https://openrouter.ai/api/v1/images/generations', {
+          method: 'POST',
+          timeoutMs: TIMEOUT_MS,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+            'HTTP-Referer': 'https://palmkit.app',
+            'X-Title': 'Palmkit',
+          },
 
-      if (!resp.ok) {
-        const errText = await resp.text().catch(() => '');
+          /*
+           * `model` is required — omitting it is what made every call fail.
+           * `size` is what the provider argues about, so it is the only part
+           * that changes between attempts.
+           */
+          body: JSON.stringify({
+            model: route.model,
+            prompt: fullPrompt,
+            n: 1,
+            ...(candidate ? { size: candidate } : {}),
+          }),
+        });
+
+        if (resp.ok) {
+          break;
+        }
+
+        errText = await resp.text().catch(() => '');
+
+        if (!isSizeComplaint(resp.status, errText)) {
+          break;
+        }
+      }
+
+      if (!resp || !resp.ok) {
+        const status = resp?.status ?? 0;
 
         return {
           ok: false,
-          error: `Image generation failed (HTTP ${resp.status}) using ${route.model}: ${errText.slice(0, 200)}`,
+          error: `Image generation failed (HTTP ${status}) using ${route.model}: ${errText.slice(0, 200)}`,
           hint:
-            resp.status === 401
+            status === 401
               ? 'The stored key was rejected. Replace it in Settings → Model providers.'
-              : resp.status === 402
+              : status === 402
                 ? 'Your provider account is out of credit.'
-                : resp.status === 429
+                : status === 429
                   ? 'Rate limited by the provider. Wait a moment and try again.'
                   : 'Try a simpler prompt.',
         };
@@ -184,7 +274,8 @@ export const generateImageTool: ToolDefinition<typeof generateImageSchema> = {
           prompt: fullPrompt,
 
           /* What came back, not what was asked for. */
-          size: width && height ? `${width}x${height}` : size,
+          size: width && height ? `${width}x${height}` : (usedSize ?? 'provider default'),
+          aspectRatio: ratio,
           format: mime,
           bytes: bytes.length,
           transparent,
@@ -199,7 +290,8 @@ export const generateImageTool: ToolDefinition<typeof generateImageSchema> = {
           dataUrl: null,
           url: first.url,
           prompt: fullPrompt,
-          size,
+          size: usedSize ?? 'provider default',
+          aspectRatio: ratio,
           transparent,
         };
       }

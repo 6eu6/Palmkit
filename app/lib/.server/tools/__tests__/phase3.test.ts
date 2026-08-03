@@ -15,7 +15,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { generateImageSchema } from '~/lib/.server/tools/schemas/generate-image';
+import { ASPECT_RATIOS, generateImageSchema, resolveAspectRatio } from '~/lib/.server/tools/schemas/generate-image';
 import { analyzeDataSchema } from '~/lib/.server/tools/schemas/analyze-data';
 import { deepSearchSchema } from '~/lib/.server/tools/schemas/deep-search';
 import { readAndExtractSchema, READ_AND_EXTRACT_DEFAULT_FIELDS } from '~/lib/.server/tools/schemas/read-and-extract';
@@ -112,18 +112,48 @@ test('generate_image schema rejects prompt > 2000 chars', () => {
   assert.ok(!r.success);
 });
 
-test('generate_image schema accepts size variations', () => {
-  const sizes = ['1024x1024', '768x1344', '1344x768', '1440x720'];
-
-  for (const s of sizes) {
-    const r = generateImageSchema.safeParse({ prompt: 'test', size: s });
-    assert.ok(r.success, `size ${s} should be valid`);
+test('generate_image schema accepts every aspect ratio it offers', () => {
+  for (const r of ASPECT_RATIOS) {
+    assert.ok(generateImageSchema.safeParse({ prompt: 'test', aspectRatio: r }).success, `${r} should be valid`);
   }
 });
 
-test('generate_image schema rejects invalid size', () => {
-  const r = generateImageSchema.safeParse({ prompt: 'test', size: '500x500' as any });
-  assert.ok(!r.success);
+test('generate_image schema rejects a shape it cannot produce', () => {
+  assert.ok(!generateImageSchema.safeParse({ prompt: 'test', aspectRatio: '2:1' as any }).success);
+});
+
+/*
+ * The old pixel sizes are still accepted, because a model that learned the
+ * old schema keeps emitting them and the nearest working shape beats a 400.
+ */
+test('the old pixel sizes resolve to the shape they were reaching for', () => {
+  const cases: Record<string, string> = {
+    '1024x1024': '1:1',
+    '1344x768': '16:9',
+    '1440x720': '16:9',
+    '768x1344': '9:16',
+    '720x1440': '9:16',
+    '1152x864': '4:3',
+    '864x1152': '3:4',
+  };
+
+  for (const [size, expected] of Object.entries(cases)) {
+    assert.ok(generateImageSchema.safeParse({ prompt: 'test', size }).success, `size ${size} should still parse`);
+    assert.equal(resolveAspectRatio({ size }), expected, `${size} should read as ${expected}`);
+  }
+});
+
+test('a size nobody offered is measured, not rejected', () => {
+  assert.equal(resolveAspectRatio({ size: '1600x900' }), '16:9');
+  assert.equal(resolveAspectRatio({ size: '900x1600' }), '9:16');
+  assert.equal(resolveAspectRatio({ size: '800x600' }), '4:3');
+  assert.equal(resolveAspectRatio({ size: '512x512' }), '1:1');
+  assert.equal(resolveAspectRatio({ size: 'nonsense' }), '1:1');
+  assert.equal(resolveAspectRatio({}), '1:1');
+});
+
+test('an explicit aspectRatio wins over a legacy size', () => {
+  assert.equal(resolveAspectRatio({ aspectRatio: '3:4', size: '1440x720' }), '3:4');
 });
 
 test('generate_image schema accepts transparent flag', () => {
@@ -391,25 +421,142 @@ test('generate_image still labels PNG bytes as PNG', async () => {
 });
 
 /*
- * Without `size` the provider chooses its own aspect ratio — 1408x768 rather
- * than the square that was requested. It is honoured, so it must be sent.
+ * Without `size` the provider chooses its own shape — 1408x768 rather than
+ * the square that was requested — so it must be sent. But the two families
+ * disagree about what a size is, and six of the seven the schema used to
+ * offer were refused by both. Measured against OpenRouter:
+ *
+ *   gemini-3.1-flash-lite-image  1024x1024 ok, 1344x768 400, 1440x720 400
+ *   gpt-5-image-mini             "Supported sizes are 1024x1024,
+ *                                 1024x1536, 1536x1024, and auto."
+ *
+ * So the shape is resolved to a size the chosen model takes.
  */
-test('generate_image forwards the requested size', async () => {
-  let body: any = null;
-  mockFetch({ 'openrouter.ai': { status: 200, body: { data: [{ b64_json: 'aGk=' }] } } });
-
-  const original = globalThis.fetch;
-  globalThis.fetch = (async (url: any, init: any) => {
-    body = JSON.parse(init.body);
-    return original(url, init);
+function captureBodies(status = 200, body: unknown = { data: [{ b64_json: 'aGk=' }] }) {
+  const sent: any[] = [];
+  globalThis.fetch = (async (_url: any, init: any) => {
+    sent.push(JSON.parse(init.body));
+    return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   }) as any;
 
+  return sent;
+}
+
+test('generate_image sends a size the chosen model accepts', async () => {
+  const sent = captureBodies();
+
   await generateImageTool.execute(
-    { prompt: 'a red apple', size: '1344x768' },
+    { prompt: 'a red apple', aspectRatio: '16:9' },
     makeCtx({ apiKeys: { OpenRouter: 'k' }, routeModel: imageRoute }),
   );
 
-  assert.equal(body?.size, '1344x768');
+  /* Gemini reads a size as a ratio plus a tier; over 1024 on either axis is refused. */
+  assert.equal(sent.length, 1, 'a known family should not need a retry');
+  assert.equal(sent[0]?.size, '1024x576');
+  restoreFetch();
+});
+
+test('generate_image sends OpenAI its own size vocabulary', async () => {
+  const sent = captureBodies();
+
+  await generateImageTool.execute(
+    { prompt: 'a red apple', aspectRatio: '16:9' },
+    makeCtx({
+      apiKeys: { OpenRouter: 'k' },
+      routeModel: async () => ({ model: 'openai/gpt-5-image-mini', descriptor: {} as never, reason: 'test' }),
+    }),
+  );
+
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]?.size, '1536x1024');
+  restoreFetch();
+});
+
+test('a legacy pixel size still reaches a size that works', async () => {
+  const sent = captureBodies();
+
+  await generateImageTool.execute(
+    { prompt: 'a red apple', size: '1440x720' },
+    makeCtx({ apiKeys: { OpenRouter: 'k' }, routeModel: imageRoute }),
+  );
+
+  /* The request that used to come back as 'does not support aspect_ratio "2:1"'. */
+  assert.equal(sent[0]?.size, '1024x576');
+  restoreFetch();
+});
+
+test('generate_image tries another size when the provider rejects the shape', async () => {
+  const sent: any[] = [];
+  globalThis.fetch = (async (_url: any, init: any) => {
+    sent.push(JSON.parse(init.body));
+
+    if (sent.length === 1) {
+      return new Response(JSON.stringify({ error: { message: 'Image size 2K is not supported for this model' } }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    return new Response(JSON.stringify({ data: [{ b64_json: 'aGk=' }] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as any;
+
+  const result = await generateImageTool.execute(
+    { prompt: 'a red apple', aspectRatio: '4:3' },
+    makeCtx({ apiKeys: { OpenRouter: 'k' }, routeModel: imageRoute }),
+  );
+
+  assert.equal(result.ok, true, 'a size complaint should not end the attempt');
+  assert.equal(sent.length, 2);
+  assert.notEqual(sent[1].size, sent[0].size, 'the retry should change the size, not repeat it');
+  restoreFetch();
+});
+
+test('the last attempt drops the size rather than failing', async () => {
+  const sent: any[] = [];
+  globalThis.fetch = (async (_url: any, init: any) => {
+    const body = JSON.parse(init.body);
+    sent.push(body);
+
+    if (body.size) {
+      return new Response(JSON.stringify({ error: { message: 'Request contains an invalid argument.' } }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    return new Response(JSON.stringify({ data: [{ b64_json: 'aGk=' }] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as any;
+
+  const result = await generateImageTool.execute(
+    { prompt: 'a red apple', aspectRatio: '9:16' },
+    makeCtx({ apiKeys: { OpenRouter: 'k' }, routeModel: imageRoute }),
+  );
+
+  assert.equal(result.ok, true, 'a provider default beats no image at all');
+  assert.equal(sent.at(-1)?.size, undefined);
+  restoreFetch();
+});
+
+/*
+ * A rejected key says the same thing whatever shape the picture is, so
+ * retrying it just spends the user's time.
+ */
+test('generate_image does not retry a failure that is not about size', async () => {
+  const sent = captureBodies(401, 'Unauthorized');
+
+  const result = await generateImageTool.execute(
+    { prompt: 'a red apple', aspectRatio: '16:9' },
+    makeCtx({ apiKeys: { OpenRouter: 'k' }, routeModel: imageRoute }),
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(sent.length, 1);
   restoreFetch();
 });
 
