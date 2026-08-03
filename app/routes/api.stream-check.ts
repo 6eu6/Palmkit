@@ -31,6 +31,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   }
 
   const url = new URL(request.url);
+
   /*
    * `??` and not `||`: `Number('0') || 50` is 50, so every "no delay" run was
    * quietly throttled to 20 chunks a second and the fastest case — the one
