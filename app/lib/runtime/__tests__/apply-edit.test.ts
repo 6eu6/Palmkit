@@ -178,10 +178,7 @@ describe('the blocks real models write', () => {
 `;
 
   it('applies what gpt-5.6-luna produced', () => {
-    const out = applyEdit(
-      CSS,
-      '<<<<<<< SEARCH\n  --accent: #8b5a2b;\n=======\n  --accent: #c2410c;\n>>>>>>> REPLACE',
-    );
+    const out = applyEdit(CSS, '<<<<<<< SEARCH\n  --accent: #8b5a2b;\n=======\n  --accent: #c2410c;\n>>>>>>> REPLACE');
 
     expect(out.ok).toBe(true);
     expect(out.content.split('\n')).toHaveLength(CSS.split('\n').length);
