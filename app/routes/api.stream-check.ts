@@ -15,11 +15,17 @@
  *   /api/stream-check?proxy=1                → pipe an upstream stream through
  *
  * The proxy mode exists because generating locally is not what the chat route
- * does. That route holds an open connection to the model provider and pipes
- * its stream out, and a Worker that is relaying a subrequest is a different
- * situation from one producing its own bytes. Two fixes aimed at the local
- * case — encoding the chunks, registering the work with waitUntil — did not
- * stop the truncation, so this isolates the remaining difference.
+ * does — that route holds an open connection to the model provider and pipes
+ * its stream out. Measured, and it makes no difference:
+ *
+ *    600 chunks over 32s   generated ✓   relayed ✓
+ *   1500 chunks over 75s   generated ✓   relayed ✓
+ *
+ * So the transport is not the problem in either direction, and neither was
+ * encoding the chunks nor registering the work with waitUntil. Whatever stops
+ * a build part-way is in what the chat route does with the stream, or in the
+ * provider connection specifically — not in a Worker's ability to hold one
+ * open and push bytes down it.
  *
  * The last line is `END <n>`, so a truncated response is one that does not
  * have it. Signed-in only: it costs nothing to serve but there is no reason
