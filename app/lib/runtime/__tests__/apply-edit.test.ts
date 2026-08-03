@@ -149,3 +149,63 @@ describe('applying an edit', () => {
     }
   });
 });
+
+/**
+ * The blocks three different model families actually produced, verbatim.
+ *
+ * Asked to change one accent colour on a landing page they had just built,
+ * each returned an edit rather than the file. Kept here because the format
+ * only earns its keep if models reproduce it — a parser that accepts a shape
+ * nobody emits saves nothing, and this is the evidence that they do.
+ *
+ *   gpt-5.6-luna        6,472 output tokens → 246   2 lines changed of 475
+ *   claude-sonnet-4.5                       → 262   1 line changed of 532
+ *   glm-4.7                                 → 385   1 line changed of 781
+ *
+ * In all three the line count came back unchanged. Rewriting the same file
+ * had grown it from 601 lines to 677.
+ */
+describe('the blocks real models write', () => {
+  const CSS = `:root {
+  --bg: #faf7f2;
+  --accent: #8b5a2b;
+  --text: #2c1810;
+}
+
+.cta {
+  background: var(--accent);
+}
+`;
+
+  it('applies what gpt-5.6-luna produced', () => {
+    const out = applyEdit(
+      CSS,
+      '<<<<<<< SEARCH\n  --accent: #8b5a2b;\n=======\n  --accent: #c2410c;\n>>>>>>> REPLACE',
+    );
+
+    expect(out.ok).toBe(true);
+    expect(out.content.split('\n')).toHaveLength(CSS.split('\n').length);
+    expect(out.content).toContain('--bg: #faf7f2;');
+  });
+
+  it('applies a multi-line block of the kind claude produced', () => {
+    const out = applyEdit(
+      CSS,
+      '<<<<<<< SEARCH\n  --accent: #8b5a2b;\n  --text: #2c1810;\n=======\n  --accent: #c2410c;\n  --text: #2c1810;\n>>>>>>> REPLACE',
+    );
+
+    expect(out.ok).toBe(true);
+    expect(out.content).toContain('--accent: #c2410c;');
+    expect(out.content).toContain('--text: #2c1810;');
+  });
+
+  /* Whatever the model, the parts it was not asked about have to survive. */
+  it('leaves everything it was not asked about alone', () => {
+    const out = applyEdit(CSS, '<<<<<<< SEARCH\n  --accent: #8b5a2b;\n=======\n  --accent: red;\n>>>>>>> REPLACE');
+
+    expect(out.content).toContain('--bg: #faf7f2;');
+    expect(out.content).toContain('--text: #2c1810;');
+    expect(out.content).toContain('.cta {');
+    expect(out.content).toContain('background: var(--accent);');
+  });
+});
