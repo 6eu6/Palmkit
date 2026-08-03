@@ -251,10 +251,32 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
        * means the cost is being in the way at all, and a success means the
        * cost is the work — which are different problems with different fixes.
        */
+      /*
+       * `hold=1` keeps the request registered until the last byte.
+       *
+       * The identity transform truncates, and a transform that does nothing
+       * cannot be too expensive — so it is not the work. But the datastream
+       * probe also piped through a transform and ran for over two hours, and
+       * it differed in two ways: its source was a locally generated stream
+       * rather than a subrequest body, and it registered the stream with
+       * `waitUntil`.
+       *
+       * Without that registration the runtime is free to reclaim the isolate
+       * once the Response has been returned, and a body still being pumped
+       * through JS simply stops. That is a much smaller thing to be wrong than
+       * anything architectural, so it gets ruled out before anything moves.
+       */
+      let releasePipe: (() => void) | undefined;
+
+      if (url.searchParams.get('hold')) {
+        context.cloudflare?.ctx?.waitUntil?.(new Promise<void>((resolve) => (releasePipe = resolve)));
+      }
+
       const body = url.searchParams.get('pipe')
         ? upstream.body!.pipeThrough(
             new TransformStream<Uint8Array, Uint8Array>({
               transform: (chunk, controller) => controller.enqueue(chunk),
+              flush: () => releasePipe?.(),
             }),
           )
         : upstream.body;
