@@ -21,14 +21,6 @@ import { WebSearch } from './WebSearch.client';
 import { ThinkingMeter, PlusMenu } from './ComposerControls';
 import { useStore } from '@nanostores/react';
 import { sidebarModeStore } from '~/lib/stores/sidebar';
-import {
-  MODEL_ROLE_META,
-  modelRolesStore,
-  setModelRole,
-  ROLE_CAPABILITY_SPEC,
-  type ModelRole,
-} from '~/lib/stores/model-roles';
-import { filterModelsByCapability, getModelCapabilityLabel } from '~/lib/modules/llm/capabilities';
 
 interface ChatBoxProps {
   isModelSettingsCollapsed: boolean;
@@ -125,7 +117,6 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
    * palette, MCP, Supabase) hide behind a single "+" toggle so the box stays
    * one clean row; on sm+ they are always visible.
    */
-  const modelRoles = useStore(modelRolesStore);
   const sidebarMode = useStore(sidebarModeStore);
 
   /*
@@ -196,109 +187,11 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                   />
                 )}
 
-              {/* Model Router — one model per task (Design v2).
-                  brain/builder/tester are live in the build pipeline today;
-                  vision/media are stored and light up with the media pipeline. */}
-              <div className="mt-2 pt-2 border-t border-palmkit-elements-borderColor/60">
-                <div className="px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-palmkit-elements-textTertiary">
-                  Models per task
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 px-1">
-                  {(Object.keys(MODEL_ROLE_META) as ModelRole[]).map((role) => {
-                    const meta = MODEL_ROLE_META[role];
-                    const spec = ROLE_CAPABILITY_SPEC[role];
-                    const filtered = filterModelsByCapability(
-                      (props.modelList || []) as Array<{ name: string; label?: string }>,
-                      spec,
-                    );
-                    const hasRecommended = filtered.recommended.length > 0;
-                    const hasCompatible = filtered.compatible.length > 0;
-                    const hasOthers = filtered.others.length > 0;
-                    const totalCount = filtered.all.length;
-                    const currentValue = modelRoles[role] ?? '';
-                    const currentCapability = currentValue ? getModelCapabilityLabel(currentValue) : '';
-
-                    return (
-                      <label
-                        key={role}
-                        className="flex items-center gap-2 rounded-lg border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 px-2 py-1.5"
-                        title={`${meta.hint} (${totalCount} models available)`}
-                      >
-                        <span className="flex-1 min-w-0">
-                          <span className="block text-[11px] font-medium text-palmkit-elements-textSecondary truncate">
-                            {meta.label}
-                            {!meta.wired && (
-                              <span className="ml-1 rounded-full px-1.5 text-[9px] font-semibold text-[var(--pk-accent)] bg-[var(--pk-accent-dim)]">
-                                soon
-                              </span>
-                            )}
-                            {totalCount > 0 && (
-                              <span className="ml-1 text-[9px] text-palmkit-elements-textTertiary">({totalCount})</span>
-                            )}
-                            {currentCapability &&
-                              currentCapability !== spec.primary &&
-                              currentCapability !== 'text' && (
-                                <span className="ml-1 text-[9px] text-palmkit-elements-button-warning-text">
-                                  · {currentCapability}
-                                </span>
-                              )}
-                          </span>
-                        </span>
-                        <select
-                          value={currentValue}
-                          onChange={(e) => setModelRole(role, e.target.value)}
-                          className="max-w-[46%] appearance-none text-[11px] rounded-md border border-palmkit-elements-borderColor text-palmkit-elements-textPrimary px-2 py-1 outline-none focus:border-[var(--pk-accent)] cursor-pointer"
-                          style={{
-                            background:
-                              'var(--palmkit-elements-bg-depth-1) url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%278%27 height=%275%27%3E%3Cpath d=%27M0 0l4 5 4-5z%27 fill=%27%23888888%27/%3E%3C/svg%3E") no-repeat right 7px center',
-                            paddingRight: 20,
-                          }}
-                        >
-                          <option value="">Main model</option>
-                          {hasRecommended && (
-                            <optgroup label={`Recommended · ${spec.primary} (${filtered.recommended.length})`}>
-                              {filtered.recommended.map((m) => (
-                                <option key={m.name} value={m.name}>
-                                  {m.label ?? m.name}
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                          {hasCompatible && (
-                            <optgroup
-                              label={
-                                hasRecommended
-                                  ? `Also compatible (${filtered.compatible.length})`
-                                  : `Compatible (${filtered.compatible.length})`
-                              }
-                            >
-                              {filtered.compatible.map((m) => (
-                                <option key={m.name} value={m.name}>
-                                  {m.label ?? m.name}
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                          {hasOthers && (
-                            <optgroup label={`All models (${filtered.others.length})`}>
-                              {filtered.others.map((m) => (
-                                <option key={m.name} value={m.name}>
-                                  {m.label ?? m.name}
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                          {!hasRecommended && !hasCompatible && !hasOthers && (
-                            <option disabled value="">
-                              No models available
-                            </option>
-                          )}
-                        </select>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
+              {/* "Models per task" used to live here. It was five hardcoded
+                  roles — brain/builder/tester/vision/media — filtered by a
+                  regex that guessed capabilities from model names, crammed
+                  into the composer. Model assignment belongs in settings, on
+                  top of the capability registry, not beside the message box. */}
             </div>
           </div>
         )}
@@ -449,8 +342,9 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             <div className={`i-ph:caret-${props.isModelSettingsCollapsed ? 'down' : 'up'} text-[11px]`} />
           </button>
 
-          {/* Thinking power — volume-style meter (Off / Medium / Max) */}
-          <ClientOnly>{() => <ThinkingMeter />}</ClientOnly>
+          {/* Thinking — Fast / Balanced / Deep, resolved against what the
+              selected model can actually be asked to do. */}
+          <ClientOnly>{() => <ThinkingMeter provider={props.provider?.name} model={props.model} />}</ClientOnly>
 
           {/*
            * Design theme — palette icon directly in the toolbar (before "+"),

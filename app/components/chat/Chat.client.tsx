@@ -50,6 +50,7 @@ import { RestoreOverlay } from '~/components/ui/RestoreOverlay';
 import { ProjectList } from '~/components/ui/ProjectList';
 import { setGenerationStep, resetGenerationStatus, generationStatusStore } from '~/lib/stores/generationStatus';
 import { pendingEditPromptStore } from '~/lib/stores/inspector';
+import { effortStore } from '~/lib/stores/model-capabilities';
 
 const logger = createScopedLogger('Chat');
 
@@ -377,6 +378,12 @@ export const ChatImpl = memo(
           },
         },
         maxLLMSteps: mcpSettings.maxLLMSteps,
+
+        /*
+         * How hard to think. Resolved server-side against the model's
+         * descriptor, so it is a no-op on a model that cannot be steered.
+         */
+        effort: effortStore.get(),
       },
 
       /*
@@ -430,6 +437,12 @@ export const ChatImpl = memo(
             },
           },
           maxLLMSteps: mcpSettings.maxLLMSteps,
+
+          /*
+           * How hard to think. Resolved server-side against the model's
+           * descriptor, so it is a no-op on a model that cannot be steered.
+           */
+          effort: effortStore.get(),
 
           // Dynamic mode fields (read from URL at request time, not mount time)
           chatMode: currentChatMode,

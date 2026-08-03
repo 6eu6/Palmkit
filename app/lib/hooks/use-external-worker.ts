@@ -647,14 +647,12 @@ export function useExternalWorker() {
 
       try {
         /*
-         * Model Router + thinking control: attach the user's per-task model
-         * assignments and reasoning-effort choice so the worker can run each
-         * agent (brain/builder/tester) on its own model and tune thinking.
+         * The same thinking control the chat uses. The per-task model roles
+         * that used to ride along here are gone: five hardcoded jobs picked
+         * by a regex over model names, which the worker had to second-guess
+         * anyway.
          */
-        const { modelRolesStore, reasoningEffortStore } = await import('~/lib/stores/model-roles');
-        const roles = Object.fromEntries(
-          Object.entries(modelRolesStore.get()).filter(([, v]) => typeof v === 'string' && v.length > 0),
-        );
+        const { effortStore } = await import('~/lib/stores/model-capabilities');
 
         // Skills: enabled instruction playbooks injected into the build models.
         const { getActiveSkillPayload } = await import('~/lib/stores/skills');
@@ -675,8 +673,7 @@ export function useExternalWorker() {
             prompt,
             model,
             provider,
-            reasoningEffort: reasoningEffortStore.get(),
-            ...(Object.keys(roles).length > 0 ? { modelRoles: roles } : {}),
+            effort: effortStore.get(),
             ...(skills.length > 0 ? { skills } : {}),
             ...(libraries.length > 0 ? { libraries } : {}),
             ...(agentConfig ? { agentConfig } : {}),

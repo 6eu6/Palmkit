@@ -16,6 +16,9 @@ import { StreamRecoveryManager } from '~/lib/.server/llm/stream-recovery';
 import { toolRegistry, resolveToolMode, type ToolContext } from '~/lib/.server/tools/registry';
 import { validateBuildOutput, completenessToJobStatus } from '~/lib/runtime/output-validator';
 import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
+import { readCatalog } from '~/lib/.server/llm/capability-registry';
+import { DEFAULT_EFFORT, type Effort } from '~/lib/modules/llm/effort';
+import type { ModelDescriptor } from '~/lib/modules/llm/model-descriptor';
 import { decryptSecret } from '~/lib/auth/crypto.server';
 
 export async function action(args: ActionFunctionArgs) {
@@ -97,8 +100,52 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     };
     maxLLMSteps: number;
     memoryBlock?: string;
+    effort?: Effort;
   }>();
   const { messages, files, promptId, contextOptimization, supabase, designScheme, maxLLMSteps, memoryBlock } = body;
+
+  /*
+   * Only ever one of three values; anything else is ignored rather than passed
+   * through to a provider that would reject it.
+   */
+  const effort: Effort = ['fast', 'balanced', 'deep'].includes(body.effort ?? '') ? body.effort! : DEFAULT_EFFORT;
+
+  /*
+   * What the selected model can do, read once per request from the shared
+   * catalog. Needed here because the effort setting is only meaningful — and
+   * only safe to send — on a model that accepts it.
+   *
+   * Memoised: the stream runs in a loop for auto-continue, and re-reading the
+   * catalog on every pass would spend a round trip to say the same thing.
+   */
+  let descriptorPromise: Promise<ModelDescriptor | undefined> | undefined;
+
+  const lookupDescriptor = () => {
+    descriptorPromise ??= (async () => {
+      try {
+        const last = [...messages].reverse().find((m) => m.role === 'user');
+
+        if (!last) {
+          return undefined;
+        }
+
+        const { model, provider } = extractPropertiesFromMessage(last as never);
+        const { user, supabase } = await getAuthedUser(request, context);
+
+        if (!user || !supabase || !model || !provider) {
+          return undefined;
+        }
+
+        const catalog = await readCatalog(supabase, provider);
+
+        return catalog.get(`${provider}::${model}`);
+      } catch {
+        return undefined;
+      }
+    })();
+
+    return descriptorPromise;
+  };
 
   /*
    * ════════════════════════════════════════════════════════════════════════
@@ -484,6 +531,8 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             summary,
             messageSliceId,
             memoryBlock,
+            effort,
+            descriptor: await lookupDescriptor(),
           });
 
           result.mergeIntoDataStream(dataStream);

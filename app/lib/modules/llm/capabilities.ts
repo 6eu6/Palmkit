@@ -1,4 +1,13 @@
 /**
+ * Layer 4 of the capability registry — the last resort.
+ *
+ * Pattern-matches a model's NAME. It cannot see a model it has no pattern for,
+ * knows nothing about price or context, and is wrong silently — which is why
+ * anything it produces is marked `heuristic` and is never written to the
+ * shared catalog. See `model-descriptor.ts` for the layers that actually
+ * establish facts.
+ *
+ * Original notes:
  * Model Capability Classifier
  *
  * Categorizes LLM models by their capabilities based on model name patterns.
@@ -284,137 +293,4 @@ export function classifyModelCapabilities(modelName: string): ModelCapabilities 
   }
 
   return caps;
-}
-
-/**
- * Check if a model supports a given capability.
- */
-export function modelSupports(modelName: string, capability: ModelCapability): boolean {
-  const caps = classifyModelCapabilities(modelName);
-
-  return caps[capability];
-}
-
-/**
- * Get a human-readable label for a model's primary capability.
- * Useful for badges in the UI.
- *
- * Returns the most specific capability (image > video > reasoning > code > vision > text).
- */
-export function getModelCapabilityLabel(modelName: string): string {
-  const caps = classifyModelCapabilities(modelName);
-
-  if (caps.image) {
-    return 'image';
-  }
-
-  if (caps.video) {
-    return 'video';
-  }
-
-  if (caps.reasoning) {
-    return 'reasoning';
-  }
-
-  if (caps.code) {
-    return 'code';
-  }
-
-  if (caps.vision) {
-    return 'vision';
-  }
-
-  return 'text';
-}
-
-/**
- * Get the icon name (Phosphor) for a model's primary capability.
- */
-export function getModelCapabilityIcon(modelName: string): string {
-  const label = getModelCapabilityLabel(modelName);
-
-  switch (label) {
-    case 'image':
-      return 'ph:image-duotone';
-    case 'video':
-      return 'ph:video-camera-duotone';
-    case 'reasoning':
-      return 'ph:brain-duotone';
-    case 'code':
-      return 'ph:code-duotone';
-    case 'vision':
-      return 'ph:eye-duotone';
-    default:
-      return 'ph:chat-circle-text-duotone';
-  }
-}
-
-/**
- * Filter a list of models by capability requirement.
- *
- * Returns THREE groups so the UI can show:
- *   - "Recommended" — models matching the primary capability (best fit)
- *   - "Compatible" — models matching the secondary capability (also good)
- *   - "All Models" — every model (user can override and pick any)
- *
- * NO model is hidden. The classifier only SORTS models into recommended vs
- * compatible vs other — the user always has access to the full list.
- */
-export interface FilteredModels<T> {
-  /** Models that match the primary capability (best fit for the role). */
-  recommended: T[];
-
-  /** Models that match the secondary capability (also good). */
-  compatible: T[];
-
-  /** All other models (general text, image, etc. — user can still pick). */
-  others: T[];
-
-  /** Combined list (recommended + compatible + others), deduped. */
-  all: T[];
-}
-
-export function filterModelsByCapability<T extends { name: string }>(
-  models: T[],
-  spec: {
-    primary: ModelCapability;
-    secondary?: ModelCapability;
-    allowTextFallback: boolean;
-  },
-): FilteredModels<T> {
-  const recommended: T[] = [];
-  const compatible: T[] = [];
-  const others: T[] = [];
-  const seen = new Set<string>();
-
-  for (const model of models) {
-    if (seen.has(model.name)) {
-      continue;
-    }
-
-    const caps = classifyModelCapabilities(model.name);
-    seen.add(model.name);
-
-    // Primary capability match → recommended
-    if (caps[spec.primary]) {
-      recommended.push(model);
-      continue;
-    }
-
-    // Secondary capability match → compatible
-    if (spec.secondary && caps[spec.secondary]) {
-      compatible.push(model);
-      continue;
-    }
-
-    // Everything else → others (NOT hidden — user can still pick)
-    others.push(model);
-  }
-
-  return {
-    recommended,
-    compatible,
-    others,
-    all: [...recommended, ...compatible, ...others],
-  };
 }

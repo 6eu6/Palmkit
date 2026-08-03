@@ -9,6 +9,8 @@ import { LLMManager } from '~/lib/modules/llm/manager';
 import { createScopedLogger } from '~/utils/logger';
 import { createFilesContext, extractPropertiesFromMessage } from './utils';
 import type { DesignScheme } from '~/types/design-scheme';
+import { DEFAULT_EFFORT, effortProviderOptions, type Effort } from '~/lib/modules/llm/effort';
+import type { ModelDescriptor } from '~/lib/modules/llm/model-descriptor';
 
 export type Messages = Message[];
 
@@ -77,6 +79,16 @@ export async function streamText(props: {
    * a file, or search — no hardcoded "discuss never builds" rule.
    */
   customSystemPrompt?: string;
+
+  /**
+   * How hard to think. Resolved into provider options against the model's
+   * descriptor, so it is a no-op on a model that cannot be steered rather
+   * than a parameter the provider will reject.
+   */
+  effort?: Effort;
+
+  /** What the model can do, from the capability registry. */
+  descriptor?: ModelDescriptor;
 }) {
   const {
     messages,
@@ -298,11 +310,35 @@ export async function streamText(props: {
    * this, OpenRouter returns reasoning content interleaved but the AI SDK
    * discards it because no providerOptions were set.
    */
-  const isReasoningCapable = isReasoning || /\b(r1|reasoning|thinking|o1|o3|o4)\b/i.test(modelDetails.name);
-  const providerOptions =
-    currentProvider === 'OpenRouter' && isReasoningCapable
-      ? { openrouter: { reasoning: { enabled: true } } }
-      : undefined;
+  const isReasoningCapable =
+    props.descriptor?.reasoning.supported ??
+    (isReasoning || /\b(r1|reasoning|thinking|o1|o3|o4)\b/i.test(modelDetails.name));
+
+  /*
+   * Two separate things, deliberately merged here:
+   *
+   *   - reasoning must be ENABLED on OpenRouter or the AI SDK discards the
+   *     reasoning content the model streams back;
+   *   - the user's effort choice, which only says anything when the model can
+   *     actually be steered. Balanced contributes nothing at all.
+   *
+   * Until now the effort the user picked never reached this call — it was
+   * passed to the external build worker and nowhere else, so the control did
+   * nothing in chat.
+   */
+  const effortOptions = effortProviderOptions(currentProvider, props.descriptor, props.effort ?? DEFAULT_EFFORT);
+
+  const merged: Record<string, Record<string, unknown>> = {};
+
+  if (currentProvider === 'OpenRouter' && isReasoningCapable) {
+    merged.openrouter = { reasoning: { enabled: true } };
+  }
+
+  for (const [key, value] of Object.entries(effortOptions ?? {})) {
+    merged[key] = { ...(merged[key] ?? {}), ...value };
+  }
+
+  const providerOptions = Object.keys(merged).length ? (merged as Record<string, Record<string, never>>) : undefined;
 
   const streamParams = {
     model: provider.getModelInstance({

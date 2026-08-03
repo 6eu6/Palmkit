@@ -64,8 +64,7 @@ export async function action(args: ActionFunctionArgs) {
     projectId,
     files,
     editJobId,
-    reasoningEffort,
-    modelRoles,
+    effort,
     skills,
     libraries,
     agentConfig,
@@ -147,8 +146,7 @@ export async function action(args: ActionFunctionArgs) {
     ...(maxCompletionTokens ? { maxCompletionTokens } : {}),
     ...(contextWindow ? { contextWindow } : {}),
     ...(editJobId ? { editJobId } : {}),
-    ...(reasoningEffort && ['off', 'medium', 'max'].includes(reasoningEffort) ? { reasoningEffort } : {}),
-    ...(modelRoles && typeof modelRoles === 'object' ? { modelRoles } : {}),
+    ...(effort && ['fast', 'balanced', 'deep'].includes(effort) ? { effort } : {}),
     ...(designScheme && typeof designScheme === 'object'
       ? {
           designScheme: {

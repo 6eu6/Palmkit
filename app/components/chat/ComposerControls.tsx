@@ -3,31 +3,38 @@ import * as Popover from '@radix-ui/react-popover';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { useStore } from '@nanostores/react';
 import { classNames } from '~/utils/classNames';
-import { reasoningEffortStore, setReasoningEffort, REASONING_LEVELS } from '~/lib/stores/model-roles';
+import { EFFORT_LEVELS, effortAvailable } from '~/lib/modules/llm/effort';
+import { descriptorKey, descriptorsStore, effortStore, setEffort } from '~/lib/stores/model-capabilities';
 import { enabledSkillsStore } from '~/lib/stores/skills';
 import { enabledLibrariesStore } from '~/lib/stores/libraries';
 import { SkillsDialog } from './SkillsDialog';
 import { AgentsDialog, LibrariesDialog, WorkflowsDialog, ConnectorsDialog, TemplatesDialog } from './BuilderPanels';
 
 /**
- * ThinkingMeter — the "thinking power" control (v3 Phase 5).
+ * ThinkingMeter — how hard the model should think.
  *
- * A three-bar volume-style meter. Each bar is taller than the last; the number
- * of lit bars and their brightness rise with the level (Off → Medium → Max),
- * so the strength reads at a glance without any label. Clicking a bar sets that
- * level directly; the whole thing is wrapped in a tooltip that names the level.
+ * Three steps, and the middle one is the default AND the quiet one: Balanced
+ * sends no parameter at all, so the model behaves exactly as its provider
+ * tuned it and the bill holds no surprises. Only Fast and Deep ask for
+ * anything.
  *
- * The value is the same `reasoningEffortStore` that the build pipeline already
- * ships to the worker (`off`/`medium`/`max` → OpenRouter effort none/med/high),
- * so this is a real control, not decoration.
+ * The control disables itself, with a reason, on a model that cannot be
+ * steered. Its predecessor was always enabled and, in chat, wired to nothing:
+ * the value it set was shipped to the build worker and never reached the chat
+ * call, so pressing it changed nothing at all.
  */
-export function ThinkingMeter() {
-  const effort = useStore(reasoningEffortStore);
-  const activeIndex = REASONING_LEVELS.findIndex((l) => l.value === effort);
-  const current = REASONING_LEVELS[activeIndex] ?? REASONING_LEVELS[1];
+export function ThinkingMeter({ provider, model }: { provider?: string; model?: string }) {
+  const effort = useStore(effortStore);
+  const descriptors = useStore(descriptorsStore);
 
-  // Brightness of lit bars steps up with the level — monochrome, on v3 theme.
-  const litOpacity = effort === 'max' ? 1 : effort === 'medium' ? 0.7 : 0.4;
+  const descriptor = provider && model ? descriptors[descriptorKey(provider, model)] : undefined;
+  const available = provider ? effortAvailable(provider, descriptor) : false;
+
+  const activeIndex = EFFORT_LEVELS.findIndex((l) => l.value === effort);
+  const current = EFFORT_LEVELS[activeIndex] ?? EFFORT_LEVELS[1];
+
+  /* Bars light up to the chosen level; Fast lights one, Deep lights all three. */
+  const litOpacity = effort === 'deep' ? 1 : effort === 'balanced' ? 0.7 : 0.45;
 
   return (
     <Tooltip.Provider delayDuration={150}>
@@ -35,8 +42,14 @@ export function ThinkingMeter() {
         <Tooltip.Trigger asChild>
           <div
             role="group"
-            aria-label={`Thinking power: ${current.label}`}
-            className="shrink-0 flex items-center gap-1.5 h-7 pl-2 pr-2.5 rounded-full border border-palmkit-elements-borderColor hover:border-[var(--pk-glass-border-hi)] transition-colors"
+            aria-label={`Thinking: ${current.label}`}
+            aria-disabled={!available}
+            className={classNames(
+              'shrink-0 flex items-center gap-1.5 h-7 pl-2 pr-2.5 rounded-full border transition-colors',
+              available
+                ? 'border-palmkit-elements-borderColor hover:border-[var(--pk-glass-border-hi)]'
+                : 'border-palmkit-elements-borderColor/50 opacity-45',
+            )}
           >
             <div className="i-ph:brain text-[13px] text-palmkit-elements-textTertiary" />
             {/*
@@ -50,18 +63,25 @@ export function ThinkingMeter() {
               aria-valuemax={2}
               aria-valuenow={Math.max(activeIndex, 0)}
               aria-valuetext={current.label}
-              tabIndex={0}
+              tabIndex={available ? 0 : -1}
               onKeyDown={(e) => {
+                if (!available) {
+                  return;
+                }
+
                 if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
-                  setReasoningEffort(REASONING_LEVELS[Math.min(activeIndex + 1, 2)].value);
+                  setEffort(EFFORT_LEVELS[Math.min(activeIndex + 1, 2)].value);
                 } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
-                  setReasoningEffort(REASONING_LEVELS[Math.max(activeIndex - 1, 0)].value);
+                  setEffort(EFFORT_LEVELS[Math.max(activeIndex - 1, 0)].value);
                 }
               }}
-              className="flex items-end gap-[3px] h-3.5 cursor-pointer outline-none"
+              className={classNames(
+                'flex items-end gap-[3px] h-3.5 outline-none',
+                available ? 'cursor-pointer' : 'cursor-not-allowed',
+              )}
             >
-              {REASONING_LEVELS.map((level, i) => {
-                const lit = i <= activeIndex && effort !== 'off';
+              {EFFORT_LEVELS.map((level, i) => {
+                const lit = i <= activeIndex;
                 const heights = ['h-1.5', 'h-2.5', 'h-3.5'];
 
                 return (
@@ -70,7 +90,7 @@ export function ThinkingMeter() {
                     role="button"
                     aria-label={level.label}
                     title={level.label}
-                    onClick={() => setReasoningEffort(level.value)}
+                    onClick={() => available && setEffort(level.value)}
                     className={classNames('block w-1 rounded-full transition-all duration-150', heights[i])}
                     style={{
                       backgroundColor: lit ? 'var(--pk-accent)' : 'var(--palmkit-elements-borderColor)',
@@ -86,10 +106,23 @@ export function ThinkingMeter() {
           <Tooltip.Content
             side="top"
             sideOffset={8}
-            className="z-[9999] max-w-[220px] rounded-lg border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 px-3 py-2 text-xs shadow-lg"
+            className="z-[9999] max-w-[240px] rounded-lg border border-palmkit-elements-borderColor bg-palmkit-elements-background-depth-2 px-3 py-2 text-xs shadow-lg"
           >
-            <div className="font-semibold text-palmkit-elements-textPrimary">Thinking · {current.label}</div>
-            <div className="mt-0.5 text-palmkit-elements-textTertiary">{current.hint}</div>
+            {available ? (
+              <>
+                <div className="font-semibold text-palmkit-elements-textPrimary">Thinking · {current.label}</div>
+                <div className="mt-0.5 text-palmkit-elements-textTertiary">{current.hint}</div>
+              </>
+            ) : (
+              <>
+                <div className="font-semibold text-palmkit-elements-textPrimary">Thinking not adjustable</div>
+                <div className="mt-0.5 text-palmkit-elements-textTertiary">
+                  {model
+                    ? `${model} does not take a thinking setting — it answers the same either way.`
+                    : 'Pick a model first.'}
+                </div>
+              </>
+            )}
             <Tooltip.Arrow className="fill-palmkit-elements-background-depth-2" />
           </Tooltip.Content>
         </Tooltip.Portal>
