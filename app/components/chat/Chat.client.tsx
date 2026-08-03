@@ -5,6 +5,7 @@ import { useAnimate } from 'framer-motion';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import { useMessageParser, useShortcuts, finalizeMessageParser } from '~/lib/hooks';
+import { asksTheUser } from '~/lib/runtime/output-validator';
 import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { description as descriptionAtom, useChatHistory, chatMetadata, chatId } from '~/lib/persistence';
 import { chatStore } from '~/lib/stores/chat';
@@ -453,6 +454,48 @@ export const ChatImpl = memo(
 
         // Finalize any open parser actions (files that were mid-stream)
         finalizeMessageParser();
+
+        /*
+         * A stream that stops is not the same as a turn that finishes, and
+         * until now they looked identical from here.
+         *
+         * Every completed build turn ends with a validation annotation from
+         * the server. A turn that was cut off — the provider refusing the
+         * call, a daily spend cap, the worker being killed part-way through a
+         * long build — sends no annotation and no error, and `onFinish` fires
+         * anyway. The user was left with half a file on screen, no message,
+         * and nothing to act on. Measured against production: the same
+         * request three times, one finished and two stopped mid-file, all
+         * three silent.
+         *
+         * So the absence of that annotation is itself the signal.
+         */
+        if (chatMode === 'build') {
+          const reported = (message as Message & { annotations?: unknown[] }).annotations?.some(
+            (a) => a && typeof a === 'object' && (a as { type?: string }).type === 'validation',
+          );
+
+          /*
+           * A turn that stopped to ask the user a question also carries no
+           * validation, on purpose — it wrote no files because it is waiting
+           * for an answer, which is the one case where producing nothing is
+           * the right outcome.
+           */
+          const asked = asksTheUser(typeof message.content === 'string' ? message.content : '');
+
+          if (!reported && !asked) {
+            logger.warn('Build turn ended without a result from the server — treating it as interrupted');
+            setLlmErrorAlert({
+              type: 'warning',
+              title: 'The response stopped early',
+              description:
+                'The connection ended before this build finished, so some files may be missing or cut off. ' +
+                'Anything already written has been kept. Ask to continue, and it will pick up from there.',
+              provider: provider.name,
+              errorType: 'network',
+            });
+          }
+        }
 
         /*
          * Trigger async memory extraction (Layer 1 + Layer 3)
