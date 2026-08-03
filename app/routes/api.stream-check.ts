@@ -235,7 +235,31 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
      * amount of work, not the stream.
      */
     if (!url.searchParams.get('parse')) {
-      return new Response(upstream.body, {
+      /*
+       * `pipe=1` puts a transform that does nothing in the way.
+       *
+       * Relaying the provider untouched completes every time — seven runs out
+       * of seven — and parsing the frames as they pass completes one time in
+       * four. But the parse is not obviously expensive: a request of this same
+       * shape survived 250,000 parses of the same frame, and a build turn only
+       * has five thousand to do. Chunk count is not it either; 5,000 chunks
+       * over 25 seconds arrive whole.
+       *
+       * What separates the two is that a returned body can be handed straight
+       * on, while a transform keeps the isolate resident and running JS for
+       * the whole stream. This does that and nothing else, so a failure here
+       * means the cost is being in the way at all, and a success means the
+       * cost is the work — which are different problems with different fixes.
+       */
+      const body = url.searchParams.get('pipe')
+        ? upstream.body!.pipeThrough(
+            new TransformStream<Uint8Array, Uint8Array>({
+              transform: (chunk, controller) => controller.enqueue(chunk),
+            }),
+          )
+        : upstream.body;
+
+      return new Response(body, {
         status: upstream.status,
         headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store' },
       });
