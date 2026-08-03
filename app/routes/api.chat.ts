@@ -523,6 +523,10 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           tools: toolsForRequest,
           maxSteps: maxLLMSteps,
           onStepFinish: ({ toolCalls }) => {
+            if (toolCalls.length > 0) {
+              usedTools = true;
+            }
+
             toolCalls.forEach((toolCall) => {
               mcpService.processToolCall(toolCall, dataStream);
             });
@@ -572,6 +576,19 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
         let continueSegmentCount = 0;
 
         /*
+         * Whether the model did any work with tools this turn.
+         *
+         * A turn that searched the web and answered is a finished turn. A
+         * turn that produced neither tool calls nor an artifact, in build
+         * mode, produced nothing at all — and those two look identical from
+         * the text alone.
+         */
+        let usedTools = false;
+
+        /* At most one nudge per request; a model that ignores it twice is not going to comply. */
+        let nudgedForEmptyBuild = false;
+
+        /*
          * MAIN GENERATION LOOP
          * ====================
          * Single consumer: mergeIntoDataStream. No concurrent for-await
@@ -616,7 +633,25 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           let usage: any;
 
           try {
-            const SEGMENT_AWAIT_TIMEOUT_MS = 90_000;
+            /*
+             * A long build is not a hung one.
+             *
+             * This was a flat 90 seconds of wall clock, and a real project
+             * takes longer than that: asked for a coffee-roastery landing
+             * page, the model worked for 149 seconds and finished cleanly
+             * with 7,276 tokens — and every one of them was thrown away,
+             * because at 90 seconds this fired, the salvage below raced the
+             * text with a one-second timeout, got nothing, and the loop
+             * broke with "Build incomplete — stream was interrupted".
+             *
+             * Silence is what indicates a hang, and `streamRecovery` already
+             * watches for exactly that: its timer resets on every chunk, so
+             * it fires only when nothing has arrived for two minutes (five
+             * for a reasoning model). This ceiling exists purely so a
+             * promise that never settles cannot hang the request forever,
+             * which is a different job and wants a much larger number.
+             */
+            const SEGMENT_AWAIT_TIMEOUT_MS = Math.max(streamTimeoutMs * 4, 600_000);
             const timeoutPromise = new Promise<never>((_, reject) =>
               setTimeout(() => reject(new Error('SEGMENT_AWAIT_TIMEOUT')), SEGMENT_AWAIT_TIMEOUT_MS),
             );
@@ -638,9 +673,16 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             let salvagedText = '';
 
             try {
+              /*
+               * Give the text a real chance to arrive. One second was not a
+               * salvage attempt, it was a formality: a model still writing
+               * has not resolved `result.text` yet, so this returned '' every
+               * time and the work was discarded as if nothing had been
+               * produced.
+               */
               salvagedText = await Promise.race([
                 result.text as Promise<string>,
-                new Promise<string>((resolve) => setTimeout(() => resolve(''), 1000)),
+                new Promise<string>((resolve) => setTimeout(() => resolve(''), 20_000)),
               ]);
             } catch {
               /* ignore */
@@ -746,6 +788,65 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               } as any);
             } catch {
               /* validation is best-effort — never block the response */
+            }
+          }
+
+          /*
+           * The model said it would build something and then stopped.
+           *
+           * "I'll create a minimal, elegant restaurant landing page." —
+           * finishReason 'stop', zero artifact tags, 101 characters. The
+           * validator caught it and wrote `completeness: garbage` into an
+           * annotation, and nothing acted on it, because auto-continue only
+           * fires on a token-limit cutoff. The user asked for a website and
+           * received a sentence.
+           *
+           * Three conditions together, because any one alone would fire on a
+           * turn that was fine: build mode, so an artifact was the point; no
+           * artifact and no file actions, so nothing was built; and no tool
+           * calls, so nothing was done another way. A turn that ran a search
+           * and answered a question satisfies none of them.
+           *
+           * The cost of being wrong here is one extra round trip. The cost of
+           * not trying is the whole request.
+           */
+          if (chatMode === 'build' && finishReason === 'stop' && !usedTools && !nudgedForEmptyBuild) {
+            let producedNothing = false;
+
+            try {
+              producedNothing = validateBuildOutput(fullAssistantText).completeness === 'garbage';
+            } catch {
+              /* If it cannot be validated, leave the turn alone. */
+            }
+
+            if (producedNothing) {
+              const lastUserMessage = processedMessages.filter((x) => x.role === 'user').slice(-1)[0];
+              const { model, provider } = extractPropertiesFromMessage(lastUserMessage);
+
+              logger.warn('Build turn produced no artifact and used no tools — asking once for the files');
+
+              dataStream.writeData({
+                type: 'progress',
+                label: 'response',
+                status: 'in-progress',
+                order: progressCounter++,
+                message: 'Writing the files…',
+              } satisfies ProgressAnnotation);
+
+              currentMessages.push({ id: generateId(), role: 'assistant', content: text });
+              currentMessages.push({
+                id: generateId(),
+                role: 'user',
+                content:
+                  `[Model: ${model}]\n\n[Provider: ${provider}]\n\n` +
+                  'You described what you would build but did not write any files. ' +
+                  'Write them now inside <palmkitArtifact> with <palmkitAction type="file"> tags, ' +
+                  'full content for each file, and nothing else before the artifact. ' +
+                  'Finish with __PALMKIT_DONE__ on its own line.',
+              });
+
+              nudgedForEmptyBuild = true;
+              continue;
             }
           }
 
