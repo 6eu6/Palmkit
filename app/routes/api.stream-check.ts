@@ -39,7 +39,8 @@
 import type { LoaderFunctionArgs } from '@remix-run/cloudflare';
 import type { DataStreamString } from '@ai-sdk/ui-utils';
 import { createDataStream, formatDataStreamPart } from 'ai';
-import { getAuthedUser } from '~/lib/auth/supabase.server';
+import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
+import { readAllProviderKeys } from '~/lib/.server/llm/user-keys';
 
 const MAX_CHUNKS = 5000;
 const MAX_DELAY_MS = 1000;
@@ -99,6 +100,57 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
    * the cause is the structure and the provider is innocent; if it runs to the
    * end, the provider connection is what dies.
    */
+  /*
+   * An external streaming subrequest, relayed. Nothing else.
+   *
+   * Everything else is cleared on evidence. A byte stream survives. A relayed
+   * same-origin subrequest survives. The chat route's whole structure —
+   * createDataStream, a merged stream, an execute awaiting a promise that
+   * never settles, under waitUntil — ran for over two hours and delivered
+   * every part. The provider finishes: asked directly, OpenRouter returns
+   * finish_reason=stop and [DONE] at 26.3 seconds. Tools and multi-step are
+   * out too; one step behaves the same.
+   *
+   * What is left is the one thing none of those probes has: a connection this
+   * Worker holds open to another host while tokens come down it. This opens
+   * exactly that and pipes it straight out, with no AI SDK in between — so if
+   * it dies part-way, the cause is the connection and not anything this app
+   * does with it.
+   */
+  if (url.searchParams.get('mode') === 'upstream') {
+    const { supabase } = await getAuthedUser(request, context);
+    const apiKeys = supabase
+      ? await readAllProviderKeys(supabase, user.id, getEnv(context).API_KEY_ENCRYPTION_KEY)
+      : {};
+    const key = apiKeys.OpenRouter;
+
+    if (!key) {
+      return new Response('No OpenRouter key stored for this user', { status: 412 });
+    }
+
+    const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: url.searchParams.get('model') ?? 'openai/gpt-5.6-luna',
+        stream: true,
+        messages: [
+          {
+            role: 'user',
+            content:
+              'Build a landing page for a coffee roastery. Plain HTML and CSS in one file called ' +
+              'index.html. A hero, three product cards, a contact section. Output the complete file.',
+          },
+        ],
+      }),
+    });
+
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store' },
+    });
+  }
+
   if (url.searchParams.get('mode') === 'datastream') {
     let release!: () => void;
     const done = new Promise<void>((resolve) => {
