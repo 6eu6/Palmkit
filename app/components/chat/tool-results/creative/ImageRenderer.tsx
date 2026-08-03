@@ -4,8 +4,12 @@
  * Renders the result of the `generate_image` tool.
  *
  * The tool returns either:
- *   - dataUrl: base64-encoded PNG (displayed inline via <img src>)
- *   - url: hosted image URL (displayed via <img src>)
+ *   - url:     a link to the stored image (the normal case)
+ *   - dataUrl: the image inline, only when storage was unavailable
+ *
+ * Both display and download work from whichever arrived. Gating the buttons
+ * on `dataUrl` alone — which is what they used to do — turned Download and
+ * Copy into dead controls the moment images moved to storage.
  *
  * Features:
  *   - Inline image preview (click to enlarge in modal)
@@ -32,10 +36,24 @@ interface GenerateImageResult {
   url?: string | null;
   prompt?: string;
   size?: string;
+  format?: string;
   bytes?: number;
   transparent?: boolean;
   error?: string;
   hint?: string;
+}
+
+/** The models return JPEG as often as PNG, so the label follows the bytes. */
+function extensionFor(mime: string | undefined): string {
+  if (mime === 'image/jpeg') {
+    return 'jpg';
+  }
+
+  if (mime === 'image/webp') {
+    return 'webp';
+  }
+
+  return 'png';
 }
 
 function ImageRendererImpl({ result, theme: _theme }: ImageRendererProps) {
@@ -47,12 +65,12 @@ function ImageRendererImpl({ result, theme: _theme }: ImageRendererProps) {
   const imageUrl = data.dataUrl ?? data.url;
 
   const handleCopy = useCallback(async () => {
-    if (!data.dataUrl) {
+    if (!imageUrl) {
       return;
     }
 
     try {
-      const response = await fetch(data.dataUrl);
+      const response = await fetch(imageUrl);
       const blob = await response.blob();
       await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
       setCopied(true);
@@ -60,7 +78,7 @@ function ImageRendererImpl({ result, theme: _theme }: ImageRendererProps) {
     } catch (err) {
       console.error('Failed to copy image:', err);
     }
-  }, [data.dataUrl]);
+  }, [imageUrl]);
 
   if (!data.ok || !imageUrl) {
     return (
@@ -105,16 +123,16 @@ function ImageRendererImpl({ result, theme: _theme }: ImageRendererProps) {
 
       <div className="flex flex-wrap gap-2 mb-3">
         <DownloadButton
-          data={data.dataUrl ?? undefined}
-          filename={`generated-image-${Date.now()}.png`}
-          mimeType="image/png"
-          label="Download PNG"
+          data={imageUrl ?? undefined}
+          filename={`generated-image-${Date.now()}.${extensionFor(data.format)}`}
+          mimeType={data.format ?? 'image/png'}
+          label={`Download ${extensionFor(data.format).toUpperCase()}`}
           iconClass="i-ph:download-simple"
-          disabled={!data.dataUrl}
+          disabled={!imageUrl}
         />
         <button
           onClick={handleCopy}
-          disabled={!data.dataUrl}
+          disabled={!imageUrl}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-palmkit-elements-button-neutral-background hover:bg-palmkit-elements-button-neutral-backgroundHover text-palmkit-elements-button-neutral-text border border-palmkit-elements-borderColor disabled:opacity-50"
         >
           <div className={classNames('text-base', copied ? 'i-ph:check' : 'i-ph:copy')} />

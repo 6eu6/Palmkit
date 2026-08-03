@@ -79,6 +79,10 @@ function mockProvider(descriptor: ModelDescriptor, opts: { status?: string; cost
     mode: 'chat',
     apiKeys: { OpenRouter: 'k' },
     routeModel: async () => ({ model: descriptor.model, descriptor, reason: 'test' }),
+
+    /* Only URLs this app issued are read back, and only on the server. */
+    readOwnMedia: async (u: string) => (u === IMAGE_URL ? IMAGE_BYTES : undefined),
+    storeMedia: async () => ({ url: 'https://project.supabase.co/stored/video.mp4', path: 'p' }),
   };
 
   return ctx;
@@ -89,7 +93,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const IMAGE = 'data:image/png;base64,aGk=';
+const IMAGE_URL = 'https://project.supabase.co/storage/v1/object/sign/generated-media/u/1.jpg?token=x';
+const IMAGE_BYTES = 'data:image/jpeg;base64,aGk=';
 
 describe('generate_video', () => {
   it('refuses clearly when no key is connected', async () => {
@@ -136,9 +141,9 @@ describe('generate_video', () => {
 
   it('sends a starting frame as first_frame when the model accepts one', async () => {
     const ctx = mockProvider(veoLite());
-    const result = await generateVideoTool.execute({ prompt: 'x', imageDataUrl: IMAGE }, ctx);
+    const result = await generateVideoTool.execute({ prompt: 'x', imageUrl: IMAGE_URL }, ctx);
 
-    expect(requests[0].body.input_images).toEqual([{ type: 'first_frame', image_url: { url: IMAGE } }]);
+    expect(requests[0].body.input_images).toEqual([{ type: 'first_frame', image_url: { url: IMAGE_BYTES } }]);
     expect(result.ok && result.startedFromImage).toBe(true);
   });
 
@@ -149,7 +154,7 @@ describe('generate_video', () => {
    */
   it('drops the starting frame on a model that cannot use it, and says so', async () => {
     const ctx = mockProvider(promptOnly());
-    const result = await generateVideoTool.execute({ prompt: 'x', imageDataUrl: IMAGE }, ctx);
+    const result = await generateVideoTool.execute({ prompt: 'x', imageUrl: IMAGE_URL }, ctx);
 
     expect(requests[0].body.input_images).toBeUndefined();
     expect(result.ok && result.startedFromImage).toBe(false);
@@ -235,5 +240,45 @@ describe('generate_video', () => {
       expect(result.error).toMatch(/402/);
       expect(result.hint).toMatch(/out of credit/i);
     }
+  });
+});
+
+describe('generate_video storage', () => {
+  /*
+   * The provider's URL needs the API key as a bearer token. Handing it to a
+   * browser is handing over a link that is useless without the key — and
+   * useful with it. A copy is stored so the result is actually playable.
+   */
+  it('stores a copy and returns a link a browser can follow', async () => {
+    const ctx = mockProvider(veoLite());
+    const result = await generateVideoTool.execute({ prompt: 'x' }, ctx);
+
+    expect(result.ok && result.url).toBe('https://project.supabase.co/stored/video.mp4');
+    expect(result.ok && result.playable).toBe(true);
+  });
+
+  it('falls back to the provider URL and says it is not playable', async () => {
+    const ctx = mockProvider(veoLite());
+    const result = await generateVideoTool.execute({ prompt: 'x' }, { ...ctx, storeMedia: undefined });
+
+    expect(result.ok && result.url).toContain('openrouter.ai');
+    expect(result.ok && result.playable).toBe(false);
+  });
+
+  /*
+   * A URL in a tool argument arrived through the model. Reading it back is
+   * refused unless this app issued it, so a model cannot make the server
+   * fetch an internal address on its behalf.
+   */
+  it('ignores a starting frame it did not issue', async () => {
+    const ctx = mockProvider(veoLite());
+    const result = await generateVideoTool.execute(
+      { prompt: 'x', imageUrl: 'https://169.254.169.254/latest/meta-data/' },
+      ctx,
+    );
+
+    expect(requests[0].body.input_images).toBeUndefined();
+    expect(result.ok && result.startedFromImage).toBe(false);
+    expect(result.ok && result.note).toMatch(/could not be read/i);
   });
 });

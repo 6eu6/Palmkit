@@ -78,6 +78,19 @@ export interface ToolContext {
    */
   routeModel?: (capability: Capability) => Promise<Route | undefined>;
 
+  /**
+   * Put a generated file somewhere and get a link back.
+   *
+   * A tool result goes to the browser AND back into the model's context, so
+   * returning a picture inline spends about 224,000 tokens to say "here is
+   * an image". A link costs ten. Absent when there is no signed-in user, in
+   * which case the tool falls back to an inline data URL.
+   */
+  storeMedia?: (bytes: Uint8Array, mime: string) => Promise<{ url: string; path: string } | undefined>;
+
+  /** Read back a file this app stored, for a tool that needs the bytes. */
+  readOwnMedia?: (url: string) => Promise<string | undefined>;
+
   /** Tavily/SerpApi key (for web_search / deep_search). */
   searchApiKey?: string;
 

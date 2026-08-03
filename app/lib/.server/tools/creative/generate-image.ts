@@ -165,12 +165,22 @@ export const generateImageTool: ToolDefinition<typeof generateImageSchema> = {
         const bytes = decodeBase64(first.b64_json);
         const { mime, width, height } = sniffImage(bytes);
 
+        /*
+         * Stored, not inlined. This result is fed back into the model's
+         * context as well as sent to the browser, and a 673KB JPEG is about
+         * 224,000 tokens of base64 against a 204,800 context — which is why
+         * "make an image, then a video from it" used to stop after the image.
+         * If storage is unavailable the data URL comes back instead, which is
+         * the old behaviour: degraded, not broken.
+         */
+        const stored = await ctx.storeMedia?.(bytes, mime);
+
         return {
           ok: true,
           model: route.model,
           whyThisModel: route.reason,
-          dataUrl: `data:${mime};base64,${first.b64_json}`,
-          url: null,
+          url: stored?.url ?? null,
+          dataUrl: stored ? null : `data:${mime};base64,${first.b64_json}`,
           prompt: fullPrompt,
 
           /* What came back, not what was asked for. */

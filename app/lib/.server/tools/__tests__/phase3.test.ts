@@ -290,6 +290,49 @@ test('generate_image sends the model field the endpoint requires', async () => {
  * gemini-3.1-flash-lite-image returns JPEG, so a download saved JPEG bytes
  * under a .png name. The header decides the label now.
  */
+/*
+ * The result travels two ways at once: to the browser, which needs the
+ * pixels, and back into the model's context, which does not. A 673KB JPEG is
+ * about 224,000 tokens of base64 against a 204,800 context, so returning it
+ * inline made "an image, then a video from it" impossible — the second turn
+ * had nowhere to fit.
+ */
+test('generate_image returns a link, not the whole picture', async () => {
+  mockFetch({ 'openrouter.ai': { status: 200, body: { data: [{ b64_json: 'aGk=' }] } } });
+
+  const result = await generateImageTool.execute(
+    { prompt: 'a red apple' },
+    makeCtx({
+      apiKeys: { OpenRouter: 'k' },
+      routeModel: imageRoute,
+      storeMedia: async () => ({ url: 'https://p.supabase.co/stored/1.jpg', path: 'u/1.jpg' }),
+    }),
+  );
+
+  assert.equal(result.ok, true);
+
+  if (result.ok) {
+    assert.equal(result.url, 'https://p.supabase.co/stored/1.jpg');
+    assert.equal(result.dataUrl, null, 'the picture itself must not be in the result');
+  }
+});
+
+test('generate_image still returns the image inline when storage is unavailable', async () => {
+  mockFetch({ 'openrouter.ai': { status: 200, body: { data: [{ b64_json: 'aGk=' }] } } });
+
+  const result = await generateImageTool.execute(
+    { prompt: 'a red apple' },
+    makeCtx({ apiKeys: { OpenRouter: 'k' }, routeModel: imageRoute, storeMedia: async () => undefined }),
+  );
+
+  assert.equal(result.ok, true);
+
+  if (result.ok) {
+    assert.equal(result.url, null);
+    assert.match(result.dataUrl as string, /^data:/);
+  }
+});
+
 test('generate_image labels JPEG bytes as JPEG', async () => {
   // Minimal JPEG: SOI, then a SOF0 declaring 1024x1024.
   const jpeg = [0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x04, 0x00, 0x04, 0x00, 0x03, 0x01, 0x11, 0x00];

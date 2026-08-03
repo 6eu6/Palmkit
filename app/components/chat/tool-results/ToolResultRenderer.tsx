@@ -69,6 +69,7 @@ const TOOL_TO_CATEGORY: Record<string, 'office' | 'analytics' | 'creative' | 'in
 
   // Creative
   generate_image: 'creative',
+  generate_video: 'creative',
 
   // Investigative
   web_search: 'investigative',

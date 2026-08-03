@@ -87,8 +87,8 @@ export const generateVideoTool: ToolDefinition<typeof generateVideoSchema> = {
   description:
     'Generate a short video from a description, optionally starting from an image. ' +
     'Use this when the user asks for a video, a clip, an animation, or asks to "make this image move". ' +
-    'To animate an existing picture, pass its data URL as imageDataUrl — including one you just made ' +
-    'with generate_image, which is how "turn this into a video" works. ' +
+    'To animate an existing picture, pass the `url` that generate_image returned as imageUrl — ' +
+    'that is how "turn this into a video" works. ' +
     'Describe MOTION, not just the scene: what moves, how the camera moves, what the light does. ' +
     'Returns a video URL plus the model used and what it cost. ' +
     'This is slow (roughly 40-90 seconds) and costs real money, typically $0.10-$0.50 — ' +
@@ -99,7 +99,7 @@ export const generateVideoTool: ToolDefinition<typeof generateVideoSchema> = {
   availableIn: ['chat', 'work', 'code'],
 
   execute: async (input: GenerateVideoInput, ctx): Promise<ToolResult> => {
-    const { prompt, imageDataUrl, durationSeconds, aspectRatio, withAudio = false } = input;
+    const { prompt, imageUrl, durationSeconds, aspectRatio, withAudio = false } = input;
 
     const apiKey = ctx.apiKeys?.OpenRouter;
 
@@ -130,7 +130,14 @@ export const generateVideoTool: ToolDefinition<typeof generateVideoSchema> = {
      * dropped with a note rather than failing the whole call.
      */
     const canStartFromImage = media?.frameImages?.includes('first_frame') ?? false;
-    const useImage = Boolean(imageDataUrl) && canStartFromImage;
+
+    /*
+     * The model holds a link, never the pixels. The bytes are fetched here so
+     * they go from storage straight to the provider without passing through
+     * the conversation — which is the whole reason the link exists.
+     */
+    const frame = imageUrl && canStartFromImage ? await ctx.readOwnMedia?.(imageUrl) : undefined;
+    const useImage = Boolean(frame);
     const wantsAudio = withAudio && (media?.generatesAudio ?? false);
 
     const cost = estimateCost(route.descriptor, seconds, wantsAudio);
@@ -142,7 +149,7 @@ export const generateVideoTool: ToolDefinition<typeof generateVideoSchema> = {
     }
 
     if (useImage) {
-      body.input_images = [{ type: 'first_frame', image_url: { url: imageDataUrl } }];
+      body.input_images = [{ type: 'first_frame', image_url: { url: frame } }];
     }
 
     try {
@@ -201,17 +208,26 @@ export const generateVideoTool: ToolDefinition<typeof generateVideoSchema> = {
         } as ToolResult;
       }
 
-      const url = finished.unsigned_urls?.[0];
+      const providerUrl = finished.unsigned_urls?.[0];
 
-      if (!url) {
+      if (!providerUrl) {
         return { ok: false, error: `${route.model} reported success but returned no video.` };
       }
+
+      /*
+       * The provider's URL needs the API key as a bearer token, so a browser
+       * cannot play it and it must never be handed to one — that link plus a
+       * key is the key. A copy is stored and the playable link points there.
+       */
+      const url = (await storeCopy(apiKey, providerUrl, ctx)) ?? providerUrl;
+      const playable = url !== providerUrl;
 
       return {
         ok: true,
         model: route.model,
         whyThisModel: route.reason,
         url,
+        playable,
         prompt,
         durationSeconds: seconds,
         aspectRatio: (body.aspect_ratio as string) ?? null,
@@ -222,10 +238,13 @@ export const generateVideoTool: ToolDefinition<typeof generateVideoSchema> = {
         costUsd: finished.usage?.cost ?? cost.usd ?? null,
         estimatedCostUsd: cost.usd ?? null,
 
-        note:
-          imageDataUrl && !canStartFromImage
+        note: !imageUrl
+          ? undefined
+          : !canStartFromImage
             ? `${route.model} cannot start from an image, so the video was generated from the description alone.`
-            : undefined,
+            : !frame
+              ? 'The starting image could not be read, so the video was generated from the description alone.'
+              : undefined,
       };
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortTimeoutError') {
@@ -236,6 +255,42 @@ export const generateVideoTool: ToolDefinition<typeof generateVideoSchema> = {
     }
   },
 };
+
+/**
+ * Fetch the finished video and keep a copy.
+ *
+ * Returns undefined if it cannot, in which case the caller falls back to the
+ * provider's own URL and marks the result unplayable rather than pretending
+ * a link that needs a secret is one a browser can follow.
+ */
+async function storeCopy(
+  apiKey: string,
+  providerUrl: string,
+  ctx: { storeMedia?: (bytes: Uint8Array, mime: string) => Promise<{ url: string } | undefined> },
+): Promise<string | undefined> {
+  if (!ctx.storeMedia) {
+    return undefined;
+  }
+
+  try {
+    const res = await fetchWithTimeout(providerUrl, {
+      timeoutMs: 120_000,
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+
+    if (!res.ok) {
+      return undefined;
+    }
+
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const stored = await ctx.storeMedia(bytes, res.headers.get('content-type') ?? 'video/mp4');
+
+    return stored?.url;
+  } catch (err) {
+    logger.warn(`Could not store the finished video: ${err instanceof Error ? err.message : String(err)}`);
+    return undefined;
+  }
+}
 
 async function pollUntilDone(apiKey: string, id: string): Promise<VideoJob> {
   const deadline = Date.now() + MAX_WAIT_MS;

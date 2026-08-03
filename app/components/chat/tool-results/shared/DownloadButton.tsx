@@ -38,18 +38,31 @@ interface DownloadButtonProps {
 }
 
 /**
- * Trigger a browser download from a data URL, text content, or blob.
+ * Trigger a browser download from a data URL, a hosted URL, or raw content.
+ *
+ * The hosted-URL case is not a nicety. Generated images used to arrive as a
+ * base64 data URL and now arrive as a link to storage, and the old code took
+ * anything that was not a data URL to be file *content* — so clicking
+ * Download on a generated image saved a text file containing the URL. Setting
+ * `href` to a cross-origin link is not enough either: browsers ignore the
+ * `download` attribute across origins and open a tab instead. Fetching it
+ * into a blob is what actually downloads the file.
  */
-export function triggerDownload(data: string, filename: string, mimeType = 'text/plain') {
+export async function triggerDownload(data: string, filename: string, mimeType = 'text/plain') {
   let url: string;
+  let isObjectUrl = false;
 
-  // If data is already a data URL, use it directly
   if (data.startsWith('data:')) {
     url = data;
+  } else if (/^https?:\/\//.test(data)) {
+    const res = await fetch(data);
+    url = URL.createObjectURL(await res.blob());
+    isObjectUrl = true;
   } else {
-    // Create a blob from the text content
+    // Raw text content.
     const blob = new Blob([data], { type: mimeType });
     url = URL.createObjectURL(blob);
+    isObjectUrl = true;
   }
 
   // Create a temporary anchor element and click it
@@ -62,7 +75,7 @@ export function triggerDownload(data: string, filename: string, mimeType = 'text
   document.body.removeChild(link);
 
   // Revoke the blob URL after a short delay (give browser time to start download)
-  if (!data.startsWith('data:')) {
+  if (isObjectUrl) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 }
@@ -82,7 +95,7 @@ function DownloadButtonImpl({
       return;
     }
 
-    triggerDownload(data, filename, mimeType);
+    void triggerDownload(data, filename, mimeType);
     setDownloadCount((c) => c + 1);
   }, [data, filename, mimeType, disabled]);
 

@@ -18,6 +18,7 @@ import { validateBuildOutput, completenessToJobStatus } from '~/lib/runtime/outp
 import { getAuthedUser, getEnv } from '~/lib/auth/supabase.server';
 import { readCatalog } from '~/lib/.server/llm/capability-registry';
 import { chooseModel, type Capability } from '~/lib/.server/llm/model-router';
+import { fetchOwnMediaAsDataUrl, storeGeneratedMedia } from '~/lib/.server/llm/generated-media';
 import { readAllProviderKeys } from '~/lib/.server/llm/user-keys';
 import { DEFAULT_EFFORT, type Effort } from '~/lib/modules/llm/effort';
 import type { ModelDescriptor } from '~/lib/modules/llm/model-descriptor';
@@ -159,6 +160,36 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
    */
   const routeFor = async (capability: Capability) =>
     chooseModel(await loadCatalog(), { capability, provider: selected.provider });
+
+  /*
+   * Generated files go to storage, so what travels back through the model is
+   * a link rather than a megabyte of base64.
+   */
+  const storeMedia = async (bytes: Uint8Array, mime: string) => {
+    const { user, supabase } = await getAuthedUser(request, context);
+
+    if (!user || !supabase) {
+      return undefined;
+    }
+
+    return storeGeneratedMedia(supabase, user.id, bytes, mime);
+  };
+
+  /*
+   * Only files this app issued are read back, and only from the Supabase host
+   * it issued them from — a URL that arrives in a tool argument came through
+   * the model, and a server that fetches whatever it is told is a server that
+   * will read an internal address on a model's say-so.
+   */
+  const storageHost = (() => {
+    try {
+      return getEnv(context).SUPABASE_URL ? new URL(getEnv(context).SUPABASE_URL!).hostname : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
+
+  const readOwnMedia = (url: string) => fetchOwnMediaAsDataUrl(url, storageHost);
 
   /*
    * ════════════════════════════════════════════════════════════════════════
@@ -409,6 +440,8 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           apiKeys,
 
           routeModel: (capability) => routeFor(capability),
+          storeMedia: (bytes, mime) => storeMedia(bytes, mime),
+          readOwnMedia: (url) => readOwnMedia(url),
           searchApiKey: ((context.cloudflare?.env as any)?.TAVILY_API_KEY ??
             (context.cloudflare?.env as any)?.SERPAPI_KEY ??
             process.env.TAVILY_API_KEY ??

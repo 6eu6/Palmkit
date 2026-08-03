@@ -23,12 +23,13 @@ export const generateVideoSchema = z.object({
    * A still to animate from. This is the whole of image-to-video: hand the
    * model a picture and it starts there.
    */
-  imageDataUrl: z
+  imageUrl: z
     .string()
     .optional()
     .describe(
-      'Optional data URL of a starting frame (from generate_image, or one the user supplied). ' +
-        'The video begins from this image. Only models that list first_frame accept it.',
+      'Optional starting frame: the `url` returned by generate_image. ' +
+        'The video begins from that image, which is how "turn this picture into a video" works. ' +
+        'Pass the URL exactly as generate_image returned it.',
     ),
 
   durationSeconds: z
