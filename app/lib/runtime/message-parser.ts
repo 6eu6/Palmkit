@@ -6,6 +6,7 @@ import type {
   ShellAction,
   SupabaseAction,
   AssetAction,
+  EditAction,
 } from '~/types/actions';
 import type { PalmkitArtifactData } from '~/types/artifact';
 import { createScopedLogger } from '~/utils/logger';
@@ -535,11 +536,25 @@ export class StreamingMessageParser {
 
       (actionAttributes as AssetAction).filePath = filePath;
       (actionAttributes as AssetAction).src = src;
+    } else if (actionType === 'edit') {
+      /*
+       * An edit names the file it changes and carries only the changed part,
+       * so a path is not optional the way it is for a file action — there is
+       * no content here to fall back on showing.
+       */
+      const filePath = this.#extractAttribute(actionTag, 'filePath');
+
+      if (!filePath) {
+        logger.warn('Edit action missing filePath');
+        throw new Error('Edit action requires filePath');
+      }
+
+      (actionAttributes as EditAction).filePath = filePath;
     } else if (!['shell', 'start'].includes(actionType)) {
       logger.warn(`Unknown action type '${actionType}'`);
     }
 
-    return actionAttributes as FileAction | ShellAction | AssetAction;
+    return actionAttributes as FileAction | ShellAction | AssetAction | EditAction;
   }
 
   #extractAttribute(tag: string, attributeName: string): string | undefined {

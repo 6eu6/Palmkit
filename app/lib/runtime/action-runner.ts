@@ -11,6 +11,7 @@ import type {
 } from '~/types/actions';
 import { createScopedLogger } from '~/utils/logger';
 import { unreachable } from '~/utils/unreachable';
+import { applyEdit } from '~/lib/runtime/apply-edit';
 import type { ActionCallbackData } from './message-parser';
 import type { PalmkitShell } from '~/utils/shell';
 import { isMemoryConstrainedDevice, isRemoteSandboxAvailable } from '~/lib/sandbox/remoteSandbox';
@@ -183,6 +184,16 @@ export class ActionRunner {
   onSupabaseAlert?: (alert: SupabaseAlert) => void;
   onDeployAlert?: (alert: DeployAlert) => void;
   onFileWritten?: (filePath: string, content: string, isBinary?: boolean) => void;
+
+  /**
+   * The current text of a file the project already has.
+   *
+   * Needed by the edit action, whose whole point is that the model did not
+   * send the file. Reads from the workbench's own copy — the same one the
+   * editor and the preview show — so an edit applies to what the user is
+   * looking at rather than to whatever is on a disk that may not have booted.
+   */
+  readFile?: (filePath: string) => string | undefined;
   buildOutput?: { path: string; exitCode: number; output: string };
 
   constructor(
@@ -192,6 +203,7 @@ export class ActionRunner {
     onSupabaseAlert?: (alert: SupabaseAlert) => void,
     onDeployAlert?: (alert: DeployAlert) => void,
     onFileWritten?: (filePath: string, content: string, isBinary?: boolean) => void,
+    readFile?: (filePath: string) => string | undefined,
   ) {
     this.#webcontainer = webcontainerPromise;
     this.#shellTerminal = getShellTerminal;
@@ -199,6 +211,7 @@ export class ActionRunner {
     this.onSupabaseAlert = onSupabaseAlert;
     this.onDeployAlert = onDeployAlert;
     this.onFileWritten = onFileWritten;
+    this.readFile = readFile;
   }
 
   addAction(data: ActionCallbackData) {
@@ -289,6 +302,10 @@ export class ActionRunner {
         }
         case 'asset': {
           await this.#runAssetAction(action);
+          break;
+        }
+        case 'edit': {
+          await this.#runEditAction(action);
           break;
         }
         case 'supabase': {
@@ -511,6 +528,48 @@ export class ActionRunner {
      * the E2B remote preview path has files to push.
      */
     this.onFileWritten?.(action.filePath, action.content);
+  }
+
+  /**
+   * Change part of a file the project already has.
+   *
+   * The whole point is that the model did not send the file, so the current
+   * contents have to come from somewhere. They come from the same place the
+   * editor and preview read: the workbench's own copy, via `readFile`.
+   *
+   * A failed edit is reported rather than swallowed. The model can only
+   * recover — by widening its search text or sending the file outright — if it
+   * is told what went wrong, and a silently skipped edit leaves it believing
+   * a change landed that did not.
+   */
+  async #runEditAction(action: ActionState) {
+    if (action.type !== 'edit') {
+      unreachable('Expected edit action');
+    }
+
+    const current = this.readFile?.(action.filePath);
+
+    if (typeof current !== 'string') {
+      throw new ActionCommandError(
+        `Cannot edit ${action.filePath} — it is not in the project yet.`,
+        'Write it with a file action first.',
+      );
+    }
+
+    const outcome = applyEdit(current, action.content);
+
+    if (!outcome.ok) {
+      throw new ActionCommandError(`Could not edit ${action.filePath}`, outcome.error ?? 'The edit did not apply.');
+    }
+
+    logger.debug(`[runEditAction] applied ${outcome.applied} change(s) to ${action.filePath}`);
+
+    /*
+     * Written through the file action, so an edit lands exactly the way a
+     * rewrite does — same folder creation, same fallback when the container
+     * has not booted, same registration with the workbench.
+     */
+    await this.#runFileAction({ ...action, type: 'file', content: outcome.content } as ActionState);
   }
 
   /**

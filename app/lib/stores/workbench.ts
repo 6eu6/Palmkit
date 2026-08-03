@@ -536,6 +536,16 @@ export class WorkbenchStore {
           // Mirror writes into the file store immediately (watcher-independent).
           this.#filesStore.registerFile(filePath, content, isBinary);
         },
+        (filePath) => {
+          /*
+           * What an edit action changes. Read from the file store rather than
+           * from disk so the edit applies to what the editor and preview are
+           * showing, and so it still works on a device where the container
+           * never booted.
+           */
+          const file = this.#filesStore.getFile(filePath);
+          return file?.type === 'file' && !file.isBinary ? file.content : undefined;
+        },
       ),
     });
   }

@@ -1,6 +1,6 @@
 import type { Change } from 'diff';
 
-export type ActionType = 'file' | 'shell' | 'supabase' | 'asset';
+export type ActionType = 'file' | 'shell' | 'supabase' | 'asset' | 'edit';
 
 export interface BaseAction {
   content: string;
@@ -43,6 +43,24 @@ export interface AssetAction extends BaseAction {
   src: string;
 }
 
+/**
+ * Change part of an existing file, without rewriting it.
+ *
+ * A `file` action carries the finished file, so the smallest change the model
+ * can express is the whole thing again. Measured on this app's own prompt:
+ * changing one accent colour on a landing page cost 6,472 output tokens to
+ * rewrite a 677-line file in which 68 lines differed — and the file came back
+ * 76 lines longer, because a model asked for a colour rewrote the structure
+ * around it. After prompt caching, output is roughly ninety percent of what a
+ * turn costs, so this is the money and the risk in one place.
+ *
+ * The content is one or more search-and-replace blocks; see apply-edit.ts.
+ */
+export interface EditAction extends BaseAction {
+  type: 'edit';
+  filePath: string;
+}
+
 export interface SupabaseAction extends BaseAction {
   type: 'supabase';
   operation: 'migration' | 'query';
@@ -50,7 +68,14 @@ export interface SupabaseAction extends BaseAction {
   projectId?: string;
 }
 
-export type PalmkitAction = FileAction | ShellAction | StartAction | BuildAction | SupabaseAction | AssetAction;
+export type PalmkitAction =
+  | FileAction
+  | ShellAction
+  | StartAction
+  | BuildAction
+  | SupabaseAction
+  | AssetAction
+  | EditAction;
 
 export type PalmkitActionData = PalmkitAction | BaseAction;
 
