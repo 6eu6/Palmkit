@@ -47,9 +47,12 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
 
+      # This was continue-on-error, from when the suite was a partial handful
+      # that would have blocked PRs for no good reason. It is 634 tests across
+      # 27 files now and they pass, so a regression should stop a merge rather
+      # than be reported green.
       - name: Test
         run: pnpm run test
-        continue-on-error: true # tests are partial — don't block PRs yet
 
   worker-quality:
     name: Worker Typecheck

@@ -12,15 +12,23 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
   private _processedCodeBlocks = new Map<string, Set<string>>();
   private _artifactCounter = 0;
 
-  // Optimized command pattern lookup
+  /*
+   * Does a line look like a shell command rather than code?
+   *
+   * The keys are documentation — the lookup below iterates and tests every
+   * pattern, so this is a linear scan whatever it is stored in, and the
+   * comment claiming an O(1) Map lookup described neither. Two of the keys
+   * were named after WebContainer, which no longer exists; the commands they
+   * match are ordinary coreutils and shell builtins and always were.
+   */
   private _commandPatternMap = new Map<string, RegExp>([
     ['npm', /^(npm|yarn|pnpm)\s+(install|run|start|build|dev|test|init|create|add|remove)/],
     ['git', /^(git)\s+(add|commit|push|pull|clone|status|checkout|branch|merge|rebase|init|remote|fetch|log)/],
     ['docker', /^(docker|docker-compose)\s+/],
     ['build', /^(make|cmake|gradle|mvn|cargo|go)\s+/],
     ['network', /^(curl|wget|ping|ssh|scp|rsync)\s+/],
-    ['webcontainer', /^(cat|chmod|cp|echo|hostname|kill|ln|ls|mkdir|mv|ps|pwd|rm|rmdir|xxd)\s*/],
-    ['webcontainer-extended', /^(alias|cd|clear|env|false|getconf|head|sort|tail|touch|true|uptime|which)\s*/],
+    ['coreutils', /^(cat|chmod|cp|echo|hostname|kill|ln|ls|mkdir|mv|ps|pwd|rm|rmdir|xxd)\s*/],
+    ['shell-builtins', /^(alias|cd|clear|env|false|getconf|head|sort|tail|touch|true|uptime|which)\s*/],
     ['interpreters', /^(node|python|python3|java|go|rust|ruby|php|perl)\s+/],
     ['text-processing', /^(grep|sed|awk|cut|tr|sort|uniq|wc|diff)\s+/],
     ['archive', /^(tar|zip|unzip|gzip|gunzip)\s+/],
@@ -393,7 +401,6 @@ ${content.trim()}
       cleanLine = cleanLine.replace(prefix, '');
     }
 
-    // Optimized O(1) lookup using Map
     for (const [, pattern] of this._commandPatternMap) {
       if (pattern.test(cleanLine)) {
         return true;
