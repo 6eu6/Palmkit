@@ -2,8 +2,7 @@ import { toast } from 'react-toastify';
 import { useStore } from '@nanostores/react';
 import { netlifyConnection } from '~/lib/stores/netlify';
 import { workbenchStore } from '~/lib/stores/workbench';
-import { webcontainer } from '~/lib/webcontainer';
-import { path } from '~/utils/path';
+import { collectBuildFiles } from '~/lib/deploy/collect-build-files';
 import { useState } from 'react';
 import type { ActionCallbackData } from '~/lib/runtime/message-parser';
 import { chatId } from '~/lib/persistence/useChatHistory';
@@ -80,64 +79,14 @@ export function useNetlifyDeploy() {
       // Notify that build succeeded and deployment is starting
       deployArtifact.runner.handleDeployAction('deploying', 'running', { source: 'netlify' });
 
-      // Get the build files
-      const container = await webcontainer;
-
-      // Remove /home/project from buildPath if it exists
-      const buildPath = buildOutput.path.replace('/home/project', '');
-
-      console.log('Original buildPath', buildPath);
-
-      // Check if the build path exists
-      let finalBuildPath = buildPath;
-
-      // List of common output directories to check if the specified build path doesn't exist
-      const commonOutputDirs = [buildPath, '/dist', '/build', '/out', '/output', '/.next', '/public'];
-
-      // Verify the build path exists, or try to find an alternative
-      let buildPathExists = false;
-
-      for (const dir of commonOutputDirs) {
-        try {
-          await container.fs.readdir(dir);
-          finalBuildPath = dir;
-          buildPathExists = true;
-          console.log(`Using build directory: ${finalBuildPath}`);
-          break;
-        } catch (error) {
-          // Directory doesn't exist, try the next one
-          console.log(`Directory ${dir} doesn't exist, trying next option. ${error}`);
-          continue;
-        }
-      }
-
-      if (!buildPathExists) {
-        throw new Error('Could not find build output directory. Please check your build configuration.');
-      }
-
-      async function getAllFiles(dirPath: string): Promise<Record<string, string>> {
-        const files: Record<string, string> = {};
-        const entries = await container.fs.readdir(dirPath, { withFileTypes: true });
-
-        for (const entry of entries) {
-          const fullPath = path.join(dirPath, entry.name);
-
-          if (entry.isFile()) {
-            const content = await container.fs.readFile(fullPath, 'utf-8');
-
-            // Remove build path prefix from the path
-            const deployPath = fullPath.replace(finalBuildPath, '');
-            files[deployPath] = content;
-          } else if (entry.isDirectory()) {
-            const subFiles = await getAllFiles(fullPath);
-            Object.assign(files, subFiles);
-          }
-        }
-
-        return files;
-      }
-
-      const fileContents = await getAllFiles(finalBuildPath);
+      /*
+       * Straight from the workbench, which is where the files already are.
+       * This used to walk a directory tree through the WebContainer API, and
+       * there had been no WebContainer behind that API for a while — a shim
+       * satisfied the interface and read the workbench underneath.
+       */
+      const { files: fileContents, buildPath: finalBuildPath } = collectBuildFiles(buildOutput.path);
+      console.log(`Using build directory: ${finalBuildPath}`);
 
       // Use chatId instead of artifact.id
       const existingSiteId = localStorage.getItem(`netlify-site-${currentChatId}`);
