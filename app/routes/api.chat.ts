@@ -1088,17 +1088,32 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
      * We use pipeThrough with an IDENTITY-like transform ONLY to keep
      * the streamRecovery heartbeat alive — we do NOT mutate the chunks.
      */
+    /*
+     * The AI SDK's data stream yields STRINGS — `formatDataStreamPart` returns
+     * one — and a ReadableStream handed to `new Response` has to yield bytes.
+     * The SDK's own helper knows this: createDataStreamResponse pipes through
+     * a TextEncoderStream before constructing the Response. This route did not,
+     * and the comment here used to claim the chunks were already Uint8Array.
+     *
+     * Node coerces a string chunk and the mistake is invisible; the Workers
+     * runtime does not, so in production the stream errored partway through and
+     * the response simply stopped — HTTP 200, no error part, no finish event.
+     * The same build request three times gave one complete answer and two cut
+     * off mid-file, and a plain byte stream from another route survived 1,200
+     * chunks over 60 seconds, which is what ruled out the platform.
+     *
+     * Encoding here rather than adding another pipeThrough keeps it to the one
+     * pass the recovery heartbeat already needs.
+     */
+    const encoder = new TextEncoder();
+
     const cleanStream = dataStream.pipeThrough(
-      new TransformStream({
+      new TransformStream<string | Uint8Array, Uint8Array>({
         transform: (chunk, controller) => {
           // Keep the recovery timer alive — data is flowing.
           streamRecovery?.updateActivity();
 
-          /*
-           * Pass through UNTOUCHED. No g:→0: conversion. No <div> wrapping.
-           * The chunk is already a Uint8Array of the AI SDK protocol.
-           */
-          controller.enqueue(chunk);
+          controller.enqueue(typeof chunk === 'string' ? encoder.encode(chunk) : chunk);
         },
       }),
     );
