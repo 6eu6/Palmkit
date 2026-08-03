@@ -239,7 +239,11 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     }
   })();
 
-  const readOwnMedia = (url: string) => fetchOwnMediaAsDataUrl(url, storageHost);
+  const readOwnMedia = async (url: string) => {
+    const { user, supabase } = await getAuthedUser(request, context);
+
+    return fetchOwnMediaAsDataUrl(url, storageHost, user && supabase ? { supabase, userId: user.id } : undefined);
+  };
 
   /*
    * ════════════════════════════════════════════════════════════════════════
