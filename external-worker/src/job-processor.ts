@@ -37,6 +37,12 @@ interface BuildJob {
   progress: number;
   retry_count: number;
   validation_result: any;
+
+  /* What the worker should run. Absent on rows enqueued before 0024. */
+  kind?: 'build' | 'chat';
+
+  /* The turn's input. Absent on rows enqueued before 0024 — see validation_result. */
+  request?: any;
 }
 
 /**
@@ -136,16 +142,39 @@ export async function processNextJob(supabase: SupabaseClient): Promise<void> {
     return;
   }
 
-  logger.info(`Processing job ${job.id} (user=${job.user_id})`);
+  logger.info(`Processing job ${job.id} (user=${job.user_id}, kind=${job.kind ?? 'build'})`);
+
+  /*
+   * Where a job's input lives.
+   *
+   * `request` is the column for it. Everything enqueued before that column
+   * existed put the input in `validation_result` — a jsonb named for the output
+   * of validation, used because it was the only free one — so both are read
+   * until nothing old is left in the queue. Reading only the new one would
+   * strand whatever was already waiting when this deployed.
+   */
+  const request = job.request ?? job.validation_result ?? {};
+
+  /*
+   * A chat turn is a job too, and a different job. It streams a reply instead
+   * of writing and validating files, so it goes to its own processor rather
+   * than through the build pipeline below.
+   */
+  if (job.kind === 'chat') {
+    const { processChatTurn } = await import('./chat-turn');
+    await processChatTurn(supabase, { id: job.id, user_id: job.user_id, request });
+
+    return;
+  }
 
   /*
    * Extract prompt + provider + model from validation_result (stored by /api/jobs on enqueue).
    * NO defaults — the worker must use exactly what the user selected.
    * If model or provider is missing, fail with a clear error.
    */
-  const prompt: string = job.validation_result?.prompt ?? '';
-  const providerName: string = job.validation_result?.provider ?? '';
-  const modelName: string = job.validation_result?.model ?? '';
+  const prompt: string = request.prompt ?? '';
+  const providerName: string = request.provider ?? '';
+  const modelName: string = request.model ?? '';
 
   if (!prompt) {
     await failJob(supabase, job.id, 'No prompt found in job metadata');
