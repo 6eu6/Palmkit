@@ -3,8 +3,12 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022"],
-    "types": ["bun-types"],
+    "lib": [
+      "ES2022"
+    ],
+    "types": [
+      "bun-types"
+    ],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -12,8 +16,23 @@
     "resolveJsonModule": true,
     "declaration": true,
     "outDir": "./dist",
-    "rootDir": "./src"
+    "baseUrl": ".",
+    "paths": {
+      "~/*": [
+        "../app/*"
+      ]
+    }
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*.ts",
+    "../app/lib/common/prompts/prompts.ts",
+    "../app/utils/work-dir.ts",
+    "../app/utils/allowed-html-elements.ts",
+    "../app/utils/stripIndent.ts",
+    "../app/types/design-scheme.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

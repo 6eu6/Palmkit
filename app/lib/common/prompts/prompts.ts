@@ -1,6 +1,6 @@
 import type { DesignScheme } from '~/types/design-scheme';
-import { WORK_DIR } from '~/utils/constants';
-import { allowedHTMLElements } from '~/utils/markdown';
+import { WORK_DIR } from '~/utils/work-dir';
+import { allowedHTMLElements } from '~/utils/allowed-html-elements';
 import { stripIndents } from '~/utils/stripIndent';
 
 export const getSystemPrompt = (

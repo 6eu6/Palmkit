@@ -6,59 +6,9 @@ import { SKIP, visit } from 'unist-util-visit';
 
 type AnyNode = any;
 
-export const allowedHTMLElements = [
-  'a',
-  'b',
-  'button',
-  'blockquote',
-  'br',
-  'code',
-  'dd',
-  'del',
-  'details',
-  'div',
-  'dl',
-  'dt',
-  'em',
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
-  'hr',
-  'i',
-  'ins',
-  'kbd',
-  'li',
-  'ol',
-  'p',
-  'pre',
-  'q',
-  'rp',
-  'rt',
-  'ruby',
-  's',
-  'samp',
-  'source',
-  'span',
-  'strike',
-  'strong',
-  'sub',
-  'summary',
-  'sup',
-  'table',
-  'tbody',
-  'td',
-  'tfoot',
-  'th',
-  'thead',
-  'tr',
-  'ul',
-  'var',
-  'think',
-  'header',
-];
+import { allowedHTMLElements } from './allowed-html-elements';
+
+export { allowedHTMLElements };
 
 // Add custom rehype plugin
 function remarkThinkRawContent() {

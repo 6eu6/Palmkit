@@ -1,8 +1,7 @@
 import { LLMManager } from '~/lib/modules/llm/manager';
 import type { Template } from '~/types/template';
 
-export const WORK_DIR_NAME = 'project';
-export const WORK_DIR = `/home/${WORK_DIR_NAME}`;
+export { WORK_DIR, WORK_DIR_NAME } from './work-dir';
 export const MODIFICATIONS_TAG_NAME = 'palmkit_file_modifications';
 export const MODEL_REGEX = /^\[Model: (.*?)\]\n\n/;
 export const PROVIDER_REGEX = /\[Provider: (.*?)\]\n\n/;
