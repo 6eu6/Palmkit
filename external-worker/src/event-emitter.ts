@@ -60,7 +60,23 @@ export type JobEventType =
    * Frontend (use-external-worker.ts) renders these as the terminal activity rows.
    */
   | 'shell_command'
-  | 'shell_output';
+  | 'shell_output'
+  /*
+   * A chat turn's text, in batches rather than per token.
+   *
+   * One row per token would be a few thousand inserts for a single reply, each
+   * one an INSERT plus an updated_at bump, which is more database traffic than
+   * the answer is worth. The writer in chat-stream.ts accumulates and flushes
+   * on a short interval, so a reply is tens of rows and still arrives while it
+   * is being written. payload: { text: string }
+   */
+  | 'text_delta'
+  /*
+   * The turn is over and why. This is what tells a client to stop waiting —
+   * without it a finished reply is indistinguishable from a stalled one.
+   * payload: { finishReason: string, chars: number }
+   */
+  | 'turn_completed';
 
 export interface JobEventPayload {
   [key: string]: unknown;
@@ -69,6 +85,66 @@ export interface JobEventPayload {
 // In-process sequence counters per job — avoids a SELECT before every INSERT
 // and prevents seq collisions from concurrent async emits within the same job.
 const jobSeqCounters = new Map<string, number>();
+
+/**
+ * Where a job's numbering already got to, asked once per job.
+ *
+ * The counter above starts at -1 for a job this process has not seen, which is
+ * right for a new job and wrong for one it inherits. A worker restart — an
+ * auto-pull deploy, a crash, a second instance claiming a retry — resumes a job
+ * whose events are already numbered, starts again from zero, and writes a
+ * second event 0, 1, 2 alongside the first.
+ *
+ * That was survivable while `seq` only ordered a progress list. It is not
+ * survivable now: a client reads a turn by `seq` and asks for everything after
+ * the last one it holds, so duplicate numbers drop text out of the middle of a
+ * reply and no error is raised anywhere.
+ *
+ * The promise is cached, not the number, so concurrent emits at the start of a
+ * job wait on one query instead of racing to issue several.
+ */
+const jobSeqSeeds = new Map<string, Promise<number>>();
+
+async function nextSeq(supabase: SupabaseClient, jobId: string): Promise<number> {
+  if (!jobSeqCounters.has(jobId)) {
+    if (!jobSeqSeeds.has(jobId)) {
+      jobSeqSeeds.set(
+        jobId,
+        (async () => {
+          const { data } = await supabase
+            .from('job_events')
+            .select('seq')
+            .eq('job_id', jobId)
+            .order('seq', { ascending: false })
+            .limit(1);
+
+          return (data?.[0]?.seq ?? -1) as number;
+        })(),
+      );
+    }
+
+    const highest = await jobSeqSeeds.get(jobId)!;
+
+    /*
+     * Only if nothing wrote while the query was in flight. A concurrent emit
+     * that already set the counter has the newer truth.
+     */
+    if (!jobSeqCounters.has(jobId)) {
+      jobSeqCounters.set(jobId, highest);
+    }
+  }
+
+  const seq = (jobSeqCounters.get(jobId) ?? -1) + 1;
+  jobSeqCounters.set(jobId, seq);
+
+  return seq;
+}
+
+/** Let go of a finished job's counter so neither map grows without end. */
+export function forgetJobSeq(jobId: string): void {
+  jobSeqCounters.delete(jobId);
+  jobSeqSeeds.delete(jobId);
+}
 
 /**
  * Emit a job event. Sequence number is tracked in-process per job.
@@ -85,9 +161,7 @@ export async function emitEvent(
   message: string,
   payload?: JobEventPayload,
 ): Promise<void> {
-  const current = jobSeqCounters.get(jobId) ?? -1;
-  const seq = current + 1;
-  jobSeqCounters.set(jobId, seq);
+  const seq = await nextSeq(supabase, jobId);
 
   const { error } = await supabase.from('job_events').insert({
     job_id: jobId,
